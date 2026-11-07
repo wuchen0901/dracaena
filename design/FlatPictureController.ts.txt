@@ -1,0 +1,71 @@
+import { _decorator, Camera, Color, Component, EventKeyboard, Graphics, Input, input, KeyCode, Label, Node, resources, Sprite, SpriteFrame, Texture2D, UITransform } from 'cc';
+const { ccclass } = _decorator;
+
+/** Screenshot-based horizontal movement study. Previous room is archived in design/. */
+@ccclass('PuzzleController')
+export class PuzzleController extends Component {
+  private actor!: Node;
+  private keys = new Set<KeyCode>();
+  private touchDirection = 0;
+  private x = -90;
+  private velocity = 0;
+  private facing = 1;
+  private time = 0;
+  private status!: Label;
+  onLoad() {
+    const camera = this.node.scene.getChildByName('Main Camera')?.getComponent(Camera);
+    if (camera) { camera.clearFlags = Camera.ClearFlag.SOLID_COLOR; camera.clearColor = new Color(0, 0, 0, 255); }
+    this.picture('Forest background', 'reference/forest-background/texture', 1280, 590, 0, 0);
+    this.actor = this.picture('Moving character', 'reference/character/texture', 68, 102, this.x, 0);
+    this.status = this.text('Loading image assets…', 0, -328, 18, 880);
+    this.text('A / D  or  ← / →  MOVE     R  RESET', 0, 330, 17, 900);
+    this.button('←', -555, -322, -1);
+    this.button('→', 555, -322, 1);
+    input.on(Input.EventType.KEY_DOWN, this.down, this);
+    input.on(Input.EventType.KEY_UP, this.up, this);
+    this.place();
+  }
+  onDestroy() { input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
+  private child(name: string, w: number, h: number, x: number, y: number) {
+    const n = new Node(name); n.setParent(this.node); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
+  }
+  private picture(name: string, path: string, w: number, h: number, x: number, y: number) {
+    const n = this.child(name, w, h, x, y); const s = n.addComponent(Sprite); s.sizeMode = Sprite.SizeMode.CUSTOM;
+    resources.load(path, Texture2D, (error, texture) => {
+      if (error) { if (this.status) this.status.string = `Image could not load: ${name}`; console.error(error); return; }
+      const frame = new SpriteFrame(); frame.texture = texture; s.spriteFrame = frame;
+      if (this.status) this.status.string = 'Walk left or right · movement stops at the cliff edge';
+    }); return n;
+  }
+  private text(value: string, x: number, y: number, size: number, w: number) {
+    const n = this.child(value, w, 48, x, y); const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size + 6; l.horizontalAlign = Label.HorizontalAlign.CENTER; l.color = new Color(220, 231, 218); return l;
+  }
+  private button(value: string, x: number, y: number, direction: number) {
+    const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
+    const text = this.text(value, x, y, 30, 90); text.node.setSiblingIndex(n.getSiblingIndex());
+    n.on(Node.EventType.TOUCH_START, () => this.touchDirection = direction);
+    n.on(Node.EventType.TOUCH_END, () => this.touchDirection = 0);
+    n.on(Node.EventType.TOUCH_CANCEL, () => this.touchDirection = 0);
+    // Keep the label above the button artwork without intercepting input.
+    text.node.setSiblingIndex(this.node.children.length - 1);
+  }
+  private down(e: EventKeyboard) { this.keys.add(e.keyCode); if (e.keyCode === KeyCode.KEY_R) { this.x = -90; this.velocity = 0; this.facing = 1; this.place(); } }
+  private up(e: EventKeyboard) { this.keys.delete(e.keyCode); }
+  update(delta: number) {
+    const dt = Math.min(delta, 1 / 30); this.time += dt;
+    const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
+    this.velocity += (direction * 145 - this.velocity) * Math.min(1, dt * 15);
+    if (direction) this.facing = direction;
+    this.x = Math.max(-510, Math.min(135, this.x + this.velocity * dt));
+    this.place();
+  }
+  private place() {
+    if (!this.actor) return;
+    // Foot placement follows the visible grass shelf, with no vertical input.
+    const t = Math.max(0, Math.min(1, (this.x + 130) / 265));
+    const foot = -89 - t * 49;
+    const bob = Math.abs(this.velocity) > 8 ? Math.sin(this.time * 16) * 1.2 : 0;
+    this.actor.setPosition(this.x, foot + 38 + bob, 0);
+    this.actor.setScale(this.facing, 1, 1);
+  }
+}
