@@ -10,7 +10,7 @@ The scene no longer uses a single flattened landscape. `assets/resources/layers/
 
 ## Controls
 
-Use **A/D** or **Left/Right** to move horizontally. On-screen arrows also work. **R** resets character position, facing, camera offset, and ambient animation time. Movement is bounded at the cliff; foot placement is separate from image art. The character uses a single pose with a small bob, not a complete walking cycle.
+Use **A/D** or **Left/Right** to move. Press **Space**, **W**, or **Up** to jump across the 170-unit gap to the far bank. On-screen arrows move and the **↑** button jumps. Jumping includes a short input buffer and late-edge grace period, with no double jump. Landing uses separate platform collision surfaces. Falling returns the character to the near cliff, or to the far bank after successfully crossing. **R** resets the run. The character still uses one pose rather than a complete walking/jumping animation.
 
 ## Assets and preservation
 
