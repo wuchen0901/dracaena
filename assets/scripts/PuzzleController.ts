@@ -1,4 +1,4 @@
-import { _decorator, Camera, Color, Component, EventKeyboard, Graphics, Input, input, KeyCode, Label, Mask, Node, resources, Sprite, SpriteFrame, Texture2D, UITransform } from 'cc';
+import { _decorator, Camera, Color, Component, EventKeyboard, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
 
@@ -6,6 +6,10 @@ type Layer = { node: Node; x: number; y: number; parallax: number; drift: number
 @ccclass('PuzzleController')
 export class PuzzleController extends Component {
   private actor!: Node;
+  private actorSprite!: Sprite;
+  private poses: SpriteFrame[] = [];
+  private motion = 'idle'; private motionTime = 0;
+  private touchRun = false;
   private frame!: Node;
   private layers: Layer[] = [];
   private keys = new Set<KeyCode>();
@@ -33,9 +37,12 @@ export class PuzzleController extends Component {
     this.layer('Grassy cliff', 'ground', 1230, 410, -170, -90, 1);
     this.layer('Far bank', 'ground', 720, 240, 975, -200, 1);
     this.actor = this.picture('Character', 'reference/character', 68, 102, this.frame);
+    this.actorSprite = this.actor.getComponent(Sprite)!;
+    this.loadCharacterPoses();
     this.layer('Foreground foliage', 'foreground', 1360, 450, 0, -100, 1.3);
-    this.text('A / D  or  ← / →  MOVE     SPACE / W / ↑  JUMP     R  RESET', 0, 330, 17, 900);
+    this.text('A / D  or  ← / →  WALK     SHIFT  RUN     SPACE / W / ↑  JUMP     R  RESET', 0, 330, 17, 1100);
     this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
+    this.button('RUN', -430, -322, 0, true);
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
     this.place();
   }
@@ -48,9 +55,43 @@ export class PuzzleController extends Component {
     resources.load(path + '/texture', Texture2D, (error, texture) => {
       this.pending--;
       if (error) { this.failed = true; this.status.string = `Could not load ${name}`; console.error(error); return; }
-      const frame = new SpriteFrame(); frame.texture = texture; s.spriteFrame = frame;
+      const frame = new SpriteFrame(); frame.texture = texture;
+      if (n !== this.actor || !this.poses.length) s.spriteFrame = frame;
       if (!this.pending && !this.failed) this.status.string = 'Independent layers · parallax scenery · drifting clouds · flying birds';
     }); return n;
+  }
+  private loadCharacterPoses() {
+    this.pending++;
+    resources.load('character/actions/texture', Texture2D, (error, texture) => {
+      this.pending--;
+      if (!this.isValid) return;
+      if (error) { this.failed = true; this.status.string = 'Could not load character actions'; console.error(error); return; }
+      const w = texture.width / 4, h = texture.height / 4;
+      for (let row = 0; row < 4; row++) for (let column = 0; column < 4; column++) {
+        const pose = new SpriteFrame(); pose.texture = texture;
+        pose.rect = new Rect(column * w, row * h, w, h);
+        pose.originalSize = new Size(w, h);
+        this.poses.push(pose);
+      }
+      this.actor.getComponent(UITransform)!.setContentSize(102, 102);
+      this.actor.getComponent(UITransform)!.setAnchorPoint(.5, .06);
+      this.animateCharacter(0); this.place();
+    });
+  }
+  private animateCharacter(dt: number) {
+    if (!this.poses.length) return;
+    const speed = Math.abs(this.velocity);
+    const state = !this.grounded ? 'jump' : speed > 175 ? 'run' : speed > 8 ? 'walk' : 'idle';
+    if (state !== this.motion) { this.motion = state; this.motionTime = 0; }
+    let index: number;
+    if (state === 'jump') index = 12 + (this.verticalVelocity > 420 ? 0 : this.verticalVelocity > 80 ? 1 : this.verticalVelocity > -120 ? 2 : 3);
+    else {
+      const row = state === 'run' ? 2 : state === 'walk' ? 1 : 0;
+      const fps = state === 'run' ? 12 * speed / 240 : state === 'walk' ? 8 * speed / 145 : 3;
+      this.motionTime += dt * fps;
+      index = row * 4 + Math.floor(this.motionTime) % 4;
+    }
+    this.actorSprite.spriteFrame = this.poses[index];
   }
   private layer(name: string, asset: string, w: number, h: number, x: number, y: number, parallax: number, drift = 0, phase = 0, bird = false) {
     const node = this.picture(name, 'layers/' + asset, w, h, this.frame); node.setPosition(x, y, 0);
@@ -59,11 +100,12 @@ export class PuzzleController extends Component {
   private text(value: string, x: number, y: number, size: number, w: number) {
     const n = this.child(value, w, 48, x, y); const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size + 6; l.horizontalAlign = Label.HorizontalAlign.CENTER; l.color = new Color(220, 231, 218); return l;
   }
-  private button(value: string, x: number, y: number, direction: number) {
+  private button(value: string, x: number, y: number, direction: number, run = false) {
     const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
     this.text(value, x, y, 30, 90);
-    n.on(Node.EventType.TOUCH_START, () => { if (direction) this.touchDirection = direction; else this.jumpBuffer = .14; });
-    n.on(Node.EventType.TOUCH_END, () => { if (direction) this.touchDirection = 0; }); n.on(Node.EventType.TOUCH_CANCEL, () => { if (direction) this.touchDirection = 0; });
+    n.on(Node.EventType.TOUCH_START, () => { if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.jumpBuffer = .14; });
+    const release = () => { if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
+    n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
   }
   private down(e: EventKeyboard) {
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
@@ -73,7 +115,8 @@ export class PuzzleController extends Component {
   private reset() {
     this.x = -90; this.y = this.groundAt(this.x)!; this.velocity = this.verticalVelocity = 0;
     this.facing = 1; this.cameraOffset = this.time = this.jumpBuffer = 0;
-    this.grounded = true; this.coyote = .12; this.crossed = false; this.touchDirection = 0; this.place();
+    this.grounded = true; this.coyote = .12; this.crossed = false; this.touchDirection = 0; this.touchRun = false;
+    this.keys.clear(); this.motion = 'idle'; this.motionTime = 0; this.animateCharacter(0); this.place();
   }
   private groundAt(x: number): number | null {
     if (x >= -785 && x <= 445) return -87 - Math.max(0, Math.min(1, (x + 510) / 955)) * 83;
@@ -86,7 +129,8 @@ export class PuzzleController extends Component {
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.coyote = this.grounded ? .12 : Math.max(0, this.coyote - dt);
-    this.velocity += (direction * 240 - this.velocity) * Math.min(1, dt * 15); if (direction) this.facing = direction;
+    const running = this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT);
+    this.velocity += (direction * (running ? 240 : 145) - this.velocity) * Math.min(1, dt * 15); if (direction) this.facing = direction;
     if (this.jumpBuffer > 0 && this.coyote > 0) {
       this.verticalVelocity = 610; this.grounded = false; this.jumpBuffer = this.coyote = 0;
     }
@@ -107,13 +151,14 @@ export class PuzzleController extends Component {
     }
     const target = Math.max(0, Math.min(650, (this.x - 100) * .75));
     this.cameraOffset += (target - this.cameraOffset) * (1 - Math.exp(-dt * 3));
-    if (!this.failed && !this.pending) this.status.string = this.crossed ? 'You made it across!  ·  R to try again' : 'Run toward the edge, then jump to the far bank';
+    this.animateCharacter(dt);
+    if (!this.failed && !this.pending) this.status.string = this.crossed ? 'You made it across!  ·  R to try again' : 'Hold SHIFT or RUN toward the edge, then jump to the far bank';
     this.place();
   }
   private place() {
     if (!this.actor) return;
     const foot = this.y;
-    this.actor.setPosition(this.x - this.cameraOffset, foot + 38 + (this.grounded && Math.abs(this.velocity) > 8 ? Math.sin(this.time * 16) * 1.2 : 0), 0); this.actor.setScale(this.facing, 1, 1);
+    this.actor.setPosition(this.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, 1, 1);
     for (const l of this.layers) {
       let drift = l.drift ? ((l.x + 760 + this.time * l.drift) % 1520 + 1520) % 1520 - 760 - l.x : 0;
       l.node.setPosition(l.x - this.cameraOffset * l.parallax + drift, l.y + (l.bird ? Math.sin(this.time * 1.4 + l.phase) * 18 : 0), 0);
