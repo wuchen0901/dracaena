@@ -19,7 +19,7 @@ export class PuzzleController extends Component {
   private opening!: Graphics; private openingSigns: Node[] = []; private dormantRobots: Node[] = [];
   private alarmTriggered = false; private factorySound!: AudioSource; private alarmSound!: AudioSource;
   private factoryClip: AudioClip | null = null; private alarmClip: AudioClip | null = null;
-  private night = 0; private savedNight = 0; private nightVeil!: Graphics; private search!: Graphics;
+  private night = 0; private savedNight = 0; private search!: Graphics;
   private siren!: AudioSource; private sirenClip: AudioClip | null = null;
   private escape = new SearchEscape();
   private cover = new TreeCover(); private coverPoses: SpriteFrame[] = []; private coverTree!: Graphics;
@@ -80,7 +80,6 @@ export class PuzzleController extends Component {
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses();
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
-    this.nightVeil = this.child('Nightfall', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
     this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  INTERACT / HOLD TO PUSH     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
     this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
@@ -587,9 +586,6 @@ export class PuzzleController extends Component {
     this.openingSigns.forEach((n, i) => n.setPosition(signsX[i] - this.cameraOffset, signsY[i], 0));
     this.dormantRobots.forEach((n, i) => n.setPosition([-2250, -2150, -1850][i] - this.cameraOffset, CHANNEL.near, 0));
     drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.escape.departure);
-    this.nightVeil.clear();
-    this.nightVeil.fillColor = new Color(5, 13, 32, Math.round(this.night * 165));
-    this.nightVeil.rect(-640, -295, 1280, 590); this.nightVeil.fill();
     this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
     this.actor.setRotationFromEuler(0, 0, 0);
     for (const l of this.layers) {
