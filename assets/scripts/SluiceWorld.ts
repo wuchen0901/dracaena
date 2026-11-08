@@ -48,6 +48,13 @@ export const ARCHIVE_KEY = 'the-last-light.autosaves.v1';
 export type AutoSave = { id: number; name: string; createdAt: number | null; progress: ProgressSave };
 export type SaveArchive = { version: 1; activeId: number | null; entries: AutoSave[] };
 export function emptyArchive(): SaveArchive { return { version: 1, activeId: null, entries: [] }; }
+const SAVE_SLOTS = ['reclamation', 'reclamation-alarm', 'station-exit', 'forest', 'sluice', 'sluice-opened', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'];
+export function saveSlot(s: ProgressSave): string {
+  if (s.checkpoint === 'reclamation' && s.alarm) return 'reclamation-alarm';
+  if (s.checkpoint === 'sluice' && s.opened) return 'sluice-opened';
+  return s.checkpoint;
+}
+function slotIndex(s: ProgressSave) { return SAVE_SLOTS.indexOf(saveSlot(s)); }
 export function saveName(s: ProgressSave): string {
   const names: Record<Checkpoint, string> = {
     reclamation: '回收站 · 待处理区', 'station-exit': '逃出维修门', forest: '踏入森林',
@@ -70,13 +77,37 @@ export function readArchive(raw: string | null): SaveArchive | null {
       const progress = readProgress(JSON.stringify(e.progress)); if (!progress) continue;
       ids.add(e.id); entries.push({ id: e.id, name: saveName(progress), createdAt: e.createdAt, progress });
     }
+    const active = entries.find(e => e.id === a.activeId);
+    const activeKey = active ? saveSlot(active.progress) : null;
+    const bySlot = new Map<string, AutoSave>();
+    // Collapse append-only archives from older versions to the newest save in each fixed slot.
     entries.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0) || x.id - y.id);
-    return { version: 1, entries, activeId: ids.has(a.activeId) ? a.activeId : entries.length ? entries[entries.length - 1].id : null };
+    for (const entry of entries) bySlot.set(saveSlot(entry.progress), entry);
+    const ordered = [...bySlot.values()].sort((x, y) => slotIndex(x.progress) - slotIndex(y.progress));
+    const activeEntry = activeKey ? ordered.find(e => saveSlot(e.progress) === activeKey) : undefined;
+    return { version: 1, entries: ordered, activeId: activeEntry?.id ?? (ordered.length ? ordered[ordered.length - 1].id : null) };
   } catch { return null; }
 }
-export function appendAutosave(a: SaveArchive, progress: ProgressSave, createdAt: number | null): SaveArchive {
-  const id = a.entries.reduce((max, e) => Math.max(max, e.id), 0) + 1;
-  return { version: 1, activeId: id, entries: [...a.entries, { id, name: saveName(progress), createdAt, progress: { ...progress } }] };
+export function upsertAutosave(a: SaveArchive, progress: ProgressSave, createdAt: number | null): SaveArchive {
+  const targetKey = saveSlot(progress), targetRank = slotIndex(progress);
+  const activeIndex = a.entries.findIndex(e => e.id === a.activeId);
+  const active = activeIndex >= 0 ? a.entries[activeIndex] : undefined;
+  const activeRank = active ? slotIndex(active.progress) : -1;
+  const existing = a.entries.find(e => saveSlot(e.progress) === targetKey);
+  const id = existing?.id ?? (a.entries.reduce((max, e) => Math.max(max, e.id), 0) + 1);
+  const replacement: AutoSave = { id, name: saveName(progress), createdAt, progress: { ...progress } };
+  let entries: AutoSave[];
+  if (active && targetRank > activeRank) {
+    // Advancing from a loaded older save starts a new branch at this next milestone.
+    entries = a.entries.slice(0, activeIndex + 1);
+    entries.push(replacement);
+  } else if (existing) {
+    entries = a.entries.map(e => e.id === existing.id ? replacement : e);
+  } else {
+    entries = [...a.entries, replacement];
+  }
+  entries.sort((x, y) => slotIndex(x.progress) - slotIndex(y.progress));
+  return { version: 1, activeId: id, entries };
 }
 export class SluiceWorld {
   readonly box?: PushBoxSegment;

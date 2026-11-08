@@ -9,7 +9,7 @@ import { SearchEscape } from './SearchEscape';
 import { COVER, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, ROAD, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, appendAutosave, sameMilestone } from './SluiceWorld';
+import { CHANNEL, ROAD, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
@@ -123,7 +123,7 @@ export class PuzzleController extends Component {
         const legacy = sys.localStorage.getItem(SAVE_KEY);
         if (readProgress(legacy)) {
           const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
-          this.archive = appendAutosave(this.archive, progress, null);
+          this.archive = upsertAutosave(this.archive, progress, null);
           this.saved = JSON.stringify(progress); this.writeArchive();
         }
       }
@@ -355,20 +355,24 @@ export class PuzzleController extends Component {
   }
   private showSaves(page = 0) {
     this.paused = true; this.pausePanel.active = false; this.releaseInputs();
-    const entries = [...this.archive.entries].reverse(), pages = Math.max(1, Math.ceil(entries.length / 5));
+    const entries = this.archive.entries, pages = Math.max(1, Math.ceil(entries.length / 5));
     this.savePage = Math.max(0, Math.min(pages - 1, page));
     for (const child of [...this.saveList.children]) child.destroy();
     this.saveList.removeAllChildren(); this.saveList.active = true;
     const background = this.child('Save list background', 1280, 590, 0, 0, this.saveList);
     const art = background.addComponent(Graphics); art.fillColor = new Color(8, 17, 23, 245);
     art.rect(-640, -295, 1280, 590); art.fill();
-    const heading = this.text('自动存档 · 时间从新到旧', 0, 245, 26, 900); heading.node.setParent(this.saveList);
-    entries.slice(this.savePage * 5, this.savePage * 5 + 5).forEach((entry, i) => {
-      const button = this.child('Load ' + entry.name, 900, 66, 0, 172 - i * 78, this.saveList);
+    const heading = this.text('自动存档 · 左侧较早  ←  游戏进度  →  右侧较新', 0, 245, 24, 1050); heading.node.setParent(this.saveList);
+    const pageEntries = entries.slice(this.savePage * 5, this.savePage * 5 + 5);
+    pageEntries.forEach((entry, i) => {
+      const x = -500 + i * 250;
+      const button = this.child('Load ' + entry.name, 220, 190, x, 20, this.saveList);
       const g = button.addComponent(Graphics); g.fillColor = new Color(35, 56, 49);
-      g.roundRect(-450, -33, 900, 66, 8); g.fill();
+      g.roundRect(-110, -95, 220, 190, 8); g.fill();
       const date = entry.createdAt === null ? '旧存档 · 时间未知' : new Date(entry.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Tokyo', hour12: false });
-      const label = this.text(`#${entry.id}  ${entry.name}     ${date}`, 0, 0, 20, 880); label.node.setParent(button);
+      const index = this.savePage * 5 + i + 1;
+      const label = this.text(`#${index}\n${entry.name}`, 0, 35, 19, 205); label.node.setParent(button);
+      const time = this.text(date, 0, -62, 12, 205); time.node.setParent(button);
       button.on(Node.EventType.TOUCH_END, () => this.loadEntry(entry));
     });
     for (const [caption, x, action] of [
@@ -391,7 +395,7 @@ export class PuzzleController extends Component {
     this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(-2150, this.world.x - 100);
     this.releaseInputs(); this.cover.reset(); this.pushPull.reset(); this.animation.reset();
-    // Selecting an older save changes the resume point without discarding later history.
+    // Keep later slots visible until a new milestone branches forward from this save.
     this.archive.activeId = entry.id; this.saved = JSON.stringify(save); this.writeArchive();
     this.cameraLift = cameraHeight(0, this.world.y, 1);
     this.animateCharacter(0); this.place();
@@ -406,7 +410,7 @@ export class PuzzleController extends Component {
     const previous = readProgress(this.saved);
     // Save meaningful story milestones, not every lighting interpolation frame.
     if (previous && sameMilestone(previous, progress)) return;
-    this.archive = appendAutosave(this.archive, progress, Date.now());
+    this.archive = upsertAutosave(this.archive, progress, Date.now());
     this.saved = JSON.stringify(progress); this.writeArchive(); this.saveNotice = 2;
   }
   private setupSluiceAudio() {
