@@ -1,3 +1,4 @@
+import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, readSave, SAVE_KEY, SluiceWorld } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
@@ -8,6 +9,8 @@ type Layer = { node: Node; x: number; y: number; parallax: number; drift: number
 /** Independent image layers; the previous flat composition is archived in design/. */
 @ccclass('PuzzleController')
 export class PuzzleController extends Component {
+  private night = 0; private savedNight = 0; private nightVeil!: Graphics; private search!: Graphics;
+  private siren!: AudioSource; private sirenClip: AudioClip | null = null;
   private actor!: Node;
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
@@ -46,11 +49,13 @@ export class PuzzleController extends Component {
     this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
     this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
+    this.search = this.child('Distant police search', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.frame);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.loadCharacterPoses();
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
+    this.nightVeil = this.child('Nightfall', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.frame);
     this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  LEVER     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
     this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
@@ -58,6 +63,10 @@ export class PuzzleController extends Component {
     this.button('E', 310, -322, 0, false, true);
     try { const save = readSave(sys.localStorage.getItem(SAVE_KEY)); if (save) this.world.restore(save); }
     catch { this.storageFailed = true; }
+    try {
+      const value = Number(sys.localStorage.getItem(SAVE_KEY + '.night'));
+      this.night = this.savedNight = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    } catch { /* Nightfall still works for this session. */ }
     this.saved = ''; this.persist();
     this.cameraOffset = Math.max(0, this.world.x - 100);
     this.setupSluiceAudio();
@@ -66,7 +75,7 @@ export class PuzzleController extends Component {
     this.place();
     this.node.addComponent(ForestMusic);
   }
-  onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
+  onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
   private child(name: string, w: number, h: number, x: number, y: number, parent: Node = this.node) {
     const n = new Node(name); n.setParent(parent); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
   }
@@ -170,6 +179,12 @@ export class PuzzleController extends Component {
     this.saved = serialized;
   }
   private setupSluiceAudio() {
+    this.siren = this.node.addComponent(AudioSource); this.siren.loop = true;
+    this.siren.playOnAwake = false; this.siren.volume = 0;
+    resources.load('audio/distant-siren', AudioClip, (error, clip) => {
+      if (!this.isValid || error) return;
+      this.sirenClip = clip; this.unlockAudio(false);
+    });
     this.waterSound = this.node.addComponent(AudioSource); this.waterSound.loop = true;
     this.waterSound.playOnAwake = false; this.waterSound.volume = 0;
     this.leverSound = this.node.addComponent(AudioSource); this.leverSound.playOnAwake = false;
@@ -183,6 +198,9 @@ export class PuzzleController extends Component {
   }
   private unlockAudio(gesture = true) {
     if (gesture) this.audioUnlocked = true;
+    if (this.audioUnlocked && this.sirenClip && !this.siren.playing) {
+      this.siren.clip = this.sirenClip; this.siren.play();
+    }
     if (this.audioUnlocked && this.waterClip && !this.waterSound.playing) {
       this.waterSound.clip = this.waterClip; this.waterSound.play();
     }
@@ -199,6 +217,14 @@ export class PuzzleController extends Component {
     const proximity = Math.max(0, 1 - Math.abs(this.world.x - 1500) / 1000);
     const volume = this.world.opened ? proximity * (this.world.fill < 1 ? .4 : .16) : proximity * .035;
     this.waterSound.volume += (volume - this.waterSound.volume) * Math.min(1, dt * 3);
+    const progress = Math.max(0, Math.min(1, (this.world.x - 1950) / 1300));
+    this.night = Math.max(this.night, progress * progress * (3 - 2 * progress));
+    if (this.night - this.savedNight >= .02 || (this.night === 1 && this.savedNight < 1)) {
+      try { sys.localStorage.setItem(SAVE_KEY + '.night', String(this.night)); } catch { /* Optional atmosphere state. */ }
+      this.savedNight = this.night;
+    }
+    const sirenVolume = this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - 3500) / 1500);
+    this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
     this.animateCharacter(dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? 'Saved' : '';
     this.leverPrompt.string = this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
@@ -309,6 +335,10 @@ export class PuzzleController extends Component {
     if (!this.actor) return;
     const foot = this.world.y;
     this.drawCanal();
+    drawNightSearch(this.search, this.cameraOffset, this.time, this.night);
+    this.nightVeil.clear();
+    this.nightVeil.fillColor = new Color(5, 13, 32, Math.round(this.night * 165));
+    this.nightVeil.rect(-640, -295, 1280, 590); this.nightVeil.fill();
     this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, 1, 1);
     for (const l of this.layers) {
       let drift = l.drift ? ((l.x + 760 + this.time * l.drift) % 1520 + 1520) % 1520 - 760 - l.x : 0;
