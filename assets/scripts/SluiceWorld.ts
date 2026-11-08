@@ -4,21 +4,21 @@ export const CHANNEL = {
   logLeft: 1440, logRight: 1700, logLow: -235, logHigh: -55,
   leverX: 1270, fillSeconds: 7,
 };
-export type Checkpoint = 'forest' | 'sluice' | 'far-bank';
+export type Checkpoint = 'reclamation' | 'forest' | 'sluice' | 'far-bank';
 export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean };
 export const SAVE_KEY = 'the-last-light.sluice.v1';
 export function readSave(raw: string | null): SluiceSave | null {
   try {
     const s = JSON.parse(raw || 'null');
     if (!s || s.version !== 1 || typeof s.opened !== 'boolean' ||
-      ['forest', 'sluice', 'far-bank'].indexOf(s.checkpoint) < 0 ||
+      ['reclamation', 'forest', 'sluice', 'far-bank'].indexOf(s.checkpoint) < 0 ||
       (s.checkpoint === 'far-bank' && !s.opened)) return null;
     return { version: 1, checkpoint: s.checkpoint, opened: s.opened };
   } catch { return null; }
 }
 export class SluiceWorld {
-  x = -90; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
-  opened = false; fill = 0; checkpoint: Checkpoint = 'forest';
+  x = -2050; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
+  opened = false; fill = 0; checkpoint: Checkpoint = 'reclamation';
   private coyote = .12;
   private buffer = 0;
   get logY() { return CHANNEL.logLow + (CHANNEL.logHigh - CHANNEL.logLow) * this.fill; }
@@ -31,7 +31,7 @@ export class SluiceWorld {
   save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened }; }
   restore(save: SluiceSave) {
     this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0;
-    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : -90;
+    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : -90;
     this.y = save.checkpoint === 'far-bank' ? CHANNEL.far : CHANNEL.near;
     this.vx = this.vy = this.buffer = 0; this.grounded = true; this.coyote = .12;
   }
@@ -62,7 +62,7 @@ export class SluiceWorld {
     this.buffer = Math.max(0, this.buffer - dt);
     this.vx += (direction * (running ? 240 : 145) - this.vx) * Math.min(1, dt * 15);
     const previousX = this.x, previousY = this.y;
-    let nextX = Math.max(-510, this.x + this.vx * dt);
+    let nextX = Math.max(-2350, this.x + this.vx * dt);
     // Solid banks and log sides: feet must clear the top before crossing an edge.
     const walls = [
       { edge: CHANNEL.left, top: CHANNEL.near, right: false },
@@ -84,6 +84,7 @@ export class SluiceWorld {
         this.y = surface; this.vy = 0; this.grounded = true;
       }
     }
+    if (this.checkpoint === 'reclamation' && this.grounded && this.x >= -200) this.checkpoint = 'forest';
     if (this.checkpoint === 'forest' && this.grounded && this.x >= 1050 && this.x < CHANNEL.left) this.checkpoint = 'sluice';
     if (this.opened && this.grounded && this.x >= CHANNEL.right + 50 && this.y === CHANNEL.far) this.checkpoint = 'far-bank';
     // A missed landing is a gentle return to shore, without a drowning sequence.

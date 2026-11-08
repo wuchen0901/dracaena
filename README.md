@@ -42,3 +42,9 @@ Original sluice-water and gate-creak effects are generated with `python3 design/
 Run `npm test` with Node 22.6+ (TypeScript stripping support). The engine-independent tests exercise walking-speed traversal at 30/60/144 FPS, boarding a rising log, wall collisions, blocked traversal before opening, safe recovery and save validation. For Cocos type checking, use the TypeScript compiler bundled with Creator and `--project tsconfig.json`; open the project in Creator first to generate `temp/tsconfig.cocos.json` and engine declarations.
 
 Preview `assets/Main.scene` in Creator 3.8.8 after refreshing external asset changes. Manual visual, sound and touch-device checks are still needed; command-line tests do not verify those surfaces.
+
+## Reclamation opening
+
+A fresh journey starts in the robot reclamation holding area before the forest. Walk right past inactive robots, underneath a partially raised maintenance shutter, and through a gap in the perimeter fence. Crossing the exit activates a warning lamp and alarm; station machinery and alarm fade with distance. The forest checkpoint then connects to the existing canal and later patrol encounter.
+
+Press **P** or tap **P · 重玩开场** to replay from the station, resetting canal progress and the night/patrol state. Existing saved forest and canal checkpoints remain compatible until replay is explicitly chosen. **T · 重试警车路段** replays just the tree-cover/patrol section. See `design/reclamation-opening.md` for geometry, save and validation details.

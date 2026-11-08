@@ -69,7 +69,7 @@ test('missed landing into deep water returns to safe shore and retains gate stat
 });
 
 test('checkpoint before the puzzle is automatic and restoration clears motion', () => {
-  const w = new SluiceWorld(); advance(w, 9, 1);
+  const w = new SluiceWorld(); w.restore({ version: 1, checkpoint: 'forest', opened: false }); advance(w, 9, 1);
   assert.equal(w.checkpoint, 'sluice');
   w.jump(); w.restore(w.save());
   assert.equal(w.x, 1190); assert.equal(w.vx, 0); assert.equal(w.vy, 0);
