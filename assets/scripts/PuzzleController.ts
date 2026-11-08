@@ -13,9 +13,11 @@ import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
+import { drawJourneyStoryArt } from './JourneyStoryArt';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
+type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number; fade: number };
 
 /** Independent image layers; the previous flat composition is archived in design/. */
 @ccclass('PuzzleController')
@@ -38,6 +40,10 @@ export class PuzzleController extends Component {
   private touchRun = false;
   private frame!: Node; private sceneRoot!: Node; private cameraLift = 0;
   private layers: Layer[] = [];
+  private journeyBackdrops: JourneyBackdrop[] = [];
+  private journeyStoryArt!: Graphics;
+  private journeyClues: { node: Node; x: number; y: number; range: number }[] = [];
+  private scavengerNode!: Node; private flyArt!: Graphics;
   private keys = new Set<KeyCode>();
   private touchDirection = 0;
   private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label; private touchGrab = false;
@@ -79,10 +85,23 @@ export class PuzzleController extends Component {
     this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
     this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
+    this.createJourneyBackdrops();
     this.search = this.child('Police search outside prison', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.guardPost = this.child('Inner yard sentry post', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.guardPostSign = this.text('园区岗哨', 0, 0, 16, 140); this.guardPostSign.node.setParent(this.sceneRoot);
     this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.scavengerNode = this.picture('Starving survivor beside a carcass', 'journey/scavenger', 400, 205, this.sceneRoot);
+    this.scavengerNode.getComponent(Sprite)!.color = new Color(255, 255, 255, 255);
+    this.scavengerNode.getComponent(UITransform)!.setAnchorPoint(.5, .06);
+    this.flyArt = this.child('Flies circling the carrion', 160, 110, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.journeyStoryArt = this.child('AI surveillance and ration traces', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    const rationFloor = roadHeight(10030);
+    const rationClue = this.text('配给仅限登记劳工', 10065, rationFloor + 113, 14, 250);
+    rationClue.color = new Color(160, 154, 132, 210); rationClue.node.setParent(this.sceneRoot);
+    this.journeyClues.push({ node: rationClue.node, x: 10065, y: rationFloor + 113, range: 800 });
+    const relayClue = this.text('行为模型 · 无法归类', 15955, roadHeight(15920) + 245, 13, 230);
+    relayClue.color = new Color(163, 183, 143, 210); relayClue.node.setParent(this.sceneRoot);
+    this.journeyClues.push({ node: relayClue.node, x: 15955, y: roadHeight(15920) + 245, range: 700 });
     this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     for (const [label, x, y] of [['待处理区 · 07', -1960, 115], ['拆解', -2340, 110], ['维修通道 →', -1210, 70]] as [string, number, number][]) {
       const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
@@ -303,6 +322,26 @@ export class PuzzleController extends Component {
   private layer(name: string, asset: string, w: number, h: number, x: number, y: number, parallax: number, drift = 0, phase = 0, bird = false) {
     const node = this.picture(name, 'layers/' + asset, w, h, this.sceneRoot); node.setPosition(x, y, 0);
     this.layers.push({ node, x, y, parallax, drift, phase, bird }); return node;
+  }
+  private createJourneyBackdrops() {
+    const zones: [string, number, number, number][] = [
+      ['factory', -20000, -1050, 600],
+      ['desert', -1250, 8500, 750],
+      ['city', 8200, 12200, 850],
+      ['reclaimed-city', 11800, 15500, 900],
+      ['meadow-mystery', 14900, 1000000000, 1000],
+    ];
+    for (const [asset, start, end, fade] of zones) {
+      const node = this.picture('Journey backdrop · ' + asset, 'journey/' + asset, 1400, 700, this.sceneRoot);
+      const sprite = node.getComponent(Sprite)!;
+      sprite.color = new Color(255, 255, 255, 0);
+      this.journeyBackdrops.push({ node, sprite, start, end, fade });
+    }
+  }
+  private backdropAlpha(x: number, start: number, end: number, fade: number) {
+    const entering = x < start ? (x - start + fade) / fade : 1;
+    const leaving = x > end ? (end + fade - x) / fade : 1;
+    return Math.round(255 * Math.max(0, Math.min(1, entering, leaving)));
   }
   /** Distant, non-colliding silhouettes sit behind the forest canopy. */
   private createRuins() {
@@ -560,7 +599,22 @@ export class PuzzleController extends Component {
     const line = (x: number, y: number, x2: number, y2: number, color: Color, width = 2) => {
       g.strokeColor = color; g.lineWidth = width; g.moveTo(x - this.cameraOffset, y); g.lineTo(x2 - this.cameraOffset, y2); g.stroke();
     };
-    const earth = new Color(28, 39, 33), grass = new Color(96, 117, 75), stone = new Color(53, 64, 54);
+    const palette = [
+      { x: -1500, earth: [43, 42, 39], edge: [92, 80, 65] },
+      { x: -600, earth: [66, 51, 39], edge: [115, 84, 56] },
+      { x: 8200, earth: [66, 51, 39], edge: [115, 84, 56] },
+      { x: 11800, earth: [49, 45, 41], edge: [119, 87, 62] },
+      { x: 15500, earth: [41, 54, 42], edge: [82, 119, 72] },
+      { x: 17000, earth: [47, 69, 43], edge: [99, 145, 78] },
+    ];
+    let before = palette[0], after = palette[palette.length - 1];
+    for (let i = 1; i < palette.length; i++) {
+      if (this.world.x <= palette[i].x) { before = palette[i - 1]; after = palette[i]; break; }
+    }
+    const blend = Math.max(0, Math.min(1, (this.world.x - before.x) / (after.x - before.x)));
+    const mix = (a: number, b: number) => Math.round(a + (b - a) * blend);
+    const color = (a: number[], b: number[]) => new Color(mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2]));
+    const earth = color(before.earth, after.earth), grass = color(before.edge, after.edge), stone = new Color(53, 64, 54);
     rect(viewLeft, -420, Math.max(0, Math.min(c.left, viewRight) - viewLeft), c.near + 420, earth);
     const farLeft = Math.max(c.right, viewLeft);
     if (viewRight > farLeft) {
@@ -637,10 +691,13 @@ export class PuzzleController extends Component {
     line(c.logLeft + 5, this.world.logY - 2, c.logRight - 5, this.world.logY - 2, new Color(161, 140, 86), 3);
     for (let x = c.logLeft + 15; x < c.logRight; x += 39) line(x, this.world.logY - 18, x + 22, this.world.logY - 14, new Color(58, 52, 39));
     // Sparse grass marks walkable banks, leaving the canal edges unobscured.
-    for (let x = Math.floor(viewLeft / 31) * 31; x < viewRight; x += 31) {
+    const vegetation = Math.max(0, Math.min(1, (this.world.x - 10500) / 4500));
+    const sproutColor = color(before.edge, [105, 157, 83]);
+    for (let x = Math.floor(viewLeft / 31) * 31; x < viewRight && vegetation > .04; x += 31) {
       if (x > c.left - 20 && x < c.right + 20 || x > this.dog.gapLeft - 20 && x < this.dog.gapRight + 20) continue;
+      if (Math.abs(Math.sin(x * .1)) > vegetation) continue;
       const y = x <= c.left ? c.near : roadHeight(x);
-      line(x, y, x + 4, y + 7 + Math.sin(x) * 3, grass, 1);
+      line(x, y, x + 4, y + (7 + Math.sin(x) * 3) * vegetation, sproutColor, 1);
     }
     const w = this.water; w.clear();
     w.fillColor = new Color(67, 114, 108, 105);
@@ -664,6 +721,11 @@ export class PuzzleController extends Component {
     if (!this.actor) return;
     const foot = this.world.y;
     this.sceneRoot.setPosition(0, -this.cameraLift, 0);
+    for (const backdrop of this.journeyBackdrops) {
+      backdrop.sprite.color = new Color(255, 255, 255, this.backdropAlpha(this.world.x, backdrop.start, backdrop.end, backdrop.fade));
+      // Full-screen paintings stay in camera space; world parallax would move them offscreen.
+      backdrop.node.setPosition(0, this.cameraLift, 0);
+    }
     this.drawCanal(); this.drawCoverTree(this.coverTree, COVER); this.drawCoverTree(this.policeCoverTree, POLICE_COVER);
     drawGuardPostSearch(this.guardPost, this.cameraOffset, this.time);
     this.guardPostSign.node.setPosition((GUARD_POST.x - this.cameraOffset) * .55, 260, 0);
@@ -692,6 +754,27 @@ export class PuzzleController extends Component {
     this.openingSigns.forEach((n, i) => n.setPosition(signsX[i] - this.cameraOffset, signsY[i], 0));
     this.dormantRobots.forEach((n, i) => n.setPosition([-2250, -2150, -1850][i] - this.cameraOffset, CHANNEL.near, 0));
     drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.policeEscape.departure, POLICE_COVER.treeX);
+    drawJourneyStoryArt(this.journeyStoryArt, this.cameraOffset, this.time);
+    for (const clue of this.journeyClues) {
+      const visible = Math.abs(this.world.x - clue.x) < clue.range;
+      clue.node.active = visible;
+      if (visible) clue.node.setPosition(clue.x - this.cameraOffset, clue.y, 0);
+    }
+    const survivorX = 10250, survivorFloor = roadHeight(survivorX);
+    const survivorVisible = Math.abs(this.world.x - survivorX) < 820;
+    this.scavengerNode.active = survivorVisible;
+    this.flyArt.node.active = survivorVisible;
+    this.scavengerNode.setPosition(survivorX - this.cameraOffset, survivorFloor, 0);
+    this.flyArt.node.setPosition(survivorX - this.cameraOffset + 75, survivorFloor + 142, 0);
+    this.flyArt.clear();
+    if (survivorVisible) {
+      this.flyArt.fillColor = new Color(22, 24, 20, 225);
+      for (let i = 0; i < 5; i++) {
+        const angle = this.time * (1.8 + i * .13) + i * 1.27;
+        this.flyArt.circle(Math.cos(angle) * (13 + i % 2 * 8), Math.sin(angle * 1.3) * 9, 2 + (i % 2));
+        this.flyArt.fill();
+      }
+    }
     this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
     this.actor.setRotationFromEuler(0, 0, 0);
     for (const l of this.layers) {
