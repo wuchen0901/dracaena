@@ -24,6 +24,12 @@ The prior flat controller is archived in `design/FlatPictureController.ts.txt`, 
 
 Runtime-created nodes appear in the running preview. They are not serialized editable layer nodes in the editor's Scene view; layout and speeds are currently defined in `PuzzleController.ts`.
 
+## Music
+
+An original 24-second ambient loop combines sustained chords and a sparse bell melody. It starts after the first keyboard or touch interaction to respect browser audio restrictions. Press **M** or use the **M · MUSIC ON/OFF** button to fade the music out or back in. The loop continues through character resets.
+
+Audio: `assets/resources/audio/forest-theme.wav`. Playback: `assets/scripts/ForestMusic.ts`. The standard-library synthesis source is `design/generate_forest_music.py`; rerun it with Python 3 to regenerate the same original loop.
+
 
 ## Sluice prototype and validation
 

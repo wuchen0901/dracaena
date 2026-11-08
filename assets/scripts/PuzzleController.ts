@@ -1,4 +1,5 @@
 import { CHANNEL, readSave, SAVE_KEY, SluiceWorld } from './SluiceWorld';
+import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
@@ -61,6 +62,7 @@ export class PuzzleController extends Component {
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
     game.on(Game.EVENT_HIDE, this.releaseInputs, this);
     this.place();
+    this.node.addComponent(ForestMusic);
   }
   onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
   private child(name: string, w: number, h: number, x: number, y: number, parent: Node = this.node) {
