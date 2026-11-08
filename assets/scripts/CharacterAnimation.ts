@@ -1,8 +1,8 @@
 /** Sprite timing independent of rendering and physics; walk/run share one gait phase. */
 export const CHARACTER_COLUMNS = 8;
 export const CHARACTER_ROWS = 4;
-// Visible foot baselines measured at alpha >= 64; run flight keeps the contact baseline.
-export const CHARACTER_FOOT_ANCHORS = [0.022523, 0.022523, 0.031532, 0.036036, 0.036036, 0.022523, 0.022523, 0.022523, 0.013514, 0.013514, 0.009009, 0.018018, 0.027027, 0.018018, 0.018018, 0.018018, 0.036199, 0.036199, 0.036199, 0.036199, 0.036199, 0.036199, 0.036199, 0.036199, 0.022523, 0.027027, 0.099099, 0.261261, 0.117117, 0.027027, 0.027027, 0.027027];
+// Robot atlas approximate visible foot baselines; run flight retains a common baseline.
+export const CHARACTER_FOOT_ANCHORS = [0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.065, 0.065, 0.065, 0.065, 0.065, 0.065, 0.065, 0.065, 0.025, 0.025, 0.18, 0.31, 0.21, 0.04, 0.025, 0.025];
 export type CharacterMotion = 'idle' | 'walk' | 'run' | 'jump' | 'land';
 
 export class CharacterAnimation {

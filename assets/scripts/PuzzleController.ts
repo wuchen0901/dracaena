@@ -36,6 +36,7 @@ export class PuzzleController extends Component {
     this.layer('Sky', 'sky', 1400, 650, 0, 0, 0);
     this.layer('Cloud west', 'cloud', 360, 120, -300, 85, .08, 3);
     this.layer('Cloud east', 'cloud', 460, 154, 430, 10, .08, 2);
+    this.createRuins();
     this.layer('Distant forest', 'distant-forest', 1440, 660, 0, -35, .18);
     for (let i = 1; i <= 3; i++) {
       this.layer('Forest continuation ' + i, 'distant-forest', 1440, 660, i * 1400, -35, .18);
@@ -46,8 +47,8 @@ export class PuzzleController extends Component {
     this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
     this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
-    this.actor = this.picture('Character', 'reference/character', 68, 102, this.frame);
-    this.actorSprite = this.actor.getComponent(Sprite)!;
+    this.actor = this.child('Character', 102, 102, 0, 0, this.frame);
+    this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.loadCharacterPoses();
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.frame);
@@ -70,7 +71,7 @@ export class PuzzleController extends Component {
     const n = new Node(name); n.setParent(parent); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
   }
   private picture(name: string, path: string, w: number, h: number, parent: Node) {
-    const n = this.child(name, w, h, 0, 0, parent); const s = n.addComponent(Sprite); s.sizeMode = Sprite.SizeMode.CUSTOM; this.pending++;
+    const n = this.child(name, w, h, 0, 0, parent); const s = n.addComponent(Sprite); s.color = new Color(174, 199, 188); s.sizeMode = Sprite.SizeMode.CUSTOM; this.pending++;
     resources.load(path + '/texture', Texture2D, (error, texture) => {
       this.pending--;
       if (!this.isValid) return;
@@ -82,7 +83,7 @@ export class PuzzleController extends Component {
   }
   private loadCharacterPoses() {
     this.pending++;
-    resources.load('character/actions-smooth/texture', Texture2D, (error, texture) => {
+    resources.load('character/robot-actions/texture', Texture2D, (error, texture) => {
       this.pending--;
       if (!this.isValid) return;
       if (error) { this.failed = true; this.status.string = 'Could not load character actions'; console.error(error); return; }
@@ -111,6 +112,26 @@ export class PuzzleController extends Component {
     const node = this.picture(name, 'layers/' + asset, w, h, this.frame); node.setPosition(x, y, 0);
     this.layers.push({ node, x, y, parallax, drift, phase, bird }); return node;
   }
+  /** Distant, non-colliding silhouettes sit behind the forest canopy. */
+  private createRuins() {
+    const n = this.child('Reclaimed industrial skyline', 2600, 590, 0, 0, this.frame);
+    const g = n.addComponent(Graphics);
+    const block = (x: number, y: number, w: number, h: number) => { g.rect(x, y, w, h); g.fill(); };
+    g.fillColor = new Color(65, 91, 88, 115);
+    for (const x of [220, 980, 1800]) {
+      block(x, -190, 75, 330); block(x - 12, 124, 99, 13);
+      block(x + 18, 140, 12, 48); block(x + 50, 140, 8, 27);
+      block(x + 130, -190, 26, 235);
+      block(x + 40, 36, 210, 12); block(x + 290, 36, 170, 12);
+      for (let i = 0; i < 3; i++) block(x + 310 + i * 60, -190, 9, 226);
+    }
+    g.fillColor = new Color(123, 153, 140, 95);
+    for (const x of [220, 980, 1800]) {
+      for (let y = -90; y < 110; y += 38) block(x + 19, y, 35, 8);
+    }
+    this.layers.push({ node: n, x: 0, y: 0, parallax: .12, drift: 0, phase: 0, bird: false });
+  }
+
   private text(value: string, x: number, y: number, size: number, w: number) {
     const n = this.child(value, w, 48, x, y); const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size + 6; l.horizontalAlign = Label.HorizontalAlign.CENTER; l.color = new Color(220, 231, 218); return l;
   }
@@ -213,6 +234,42 @@ export class PuzzleController extends Component {
       rect(x, floor, 7, 67, new Color(71, 76, 58));
       line(x, floor + 45, x + 100, floor + 38, new Color(76, 81, 61), 4);
     }
+    // Old service pipes and a roofless maintenance shelter, reclaimed by vines.
+    const metal = new Color(62, 79, 76), rust = new Color(110, 83, 61);
+    for (const x of [360, 820, 1930, 2380, 2850]) {
+      const floor = x < c.left ? c.near : c.far;
+      line(x, floor + 17, x + 125, floor + 17, metal, 15);
+      line(x + 125, floor + 17, x + 125, floor + 53, metal, 15);
+      for (const offset of [12, 58, 106]) {
+        line(x + offset, floor + 8, x + offset, floor + 26, rust, 3);
+      }
+      for (let i = 0; i < 7; i++) {
+        const vx = x + i * 18;
+        line(vx, floor, vx + 12, floor + 30, new Color(56, 88, 68), 3);
+        line(vx + 7, floor + 16, vx - 1, floor + 22, grass, 3);
+      }
+    }
+    rect(960, c.near, 12, 125, metal); rect(1130, c.near, 12, 103, metal);
+    line(953, c.near + 125, 1050, c.near + 130, metal, 8);
+    line(1070, c.near + 127, 1150, c.near + 107, metal, 7);
+    rect(988, c.near + 18, 60, 65, metal);
+    rect(997, c.near + 50, 42, 22, new Color(28, 44, 42));
+    for (let i = 0; i < 5; i++) {
+      line(960 + i * 7, c.near + 125, 975 + i * 9, c.near + 55 - i * 6, grass, 2);
+    }
+    // Bank lamp slowly warms as the canal fills; restored saves retain the light.
+    const lampX = c.right + 100, lampY = c.far + 128;
+    rect(lampX - 3, c.far, 6, 128, metal);
+    line(lampX, lampY, lampX - 25, lampY, metal, 5);
+    rect(lampX - 34, lampY - 20, 20, 20, new Color(36, 49, 46));
+    const light = this.world.fill;
+    if (light > 0) {
+      for (let radius = 48; radius >= 12; radius -= 12) {
+        g.fillColor = new Color(242, 192, 106, Math.round(light * 10));
+        g.circle(lampX - 24 - this.cameraOffset, lampY - 10, radius); g.fill();
+      }
+    }
+    rect(lampX - 30, lampY - 16, 12, 12, new Color(110 + Math.round(134 * light), 111 + Math.round(90 * light), 79 + Math.round(47 * light)));
     // A gate beside the lever rises and exposes a visible inlet.
     rect(1332, c.bed, 40, 250, stone);
     rect(1338, c.near - 40 + this.world.fill * 88, 28, 98, new Color(46, 52, 47));
