@@ -1,9 +1,13 @@
+import { cameraHeight } from './WorldCamera';
+import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
+import { PushBoxSegment } from './PushBoxSegment';
+import { drawPushBox } from './PushBoxArt';
 import { drawReclamationOpening } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
 import { COVER, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, appendAutosave, sameMilestone } from './SluiceWorld';
+import { CHANNEL, ROAD, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, appendAutosave, sameMilestone } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
@@ -22,13 +26,15 @@ export class PuzzleController extends Component {
   private actor!: Node;
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
+  private pushPull = new PushPullAnimation(); private pushPullPoses: SpriteFrame[] = [];
   private animation = new CharacterAnimation();
   private touchRun = false;
-  private frame!: Node;
+  private frame!: Node; private sceneRoot!: Node; private cameraLift = 0;
   private layers: Layer[] = [];
   private keys = new Set<KeyCode>();
   private touchDirection = 0;
-  private world = new SluiceWorld();
+  private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private touchGrab = false;
+  private world = new SluiceWorld(this.boxPuzzle);
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
@@ -47,6 +53,7 @@ export class PuzzleController extends Component {
     this.status = this.text('Loading scene layers…', 0, -328, 16, 900);
     this.frame = this.child('Layered Landscape', 1280, 590, 0, 0);
     this.frame.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    this.sceneRoot = this.child('World camera', 1280, 590, 0, 0, this.frame);
     this.layer('Sky', 'sky', 1400, 650, 0, 0, 0);
     this.layer('Cloud west', 'cloud', 360, 120, -300, 85, .08, 3);
     this.layer('Cloud east', 'cloud', 460, 154, 430, 10, .08, 2);
@@ -60,21 +67,22 @@ export class PuzzleController extends Component {
     this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
     this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
-    this.search = this.child('Distant police search', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
-    this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
-    this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
+    this.search = this.child('Distant police search', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     for (const [label, x, y] of [['待处理区 · 07', -1960, 115], ['拆解', -2340, 110], ['维修通道 →', -1210, 70]] as [string, number, number][]) {
-      const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.frame); this.openingSigns.push(sign.node);
+      const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
     }
+    this.boxArt = this.child('Movable crate and maintenance platform', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
-    this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
-    this.actor = this.child('Character', 102, 102, 0, 0, this.frame);
+    this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    this.loadCharacterPoses(); this.loadCoverPoses();
-    this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
+    this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses();
+    this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.nightVeil = this.child('Nightfall', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
-    this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.frame);
-    this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  LEVER     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
+    this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
+    this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  INTERACT / HOLD TO PUSH     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
     this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
     this.button('RUN', -430, -322, 0, true);
     this.button('E', 310, -322, 0, false, true);
@@ -113,6 +121,7 @@ export class PuzzleController extends Component {
     } catch { this.storageFailed = true; }
     this.persist();
     this.cameraOffset = Math.max(-2150, this.world.x - 100);
+    this.cameraLift = cameraHeight(0, this.world.y, 1);
     this.setupSluiceAudio();
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
     game.on(Game.EVENT_HIDE, this.releaseInputs, this);
@@ -150,7 +159,7 @@ export class PuzzleController extends Component {
         this.poses.push(pose);
       }
       for (const x of [-2250, -2150, -1850]) {
-        const robot = this.child('Deactivated robot', 102, 102, x, CHANNEL.near, this.frame);
+        const robot = this.child('Deactivated robot', 102, 102, x, CHANNEL.near, this.sceneRoot);
         robot.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[0]);
         const sprite = robot.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         sprite.spriteFrame = this.poses[0]; sprite.color = new Color(47, 58, 57);
@@ -177,11 +186,36 @@ export class PuzzleController extends Component {
       }
     });
   }
+  private loadPushPullPoses() {
+    this.pending++;
+    resources.load('character/robot-push-pull/texture', Texture2D, (error, texture) => {
+      this.pending--;
+      if (!this.isValid) return;
+      if (error) { this.failed = true; this.status.string = 'Could not load push/pull animation'; console.error(error); return; }
+      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+        const left = Math.round(col * texture.width / 4), top = Math.round(row * texture.height / 2);
+        const width = Math.round((col + 1) * texture.width / 4) - left;
+        const height = Math.round((row + 1) * texture.height / 2) - top;
+        const pose = new SpriteFrame(); pose.texture = texture;
+        pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
+        this.pushPullPoses.push(pose);
+      }
+    });
+  }
   private animateCharacter(dt: number) {
     if (!this.poses.length) return;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
     const coverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
-    if (coverFrame !== null && this.coverPoses.length === 8) {
+    const gripping = !this.escape.caught && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
+      this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
+    const contact = this.world.x < this.boxPuzzle.x ? this.boxPuzzle.left : this.boxPuzzle.right;
+    const effort = this.pushPull.frame(dt, gripping, this.boxPuzzle.x - this.world.x,
+      this.world.vx, this.boxPuzzle.moving, Math.abs(contact - this.world.x));
+    this.actor.getComponent(UITransform)!.setContentSize(effort ? PUSH_PULL_CANVAS : 102, effort ? PUSH_PULL_CANVAS : 102);
+    if (effort && this.pushPullPoses.length === 8) {
+      this.actorSprite.spriteFrame = this.pushPullPoses[effort.index]; this.facing = effort.facing;
+      this.actor.getComponent(UITransform)!.setAnchorPoint(effort.anchorX, effort.anchorY);
+    } else if (coverFrame !== null && this.coverPoses.length === 8) {
       this.actorSprite.spriteFrame = this.coverPoses[coverFrame];
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, coverFrame < 4 ? .095 : .09);
     } else {
@@ -190,7 +224,7 @@ export class PuzzleController extends Component {
     }
   }
   private drawCoverTree() {
-    const g = this.coverTree, x = COVER.treeX - this.cameraOffset, y = CHANNEL.far;
+    const g = this.coverTree, x = COVER.treeX - this.cameraOffset, y = roadHeight(COVER.treeX);
     g.clear();
     // The trunk blocks the distant search sightline; the robot renders on its viewer-facing side.
     g.fillColor = new Color(26, 39, 34);
@@ -206,12 +240,12 @@ export class PuzzleController extends Component {
   }
 
   private layer(name: string, asset: string, w: number, h: number, x: number, y: number, parallax: number, drift = 0, phase = 0, bird = false) {
-    const node = this.picture(name, 'layers/' + asset, w, h, this.frame); node.setPosition(x, y, 0);
+    const node = this.picture(name, 'layers/' + asset, w, h, this.sceneRoot); node.setPosition(x, y, 0);
     this.layers.push({ node, x, y, parallax, drift, phase, bird }); return node;
   }
   /** Distant, non-colliding silhouettes sit behind the forest canopy. */
   private createRuins() {
-    const n = this.child('Reclaimed industrial skyline', 2600, 590, 0, 0, this.frame);
+    const n = this.child('Reclaimed industrial skyline', 2600, 590, 0, 0, this.sceneRoot);
     const g = n.addComponent(Graphics);
     const block = (x: number, y: number, w: number, h: number) => { g.rect(x, y, w, h); g.fill(); };
     g.fillColor = new Color(65, 91, 88, 115);
@@ -235,8 +269,8 @@ export class PuzzleController extends Component {
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
     const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
     this.text(value, x, y, 30, 90);
-    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if (this.escape.caught || this.paused) return; if (interact) this.interact(); else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
-    const release = () => { if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
+    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if (this.escape.caught || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
+    const release = () => { if (interact) this.touchGrab = false; if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
   }
   private createCaughtPanel() {
@@ -252,7 +286,7 @@ export class PuzzleController extends Component {
     retry.on(Node.EventType.TOUCH_END, () => this.showSaves());
     this.caughtPanel = panel; panel.active = false;
   }
-  private releaseInputs() { this.keys.clear(); this.touchDirection = 0; this.touchRun = false; this.world.vx = 0; }
+  private releaseInputs() { this.keys.clear(); this.touchDirection = 0; this.touchRun = false; this.touchGrab = false; this.world.vx = 0; }
   private down(e: EventKeyboard) {
     this.unlockAudio();
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
@@ -331,9 +365,10 @@ export class PuzzleController extends Component {
     this.escape.reset(); this.escape.cleared = save.escaped; this.alarmTriggered = save.alarm;
     this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(-2150, this.world.x - 100);
-    this.releaseInputs(); this.cover.reset(); this.animation.reset();
+    this.releaseInputs(); this.cover.reset(); this.pushPull.reset(); this.animation.reset();
     // Selecting an older save changes the resume point without discarding later history.
     this.archive.activeId = entry.id; this.saved = JSON.stringify(save); this.writeArchive();
+    this.cameraLift = cameraHeight(0, this.world.y, 1);
     this.animateCharacter(0); this.place();
   }
   private writeArchive() {
@@ -341,7 +376,7 @@ export class PuzzleController extends Component {
     catch { this.storageFailed = true; }
   }
   private persist() {
-    if (this.escape.active || this.escape.caught) return;
+    if (this.escape.active || this.escape.caught || this.boxPuzzle.moving) return;
     const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
     const previous = readProgress(this.saved);
     // Save meaningful story milestones, not every lighting interpolation frame.
@@ -397,7 +432,7 @@ export class PuzzleController extends Component {
     if (direction) this.facing = direction;
     const underCover = !this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded);
     if (this.escape.caught) this.world.vx = 0;
-    else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)));
+    else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)), this.touchGrab || this.keys.has(KeyCode.KEY_E));
     this.escape.step(dt, this.cover.contains(this.world.x, this.world.grounded), this.world.x >= COVER.left);
     if (this.escape.caught) {
       this.releaseInputs(); this.caughtPanel.active = true;
@@ -411,6 +446,7 @@ export class PuzzleController extends Component {
     this.saveNotice = Math.max(0, this.saveNotice - dt);
     const target = Math.max(-2150, this.world.x - 100);
     this.cameraOffset += (target - this.cameraOffset) * (1 - Math.exp(-dt * 3));
+    this.cameraLift = cameraHeight(this.cameraLift, this.world.y, dt);
     const proximity = Math.max(0, 1 - Math.abs(this.world.x - 1500) / 1000);
     const volume = this.world.opened ? proximity * (this.world.fill < 1 ? .4 : .16) : proximity * .035;
     this.waterSound.volume += (volume - this.waterSound.volume) * Math.min(1, dt * 3);
@@ -424,8 +460,10 @@ export class PuzzleController extends Component {
     this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
     this.animateCharacter(this.escape.caught ? 0 : dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
-    this.leverPrompt.string = this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
-    this.leverPrompt.node.setPosition(CHANNEL.leverX - this.cameraOffset, CHANNEL.near + 112, 0);
+    const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
+    this.leverPrompt.string = nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
+    this.leverPrompt.node.setPosition((nearBox ? this.boxPuzzle.x : CHANNEL.leverX) - this.cameraOffset, nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112, 0);
     this.place();
   }
   private drawCanal() {
@@ -440,10 +478,17 @@ export class PuzzleController extends Component {
     };
     const earth = new Color(28, 39, 33), grass = new Color(96, 117, 75), stone = new Color(53, 64, 54);
     rect(viewLeft, -420, Math.max(0, Math.min(c.left, viewRight) - viewLeft), c.near + 420, earth);
-    rect(Math.max(c.right, viewLeft), -420, Math.max(0, viewRight - Math.max(c.right, viewLeft)), c.far + 420, earth);
+    const farLeft = Math.max(c.right, viewLeft);
+    if (viewRight > farLeft) {
+      const points = [farLeft, ROAD.descentStart, ROAD.descentEnd, viewRight]
+        .filter(x => x >= farLeft && x <= viewRight).sort((a, b) => a - b);
+      g.fillColor = earth; g.moveTo(farLeft - this.cameraOffset, -420);
+      for (const x of points) g.lineTo(x - this.cameraOffset, roadHeight(x));
+      g.lineTo(viewRight - this.cameraOffset, -420); g.close(); g.fill();
+      for (let i = 1; i < points.length; i++) line(points[i - 1], roadHeight(points[i - 1]), points[i], roadHeight(points[i]), grass, 4);
+    }
     rect(c.left, -420, c.right - c.left, c.bed + 420, stone);
     if (viewLeft < c.left) line(viewLeft, c.near, Math.min(c.left, viewRight), c.near, grass, 4);
-    if (viewRight > c.right) line(Math.max(c.right, viewLeft), c.far, viewRight, c.far, grass, 4);
     // Masonry, mineral waterline and guide posts explain the former water level.
     for (let y = -250; y < 40; y += 28) {
       line(c.right, y, c.right + 65, y + 2, new Color(75, 85, 69));
@@ -453,14 +498,14 @@ export class PuzzleController extends Component {
     // Fence fragments continue beyond the puzzle without a level-end screen.
     for (let x = Math.max(1080, Math.floor(viewLeft / 160) * 160); x < viewRight; x += 160) {
       if (x > 1340 && x < 1850) continue;
-      const floor = x < c.left ? c.near : c.far;
+      const floor = x < c.left ? c.near : roadHeight(x);
       rect(x, floor, 7, 67, new Color(71, 76, 58));
-      line(x, floor + 45, x + 100, floor + 38, new Color(76, 81, 61), 4);
+      line(x, floor + 45, x + 100, (x + 100 < c.left ? c.near : roadHeight(x + 100)) + 38, new Color(76, 81, 61), 4);
     }
     // Old service pipes and a roofless maintenance shelter, reclaimed by vines.
     const metal = new Color(62, 79, 76), rust = new Color(110, 83, 61);
     for (const x of [360, 820, 1930, 2380, 2850]) {
-      const floor = x < c.left ? c.near : c.far;
+      const floor = x < c.left ? c.near : roadHeight(x);
       line(x, floor + 17, x + 125, floor + 17, metal, 15);
       line(x + 125, floor + 17, x + 125, floor + 53, metal, 15);
       for (const offset of [12, 58, 106]) {
@@ -507,7 +552,7 @@ export class PuzzleController extends Component {
     // Sparse grass marks walkable banks, leaving the canal edges unobscured.
     for (let x = Math.floor(viewLeft / 31) * 31; x < viewRight; x += 31) {
       if (x > c.left - 20 && x < c.right + 20) continue;
-      const y = x <= c.left ? c.near : c.far;
+      const y = x <= c.left ? c.near : roadHeight(x);
       line(x, y, x + 4, y + 7 + Math.sin(x) * 3, grass, 1);
     }
     const w = this.water; w.clear();
@@ -531,7 +576,9 @@ export class PuzzleController extends Component {
   private place() {
     if (!this.actor) return;
     const foot = this.world.y;
+    this.sceneRoot.setPosition(0, -this.cameraLift, 0);
     this.drawCanal(); this.drawCoverTree();
+    drawPushBox(this.boxArt, this.boxPuzzle, this.cameraOffset);
     this.opening.node.setPosition(-this.cameraOffset, 0, 0);
     drawReclamationOpening(this.opening, this.time, this.alarmTriggered);
     const signsX = [-1960, -2340, -1210], signsY = [115, 110, 70];
@@ -542,6 +589,7 @@ export class PuzzleController extends Component {
     this.nightVeil.fillColor = new Color(5, 13, 32, Math.round(this.night * 165));
     this.nightVeil.rect(-640, -295, 1280, 590); this.nightVeil.fill();
     this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, 1, 1);
+    this.actor.setRotationFromEuler(0, 0, 0);
     for (const l of this.layers) {
       let drift = l.drift ? ((l.x + 760 + this.time * l.drift) % 1520 + 1520) % 1520 - 760 - l.x : 0;
       let layerX = l.x - this.cameraOffset * l.parallax + drift;
@@ -549,7 +597,7 @@ export class PuzzleController extends Component {
         const span = l.node.name.indexOf('Forest') === 0 ? 4200 : 3300;
         layerX = ((layerX + 720) % span + span) % span - 720;
       }
-      l.node.setPosition(layerX, l.y + (l.bird ? Math.sin(this.time * 1.4 + l.phase) * 18 : 0), 0);
+      l.node.setPosition(layerX, l.y + (l.node.name === 'Sky' ? this.cameraLift : 0) + (l.bird ? Math.sin(this.time * 1.4 + l.phase) * 18 : 0), 0);
       if (l.bird) { l.node.setScale(1, .8 + Math.sin(this.time * 9 + l.phase) * .2, 1); l.node.setRotationFromEuler(0, 0, Math.sin(this.time * 2 + l.phase) * 5); }
     }
   }

@@ -66,7 +66,7 @@ test('holding right actually moves out of cover and fails instead of locking mov
   for (const fps of [30, 60, 144]) {
     const world = new SluiceWorld(), cover = new TreeCover(), encounter = new SearchEscape();
     world.restore({ version: 1, checkpoint: 'far-bank', opened: true });
-    world.x = COVER.left + 5; world.y = 40; world.grounded = true;
+    world.x = COVER.left + 5; world.y = world.groundAt(world.x); world.grounded = true;
     const initial = world.x;
     for (let i = 0; i < fps * 6 && !encounter.caught; i++) {
       const covered = cover.contains(world.x, world.grounded);

@@ -48,3 +48,13 @@ Preview `assets/Main.scene` in Creator 3.8.8 after refreshing external asset cha
 A fresh journey starts in the robot reclamation holding area before the forest. Walk right past inactive robots, underneath a partially raised maintenance shutter, and through a gap in the perimeter fence. Crossing the exit activates a warning lamp and alarm; station machinery and alarm fade with distance. The forest checkpoint then connects to the existing canal and later patrol encounter.
 
 Progress saves automatically at safe milestones, including the station exit and both sides of the patrol encounter. Opening the game resumes the latest save. Press **Esc** or tap **暂停** for Continue and Load saves; **R** loads the newest save. The load menu lists all named automatic saves newest first with timestamps and pagination; selecting an older save preserves newer history. The former P/T scene-replay controls have been removed. See `design/autosave.md` for persistence and recovery details.
+
+## Push-box puzzle segment
+
+A provisional puzzle follows the patrol: hold **E** plus left/right to push or pull a crate beneath a high maintenance platform, release E, jump onto the crate and then onto the platform. Touch supports holding the E/interact button while using the movement buttons. Ordinary walking does not move the crate. A ramp continues the route after the platform.
+
+Placement and dimensions live in `assets/scripts/PushBoxSegment.ts`; the drawing and collision use that shared geometry. Named autosaves retain partial box placement and completion. Load **旧箱与高台** to try the puzzle from its approach. See `design/push-box-puzzle.md` for relocation, save behavior and validation boundaries.
+
+Dedicated push/pull animation uses `assets/resources/character/robot-push-pull.png`. While gripping, the robot faces the crate, braces both hands for pushing and steps backward for pulling. Animation timing and contact anchors are documented in `design/push-pull-animation.md`.
+
+The raised canal bank now descends back to the opening forest floor before the patrol. The crate platform is a local rise and its exit ramp returns to that same floor; elevation does not accumulate across the route. Vertical camera bounds preserve headroom during jumps and high-platform loads.

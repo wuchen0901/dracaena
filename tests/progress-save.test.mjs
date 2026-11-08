@@ -7,7 +7,7 @@ test('progress restores world, lighting and story flags together', () => {
   const save = { version: 1, checkpoint: 'patrol-cleared', opened: true, night: 1, escaped: true, alarm: true };
   const loaded = readProgress(JSON.stringify(save)); assert.deepEqual(loaded, save);
   const world = new SluiceWorld(); world.restore(loaded);
-  assert.equal(world.x, 3280); assert.equal(world.y, 40);
+  assert.equal(world.x, 3280); assert.equal(world.y, -140);
   world.step(.25, 1); assert.equal(world.checkpoint, 'patrol-cleared');
 });
 test('safe checkpoint before police remains outside cover after loading', () => {
