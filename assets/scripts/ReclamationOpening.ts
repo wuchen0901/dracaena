@@ -20,6 +20,20 @@ export function drawReclamationOpening(g: Graphics, time: number, alarm: boolean
   }
   rect(-2385, 100 + Math.sin(time * 1.5) * 12, 44, 70, rust);
   rect(-2368, 170, 10, 180, metal);
+  // A damaged unit is carried under the press; its red rejection mark echoes the city kiosk.
+  const cycle = time % 12;
+  const unitX = -2445 + Math.min(1, cycle / 5) * 84;
+  if (cycle < 9) {
+    rect(unitX - 12, -5, 28, 38, new Color(97, 105, 91));
+    rect(unitX - 9, 36, 23, 20, new Color(124, 129, 108));
+    rect(unitX - 20, -15, 12, 22, rust); rect(unitX + 9, -15, 12, 22, rust);
+    rect(unitX - 21, 4, 8, 26, rust);
+    rect(unitX - 3, 8, 9, 9, new Color(207, 64, 44));
+    const drop = Math.max(0, Math.min(1, (cycle - 5) / 1.5));
+    rect(-2385, 100 - drop * 65, 44, 12, metal);
+  } else {
+    for (let i = 0; i < 5; i++) rect(-2380 + i * 13, -6 + i % 2 * 5, 9, 8, rust);
+  }
   // Door is raised enough to pass underneath; daylight is visible beyond its frame.
   rect(-1120, -140, 18, 450, metal); rect(-1110, -15, 65, 325, new Color(64, 75, 68));
   for (let y = 0; y < 295; y += 28) rect(-1105, y, 55, 3, rust);

@@ -39,7 +39,35 @@ export function drawJourneyStoryArt(g: Graphics, camera: number, time: number) {
     g.circle(x(cityCam + 59), mast - 31, 4); g.fill();
 
     const kioskX = 10030, kioskFloor = roadHeight(kioskX);
+    // A complete visible exchange: an injured applicant is refused, then a tagged worker is served.
+    const phase = time % 14;
+    const rejected = phase < 7;
+    const approach = Math.min(1, phase / 2);
+    const leave = Math.max(0, Math.min(1, (phase - 4.5) / 2));
+    const hx = rejected ? kioskX - 110 + approach * 64 - leave * 75 : kioskX - 90 + Math.min(1, (phase - 7) / 2) * 48;
+    const skin = new Color(152, 131, 105), coat = new Color(71, 75, 68);
+    const bend = rejected ? 12 : 0;
+    g.fillColor = skin; g.circle(x(hx + bend), kioskFloor + 91, 9); g.fill();
+    line(hx, kioskFloor + 70, hx + bend, kioskFloor + 30, coat, 19);
+    line(hx + bend, kioskFloor + 30, hx - 12, kioskFloor + 2, coat, 7);
+    line(hx + bend, kioskFloor + 30, hx + 14, kioskFloor + 2, coat, 7);
+    const reaching = rejected ? phase > 2 && phase < 4.5 : phase > 9 && phase < 12;
+    line(hx + 4, kioskFloor + 67, hx + (reaching ? 42 : 17), kioskFloor + (reaching ? 55 : 35), skin, 6);
+    if (rejected) line(hx - 15, kioskFloor + 51, hx - 23, kioskFloor + 2, new Color(121, 105, 82), 4);
+    else rect(hx - 5, kioskFloor + 66, 10, 9, new Color(118, 177, 120));
     rect(kioskX, kioskFloor, 70, 83, new Color(68, 65, 57));
+    const deciding = rejected ? phase > 2 && phase < 4.5 : phase > 9 && phase < 12;
+    if (deciding) {
+      const signal = rejected ? new Color(211, 69, 48) : new Color(123, 186, 115);
+      rect(kioskX + 3, kioskFloor + 85, 64, 5, signal);
+      if (rejected) {
+        line(kioskX + 24, kioskFloor + 52, kioskX + 46, kioskFloor + 70, signal, 3);
+        line(kioskX + 46, kioskFloor + 52, kioskX + 24, kioskFloor + 70, signal, 3);
+      } else {
+        rect(kioskX - 15, kioskFloor + 39, 30, 6, new Color(142, 128, 99));
+        rect(kioskX - 10, kioskFloor + 45, 19, 12, new Color(191, 163, 110));
+      }
+    }
     rect(kioskX + 10, kioskFloor + 48, 50, 23, new Color(25, 39, 38));
     // A stale allocation screen: food is gated by assigned labor, even after the system collapses.
     g.strokeColor = new Color(129, 161, 120, 190); g.lineWidth = 2;
