@@ -13,6 +13,10 @@ export class CharacterAnimation {
   private landingTime = 0;
   private airTime = 0;
 
+  get idleScaleY() {
+    return this.motion === 'idle' ? 1 + .006 * (1 - Math.cos(this.idlePhase * Math.PI * 2)) / 2 : 1;
+  }
+
   reset() {
     this.motion = 'idle'; this.gaitPhase = this.idlePhase = this.landingTime = this.airTime = 0;
     this.wasGrounded = true;
@@ -37,9 +41,12 @@ export class CharacterAnimation {
     // Hysteresis prevents noisy speeds flickering between adjacent rows.
     const moving = speed > (this.motion === 'idle' ? 8 : 4);
     if (!moving) {
-      this.motion = 'idle'; this.idlePhase = (this.idlePhase + dt * .75) % 1;
-      return Math.floor(this.idlePhase * CHARACTER_COLUMNS);
+      this.motion = 'idle'; this.idlePhase = (this.idlePhase + dt / 3.6) % 1;
+      // Generated idle cells have inconsistent silhouettes; one stable pose avoids lateral jitter.
+      // Breathe only vertically about its fixed foot anchor instead of swapping idle cells.
+      return 0;
     }
+    this.idlePhase = 0;
     const running = speed > (this.motion === 'run' ? 165 : 185);
     this.motion = running ? 'run' : 'walk';
     const cycles = running ? 3 * speed / 240 : 2 * speed / 145;

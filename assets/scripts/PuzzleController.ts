@@ -27,7 +27,7 @@ export class PuzzleController extends Component {
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
   private pushPull = new PushPullAnimation(); private pushPullPoses: SpriteFrame[] = [];
-  private animation = new CharacterAnimation();
+  private animation = new CharacterAnimation(); private breathScaleY = 1;
   private touchRun = false;
   private frame!: Node; private sceneRoot!: Node; private cameraLift = 0;
   private layers: Layer[] = [];
@@ -204,6 +204,7 @@ export class PuzzleController extends Component {
   }
   private animateCharacter(dt: number) {
     if (!this.poses.length) return;
+    this.breathScaleY = 1;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
     const coverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
     const gripping = !this.escape.caught && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
@@ -219,6 +220,7 @@ export class PuzzleController extends Component {
       this.actorSprite.spriteFrame = this.coverPoses[coverFrame];
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, coverFrame < 4 ? .095 : .09);
     } else {
+      this.breathScaleY = this.animation.idleScaleY;
       this.actorSprite.spriteFrame = this.poses[index];
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[index]);
     }
@@ -588,7 +590,7 @@ export class PuzzleController extends Component {
     this.nightVeil.clear();
     this.nightVeil.fillColor = new Color(5, 13, 32, Math.round(this.night * 165));
     this.nightVeil.rect(-640, -295, 1280, 590); this.nightVeil.fill();
-    this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, 1, 1);
+    this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
     this.actor.setRotationFromEuler(0, 0, 0);
     for (const l of this.layers) {
       let drift = l.drift ? ((l.x + 760 + this.time * l.drift) % 1520 + 1520) % 1520 - 760 - l.x : 0;

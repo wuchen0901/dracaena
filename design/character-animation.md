@@ -1,3 +1,13 @@
+# Current robot idle correction
+
+The robot now holds the first idle atlas cell instead of cycling eight inconsistently aligned silhouettes. Breathing is a 3.6-second vertical scale cycle from 1.000 to 1.006 around the existing foot anchor; horizontal scale, position and facing stay fixed. Walking, running, jumping, cover and push/pull retain their own animations and use normal scale. Pause stops animation time.
+
+50 tests and Cocos TypeScript checking pass. The idle regression test checks one stable pose and bounded breathing at 30/60/144 FPS, plus reset and movement transitions. Live preview verification was attempted but the browser control connection became unavailable after refresh (debugger unattached), so visual confirmation remains pending.
+
+The earlier atlas notes below describe historical assets and behavior.
+
+---
+
 # Character actions: smoother 32-frame atlas
 
 The current atlas is `assets/resources/character/actions-smooth.png`: 1774 × 887 RGBA, eight columns and four rows. Created with the built-in imagegen tool using the prior atlas and original character as identity references. The previous `actions.png` remains unchanged.

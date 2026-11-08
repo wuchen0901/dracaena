@@ -8,8 +8,8 @@ function framesAt(speed, seconds = 2, dt = 1 / 60) {
   return [...seen].sort((a, b) => a - b);
 }
 
-test('all eight distinct frames play in idle, walk and run loops', () => {
-  for (const [speed, row] of [[0, 0], [145, 1], [240, 2]]) {
+test('all eight distinct frames play in walk and run loops', () => {
+  for (const [speed, row] of [[145, 1], [240, 2]]) {
     assert.deepEqual(framesAt(speed), Array.from({ length: columns }, (_, i) => row * columns + i));
   }
 });
@@ -57,4 +57,19 @@ test('cycle timing is independent of display frame rate', () => {
     return animation.frame(0, 117, 0, true);
   });
   assert.equal(new Set(phases).size, 1);
+});
+
+
+test('idle holds one aligned pose and breathes vertically without frame-driven lateral jitter', () => {
+  for (const fps of [30, 60, 144]) {
+    const a = new CharacterAnimation(); let low = Infinity, high = 0;
+    for (let i = 0; i < fps * 18; i++) {
+      assert.equal(a.frame(1 / fps, 0, 0, true), 0);
+      assert(a.idleScaleY >= 1 && a.idleScaleY <= 1.006);
+      low = Math.min(low, a.idleScaleY); high = Math.max(high, a.idleScaleY);
+    }
+    assert(high - low > .0059);
+    a.frame(.016, 145, 0, true); assert.equal(a.idleScaleY, 1);
+    a.reset(); assert.equal(a.idleScaleY, 1);
+  }
 });
