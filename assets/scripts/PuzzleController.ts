@@ -1,5 +1,5 @@
 import { DogChaseSegment } from './DogChaseSegment';
-import { drawDogGap } from './DogGapArt';
+import { drawDogGap, drawCatRescueProps } from './DogGapArt';
 import { drawGuardPostSearch } from './GuardPostArt';
 import { drawScrapYard } from './ScrapYardArt';
 import { cameraHeight } from './WorldCamera';
@@ -42,6 +42,7 @@ export class PuzzleController extends Component {
   private touchDirection = 0;
   private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label; private touchGrab = false;
   private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
+  private catNode!: Node; private catPoses: SpriteFrame[] = []; private catPropsArt!: Graphics;
   private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtTitle!: Label; private caughtHint!: Label;
@@ -95,6 +96,9 @@ export class PuzzleController extends Component {
     this.beaconSign = this.text('海岸中继\n信号微弱 →', 0, 0, 17, 220); this.beaconSign.node.setParent(this.sceneRoot);
     this.dogNode = this.child('Pursuing guard dog', 112, 112, 0, 0, this.sceneRoot);
     this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
+    this.catPropsArt = this.child('Kitten perch and blocking crate', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.catNode = this.child('Rescued kitten', 66, 66, 0, 0, this.sceneRoot);
+    this.catNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadCatPoses();
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
     this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.policeCoverTree = this.child('Roadside shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
@@ -220,6 +224,22 @@ export class PuzzleController extends Component {
         const w = Math.round((col + 1) * texture.width / 4) - x, h = Math.round((row + 1) * texture.height / 2) - y;
         const frame = new SpriteFrame(); frame.texture = texture; frame.rect = new Rect(x, y, w, h); frame.originalSize = new Size(w, h);
         this.dogPoses.push(frame);
+      }
+    });
+  }
+  private loadCatPoses() {
+    this.pending++;
+    resources.load('cat/follow/texture', Texture2D, (error, texture) => {
+      this.pending--;
+      if (!this.isValid) return;
+      if (error) { this.failed = true; this.status.string = 'Could not load kitten animation'; console.error(error); return; }
+      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+        const left = Math.round(col * texture.width / 4), top = Math.round(row * texture.height / 2);
+        const width = Math.round((col + 1) * texture.width / 4) - left;
+        const height = Math.round((row + 1) * texture.height / 2) - top;
+        const pose = new SpriteFrame(); pose.texture = texture;
+        pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
+        this.catPoses.push(pose);
       }
     });
   }
@@ -656,6 +676,13 @@ export class PuzzleController extends Component {
       this.dogNode.getComponent(Sprite)!.spriteFrame = this.dogPoses[this.dog.frame];
       this.dogNode.getComponent(UITransform)!.setAnchorPoint(.5, this.dog.barking ? .15 : .21);
       this.dogNode.setPosition(this.dog.x - this.cameraOffset, this.dog.layout.floor, 0);
+    }
+    drawCatRescueProps(this.catPropsArt, this.dog, this.cameraOffset);
+    this.catNode.active = this.catPoses.length === 8;
+    if (this.catNode.active) {
+      this.catNode.getComponent(Sprite)!.spriteFrame = this.catPoses[this.dog.catFrame];
+      this.catNode.getComponent(UITransform)!.setAnchorPoint(.5, .09);
+      this.catNode.setPosition(this.dog.catX - this.cameraOffset, this.dog.catY, 0);
     }
     drawPushBox(this.boxArt, this.boxPuzzle, this.cameraOffset);
     this.prisonSign.node.setPosition((this.boxPuzzle.wallX + this.boxPuzzle.wallEndX) / 2 - this.cameraOffset - 4, this.boxPuzzle.layout.floor + 113, 0);
