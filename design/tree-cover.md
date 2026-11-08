@@ -2,7 +2,7 @@
 
 At x=3160–3410, the grounded robot automatically crouches beside the tree at x=3280. Left/right input remains active at half walking speed. Releasing movement holds the crouch. Entering cover starts four seconds of waiting followed by three seconds of patrol departure.
 
-Leaving either edge or jumping out of cover before the patrol fully leaves causes failure. Exposure is checked after movement, before advancing the safe timer. Jumping over the entry also counts as exposure. Failure freezes player movement and shows “被警察抓住了” with an R/touch retry action. Retry returns just before the tree and resets the encounter, preserving the sluice puzzle. Staying in cover until departure completes allows safe movement onward and standing up.
+Leaving either edge or jumping out of cover before the patrol fully leaves causes failure. Exposure is checked after movement, before advancing the safe timer. Jumping over the entry also counts as exposure. Failure freezes player movement and shows “被警察抓住了” with an R/touch retry action. Loading the latest save returns to the automatic checkpoint just before the tree, resets the unfinished encounter, and preserves the sluice puzzle. Staying in cover until departure completes allows safe movement onward and standing up.
 
 Completed escape state persists separately in local storage. Returning to the tree after success does not replay the patrol. Police accelerate rightward during departure and the siren fades to silence.
 
@@ -18,4 +18,4 @@ Create a production transparent sprite atlas for this SAME old ivory maintenance
 
 Regression fix: crouching and the patrol countdown now share `TreeCover.contains`, including both edges of the cover range. Stopping at the first crouched position therefore completes the encounter instead of waiting indefinitely for the old narrow center trigger.
 
-Replay: press T or tap the top-left “重试警车路段” label to clear the completed escape flag, restore the open sluice, and return just before the tree at night. This restores the patrol for repeated testing without replaying the canal. R after failure retries from that same approach. The replay action was exercised in the live Cocos browser preview and the patrol was visibly restored.
+The former replay shortcut was removed in favor of automatic safe checkpoints before/after this encounter and the shared pause-menu load action. See `autosave.md`.

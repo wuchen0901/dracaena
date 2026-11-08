@@ -4,17 +4,31 @@ export const CHANNEL = {
   logLeft: 1440, logRight: 1700, logLow: -235, logHigh: -55,
   leverX: 1270, fillSeconds: 7,
 };
-export type Checkpoint = 'reclamation' | 'forest' | 'sluice' | 'far-bank';
+export type Checkpoint = 'reclamation' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared';
 export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean };
 export const SAVE_KEY = 'the-last-light.sluice.v1';
 export function readSave(raw: string | null): SluiceSave | null {
   try {
     const s = JSON.parse(raw || 'null');
     if (!s || s.version !== 1 || typeof s.opened !== 'boolean' ||
-      ['reclamation', 'forest', 'sluice', 'far-bank'].indexOf(s.checkpoint) < 0 ||
-      (s.checkpoint === 'far-bank' && !s.opened)) return null;
+      ['reclamation', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared'].indexOf(s.checkpoint) < 0 ||
+      (['far-bank', 'patrol-approach', 'patrol-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
     return { version: 1, checkpoint: s.checkpoint, opened: s.opened };
   } catch { return null; }
+}
+/** Atmosphere and story flags are saved atomically with the safe checkpoint. */
+export type ProgressSave = SluiceSave & { night: number; escaped: boolean; alarm: boolean };
+export function readProgress(raw: string | null): ProgressSave | null {
+  const world = readSave(raw);
+  if (!world) return null;
+  const s = JSON.parse(raw!);
+  const night = s.night === undefined ? 0 : s.night;
+  const escaped = s.escaped === undefined ? world.checkpoint === 'patrol-cleared' : s.escaped;
+  const alarm = s.alarm === undefined ? world.checkpoint !== 'reclamation' : s.alarm;
+  if (typeof night !== 'number' || !Number.isFinite(night) || night < 0 || night > 1 ||
+      typeof escaped !== 'boolean' || typeof alarm !== 'boolean' ||
+      (world.checkpoint === 'patrol-cleared' && !escaped)) return null;
+  return { ...world, night, escaped, alarm };
 }
 export class SluiceWorld {
   x = -2050; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
@@ -31,8 +45,8 @@ export class SluiceWorld {
   save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened }; }
   restore(save: SluiceSave) {
     this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0;
-    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : -90;
-    this.y = save.checkpoint === 'far-bank' ? CHANNEL.far : CHANNEL.near;
+    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : -90;
+    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared'].indexOf(save.checkpoint) >= 0 ? CHANNEL.far : CHANNEL.near;
     this.vx = this.vy = this.buffer = 0; this.grounded = true; this.coyote = .12;
   }
   groundAt(x: number) {
@@ -84,9 +98,11 @@ export class SluiceWorld {
         this.y = surface; this.vy = 0; this.grounded = true;
       }
     }
-    if (this.checkpoint === 'reclamation' && this.grounded && this.x >= -200) this.checkpoint = 'forest';
+    if (this.checkpoint === 'reclamation' && this.grounded && this.x >= -1000) this.checkpoint = 'station-exit';
+    if (this.checkpoint === 'station-exit' && this.grounded && this.x >= -200) this.checkpoint = 'forest';
     if (this.checkpoint === 'forest' && this.grounded && this.x >= 1050 && this.x < CHANNEL.left) this.checkpoint = 'sluice';
-    if (this.opened && this.grounded && this.x >= CHANNEL.right + 50 && this.y === CHANNEL.far) this.checkpoint = 'far-bank';
+    if (this.checkpoint === 'sluice' && this.opened && this.grounded && this.x >= CHANNEL.right + 50 && this.y === CHANNEL.far) this.checkpoint = 'far-bank';
+    if (this.checkpoint === 'far-bank' && this.grounded && this.x >= 3080) this.checkpoint = 'patrol-approach';
     // A missed landing is a gentle return to shore, without a drowning sequence.
     if (this.y < -500 || (this.opened && this.x > CHANNEL.left && this.x < CHANNEL.right && this.y + 60 < this.waterY)) this.restore(this.save());
   }
