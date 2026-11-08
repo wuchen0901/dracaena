@@ -1,4 +1,32 @@
-# Character actions
+# Character actions: smoother 32-frame atlas
+
+The current atlas is `assets/resources/character/actions-smooth.png`: 1774 × 887 RGBA, eight columns and four rows. Created with the built-in imagegen tool using the prior atlas and original character as identity references. The previous `actions.png` remains unchanged.
+
+Rows, left to right:
+
+1. Eight subtle idle/breathing poses.
+2. Eight walk phases: contact, down, passing, up, opposite contact, down, passing, up.
+3. Eight run phases: contact, compression, passing, flight, opposite contact, compression, passing, flight.
+4. Launch, early ascent, ascent, apex, early descent, descent, landing compression, recovery.
+
+`CharacterAnimation.ts` selects frames independently of Cocos. Idle plays six poses per second, walk sixteen at 145 units/second and run twenty-four at 240 units/second. These are animation pose rates, not the game's rendering frame rate. Walk/run retain a shared normalized gait phase instead of restarting at each speed transition. Threshold hysteresis avoids row flicker during acceleration. Landing plays for approximately 0.14 seconds and can be interrupted immediately by a new jump.
+
+Atlas dimensions are not exact multiples of the grid. Runtime cell edges are rounded consistently to whole pixels, rather than sampling fractional pixels across adjacent cells. Foot anchors are measured from each cell's visible alpha bounds (alpha >= 64). Run flight uses the contact baseline so both feet can naturally leave the floor. The 102 × 102 scene canvas and physics collision geometry stay independent of these visual anchors.
+
+## Generation prompt
+
+Use case: stylized-concept. Production transparent 2D game sprite atlas. Use the existing atlas and original character as identity/style references. Preserve the black-haired boy, cream short-sleeve tunic, dark sash, loose dark trousers and boots, painterly anime rendering and proportions. Wide 2:1 image, ideally 2048 × 1024. Exactly eight equal columns and four equal rows; one full-body right-facing pose per cell. Same scale, fixed camera, common pelvis position, generous padding, boots on a common 94-percent baseline. Row 1: eight idle breathing phases. Row 2: eight ordered walk phases with alternating foot contacts and counter-swinging arms. Row 3: eight ordered run phases with compression, passing and flight, bent elbows and modest forward lean. Row 4: launch, early ascent, ascent, apex tuck, early descent, extension, landing compression and recovery. Seamless loops. Actual transparency; no floor, shadow, grid, labels, new clothing, equipment or effects. Prioritize coherent neighboring poses and fixed character scale.
+
+## Validation boundaries
+
+- Atlas inspected: four rows with eight visible poses, original character identity retained, alpha preserved.
+- Animation tests cover all looping frames, preserved gait phase, hysteresis, six airborne phases, two landing poses, jump interruption, reset and 30/60/144 FPS timing.
+- Existing sluice traversal tests remain in the suite; physics is unchanged.
+- In-engine appearance, sound and touch-device feel require manual preview. The older validation below describes the previous atlas only.
+
+---
+
+# Previous 16-frame atlas
 
 Generated with the built-in imagegen tool, using `assets/resources/reference/character.png` as the identity/style reference. Final selected asset: `assets/resources/character/actions.png` (1254 × 1254 RGBA, 4 × 4 equal cells). The original reference is preserved. A cleanup variant was reviewed but not selected; the apparent saturated fringe pixels in the selected sheet have negligible alpha (1–3 out of 255) and are not visible in the game preview.
 

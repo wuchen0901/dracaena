@@ -1,3 +1,4 @@
+import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, readSave, SAVE_KEY, SluiceWorld } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
@@ -10,7 +11,7 @@ export class PuzzleController extends Component {
   private actor!: Node;
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
-  private motion = 'idle'; private motionTime = 0;
+  private animation = new CharacterAnimation();
   private touchRun = false;
   private frame!: Node;
   private layers: Layer[] = [];
@@ -81,15 +82,17 @@ export class PuzzleController extends Component {
   }
   private loadCharacterPoses() {
     this.pending++;
-    resources.load('character/actions/texture', Texture2D, (error, texture) => {
+    resources.load('character/actions-smooth/texture', Texture2D, (error, texture) => {
       this.pending--;
       if (!this.isValid) return;
       if (error) { this.failed = true; this.status.string = 'Could not load character actions'; console.error(error); return; }
-      const w = texture.width / 4, h = texture.height / 4;
-      for (let row = 0; row < 4; row++) for (let column = 0; column < 4; column++) {
+      const w = texture.width / CHARACTER_COLUMNS, h = texture.height / CHARACTER_ROWS;
+      for (let row = 0; row < CHARACTER_ROWS; row++) for (let column = 0; column < CHARACTER_COLUMNS; column++) {
         const pose = new SpriteFrame(); pose.texture = texture;
-        pose.rect = new Rect(column * w, row * h, w, h);
-        pose.originalSize = new Size(w, h);
+        const left = Math.round(column * w), top = Math.round(row * h);
+        const width = Math.round((column + 1) * w) - left, height = Math.round((row + 1) * h) - top;
+        pose.rect = new Rect(left, top, width, height);
+        pose.originalSize = new Size(width, height);
         this.poses.push(pose);
       }
       this.actor.getComponent(UITransform)!.setContentSize(102, 102);
@@ -99,19 +102,11 @@ export class PuzzleController extends Component {
   }
   private animateCharacter(dt: number) {
     if (!this.poses.length) return;
-    const speed = Math.abs(this.world.vx);
-    const state = !this.world.grounded ? 'jump' : speed > 175 ? 'run' : speed > 8 ? 'walk' : 'idle';
-    if (state !== this.motion) { this.motion = state; this.motionTime = 0; }
-    let index: number;
-    if (state === 'jump') index = 12 + (this.world.vy > 420 ? 0 : this.world.vy > 80 ? 1 : this.world.vy > -120 ? 2 : 3);
-    else {
-      const row = state === 'run' ? 2 : state === 'walk' ? 1 : 0;
-      const fps = state === 'run' ? 12 * speed / 240 : state === 'walk' ? 8 * speed / 145 : 3;
-      this.motionTime += dt * fps;
-      index = row * 4 + Math.floor(this.motionTime) % 4;
-    }
+    const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
     this.actorSprite.spriteFrame = this.poses[index];
+    this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[index]);
   }
+
   private layer(name: string, asset: string, w: number, h: number, x: number, y: number, parallax: number, drift = 0, phase = 0, bird = false) {
     const node = this.picture(name, 'layers/' + asset, w, h, this.frame); node.setPosition(x, y, 0);
     this.layers.push({ node, x, y, parallax, drift, phase, bird }); return node;
@@ -144,7 +139,7 @@ export class PuzzleController extends Component {
     this.world.restore(this.world.save());
     this.facing = 1; this.cameraOffset = Math.max(0, this.world.x - 100);
     this.touchDirection = 0; this.touchRun = false; this.keys.clear();
-    this.motion = 'idle'; this.motionTime = 0; this.animateCharacter(0); this.place();
+    this.animation.reset(); this.animateCharacter(0); this.place();
   }
   private persist() {
     const serialized = JSON.stringify(this.world.save());

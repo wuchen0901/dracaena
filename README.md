@@ -4,7 +4,7 @@ Open `assets/Main.scene` in Cocos Creator 3.8.8 and preview Current scene.
 
 ## Independent images and nodes
 
-The scene no longer uses a single flattened landscape. `assets/resources/layers/` contains separate PNGs for sky, distant forest, main tree, left tree, ground/cliff, cloud, bird, and foreground foliage. The character uses a transparent 16-frame sprite sheet in `assets/resources/character/actions.png`; the original reference remains in `assets/resources/reference/character.png`.
+The scene no longer uses a single flattened landscape. `assets/resources/layers/` contains separate PNGs for sky, distant forest, main tree, left tree, ground/cliff, cloud, bird, and foreground foliage. The character uses a transparent 32-frame sprite sheet in `assets/resources/character/actions-smooth.png` (the previous `actions.png` is retained); the original reference remains in `assets/resources/reference/character.png`.
 
 `PuzzleController.ts` creates one node per element at runtime. The two clouds and two birds reuse their respective image assets but have independent positions and motion. Far forest, trees, ground, and foreground use different parallax factors. Clouds drift; birds fly and gently change silhouette scale. The sky stays fixed. The game frame clips layers cleanly.
 
@@ -14,7 +14,7 @@ Use **A/D** or **Left/Right** to walk. Hold **Shift** while moving to run; on-sc
 
 Checkpoints save automatically at the start, before the canal, when the lever opens, and after reaching the far bank. The gate state persists in local storage across reloads. **R** restores the latest safe checkpoint without clearing progress. A missed landing into deep water also returns the character safely to shore, preserving the open gate. Storage failures show a brief status message; in-memory checkpoints still work. The route continues to the right after the puzzle, without a victory screen.
 
-The sprite sheet has four rows: idle, walk, run, and jump, with four frames each. Grounded cycles follow movement speed; jump frames follow takeoff, ascent, apex, and descent. Frames share a fixed canvas and foot anchor, and facing left mirrors the art. The engine slices the sheet into `SpriteFrame` regions at runtime. Prompt and asset details are in `design/character-animation.md`.
+The sprite sheet has four rows of eight poses: idle, walk, run, and jump/landing. At normal movement speeds, walk displays 16 poses per second and run 24, retaining the same two/three gait cycles per second. Walk/run transitions preserve foot phase and use speed hysteresis; jump poses follow vertical motion, followed by two short landing poses. Per-frame foot anchors reduce baseline jitter while run flight frames can lift both feet. The engine slices rounded pixel cell boundaries at runtime. Prompt and asset details are in `design/character-animation.md`.
 
 ## Assets and preservation
 
