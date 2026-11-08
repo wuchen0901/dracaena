@@ -14,18 +14,19 @@ export function roadHeight(x: number) {
   const t = (x - ROAD.descentStart) / (ROAD.descentEnd - ROAD.descentStart);
   return CHANNEL.far + (ROAD.floor - CHANNEL.far) * t;
 }
-export type Checkpoint = 'reclamation' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared';
+export type Checkpoint = 'reclamation' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared' | 'scrap-yard';
+export const SALVAGE = { origin: 3650, end: 4900, checkpoint: 4900, beacon: 5020, floor: -140 };
 export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean; box?: { position: number; solved: boolean } };
 export const SAVE_KEY = 'the-last-light.sluice.v1';
 export function readSave(raw: string | null): SluiceSave | null {
   try {
     const s = JSON.parse(raw || 'null');
     if (!s || s.version !== 1 || typeof s.opened !== 'boolean' ||
-      ['reclamation', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) < 0 ||
-      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
+      ['reclamation', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard'].indexOf(s.checkpoint) < 0 ||
+      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
     if (s.box !== undefined && (!s.box || typeof s.box.position !== 'number' || !Number.isFinite(s.box.position) ||
         s.box.position < 0 || s.box.position > 1 || typeof s.box.solved !== 'boolean')) return null;
-    if ((['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0) && !s.box) return null;
+    if ((['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard'].indexOf(s.checkpoint) >= 0) && !s.box) return null;
     if (['crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0 && !s.box.solved) return null;
     return { version: 1, checkpoint: s.checkpoint, opened: s.opened, ...(s.box ? { box: { position: s.box.position, solved: s.box.solved } } : {}) };
   } catch { return null; }
@@ -48,7 +49,7 @@ export const ARCHIVE_KEY = 'the-last-light.autosaves.v1';
 export type AutoSave = { id: number; name: string; createdAt: number | null; progress: ProgressSave };
 export type SaveArchive = { version: 1; activeId: number | null; entries: AutoSave[] };
 export function emptyArchive(): SaveArchive { return { version: 1, activeId: null, entries: [] }; }
-const SAVE_SLOTS = ['reclamation', 'reclamation-alarm', 'station-exit', 'forest', 'sluice', 'sluice-opened', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'];
+const SAVE_SLOTS = ['reclamation', 'reclamation-alarm', 'station-exit', 'forest', 'sluice', 'sluice-opened', 'far-bank', 'patrol-approach', 'patrol-cleared', 'scrap-yard', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'];
 export function saveSlot(s: ProgressSave): string {
   if (s.checkpoint === 'reclamation' && s.alarm) return 'reclamation-alarm';
   if (s.checkpoint === 'sluice' && s.opened) return 'sluice-opened';
@@ -59,7 +60,7 @@ export function saveName(s: ProgressSave): string {
   const names: Record<Checkpoint, string> = {
     reclamation: '回收站 · 待处理区', 'station-exit': '逃出维修门', forest: '踏入森林',
     sluice: s.opened ? '水闸已开启' : '林间水闸', 'far-bank': '抵达对岸',
-    'patrol-approach': '夜林 · 警灯将近', 'patrol-cleared': '躲过搜寻', 'crate-approach': s.box && s.box.position > .99 ? '围墙前 · 箱子已就位' : '监狱围墙 · 旧木箱', 'crate-cleared': '翻越监狱围墙', 'dog-approach': '墙外 · 犬吠逼近', 'dog-cleared': '越过断口 · 甩开追犬',
+    'patrol-approach': '夜林 · 警灯将近', 'patrol-cleared': '躲过搜寻', 'crate-approach': s.box && s.box.position > .99 ? '围墙前 · 箱子已就位' : '监狱围墙 · 旧木箱', 'crate-cleared': '翻越监狱围墙', 'dog-approach': '墙外 · 犬吠逼近', 'dog-cleared': '越过断口 · 甩开追犬', 'scrap-yard': '中继信号 · 指向海岸',
   };
   return s.checkpoint === 'reclamation' && s.alarm ? '回收站 · 警报响起' : names[s.checkpoint];
 }
@@ -124,11 +125,11 @@ export class SluiceWorld {
   }
   interact() { if (!this.canInteract) return false; this.opened = true; return true; }
   jump() { this.buffer = .14; }
-  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(this.checkpoint) >= 0) ? { box: this.box.save() } : {}) }; }
+  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard'].indexOf(this.checkpoint) >= 0) ? { box: this.box.save() } : {}) }; }
   restore(save: SluiceSave) {
     this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0;
-    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : -90;
-    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
+    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : save.checkpoint === 'scrap-yard' ? SALVAGE.checkpoint : -90;
+    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
     this.box?.restore(save.box);
     if (this.box && (save.checkpoint === 'crate-approach' || save.checkpoint === 'crate-cleared')) {
       this.x = save.checkpoint === 'crate-cleared' ? this.box.exitX : this.box.entryX;
@@ -208,8 +209,9 @@ export class SluiceWorld {
     if (this.checkpoint === 'forest' && this.grounded && this.x >= 1050 && this.x < CHANNEL.left) this.checkpoint = 'sluice';
     if (this.checkpoint === 'sluice' && this.opened && this.grounded && this.x >= CHANNEL.right + 50 && this.y === CHANNEL.far) this.checkpoint = 'far-bank';
     if (this.checkpoint === 'far-bank' && this.grounded && this.x >= 3080) this.checkpoint = 'patrol-approach';
+    if (this.checkpoint === 'patrol-cleared' && this.grounded && this.x >= SALVAGE.checkpoint) this.checkpoint = 'scrap-yard';
     if (this.box && this.grounded) {
-      if (this.checkpoint === 'patrol-cleared' && this.x >= this.box.entryX) this.checkpoint = 'crate-approach';
+      if (this.checkpoint === 'scrap-yard' && this.x >= this.box.entryX) this.checkpoint = 'crate-approach';
       if (this.checkpoint === 'crate-approach' && this.x >= this.box.wallEndX + 35 && Math.abs(this.y - this.box.layout.floor) < 1) {
         this.box.solved = true; this.checkpoint = 'crate-cleared';
       }

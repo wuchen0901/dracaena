@@ -60,7 +60,7 @@ test('relocating the segment keeps local geometry and saved box placement intact
   const shifted = { ...PUSH_BOX_LAYOUT, origin: 6100 };
   const a = create(), b = create(shifted);
   a.box.move(100); b.box.restore(a.box.save());
-  assert.equal(b.box.x - a.box.x, 2000); assert.equal(b.box.wallX - a.box.wallX, 2000);
+  assert.equal(b.box.x - a.box.x, shifted.origin - PUSH_BOX_LAYOUT.origin); assert.equal(b.box.wallX - a.box.wallX, shifted.origin - PUSH_BOX_LAYOUT.origin);
   assert.equal(b.box.groundAt(b.box.wallX + 40), a.box.top);
 });
 

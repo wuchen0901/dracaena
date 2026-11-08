@@ -1,5 +1,5 @@
 /** Reusable chase beat: the dog has no jump action and never crosses the gap. */
-export const DOG_LAYOUT = { origin: 5300, floor: -140, approach: 40, trigger: 160, gap: 650, gapWidth: 90, speed: 185 };
+export const DOG_LAYOUT = { origin: 6300, floor: -140, approach: 40, trigger: 160, gap: 650, gapWidth: 90, speed: 185 };
 export class DogChaseSegment {
   readonly layout: typeof DOG_LAYOUT;
   x = 0; active = false; barking = false; caught = false; cleared = false;

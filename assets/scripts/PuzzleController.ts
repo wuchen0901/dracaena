@@ -1,5 +1,6 @@
 import { DogChaseSegment } from './DogChaseSegment';
 import { drawDogGap } from './DogGapArt';
+import { drawScrapYard } from './ScrapYardArt';
 import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
@@ -9,7 +10,7 @@ import { SearchEscape } from './SearchEscape';
 import { COVER, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, ROAD, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
+import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
@@ -37,6 +38,7 @@ export class PuzzleController extends Component {
   private touchDirection = 0;
   private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label; private touchGrab = false;
   private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
+  private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtTitle!: Label; private caughtHint!: Label;
   private world = new SluiceWorld(this.boxPuzzle, this.dog);
@@ -82,6 +84,9 @@ export class PuzzleController extends Component {
     this.prisonSign = this.text('第七区监狱\n外围隔离墙', 0, 0, 13, 140);
     this.prisonSign.lineHeight = 18; this.prisonSign.node.setParent(this.sceneRoot);
     this.dogArt = this.child('Broken prison escape path', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.scrapArt = this.child('Abandoned robot salvage line', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.scrapSign = this.text('07 号报废线\n记忆清除', 0, 0, 17, 220); this.scrapSign.node.setParent(this.sceneRoot);
+    this.beaconSign = this.text('海岸中继\n信号微弱 →', 0, 0, 17, 220); this.beaconSign.node.setParent(this.sceneRoot);
     this.dogNode = this.child('Pursuing guard dog', 112, 112, 0, 0, this.sceneRoot);
     this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
@@ -627,6 +632,9 @@ export class PuzzleController extends Component {
     this.sceneRoot.setPosition(0, -this.cameraLift, 0);
     this.drawCanal(); this.drawCoverTree();
     drawDogGap(this.dogArt, this.dog, this.cameraOffset);
+    drawScrapYard(this.scrapArt, this.cameraOffset, this.time);
+    this.scrapSign.node.setPosition(SALVAGE.origin + 500 - this.cameraOffset, 255, 0);
+    this.beaconSign.node.setPosition(SALVAGE.beacon - this.cameraOffset, 142, 0);
     this.dogNode.active = this.dog.active && this.dogPoses.length === 8;
     if (this.dogNode.active) {
       this.dogNode.getComponent(Sprite)!.spriteFrame = this.dogPoses[this.dog.frame];

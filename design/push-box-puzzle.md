@@ -1,6 +1,6 @@
 # Crate-assisted escape over the prison wall
 
-This puzzle is the perimeter wall of the prison that held the protagonist. The reclamation holding area can serve as its robot-processing wing. Its route position remains temporarily after the patrol at world origin x=4100; final story order is still adjustable. This is a provisional route position, not a final narrative order. There is no level-selection screen or completion overlay.
+This puzzle is the perimeter wall of the prison that held the protagonist. The reclamation holding area and robot-salvage conveyor are inside its grounds; the patrol and tree cover occur along the inner service route. The box puzzle starts at world origin x=5100, after the salvage line at x=3650..4900. The dog chase remains outside the wall. There is no level-selection screen or completion overlay.
 
 ## Segment and relocation
 
