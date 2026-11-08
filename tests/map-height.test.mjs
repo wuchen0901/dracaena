@@ -9,7 +9,7 @@ test('canal exit returns smoothly to the opening forest floor and stays level in
   assert.equal(roadHeight(ROAD.descentEnd), CHANNEL.near);
   for (const x of [3000, 4100, 6000, 100000]) assert.equal(roadHeight(x), CHANNEL.near);
   const box = new PushBoxSegment(); assert.equal(box.layout.floor, CHANNEL.near);
-  assert.equal(box.groundAt(box.layout.origin + box.layout.rampEnd), null);
+  assert.equal(box.groundAt(box.layout.origin + box.layout.wallEnd + 1), null);
 });
 test('walking the descent at 30/60/144 FPS stays grounded with no accumulated elevation', () => {
   for (const fps of [30, 60, 144]) {

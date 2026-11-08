@@ -1,3 +1,5 @@
+import { DogChaseSegment } from './DogChaseSegment';
+import { drawDogGap } from './DogGapArt';
 import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
@@ -33,8 +35,11 @@ export class PuzzleController extends Component {
   private layers: Layer[] = [];
   private keys = new Set<KeyCode>();
   private touchDirection = 0;
-  private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private touchGrab = false;
-  private world = new SluiceWorld(this.boxPuzzle);
+  private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label; private touchGrab = false;
+  private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
+  private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
+  private caughtTitle!: Label; private caughtHint!: Label;
+  private world = new SluiceWorld(this.boxPuzzle, this.dog);
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
@@ -74,6 +79,11 @@ export class PuzzleController extends Component {
       const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
     }
     this.boxArt = this.child('Movable crate and maintenance platform', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.prisonSign = this.text('第七区监狱\n外围隔离墙', 0, 0, 13, 140);
+    this.prisonSign.lineHeight = 18; this.prisonSign.node.setParent(this.sceneRoot);
+    this.dogArt = this.child('Broken prison escape path', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.dogNode = this.child('Pursuing guard dog', 112, 112, 0, 0, this.sceneRoot);
+    this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
     this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
@@ -127,7 +137,7 @@ export class PuzzleController extends Component {
     this.place();
     this.node.addComponent(ForestMusic);
   }
-  onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
+  onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); this.barkSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
   private child(name: string, w: number, h: number, x: number, y: number, parent: Node = this.node) {
     const n = new Node(name); n.setParent(parent); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
   }
@@ -185,6 +195,20 @@ export class PuzzleController extends Component {
       }
     });
   }
+  private loadDogPoses() {
+    this.pending++;
+    resources.load('dog/chase-bark/texture', Texture2D, (error, texture) => {
+      this.pending--;
+      if (!this.isValid) return;
+      if (error) { this.failed = true; this.status.string = 'Could not load guard dog'; console.error(error); return; }
+      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+        const x = Math.round(col * texture.width / 4), y = Math.round(row * texture.height / 2);
+        const w = Math.round((col + 1) * texture.width / 4) - x, h = Math.round((row + 1) * texture.height / 2) - y;
+        const frame = new SpriteFrame(); frame.texture = texture; frame.rect = new Rect(x, y, w, h); frame.originalSize = new Size(w, h);
+        this.dogPoses.push(frame);
+      }
+    });
+  }
   private loadPushPullPoses() {
     this.pending++;
     resources.load('character/robot-push-pull/texture', Texture2D, (error, texture) => {
@@ -206,7 +230,7 @@ export class PuzzleController extends Component {
     this.breathScaleY = 1;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
     const coverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
-    const gripping = !this.escape.caught && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
+    const gripping = !(this.escape.caught || this.dog.caught) && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
       this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const contact = this.world.x < this.boxPuzzle.x ? this.boxPuzzle.left : this.boxPuzzle.right;
     const effort = this.pushPull.frame(dt, gripping, this.boxPuzzle.x - this.world.x,
@@ -270,7 +294,7 @@ export class PuzzleController extends Component {
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
     const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
     this.text(value, x, y, 30, 90);
-    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if (this.escape.caught || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
+    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if ((this.escape.caught || this.dog.caught) || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
     const release = () => { if (interact) this.touchGrab = false; if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
   }
@@ -278,8 +302,8 @@ export class PuzzleController extends Component {
     const panel = this.child('Caught · retry', 1280, 590, 0, 0);
     const art = panel.addComponent(Graphics); art.fillColor = new Color(8, 13, 23, 210);
     art.rect(-640, -295, 1280, 590); art.fill();
-    const title = this.text('被警察抓住了', 0, 40, 32, 700); title.node.setParent(panel);
-    const hint = this.text('警车离开前，请留在树的遮挡范围内', 0, -10, 18, 700); hint.node.setParent(panel);
+    const title = this.caughtTitle = this.text('被警察抓住了', 0, 40, 32, 700); title.node.setParent(panel);
+    const hint = this.caughtHint = this.text('警车离开前，请留在树的遮挡范围内', 0, -10, 18, 700); hint.node.setParent(panel);
     const retry = this.child('Retry search encounter', 300, 60, 0, -85, panel);
     const button = retry.addComponent(Graphics); button.fillColor = new Color(48, 73, 65);
     button.roundRect(-150, -30, 300, 60, 8); button.fill();
@@ -293,13 +317,13 @@ export class PuzzleController extends Component {
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
     if (fresh && e.keyCode === KeyCode.ESCAPE) { this.togglePause(); return; }
     if (this.paused) return;
-    if (this.escape.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
+    if (this.escape.caught || this.dog.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
     if (fresh && [KeyCode.SPACE, KeyCode.KEY_W, KeyCode.ARROW_UP].indexOf(e.keyCode) >= 0) this.world.jump();
     if (fresh && e.keyCode === KeyCode.KEY_E) this.interact();
     if (fresh && e.keyCode === KeyCode.KEY_R) this.reset();
   }
   private interact() {
-    if (this.escape.caught || this.paused) return;
+    if ((this.escape.caught || this.dog.caught) || this.paused) return;
     if (this.world.interact()) {
       if (this.leverClip) this.leverSound.playOneShot(this.leverClip, .5);
       this.persist();
@@ -325,7 +349,7 @@ export class PuzzleController extends Component {
     this.pausePanel = panel; panel.active = false;
   }
   private togglePause() {
-    if (this.escape.caught) return;
+    if (this.escape.caught || this.dog.caught) return;
     this.saveList.active = false;
     this.paused = !this.paused; this.pausePanel.active = this.paused; this.releaseInputs();
   }
@@ -349,7 +373,7 @@ export class PuzzleController extends Component {
     });
     for (const [caption, x, action] of [
       ['上一页', -310, () => this.showSaves(this.savePage - 1)],
-      [`${this.savePage + 1} / ${pages} · 返回`, 0, () => { this.saveList.active = false; this.paused = !this.escape.caught; this.pausePanel.active = this.paused; }],
+      [`${this.savePage + 1} / ${pages} · 返回`, 0, () => { this.saveList.active = false; this.paused = !(this.escape.caught || this.dog.caught); this.pausePanel.active = this.paused; }],
       ['下一页', 310, () => this.showSaves(this.savePage + 1)],
     ] as [string, number, () => void][]) {
       const label = this.text(caption, x, -245, 20, 260); label.node.setParent(this.saveList);
@@ -377,7 +401,7 @@ export class PuzzleController extends Component {
     catch { this.storageFailed = true; }
   }
   private persist() {
-    if (this.escape.active || this.escape.caught || this.boxPuzzle.moving) return;
+    if (this.escape.active || this.escape.caught || this.dog.caught || (this.dog.active && !this.dog.cleared) || this.boxPuzzle.moving) return;
     const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
     const previous = readProgress(this.saved);
     // Save meaningful story milestones, not every lighting interpolation frame.
@@ -386,6 +410,11 @@ export class PuzzleController extends Component {
     this.saved = JSON.stringify(progress); this.writeArchive(); this.saveNotice = 2;
   }
   private setupSluiceAudio() {
+    this.barkSound = this.node.addComponent(AudioSource); this.barkSound.loop = true;
+    this.barkSound.playOnAwake = false; this.barkSound.volume = 0;
+    resources.load('audio/guard-dog-bark', AudioClip, (error, clip) => {
+      if (this.isValid && !error) this.barkClip = clip;
+    });
     this.factorySound = this.node.addComponent(AudioSource); this.factorySound.loop = true;
     this.factorySound.playOnAwake = false; this.factorySound.volume = 0;
     this.alarmSound = this.node.addComponent(AudioSource); this.alarmSound.loop = true;
@@ -432,10 +461,21 @@ export class PuzzleController extends Component {
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     if (direction) this.facing = direction;
     const underCover = !this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded);
-    if (this.escape.caught) this.world.vx = 0;
+    const recovery = this.world.recoverySerial;
+    if (this.escape.caught || this.dog.caught) this.world.vx = 0;
     else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)), this.touchGrab || this.keys.has(KeyCode.KEY_E));
+    if (this.world.recoverySerial !== recovery) { this.releaseInputs(); this.dog.reset(this.world.checkpoint === 'dog-cleared'); }
+    this.dog.step(dt, this.world.x, this.world.y, this.world.grounded);
+    if (this.dog.cleared && this.world.checkpoint === 'dog-approach') this.world.checkpoint = 'dog-cleared';
+    if (this.dog.barking && this.audioUnlocked && this.barkClip && !this.barkSound.playing) {
+      this.barkSound.clip = this.barkClip; this.barkSound.play();
+    }
+    if (!this.dog.barking && this.barkSound.playing) this.barkSound.stop();
+    this.barkSound.volume = this.dog.barking ? .55 * Math.max(0, 1 - Math.abs(this.world.x - this.dog.x) / 950) : 0;
     this.escape.step(dt, this.cover.contains(this.world.x, this.world.grounded), this.world.x >= COVER.left);
-    if (this.escape.caught) {
+    if (this.escape.caught || this.dog.caught) {
+      this.caughtTitle.string = this.dog.caught ? '被追犬追上了' : '被警察抓住了';
+      this.caughtHint.string = this.dog.caught ? '继续向右，在断口前跳到对岸' : '警车离开前，请留在树的遮挡范围内';
       this.releaseInputs(); this.caughtPanel.active = true;
     }
     if (this.escape.cleared && this.world.checkpoint === 'patrol-approach') this.world.checkpoint = 'patrol-cleared';
@@ -459,7 +499,7 @@ export class PuzzleController extends Component {
     this.persist();
     const sirenVolume = (1 - this.escape.departure) * this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - 3500) / 1500);
     this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
-    this.animateCharacter(this.escape.caught ? 0 : dt);
+    this.animateCharacter(this.escape.caught || this.dog.caught ? 0 : dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     this.leverPrompt.string = nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
@@ -481,12 +521,15 @@ export class PuzzleController extends Component {
     rect(viewLeft, -420, Math.max(0, Math.min(c.left, viewRight) - viewLeft), c.near + 420, earth);
     const farLeft = Math.max(c.right, viewLeft);
     if (viewRight > farLeft) {
-      const points = [farLeft, ROAD.descentStart, ROAD.descentEnd, viewRight]
+      const points = [farLeft, ROAD.descentStart, ROAD.descentEnd, this.dog.gapLeft, this.dog.gapRight, viewRight]
         .filter(x => x >= farLeft && x <= viewRight).sort((a, b) => a - b);
-      g.fillColor = earth; g.moveTo(farLeft - this.cameraOffset, -420);
-      for (const x of points) g.lineTo(x - this.cameraOffset, roadHeight(x));
-      g.lineTo(viewRight - this.cameraOffset, -420); g.close(); g.fill();
-      for (let i = 1; i < points.length; i++) line(points[i - 1], roadHeight(points[i - 1]), points[i], roadHeight(points[i]), grass, 4);
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (a >= this.dog.gapLeft && b <= this.dog.gapRight) continue;
+        g.fillColor = earth; g.moveTo(a - this.cameraOffset, -420); g.lineTo(a - this.cameraOffset, roadHeight(a));
+        g.lineTo(b - this.cameraOffset, roadHeight(b)); g.lineTo(b - this.cameraOffset, -420); g.close(); g.fill();
+        line(a, roadHeight(a), b, roadHeight(b), grass, 4);
+      }
     }
     rect(c.left, -420, c.right - c.left, c.bed + 420, stone);
     if (viewLeft < c.left) line(viewLeft, c.near, Math.min(c.left, viewRight), c.near, grass, 4);
@@ -498,7 +541,7 @@ export class PuzzleController extends Component {
     for (const x of [c.logLeft + 15, c.logRight - 15]) rect(x, c.bed, 9, 230, new Color(65, 73, 54));
     // Fence fragments continue beyond the puzzle without a level-end screen.
     for (let x = Math.max(1080, Math.floor(viewLeft / 160) * 160); x < viewRight; x += 160) {
-      if (x > 1340 && x < 1850) continue;
+      if (x > 1340 && x < 1850 || x < this.dog.gapRight + 20 && x + 100 > this.dog.gapLeft - 20) continue;
       const floor = x < c.left ? c.near : roadHeight(x);
       rect(x, floor, 7, 67, new Color(71, 76, 58));
       line(x, floor + 45, x + 100, (x + 100 < c.left ? c.near : roadHeight(x + 100)) + 38, new Color(76, 81, 61), 4);
@@ -552,7 +595,7 @@ export class PuzzleController extends Component {
     for (let x = c.logLeft + 15; x < c.logRight; x += 39) line(x, this.world.logY - 18, x + 22, this.world.logY - 14, new Color(58, 52, 39));
     // Sparse grass marks walkable banks, leaving the canal edges unobscured.
     for (let x = Math.floor(viewLeft / 31) * 31; x < viewRight; x += 31) {
-      if (x > c.left - 20 && x < c.right + 20) continue;
+      if (x > c.left - 20 && x < c.right + 20 || x > this.dog.gapLeft - 20 && x < this.dog.gapRight + 20) continue;
       const y = x <= c.left ? c.near : roadHeight(x);
       line(x, y, x + 4, y + 7 + Math.sin(x) * 3, grass, 1);
     }
@@ -579,7 +622,15 @@ export class PuzzleController extends Component {
     const foot = this.world.y;
     this.sceneRoot.setPosition(0, -this.cameraLift, 0);
     this.drawCanal(); this.drawCoverTree();
+    drawDogGap(this.dogArt, this.dog, this.cameraOffset);
+    this.dogNode.active = this.dog.active && this.dogPoses.length === 8;
+    if (this.dogNode.active) {
+      this.dogNode.getComponent(Sprite)!.spriteFrame = this.dogPoses[this.dog.frame];
+      this.dogNode.getComponent(UITransform)!.setAnchorPoint(.5, this.dog.barking ? .15 : .21);
+      this.dogNode.setPosition(this.dog.x - this.cameraOffset, this.dog.layout.floor, 0);
+    }
     drawPushBox(this.boxArt, this.boxPuzzle, this.cameraOffset);
+    this.prisonSign.node.setPosition((this.boxPuzzle.wallX + this.boxPuzzle.wallEndX) / 2 - this.cameraOffset - 4, this.boxPuzzle.layout.floor + 113, 0);
     this.opening.node.setPosition(-this.cameraOffset, 0, 0);
     drawReclamationOpening(this.opening, this.time, this.alarmTriggered);
     const signsX = [-1960, -2340, -1210], signsY = [115, 110, 70];

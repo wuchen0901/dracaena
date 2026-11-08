@@ -1,3 +1,4 @@
+import type { DogChaseSegment } from './DogChaseSegment';
 import type { PushBoxSegment } from './PushBoxSegment';
 /** Engine-independent sluice geometry, movement and save validation. Y points up. */
 export const CHANNEL = {
@@ -13,19 +14,19 @@ export function roadHeight(x: number) {
   const t = (x - ROAD.descentStart) / (ROAD.descentEnd - ROAD.descentStart);
   return CHANNEL.far + (ROAD.floor - CHANNEL.far) * t;
 }
-export type Checkpoint = 'reclamation' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared';
+export type Checkpoint = 'reclamation' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared';
 export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean; box?: { position: number; solved: boolean } };
 export const SAVE_KEY = 'the-last-light.sluice.v1';
 export function readSave(raw: string | null): SluiceSave | null {
   try {
     const s = JSON.parse(raw || 'null');
     if (!s || s.version !== 1 || typeof s.opened !== 'boolean' ||
-      ['reclamation', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared'].indexOf(s.checkpoint) < 0 ||
-      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
+      ['reclamation', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) < 0 ||
+      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
     if (s.box !== undefined && (!s.box || typeof s.box.position !== 'number' || !Number.isFinite(s.box.position) ||
         s.box.position < 0 || s.box.position > 1 || typeof s.box.solved !== 'boolean')) return null;
-    if ((s.checkpoint === 'crate-approach' || s.checkpoint === 'crate-cleared') && !s.box) return null;
-    if (s.checkpoint === 'crate-cleared' && !s.box.solved) return null;
+    if ((['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0) && !s.box) return null;
+    if (['crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(s.checkpoint) >= 0 && !s.box.solved) return null;
     return { version: 1, checkpoint: s.checkpoint, opened: s.opened, ...(s.box ? { box: { position: s.box.position, solved: s.box.solved } } : {}) };
   } catch { return null; }
 }
@@ -51,7 +52,7 @@ export function saveName(s: ProgressSave): string {
   const names: Record<Checkpoint, string> = {
     reclamation: '回收站 · 待处理区', 'station-exit': '逃出维修门', forest: '踏入森林',
     sluice: s.opened ? '水闸已开启' : '林间水闸', 'far-bank': '抵达对岸',
-    'patrol-approach': '夜林 · 警灯将近', 'patrol-cleared': '躲过搜寻', 'crate-approach': s.box && s.box.position > .99 ? '箱子已就位' : '旧箱与高台', 'crate-cleared': '越过旧维护台',
+    'patrol-approach': '夜林 · 警灯将近', 'patrol-cleared': '躲过搜寻', 'crate-approach': s.box && s.box.position > .99 ? '围墙前 · 箱子已就位' : '监狱围墙 · 旧木箱', 'crate-cleared': '翻越监狱围墙', 'dog-approach': '墙外 · 犬吠逼近', 'dog-cleared': '越过断口 · 甩开追犬',
   };
   return s.checkpoint === 'reclamation' && s.alarm ? '回收站 · 警报响起' : names[s.checkpoint];
 }
@@ -79,7 +80,8 @@ export function appendAutosave(a: SaveArchive, progress: ProgressSave, createdAt
 }
 export class SluiceWorld {
   readonly box?: PushBoxSegment;
-  constructor(box?: PushBoxSegment) { this.box = box; }
+  readonly dog?: DogChaseSegment; recoverySerial = 0;
+  constructor(box?: PushBoxSegment, dog?: DogChaseSegment) { this.box = box; this.dog = dog; }
   x = -2050; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
   opened = false; fill = 0; checkpoint: Checkpoint = 'reclamation';
   private coyote = .12;
@@ -91,19 +93,27 @@ export class SluiceWorld {
   }
   interact() { if (!this.canInteract) return false; this.opened = true; return true; }
   jump() { this.buffer = .14; }
-  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (this.checkpoint === 'crate-approach' || this.checkpoint === 'crate-cleared') ? { box: this.box.save() } : {}) }; }
+  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(this.checkpoint) >= 0) ? { box: this.box.save() } : {}) }; }
   restore(save: SluiceSave) {
     this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0;
     this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -2050 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : -90;
-    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
+    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
     this.box?.restore(save.box);
     if (this.box && (save.checkpoint === 'crate-approach' || save.checkpoint === 'crate-cleared')) {
       this.x = save.checkpoint === 'crate-cleared' ? this.box.exitX : this.box.entryX;
-      this.y = save.checkpoint === 'crate-cleared' ? this.box.top : this.box.layout.floor;
+      this.y = this.box.layout.floor;
+    }
+    if (this.dog) {
+      this.dog.reset(save.checkpoint === 'dog-cleared');
+      if (save.checkpoint === 'dog-approach' || save.checkpoint === 'dog-cleared') {
+        this.x = save.checkpoint === 'dog-cleared' ? this.dog.exitX : this.dog.approachX;
+        this.y = this.dog.layout.floor;
+      }
     }
     this.vx = this.vy = this.buffer = 0; this.grounded = true; this.coyote = .12;
   }
   groundAt(x: number) {
+    const gapGround = this.dog?.groundAt(x); if (gapGround !== null && gapGround !== undefined) return gapGround;
     const boxGround = this.box?.groundAt(x); if (boxGround !== null && boxGround !== undefined) return boxGround;
     if (x <= CHANNEL.left) return CHANNEL.near;
     if (x >= CHANNEL.right) return roadHeight(x);
@@ -116,7 +126,9 @@ export class SluiceWorld {
     let remaining = Math.min(Math.max(delta, 0), .25);
     while (remaining > 1e-8) {
       const dt = Math.min(remaining, 1 / 120); remaining -= dt;
+      const recovery = this.recoverySerial;
       this.tick(dt, direction, running, grabbing);
+      if (this.recoverySerial !== recovery) break;
     }
   }
   private tick(dt: number, direction: number, running: boolean, grabbing: boolean) {
@@ -143,7 +155,8 @@ export class SluiceWorld {
       { edge: CHANNEL.right, top: CHANNEL.far, right: true },
       { edge: CHANNEL.logLeft, top: this.logY, right: true },
       { edge: CHANNEL.logRight, top: this.logY, right: false },
-      ...(this.box ? (holdingBox ? this.box.walls().slice(0, 1) : this.box.walls()) : []),
+      ...(this.box ? this.box.walls(!holdingBox) : []),
+      ...(this.dog ? this.dog.walls() : []),
     ];
     for (const wall of walls) {
       if (this.y >= wall.top - 1) continue;
@@ -166,11 +179,12 @@ export class SluiceWorld {
     if (this.checkpoint === 'far-bank' && this.grounded && this.x >= 3080) this.checkpoint = 'patrol-approach';
     if (this.box && this.grounded) {
       if (this.checkpoint === 'patrol-cleared' && this.x >= this.box.entryX) this.checkpoint = 'crate-approach';
-      if (this.checkpoint === 'crate-approach' && this.x >= this.box.wallX + 35 && this.y >= this.box.top - 1) {
+      if (this.checkpoint === 'crate-approach' && this.x >= this.box.wallEndX + 35 && Math.abs(this.y - this.box.layout.floor) < 1) {
         this.box.solved = true; this.checkpoint = 'crate-cleared';
       }
     }
+    if (this.dog && this.checkpoint === 'crate-cleared' && this.grounded && this.x >= this.dog.approachX) this.checkpoint = 'dog-approach';
     // A missed landing is a gentle return to shore, without a drowning sequence.
-    if (this.y < -500 || (this.opened && this.x > CHANNEL.left && this.x < CHANNEL.right && this.y + 60 < this.waterY)) this.restore(this.save());
+    if (this.y < -500 || (this.opened && this.x > CHANNEL.left && this.x < CHANNEL.right && this.y + 60 < this.waterY)) { this.restore(this.save()); this.recoverySerial++; }
   }
 }

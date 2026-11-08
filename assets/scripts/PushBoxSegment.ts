@@ -2,7 +2,7 @@
 export const PUSH_BOX_LAYOUT = {
   origin: 4100, floor: -140, entry: 60, boxStart: 310, boxMin: 180,
   boxWidth: 110, boxHeight: 100, wall: 660, height: 205,
-  platformEnd: 960, rampEnd: 1260, pushSpeed: 72,
+  wallEnd: 810, pushSpeed: 72,
 };
 export class PushBoxSegment {
   readonly layout: typeof PUSH_BOX_LAYOUT;
@@ -15,7 +15,8 @@ export class PushBoxSegment {
   get wallX() { return this.layout.origin + this.layout.wall; }
   get top() { return this.layout.floor + this.layout.height; }
   get entryX() { return this.layout.origin + this.layout.entry; }
-  get exitX() { return this.wallX + 100; }
+  get wallEndX() { return this.layout.origin + this.layout.wallEnd; }
+  get exitX() { return this.wallEndX + 80; }
   get minimum() { return this.layout.origin + this.layout.boxMin; }
   get maximum() { return this.wallX - this.layout.boxWidth / 2; }
   canGrab(x: number, y: number, grounded: boolean) {
@@ -29,15 +30,17 @@ export class PushBoxSegment {
   }
   groundAt(x: number): number | null {
     const c = this.layout, local = x - c.origin;
-    if (local >= c.wall && local <= c.platformEnd) return this.top;
-    if (local > c.platformEnd && local < c.rampEnd) return c.floor + c.height * (c.rampEnd - local) / (c.rampEnd - c.platformEnd);
+    if (local >= c.wall && local <= c.wallEnd) return this.top;
     if (x >= this.left - 3 && x <= this.right + 3) return c.floor + c.boxHeight;
     return null;
   }
-  walls() { return [
+  walls(includeCrate = true) { return [
     { edge: this.wallX, top: this.top, right: true },
+    { edge: this.wallEndX, top: this.top, right: false },
+    ...(includeCrate ? [
     { edge: this.left, top: this.layout.floor + this.layout.boxHeight, right: true },
     { edge: this.right, top: this.layout.floor + this.layout.boxHeight, right: false },
+    ] : []),
   ]; }
   save() { return { position: (this.x - this.minimum) / (this.maximum - this.minimum), solved: this.solved }; }
   restore(state?: { position: number; solved: boolean }) {

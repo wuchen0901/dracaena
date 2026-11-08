@@ -1,0 +1,17 @@
+# Guard dog pursuit after the prison wall
+
+The provisional route now continues from the prison exterior into a dog pursuit. `DogChaseSegment.ts` owns the local layout and chase state. Origin is x=5300, approach is +40, pursuit trigger is +160, and the broken path spans +650..+740 at y=-140. This 90-unit gap is crossable with a normal walking jump; sprinting is optional.
+
+The dog appears 260 units behind the pursuit trigger and runs right at 185 units/second. It has no jump state and clamps its center 58 units short of the near edge, keeping the full sprite on solid ground. At that point it plants its paws and cycles the bark poses. It never follows the player across. If it reaches the player before the gap, the existing failure overlay offers archive loading. Falling into the gap restores the safe approach and resets the pursuit. Pause freezes the chase clock.
+
+The world model receives the optional dog segment, samples its gap floor and bank walls, and leaves other puzzles independent. Terrain, grass and fences are interrupted at the same gap geometry. `DogGapArt.ts` adds broken stone edges and approach markings. The route returns to the same ground height on both sides.
+
+Named automatic checkpoints are “墙外 · 犬吠逼近” and “越过断口 · 甩开追犬”. Active pursuit and caught states do not overwrite a safe snapshot. Completion is saved only after the protagonist lands safely beyond the far edge. Loading that checkpoint restores the dog barking on the near side; loading an earlier wall save resets it. Normalized crate state remains in both new checkpoints.
+
+The built-in imagegen tool generated `assets/resources/dog/chase-bark.png`: four running poses and four planted barking poses, true transparency. Runtime foot anchors are visually estimated. `design/generate_dog_bark.py` creates an original synthesized two-bark audio loop with no external recording. The loop starts only after gesture unlock and the dog reaching its edge, fades with distance, stops when loading earlier states and cleans up on destruction. Audio realism and mixing need listening review.
+
+Validation: 58 tests and Cocos TypeScript checking pass. Tests cover walking-jump escape at 30/60/144 FPS, catching a stationary protagonist, a fixed dog stop at the near edge, missed jumps, old-wall resets and completion restoration. Live preview was attempted, but Creator was not running the project, Dashboard remained connecting, and localhost:7456 refused the connection. In-engine appearance, listening and real touch-device checks remain pending.
+
+## Generation prompt
+
+Use case: stylized-concept. Transparent production 2D game sprite atlas of one prison guard dog, a lean alert German shepherd with brown/tan coat, black saddle and muzzle, collar, painterly softly shaded natural forest game art, readable at small size. EXACTLY 4 equal columns and 2 equal rows, 8 poses, wide 2:1 aspect. Each dog full body RIGHT-facing strict side view, same size proportions and fixed foot baseline at 92% cell height, generous empty padding within square cells. Row 1: 4 distinct RUN cycle phases, extended foreleg and hindleg contact, gathered passing, stretched flight, opposite contact; energetic forward chase. Row 2: 4 BARKING poses, all four paws planted in fixed locations, alert braced stance, head rises and neck extends, mouth opens wide to bark then closes and settles. Same dog identity throughout. Actual transparent background, no floor, shadow, grid, text, crate, human, scenery, speech bubble or extra props.

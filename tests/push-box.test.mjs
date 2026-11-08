@@ -12,7 +12,7 @@ function advance(w, seconds, dir = 0, grab = false, fps = 60) {
   for (let i = 0; i < Math.round(seconds * fps); i++) w.step(1 / fps, dir, false, grab);
 }
 for (const fps of [30, 60, 144]) {
-  test(`push box, climb it, reach the high ledge and descend the ramp at ${fps} FPS`, () => {
+  test(`push box, climb it, cross the prison wall and land outside at ${fps} FPS`, () => {
     const w = create(), box = w.box;
     advance(w, 2, 1, false, fps);
     assert(Math.abs(w.x - (box.left - 12)) < .1, 'crate blocks ordinary movement');
@@ -23,10 +23,11 @@ for (const fps of [30, 60, 144]) {
     w.jump(); advance(w, .9, 1, false, fps);
     assert.equal(w.grounded, true); assert.equal(w.y, box.layout.floor + box.layout.boxHeight);
     advance(w, .2, 0, false, fps);
-    w.jump(); advance(w, 1.2, 1, false, fps);
+    w.jump(); advance(w, 1, 1, false, fps);
     assert(w.x > box.wallX + 35); assert.equal(w.y, box.top);
+    assert.equal(box.solved, false, 'wall top is not yet outside the prison');
+    advance(w, 3, 1, false, fps); assert(w.x > box.wallEndX + 35);
     assert.equal(w.checkpoint, 'crate-cleared'); assert.equal(box.solved, true);
-    advance(w, 5, 1, false, fps); assert(w.x > box.layout.origin + box.layout.rampEnd);
     assert.equal(w.y, box.layout.floor);
   });
 }
@@ -51,7 +52,7 @@ test('box position and solved checkpoint restore from an archived progress snaps
   const restored = create(); restored.restore(save);
   assert.equal(restored.box.x, w.box.x); assert.equal(restored.x, restored.box.entryX);
   const solved = readProgress(JSON.stringify({ ...save, checkpoint: 'crate-cleared', box: { position: 1, solved: true } }));
-  restored.restore(solved); assert.equal(restored.box.solved, true); assert.equal(restored.y, restored.box.top);
+  restored.restore(solved); assert.equal(restored.box.solved, true); assert.equal(restored.y, restored.box.layout.floor);
   assert.equal(readProgress(JSON.stringify({ ...save, box: { position: 2, solved: false } })), null);
   assert.equal(readProgress(JSON.stringify({ ...save, checkpoint: 'crate-cleared', box: { position: 1, solved: false } })), null);
 });
@@ -61,4 +62,11 @@ test('relocating the segment keeps local geometry and saved box placement intact
   a.box.move(100); b.box.restore(a.box.save());
   assert.equal(b.box.x - a.box.x, 2000); assert.equal(b.box.wallX - a.box.wallX, 2000);
   assert.equal(b.box.groundAt(b.box.wallX + 40), a.box.top);
+});
+
+test('outer face blocks walking back through the wall', () => {
+  const w = create(), box = w.box;
+  w.x = box.wallEndX + 30; w.y = box.layout.floor;
+  advance(w, 2, -1);
+  assert(w.x >= box.wallEndX + 12);
 });

@@ -51,10 +51,16 @@ Progress saves automatically at safe milestones, including the station exit and 
 
 ## Push-box puzzle segment
 
-A provisional puzzle follows the patrol: hold **E** plus left/right to push or pull a crate beneath a high maintenance platform, release E, jump onto the crate and then onto the platform. Touch supports holding the E/interact button while using the movement buttons. Ordinary walking does not move the crate. A ramp continues the route after the platform.
+A provisional puzzle follows the patrol: hold **E** plus left/right to push or pull a crate beneath a prison perimeter wall, release E, jump onto the crate and then onto the platform. Touch supports holding the E/interact button while using the movement buttons. Ordinary walking does not move the crate. Drop down on the far side to escape; the exterior has no ramp.
 
-Placement and dimensions live in `assets/scripts/PushBoxSegment.ts`; the drawing and collision use that shared geometry. Named autosaves retain partial box placement and completion. Load **旧箱与高台** to try the puzzle from its approach. See `design/push-box-puzzle.md` for relocation, save behavior and validation boundaries.
+Placement and dimensions live in `assets/scripts/PushBoxSegment.ts`; the drawing and collision use that shared geometry. Named autosaves retain partial box placement and completion. Load **监狱围墙 · 旧木箱** to try the puzzle from its approach. See `design/push-box-puzzle.md` for relocation, save behavior and validation boundaries.
 
 Dedicated push/pull animation uses `assets/resources/character/robot-push-pull.png`. While gripping, the robot faces the crate, braces both hands for pushing and steps backward for pulling. Animation timing and contact anchors are documented in `design/push-pull-animation.md`.
 
-The raised canal bank now descends back to the opening forest floor before the patrol. The crate platform is a local rise and its exit ramp returns to that same floor; elevation does not accumulate across the route. Vertical camera bounds preserve headroom during jumps and high-platform loads.
+The raised canal bank now descends back to the opening forest floor before the patrol. The prison wall is a local obstacle and the outside landing returns to that same floor; elevation does not accumulate across the route. Vertical camera bounds preserve headroom during jumps and high-platform loads.
+
+## Guard dog pursuit
+
+After the prison wall, a guard dog chases from behind. Continue right and jump across the broken path; a normal walking jump is sufficient. The dog stops at the near edge and barks, while the route continues at the same ground height on the far side. Getting caught opens the failure/load screen; a missed jump returns to the automatic approach checkpoint. Named history retains both the pre-chase and escaped states.
+
+Dog sprites: `assets/resources/dog/chase-bark.png`. Pursuit layout: `assets/scripts/DogChaseSegment.ts`. Audio regeneration: `python3 design/generate_dog_bark.py`. See `design/dog-chase.md` for save and validation details.
