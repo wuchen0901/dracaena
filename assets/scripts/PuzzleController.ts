@@ -3,7 +3,7 @@ import { SearchEscape } from './SearchEscape';
 import { COVER, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, readProgress, SAVE_KEY, SluiceWorld } from './SluiceWorld';
+import { CHANNEL, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, appendAutosave, sameMilestone } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
@@ -36,6 +36,7 @@ export class PuzzleController extends Component {
   private waterClip: AudioClip | null = null; private leverClip: AudioClip | null = null;
   private audioUnlocked = false; private storageFailed = false;
   private cameraOffset = 0;
+  private archive: SaveArchive = emptyArchive(); private saveList!: Node; private savePage = 0;
   private paused = false; private pausePanel!: Node;
   private caughtPanel!: Node;
   private status!: Label;
@@ -79,6 +80,7 @@ export class PuzzleController extends Component {
     this.button('E', 310, -322, 0, false, true);
     this.createCaughtPanel();
     this.createPauseMenu();
+    this.saveList = this.child('Autosave history', 1280, 590, 0, 0); this.saveList.active = false;
     try {
       const raw = sys.localStorage.getItem(SAVE_KEY), save = readProgress(raw);
       if (save) {
@@ -92,7 +94,24 @@ export class PuzzleController extends Component {
         }
       }
     } catch { this.storageFailed = true; }
-    this.saved = ''; this.persist();
+    try {
+      const history = readArchive(sys.localStorage.getItem(ARCHIVE_KEY));
+      if (history && history.entries.length) {
+        this.archive = history;
+        const active = history.entries.find(e => e.id === history.activeId)!;
+        this.world.restore(active.progress); this.night = this.savedNight = active.progress.night;
+        this.escape.cleared = active.progress.escaped; this.alarmTriggered = active.progress.alarm;
+        this.saved = JSON.stringify(active.progress);
+      } else {
+        const legacy = sys.localStorage.getItem(SAVE_KEY);
+        if (readProgress(legacy)) {
+          const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
+          this.archive = appendAutosave(this.archive, progress, null);
+          this.saved = JSON.stringify(progress); this.writeArchive();
+        }
+      }
+    } catch { this.storageFailed = true; }
+    this.persist();
     this.cameraOffset = Math.max(-2150, this.world.x - 100);
     this.setupSluiceAudio();
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
@@ -229,8 +248,8 @@ export class PuzzleController extends Component {
     const retry = this.child('Retry search encounter', 300, 60, 0, -85, panel);
     const button = retry.addComponent(Graphics); button.fillColor = new Color(48, 73, 65);
     button.roundRect(-150, -30, 300, 60, 8); button.fill();
-    const label = this.text('加载最近存档 · R', 0, 0, 22, 300); label.node.setParent(retry);
-    retry.on(Node.EventType.TOUCH_END, () => this.reset());
+    const label = this.text('选择存档', 0, 0, 22, 300); label.node.setParent(retry);
+    retry.on(Node.EventType.TOUCH_END, () => this.showSaves());
     this.caughtPanel = panel; panel.active = false;
   }
   private releaseInputs() { this.keys.clear(); this.touchDirection = 0; this.touchRun = false; this.world.vx = 0; }
@@ -260,7 +279,7 @@ export class PuzzleController extends Component {
     const title = this.text('已暂停', 0, 95, 30, 600); title.node.setParent(panel);
     for (const [caption, y, action] of [
       ['继续游戏', 10, () => this.togglePause()],
-      ['加载最近存档', -70, () => this.reset()],
+      ['加载存档', -70, () => this.showSaves()],
     ] as [string, number, () => void][]) {
       const button = this.child(caption, 320, 60, 0, y, panel);
       const g = button.addComponent(Graphics); g.fillColor = new Color(44, 67, 58);
@@ -272,32 +291,63 @@ export class PuzzleController extends Component {
   }
   private togglePause() {
     if (this.escape.caught) return;
+    this.saveList.active = false;
     this.paused = !this.paused; this.pausePanel.active = this.paused; this.releaseInputs();
   }
-  private reset() {
-    // In-memory safe snapshot remains available when persistent storage is unavailable.
-    let save = readProgress(this.saved);
-    if (!this.storageFailed) {
-      try { save = readProgress(sys.localStorage.getItem(SAVE_KEY)) || save; }
-      catch { this.storageFailed = true; }
+  private showSaves(page = 0) {
+    this.paused = true; this.pausePanel.active = false; this.releaseInputs();
+    const entries = [...this.archive.entries].reverse(), pages = Math.max(1, Math.ceil(entries.length / 5));
+    this.savePage = Math.max(0, Math.min(pages - 1, page));
+    for (const child of [...this.saveList.children]) child.destroy();
+    this.saveList.removeAllChildren(); this.saveList.active = true;
+    const background = this.child('Save list background', 1280, 590, 0, 0, this.saveList);
+    const art = background.addComponent(Graphics); art.fillColor = new Color(8, 17, 23, 245);
+    art.rect(-640, -295, 1280, 590); art.fill();
+    const heading = this.text('自动存档 · 时间从新到旧', 0, 245, 26, 900); heading.node.setParent(this.saveList);
+    entries.slice(this.savePage * 5, this.savePage * 5 + 5).forEach((entry, i) => {
+      const button = this.child('Load ' + entry.name, 900, 66, 0, 172 - i * 78, this.saveList);
+      const g = button.addComponent(Graphics); g.fillColor = new Color(35, 56, 49);
+      g.roundRect(-450, -33, 900, 66, 8); g.fill();
+      const date = entry.createdAt === null ? '旧存档 · 时间未知' : new Date(entry.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Tokyo', hour12: false });
+      const label = this.text(`#${entry.id}  ${entry.name}     ${date}`, 0, 0, 20, 880); label.node.setParent(button);
+      button.on(Node.EventType.TOUCH_END, () => this.loadEntry(entry));
+    });
+    for (const [caption, x, action] of [
+      ['上一页', -310, () => this.showSaves(this.savePage - 1)],
+      [`${this.savePage + 1} / ${pages} · 返回`, 0, () => { this.saveList.active = false; this.paused = !this.escape.caught; this.pausePanel.active = this.paused; }],
+      ['下一页', 310, () => this.showSaves(this.savePage + 1)],
+    ] as [string, number, () => void][]) {
+      const label = this.text(caption, x, -245, 20, 260); label.node.setParent(this.saveList);
+      label.node.on(Node.EventType.TOUCH_END, action);
     }
-    if (!save) return;
+  }
+  private reset() {
+    const latest = this.archive.entries[this.archive.entries.length - 1];
+    if (latest) this.loadEntry(latest);
+  }
+  private loadEntry(entry: AutoSave) {
+    const save = entry.progress;
     this.world.restore(save); this.night = this.savedNight = save.night;
     this.escape.reset(); this.escape.cleared = save.escaped; this.alarmTriggered = save.alarm;
-    this.paused = false; this.pausePanel.active = this.caughtPanel.active = false;
+    this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(-2150, this.world.x - 100);
     this.releaseInputs(); this.cover.reset(); this.animation.reset();
+    // Selecting an older save changes the resume point without discarding later history.
+    this.archive.activeId = entry.id; this.saved = JSON.stringify(save); this.writeArchive();
     this.animateCharacter(0); this.place();
   }
-  private persist() {
-    // Never overwrite a safe position with an active search or caught state.
-    if (this.escape.active || this.escape.caught) return;
-    const serialized = JSON.stringify({ ...this.world.save(), night: this.savedNight,
-      escaped: this.escape.cleared, alarm: this.alarmTriggered });
-    if (serialized === this.saved) return;
-    try { sys.localStorage.setItem(SAVE_KEY, serialized); this.storageFailed = false; this.saveNotice = 2; }
+  private writeArchive() {
+    try { sys.localStorage.setItem(ARCHIVE_KEY, JSON.stringify(this.archive)); this.storageFailed = false; }
     catch { this.storageFailed = true; }
-    this.saved = serialized;
+  }
+  private persist() {
+    if (this.escape.active || this.escape.caught) return;
+    const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
+    const previous = readProgress(this.saved);
+    // Save meaningful story milestones, not every lighting interpolation frame.
+    if (previous && sameMilestone(previous, progress)) return;
+    this.archive = appendAutosave(this.archive, progress, Date.now());
+    this.saved = JSON.stringify(progress); this.writeArchive(); this.saveNotice = 2;
   }
   private setupSluiceAudio() {
     this.factorySound = this.node.addComponent(AudioSource); this.factorySound.loop = true;

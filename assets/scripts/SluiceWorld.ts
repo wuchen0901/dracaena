@@ -30,6 +30,40 @@ export function readProgress(raw: string | null): ProgressSave | null {
       (world.checkpoint === 'patrol-cleared' && !escaped)) return null;
   return { ...world, night, escaped, alarm };
 }
+export const ARCHIVE_KEY = 'the-last-light.autosaves.v1';
+export type AutoSave = { id: number; name: string; createdAt: number | null; progress: ProgressSave };
+export type SaveArchive = { version: 1; activeId: number | null; entries: AutoSave[] };
+export function emptyArchive(): SaveArchive { return { version: 1, activeId: null, entries: [] }; }
+export function saveName(s: ProgressSave): string {
+  const names: Record<Checkpoint, string> = {
+    reclamation: '回收站 · 待处理区', 'station-exit': '逃出维修门', forest: '踏入森林',
+    sluice: s.opened ? '水闸已开启' : '林间水闸', 'far-bank': '抵达对岸',
+    'patrol-approach': '夜林 · 警灯将近', 'patrol-cleared': '躲过搜寻',
+  };
+  return s.checkpoint === 'reclamation' && s.alarm ? '回收站 · 警报响起' : names[s.checkpoint];
+}
+export function sameMilestone(a: ProgressSave, b: ProgressSave): boolean {
+  return a.checkpoint === b.checkpoint && a.opened === b.opened && a.escaped === b.escaped && a.alarm === b.alarm;
+}
+export function readArchive(raw: string | null): SaveArchive | null {
+  try {
+    const a = JSON.parse(raw || 'null');
+    if (!a || a.version !== 1 || !Array.isArray(a.entries)) return null;
+    const entries: AutoSave[] = []; const ids = new Set<number>();
+    for (const e of a.entries) {
+      if (!e || !(typeof e.id === 'number' && Number.isFinite(e.id) && Math.floor(e.id) === e.id) || e.id < 1 || ids.has(e.id) ||
+          (e.createdAt !== null && (typeof e.createdAt !== 'number' || !Number.isFinite(e.createdAt) || e.createdAt < 0))) continue;
+      const progress = readProgress(JSON.stringify(e.progress)); if (!progress) continue;
+      ids.add(e.id); entries.push({ id: e.id, name: saveName(progress), createdAt: e.createdAt, progress });
+    }
+    entries.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0) || x.id - y.id);
+    return { version: 1, entries, activeId: ids.has(a.activeId) ? a.activeId : entries.length ? entries[entries.length - 1].id : null };
+  } catch { return null; }
+}
+export function appendAutosave(a: SaveArchive, progress: ProgressSave, createdAt: number | null): SaveArchive {
+  const id = a.entries.reduce((max, e) => Math.max(max, e.id), 0) + 1;
+  return { version: 1, activeId: id, entries: [...a.entries, { id, name: saveName(progress), createdAt, progress: { ...progress } }] };
+}
 export class SluiceWorld {
   x = -2050; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
   opened = false; fill = 0; checkpoint: Checkpoint = 'reclamation';
