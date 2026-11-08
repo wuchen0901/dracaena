@@ -1,7 +1,7 @@
 import { Color, Graphics } from 'cc';
 
 /** Background vignette: local silhouettes and lights, never collision geometry. */
-export function drawNightSearch(g: Graphics, camera: number, time: number, night: number) {
+export function drawNightSearch(g: Graphics, camera: number, time: number, night: number, departure = 0) {
   g.clear();
   const base = (3500 - camera) * .55;
   const rect = (x: number, y: number, w: number, h: number, color: Color) => {
@@ -13,7 +13,10 @@ export function drawNightSearch(g: Graphics, camera: number, time: number, night
   const dark = new Color(20, 32, 40, Math.round(255 * night));
   // A distant service road above the playable bank.
   rect(-340, 100, 900, 7, new Color(47, 60, 66, Math.round(150 * night)));
-  for (const x of [0, 240]) {
+  if (departure >= 1) return;
+  const drive = departure * departure * 1250;
+  for (const parkedX of [0, 240]) {
+    const x = parkedX + drive;
     rect(x - 46, 112, 96, 20, dark); rect(x - 24, 132, 48, 17, dark);
     rect(x - 19, 135, 36, 10, new Color(90, 117, 127, Math.round(100 * night)));
     circle(x - 28, 111, 9, dark); circle(x + 29, 111, 9, dark);
@@ -25,6 +28,8 @@ export function drawNightSearch(g: Graphics, camera: number, time: number, night
       rect(x - 14 + side * 16, 148, 12, 5, new Color(rgb[0], rgb[1], rgb[2], Math.round(230 * pulse)));
     }
   }
+  if (departure > .3) return;
+  night *= 1 - departure / .3;
   for (let i = 0; i < 3; i++) {
     const x = -120 + i * 185 + Math.sin(time * .22 + i) * 28;
     const y = 108;

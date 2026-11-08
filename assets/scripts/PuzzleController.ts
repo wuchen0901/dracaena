@@ -1,3 +1,5 @@
+import { SearchEscape } from './SearchEscape';
+import { COVER, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, readSave, SAVE_KEY, SluiceWorld } from './SluiceWorld';
@@ -11,6 +13,8 @@ type Layer = { node: Node; x: number; y: number; parallax: number; drift: number
 export class PuzzleController extends Component {
   private night = 0; private savedNight = 0; private nightVeil!: Graphics; private search!: Graphics;
   private siren!: AudioSource; private sirenClip: AudioClip | null = null;
+  private escape = new SearchEscape(); private escapeSaved = false;
+  private cover = new TreeCover(); private coverPoses: SpriteFrame[] = []; private coverTree!: Graphics;
   private actor!: Node;
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
@@ -28,6 +32,7 @@ export class PuzzleController extends Component {
   private waterClip: AudioClip | null = null; private leverClip: AudioClip | null = null;
   private audioUnlocked = false; private storageFailed = false;
   private cameraOffset = 0;
+  private caughtPanel!: Node;
   private status!: Label;
   private pending = 0; private failed = false;
   onLoad() {
@@ -51,9 +56,11 @@ export class PuzzleController extends Component {
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
     this.search = this.child('Distant police search', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
+    // Depth order: distant police → shelter tree → robot on the viewer-facing side.
+    this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.frame);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    this.loadCharacterPoses();
+    this.loadCharacterPoses(); this.loadCoverPoses();
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.nightVeil = this.child('Nightfall', 1280, 590, 0, 0, this.frame).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.frame);
@@ -61,12 +68,16 @@ export class PuzzleController extends Component {
     this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
     this.button('RUN', -430, -322, 0, true);
     this.button('E', 310, -322, 0, false, true);
+    this.createCaughtPanel();
+    const replay = this.text('T · 重试警车路段', -480, 277, 17, 260);
+    replay.node.on(Node.EventType.TOUCH_END, () => this.restartPatrol());
     try { const save = readSave(sys.localStorage.getItem(SAVE_KEY)); if (save) this.world.restore(save); }
     catch { this.storageFailed = true; }
     try {
       const value = Number(sys.localStorage.getItem(SAVE_KEY + '.night'));
       this.night = this.savedNight = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     } catch { /* Nightfall still works for this session. */ }
+    try { this.escape.cleared = this.escapeSaved = sys.localStorage.getItem(SAVE_KEY + '.escaped') === 'true'; } catch { /* Session state remains available. */ }
     this.saved = ''; this.persist();
     this.cameraOffset = Math.max(0, this.world.x - 100);
     this.setupSluiceAudio();
@@ -110,11 +121,48 @@ export class PuzzleController extends Component {
       this.animateCharacter(0); this.place();
     });
   }
+  private loadCoverPoses() {
+    this.pending++;
+    resources.load('character/robot-cover/texture', Texture2D, (error, texture) => {
+      this.pending--;
+      if (!this.isValid) return;
+      if (error) { this.failed = true; this.status.string = 'Could not load cover animation'; console.error(error); return; }
+      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+        const left = Math.round(col * texture.width / 4), top = Math.round(row * texture.height / 2);
+        const width = Math.round((col + 1) * texture.width / 4) - left;
+        const height = Math.round((row + 1) * texture.height / 2) - top;
+        const pose = new SpriteFrame(); pose.texture = texture;
+        pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
+        this.coverPoses.push(pose);
+      }
+    });
+  }
   private animateCharacter(dt: number) {
     if (!this.poses.length) return;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
-    this.actorSprite.spriteFrame = this.poses[index];
-    this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[index]);
+    const coverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
+    if (coverFrame !== null && this.coverPoses.length === 8) {
+      this.actorSprite.spriteFrame = this.coverPoses[coverFrame];
+      this.actor.getComponent(UITransform)!.setAnchorPoint(.5, coverFrame < 4 ? .095 : .09);
+    } else {
+      this.actorSprite.spriteFrame = this.poses[index];
+      this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[index]);
+    }
+  }
+  private drawCoverTree() {
+    const g = this.coverTree, x = COVER.treeX - this.cameraOffset, y = CHANNEL.far;
+    g.clear();
+    // The trunk blocks the distant search sightline; the robot renders on its viewer-facing side.
+    g.fillColor = new Color(26, 39, 34);
+    g.moveTo(x - 22, y); g.lineTo(x - 13, y + 200); g.lineTo(x - 43, y + 295);
+    g.lineTo(x - 6, y + 295); g.lineTo(x + 12, y + 210); g.lineTo(x + 35, y + 295);
+    g.lineTo(x + 54, y + 295); g.lineTo(x + 20, y + 162); g.lineTo(x + 25, y); g.close(); g.fill();
+    g.strokeColor = new Color(53, 66, 48); g.lineWidth = 4;
+    for (let i = 0; i < 4; i++) { g.moveTo(x - 12 + i * 9, y + 8); g.lineTo(x - 6 + i * 6, y + 155); g.stroke(); }
+    g.strokeColor = new Color(30, 47, 36); g.lineWidth = 12;
+    for (const side of [-1, 1]) { g.moveTo(x, y + 8); g.quadraticCurveTo(x + side * 35, y + 6, x + side * 80, y + 2); g.stroke(); }
+    g.fillColor = new Color(38, 62, 44);
+    for (let i = 0; i < 9; i++) { g.ellipse(x - 77 + i * 19, y + 6 + (i % 3) * 4, 15, 7); g.fill(); }
   }
 
   private layer(name: string, asset: string, w: number, h: number, x: number, y: number, parallax: number, drift = 0, phase = 0, bird = false) {
@@ -147,29 +195,63 @@ export class PuzzleController extends Component {
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
     const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
     this.text(value, x, y, 30, 90);
-    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if (interact) this.interact(); else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
+    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if (this.escape.caught) return; if (interact) this.interact(); else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
     const release = () => { if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
+  }
+  private createCaughtPanel() {
+    const panel = this.child('Caught · retry', 1280, 590, 0, 0);
+    const art = panel.addComponent(Graphics); art.fillColor = new Color(8, 13, 23, 210);
+    art.rect(-640, -295, 1280, 590); art.fill();
+    const title = this.text('被警察抓住了', 0, 40, 32, 700); title.node.setParent(panel);
+    const hint = this.text('警车离开前，请留在树的遮挡范围内', 0, -10, 18, 700); hint.node.setParent(panel);
+    const retry = this.child('Retry search encounter', 300, 60, 0, -85, panel);
+    const button = retry.addComponent(Graphics); button.fillColor = new Color(48, 73, 65);
+    button.roundRect(-150, -30, 300, 60, 8); button.fill();
+    const label = this.text('重新尝试 · R', 0, 0, 22, 300); label.node.setParent(retry);
+    retry.on(Node.EventType.TOUCH_END, () => this.reset());
+    this.caughtPanel = panel; panel.active = false;
   }
   private releaseInputs() { this.keys.clear(); this.touchDirection = 0; this.touchRun = false; this.world.vx = 0; }
   private down(e: EventKeyboard) {
     this.unlockAudio();
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
+    if (fresh && e.keyCode === KeyCode.KEY_T) { this.restartPatrol(); return; }
+    if (this.escape.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
     if (fresh && [KeyCode.SPACE, KeyCode.KEY_W, KeyCode.ARROW_UP].indexOf(e.keyCode) >= 0) this.world.jump();
     if (fresh && e.keyCode === KeyCode.KEY_E) this.interact();
     if (fresh && e.keyCode === KeyCode.KEY_R) this.reset();
   }
   private interact() {
+    if (this.escape.caught) return;
     if (this.world.interact()) {
       if (this.leverClip) this.leverSound.playOneShot(this.leverClip, .5);
       this.persist();
     }
   }
+  private restartPatrol() {
+    this.escape.reset(); this.escapeSaved = false;
+    try { sys.localStorage.setItem(SAVE_KEY + '.escaped', 'false'); } catch { this.storageFailed = true; }
+    this.world.restore({ version: 1, checkpoint: 'far-bank', opened: true });
+    this.world.x = COVER.left - 80; this.world.y = CHANNEL.far;
+    this.world.vx = this.world.vy = 0; this.world.grounded = true;
+    this.night = 1; this.caughtPanel.active = false;
+    this.releaseInputs(); this.cover.reset(); this.animation.reset();
+    this.facing = 1; this.cameraOffset = Math.max(0, this.world.x - 100);
+    this.siren.volume = 0; this.persist(); this.animateCharacter(0); this.place();
+  }
   private reset() {
+    const retrySearch = this.escape.caught;
     this.world.restore(this.world.save());
+    if (retrySearch) {
+      this.world.x = COVER.left - 80; this.world.y = CHANNEL.far;
+      this.world.vx = this.world.vy = 0; this.world.grounded = true;
+    }
+    this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(0, this.world.x - 100);
     this.touchDirection = 0; this.touchRun = false; this.keys.clear();
-    this.animation.reset(); this.animateCharacter(0); this.place();
+    if (!this.escape.cleared) this.escape.reset();
+    this.cover.reset(); this.animation.reset(); this.animateCharacter(0); this.place();
   }
   private persist() {
     const serialized = JSON.stringify(this.world.save());
@@ -210,7 +292,17 @@ export class PuzzleController extends Component {
     const dt = Math.min(delta, .25); this.time += dt;
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     if (direction) this.facing = direction;
-    this.world.step(dt, direction, this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT));
+    const underCover = !this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded);
+    if (this.escape.caught) this.world.vx = 0;
+    else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)));
+    this.escape.step(dt, this.cover.contains(this.world.x, this.world.grounded), this.world.x >= COVER.left);
+    if (this.escape.caught) {
+      this.releaseInputs(); this.caughtPanel.active = true;
+    }
+    if (this.escape.cleared && !this.escapeSaved) {
+      try { sys.localStorage.setItem(SAVE_KEY + '.escaped', 'true'); this.escapeSaved = true; }
+      catch { /* Continue with the completed encounter in memory. */ }
+    }
     this.persist(); this.saveNotice = Math.max(0, this.saveNotice - dt);
     const target = Math.max(0, this.world.x - 100);
     this.cameraOffset += (target - this.cameraOffset) * (1 - Math.exp(-dt * 3));
@@ -223,9 +315,9 @@ export class PuzzleController extends Component {
       try { sys.localStorage.setItem(SAVE_KEY + '.night', String(this.night)); } catch { /* Optional atmosphere state. */ }
       this.savedNight = this.night;
     }
-    const sirenVolume = this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - 3500) / 1500);
+    const sirenVolume = (1 - this.escape.departure) * this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - 3500) / 1500);
     this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
-    this.animateCharacter(dt);
+    this.animateCharacter(this.escape.caught ? 0 : dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? 'Saved' : '';
     this.leverPrompt.string = this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.setPosition(CHANNEL.leverX - this.cameraOffset, CHANNEL.near + 112, 0);
@@ -334,8 +426,8 @@ export class PuzzleController extends Component {
   private place() {
     if (!this.actor) return;
     const foot = this.world.y;
-    this.drawCanal();
-    drawNightSearch(this.search, this.cameraOffset, this.time, this.night);
+    this.drawCanal(); this.drawCoverTree();
+    drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.escape.departure);
     this.nightVeil.clear();
     this.nightVeil.fillColor = new Color(5, 13, 32, Math.round(this.night * 165));
     this.nightVeil.rect(-640, -295, 1280, 590); this.nightVeil.fill();
