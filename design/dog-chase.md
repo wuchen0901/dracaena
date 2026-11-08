@@ -1,6 +1,6 @@
 # Guard dog pursuit after the prison wall
 
-The route leaves the prison after the salvage conveyor and crate puzzle, then continues into a dog pursuit. `DogChaseSegment.ts` owns the local layout and chase state. Origin is x=6300, approach is +40, pursuit trigger is +160, and the broken path spans +650..+740 at y=-140. This 90-unit gap is crossable with a normal walking jump; sprinting is optional.
+The route leaves the prison after the inner sentry, salvage conveyor and crate puzzle, then continues into a dog pursuit. After the gap, an outside police search begins at the roadside tree. `DogChaseSegment.ts` owns the local layout and chase state. Origin is x=6300, approach is +40, pursuit trigger is +160, and the broken path spans +650..+740 at y=-140. This 90-unit gap is crossable with a normal walking jump; sprinting is optional.
 
 The dog appears 260 units behind the pursuit trigger and runs right at 185 units/second. It has no jump state and clamps its center 58 units short of the near edge, keeping the full sprite on solid ground. At that point it plants its paws and cycles the bark poses. It never follows the player across. If it reaches the player before the gap, the existing failure overlay offers archive loading. Falling into the gap restores the safe approach and resets the pursuit. Pause freezes the chase clock.
 

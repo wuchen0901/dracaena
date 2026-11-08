@@ -2,7 +2,7 @@
 
 The playable journey now starts at x=-2050 in an operating robot reclamation station. Three darkened copies of the same robot stand beside the lit protagonist. A conveyor and oscillating dismantling tool establish the threat. The player keeps normal movement/jump control throughout; no exposition dialog or cutscene is required.
 
-The maintenance shutter at x=-1100 is partially raised, exposing the existing forest. The warning lamp and original alarm activate once the robot passes x=-1040. Machinery hum fades with distance, and the alarm fades out before the canal. Fence fragments at x=-830 through -160 leave a pedestrian gap. Walking to x=-200 automatically advances the checkpoint to the existing forest; water-gate and police encounters follow unchanged.
+The maintenance shutter at x=-1100 is partially raised, exposing the existing forest. The warning lamp and original alarm activate once the robot passes x=-1040. Machinery hum fades with distance, and the alarm fades out before the canal. Fence fragments at x=-830 through -160 leave a pedestrian gap. Walking to x=-200 automatically advances the checkpoint to the existing forest; the water gate and inner-yard sentry follow, with the police search now outside the prison wall.
 
 New saves use the added `reclamation` checkpoint under the existing version-1 save format. Existing forest/sluice/far-bank saves still load their prior positions. The former P/T replay shortcuts have been removed. The station exit now has its own automatic safe checkpoint. Esc opens Continue / Load latest save; opening the game resumes automatically. See `autosave.md`.
 

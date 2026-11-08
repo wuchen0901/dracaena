@@ -1,9 +1,13 @@
 /** Automatic cover uses the existing movement input, with no interaction key. */
 export const COVER = { left: 3160, right: 3410, treeX: 3280 };
+export const POLICE_COVER = { left: 7400, right: 7650, treeX: 7520 };
+export const GUARD_POST = { x: 3520 };
 export class TreeCover {
+  readonly layout: typeof COVER;
   amount = 0;
   private phase = 0;
-  contains(x: number, grounded: boolean) { return grounded && x >= COVER.left && x <= COVER.right; }
+  constructor(layout = COVER) { this.layout = { ...layout }; }
+  contains(x: number, grounded: boolean) { return grounded && x >= this.layout.left && x <= this.layout.right; }
   reset() { this.amount = this.phase = 0; }
   frame(dt: number, x: number, grounded: boolean, speed: number): number | null {
     const target = this.contains(x, grounded) ? 1 : 0;

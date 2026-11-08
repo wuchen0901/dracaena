@@ -1,5 +1,6 @@
 import { DogChaseSegment } from './DogChaseSegment';
 import { drawDogGap } from './DogGapArt';
+import { drawGuardPostSearch } from './GuardPostArt';
 import { drawScrapYard } from './ScrapYardArt';
 import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
@@ -7,7 +8,7 @@ import { PushBoxSegment } from './PushBoxSegment';
 import { drawPushBox } from './PushBoxArt';
 import { drawReclamationOpening } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
-import { COVER, TreeCover } from './TreeCover';
+import { COVER, POLICE_COVER, GUARD_POST, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
@@ -25,7 +26,10 @@ export class PuzzleController extends Component {
   private night = 0; private savedNight = 0; private search!: Graphics;
   private siren!: AudioSource; private sirenClip: AudioClip | null = null;
   private escape = new SearchEscape();
-  private cover = new TreeCover(); private coverPoses: SpriteFrame[] = []; private coverTree!: Graphics;
+  private policeEscape = new SearchEscape();
+  private cover = new TreeCover(); private policeCover = new TreeCover(POLICE_COVER);
+  private coverPoses: SpriteFrame[] = []; private coverTree!: Graphics; private policeCoverTree!: Graphics;
+  private guardPost!: Graphics; private guardPostSign!: Label;
   private actor!: Node;
   private actorSprite!: Sprite;
   private poses: SpriteFrame[] = [];
@@ -74,7 +78,9 @@ export class PuzzleController extends Component {
     this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
     this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
     this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
-    this.search = this.child('Distant police search', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.search = this.child('Police search outside prison', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.guardPost = this.child('Inner yard sentry post', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.guardPostSign = this.text('园区岗哨', 0, 0, 16, 140); this.guardPostSign.node.setParent(this.sceneRoot);
     this.terrain = this.child('Canal, banks and floating timber', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     for (const [label, x, y] of [['待处理区 · 07', -1960, 115], ['拆解', -2340, 110], ['维修通道 →', -1210, 70]] as [string, number, number][]) {
@@ -91,6 +97,7 @@ export class PuzzleController extends Component {
     this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
     this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.policeCoverTree = this.child('Roadside shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses();
@@ -107,7 +114,8 @@ export class PuzzleController extends Component {
       const raw = sys.localStorage.getItem(SAVE_KEY), save = readProgress(raw);
       if (save) {
         this.world.restore(save); this.night = this.savedNight = save.night;
-        this.escape.cleared = save.escaped; this.alarmTriggered = save.alarm;
+        this.escape.cleared = save.escaped; this.policeEscape.cleared = save.policeCleared === true;
+        this.alarmTriggered = save.alarm;
         // One-time migration from older split atmosphere/patrol keys.
         if (raw && !Object.prototype.hasOwnProperty.call(JSON.parse(raw), 'escaped')) {
           const legacyNight = Number(sys.localStorage.getItem(SAVE_KEY + '.night'));
@@ -122,12 +130,13 @@ export class PuzzleController extends Component {
         this.archive = history;
         const active = history.entries.find(e => e.id === history.activeId)!;
         this.world.restore(active.progress); this.night = this.savedNight = active.progress.night;
-        this.escape.cleared = active.progress.escaped; this.alarmTriggered = active.progress.alarm;
+        this.escape.cleared = active.progress.escaped; this.policeEscape.cleared = active.progress.policeCleared === true;
+        this.alarmTriggered = active.progress.alarm;
         this.saved = JSON.stringify(active.progress);
       } else {
         const legacy = sys.localStorage.getItem(SAVE_KEY);
         if (readProgress(legacy)) {
-          const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
+          const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, policeCleared: this.policeEscape.cleared, alarm: this.alarmTriggered };
           this.archive = upsertAutosave(this.archive, progress, null);
           this.saved = JSON.stringify(progress); this.writeArchive();
         }
@@ -234,8 +243,10 @@ export class PuzzleController extends Component {
     if (!this.poses.length) return;
     this.breathScaleY = 1;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
-    const coverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
-    const gripping = !(this.escape.caught || this.dog.caught) && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
+    const guardCoverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
+    const policeCoverFrame = this.policeCover.frame(dt, this.policeEscape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
+    const coverFrame = guardCoverFrame !== null ? guardCoverFrame : policeCoverFrame;
+    const gripping = !(this.escape.caught || this.policeEscape.caught || this.dog.caught) && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
       this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const contact = this.world.x < this.boxPuzzle.x ? this.boxPuzzle.left : this.boxPuzzle.right;
     const effort = this.pushPull.frame(dt, gripping, this.boxPuzzle.x - this.world.x,
@@ -253,8 +264,8 @@ export class PuzzleController extends Component {
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[index]);
     }
   }
-  private drawCoverTree() {
-    const g = this.coverTree, x = COVER.treeX - this.cameraOffset, y = roadHeight(COVER.treeX);
+  private drawCoverTree(g: Graphics, layout: typeof COVER) {
+    const x = layout.treeX - this.cameraOffset, y = roadHeight(layout.treeX);
     g.clear();
     // The trunk blocks the distant search sightline; the robot renders on its viewer-facing side.
     g.fillColor = new Color(26, 39, 34);
@@ -299,7 +310,7 @@ export class PuzzleController extends Component {
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
     const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
     this.text(value, x, y, 30, 90);
-    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if ((this.escape.caught || this.dog.caught) || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
+    n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
     const release = () => { if (interact) this.touchGrab = false; if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
   }
@@ -307,8 +318,8 @@ export class PuzzleController extends Component {
     const panel = this.child('Caught · retry', 1280, 590, 0, 0);
     const art = panel.addComponent(Graphics); art.fillColor = new Color(8, 13, 23, 210);
     art.rect(-640, -295, 1280, 590); art.fill();
-    const title = this.caughtTitle = this.text('被警察抓住了', 0, 40, 32, 700); title.node.setParent(panel);
-    const hint = this.caughtHint = this.text('警车离开前，请留在树的遮挡范围内', 0, -10, 18, 700); hint.node.setParent(panel);
+    const title = this.caughtTitle = this.text('被发现了', 0, 40, 32, 700); title.node.setParent(panel);
+    const hint = this.caughtHint = this.text('留在遮挡范围内，等搜寻结束', 0, -10, 18, 700); hint.node.setParent(panel);
     const retry = this.child('Retry search encounter', 300, 60, 0, -85, panel);
     const button = retry.addComponent(Graphics); button.fillColor = new Color(48, 73, 65);
     button.roundRect(-150, -30, 300, 60, 8); button.fill();
@@ -322,13 +333,13 @@ export class PuzzleController extends Component {
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
     if (fresh && e.keyCode === KeyCode.ESCAPE) { this.togglePause(); return; }
     if (this.paused) return;
-    if (this.escape.caught || this.dog.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
+    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
     if (fresh && [KeyCode.SPACE, KeyCode.KEY_W, KeyCode.ARROW_UP].indexOf(e.keyCode) >= 0) this.world.jump();
     if (fresh && e.keyCode === KeyCode.KEY_E) this.interact();
     if (fresh && e.keyCode === KeyCode.KEY_R) this.reset();
   }
   private interact() {
-    if ((this.escape.caught || this.dog.caught) || this.paused) return;
+    if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return;
     if (this.world.interact()) {
       if (this.leverClip) this.leverSound.playOneShot(this.leverClip, .5);
       this.persist();
@@ -354,7 +365,7 @@ export class PuzzleController extends Component {
     this.pausePanel = panel; panel.active = false;
   }
   private togglePause() {
-    if (this.escape.caught || this.dog.caught) return;
+    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) return;
     this.saveList.active = false;
     this.paused = !this.paused; this.pausePanel.active = this.paused; this.releaseInputs();
   }
@@ -382,7 +393,7 @@ export class PuzzleController extends Component {
     });
     for (const [caption, x, action] of [
       ['上一页', -310, () => this.showSaves(this.savePage - 1)],
-      [`${this.savePage + 1} / ${pages} · 返回`, 0, () => { this.saveList.active = false; this.paused = !(this.escape.caught || this.dog.caught); this.pausePanel.active = this.paused; }],
+      [`${this.savePage + 1} / ${pages} · 返回`, 0, () => { this.saveList.active = false; this.paused = !(this.escape.caught || this.policeEscape.caught || this.dog.caught); this.pausePanel.active = this.paused; }],
       ['下一页', 310, () => this.showSaves(this.savePage + 1)],
     ] as [string, number, () => void][]) {
       const label = this.text(caption, x, -245, 20, 260); label.node.setParent(this.saveList);
@@ -396,10 +407,10 @@ export class PuzzleController extends Component {
   private loadEntry(entry: AutoSave) {
     const save = entry.progress;
     this.world.restore(save); this.night = this.savedNight = save.night;
-    this.escape.reset(); this.escape.cleared = save.escaped; this.alarmTriggered = save.alarm;
+    this.escape.reset(); this.escape.cleared = save.escaped; this.policeEscape.reset(); this.policeEscape.cleared = save.policeCleared === true; this.alarmTriggered = save.alarm;
     this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(-2150, this.world.x - 100);
-    this.releaseInputs(); this.cover.reset(); this.pushPull.reset(); this.animation.reset();
+    this.releaseInputs(); this.cover.reset(); this.policeCover.reset(); this.pushPull.reset(); this.animation.reset();
     // Keep later slots visible until a new milestone branches forward from this save.
     this.archive.activeId = entry.id; this.saved = JSON.stringify(save); this.writeArchive();
     this.cameraLift = cameraHeight(0, this.world.y, 1);
@@ -410,8 +421,8 @@ export class PuzzleController extends Component {
     catch { this.storageFailed = true; }
   }
   private persist() {
-    if (this.escape.active || this.escape.caught || this.dog.caught || (this.dog.active && !this.dog.cleared) || this.boxPuzzle.moving) return;
-    const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, alarm: this.alarmTriggered };
+    if (this.escape.active || this.policeEscape.active || this.escape.caught || this.policeEscape.caught || this.dog.caught || (this.dog.active && !this.dog.cleared) || this.boxPuzzle.moving) return;
+    const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, policeCleared: this.policeEscape.cleared, alarm: this.alarmTriggered };
     const previous = readProgress(this.saved);
     // Save meaningful story milestones, not every lighting interpolation frame.
     if (previous && sameMilestone(previous, progress)) return;
@@ -469,9 +480,10 @@ export class PuzzleController extends Component {
     const dt = Math.min(delta, .25); this.time += dt;
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     if (direction) this.facing = direction;
-    const underCover = !this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded);
+    const underCover = (!this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded)) ||
+      (!this.policeEscape.cleared && this.policeCover.contains(this.world.x, this.world.grounded));
     const recovery = this.world.recoverySerial;
-    if (this.escape.caught || this.dog.caught) this.world.vx = 0;
+    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) this.world.vx = 0;
     else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)), this.touchGrab || this.keys.has(KeyCode.KEY_E));
     if (this.world.recoverySerial !== recovery) { this.releaseInputs(); this.dog.reset(this.world.checkpoint === 'dog-cleared'); }
     this.dog.step(dt, this.world.x, this.world.y, this.world.grounded);
@@ -482,12 +494,14 @@ export class PuzzleController extends Component {
     if (!this.dog.barking && this.barkSound.playing) this.barkSound.stop();
     this.barkSound.volume = this.dog.barking ? .55 * Math.max(0, 1 - Math.abs(this.world.x - this.dog.x) / 950) : 0;
     this.escape.step(dt, this.cover.contains(this.world.x, this.world.grounded), this.world.x >= COVER.left);
-    if (this.escape.caught || this.dog.caught) {
-      this.caughtTitle.string = this.dog.caught ? '被追犬追上了' : '被警察抓住了';
-      this.caughtHint.string = this.dog.caught ? '继续向右，在断口前跳到对岸' : '警车离开前，请留在树的遮挡范围内';
+    this.policeEscape.step(dt, this.policeCover.contains(this.world.x, this.world.grounded), this.world.x >= POLICE_COVER.left);
+    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) {
+      this.caughtTitle.string = this.dog.caught ? '被追犬追上了' : this.policeEscape.caught ? '被警车发现了' : '被园区岗哨发现了';
+      this.caughtHint.string = this.dog.caught ? '继续向右，在断口前跳到对岸' : this.policeEscape.caught ? '警车离开前，留在路边树的遮挡范围内' : '留在树的遮挡范围内，等园区岗哨转开视线';
       this.releaseInputs(); this.caughtPanel.active = true;
     }
     if (this.escape.cleared && this.world.checkpoint === 'patrol-approach') this.world.checkpoint = 'patrol-cleared';
+    if (this.policeEscape.cleared && this.world.checkpoint === 'police-approach') this.world.checkpoint = 'police-cleared';
     if (this.world.x >= -1040) this.alarmTriggered = true;
     const factoryVolume = Math.max(0, Math.min(1, (-this.world.x - 500) / 1000)) * .32;
     const alarmVolume = this.alarmTriggered ? Math.max(0, 1 - Math.abs(this.world.x + 1100) / 1100) * .3 : 0;
@@ -506,9 +520,9 @@ export class PuzzleController extends Component {
       this.savedNight = this.night;
     }
     this.persist();
-    const sirenVolume = (1 - this.escape.departure) * this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - 3500) / 1500);
+    const sirenVolume = (1 - this.policeEscape.departure) * this.night * .24 * Math.max(0, 1 - Math.abs(this.world.x - POLICE_COVER.treeX) / 1500);
     this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
-    this.animateCharacter(this.escape.caught || this.dog.caught ? 0 : dt);
+    this.animateCharacter(this.escape.caught || this.policeEscape.caught || this.dog.caught ? 0 : dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     this.leverPrompt.string = nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
@@ -630,7 +644,9 @@ export class PuzzleController extends Component {
     if (!this.actor) return;
     const foot = this.world.y;
     this.sceneRoot.setPosition(0, -this.cameraLift, 0);
-    this.drawCanal(); this.drawCoverTree();
+    this.drawCanal(); this.drawCoverTree(this.coverTree, COVER); this.drawCoverTree(this.policeCoverTree, POLICE_COVER);
+    drawGuardPostSearch(this.guardPost, this.cameraOffset, this.time);
+    this.guardPostSign.node.setPosition((GUARD_POST.x - this.cameraOffset) * .55, 260, 0);
     drawDogGap(this.dogArt, this.dog, this.cameraOffset);
     drawScrapYard(this.scrapArt, this.cameraOffset, this.time);
     this.scrapSign.node.setPosition(SALVAGE.origin + 500 - this.cameraOffset, 255, 0);
@@ -648,7 +664,7 @@ export class PuzzleController extends Component {
     const signsX = [-1960, -2340, -1210], signsY = [115, 110, 70];
     this.openingSigns.forEach((n, i) => n.setPosition(signsX[i] - this.cameraOffset, signsY[i], 0));
     this.dormantRobots.forEach((n, i) => n.setPosition([-2250, -2150, -1850][i] - this.cameraOffset, CHANNEL.near, 0));
-    drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.escape.departure);
+    drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.policeEscape.departure, POLICE_COVER.treeX);
     this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
     this.actor.setRotationFromEuler(0, 0, 0);
     for (const l of this.layers) {

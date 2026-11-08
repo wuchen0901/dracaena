@@ -1,9 +1,9 @@
 import { Color, Graphics } from 'cc';
 
 /** Background vignette: local silhouettes and lights, never collision geometry. */
-export function drawNightSearch(g: Graphics, camera: number, time: number, night: number, departure = 0) {
+export function drawNightSearch(g: Graphics, camera: number, time: number, night: number, departure = 0, center = 3500) {
   g.clear();
-  const base = (3500 - camera) * .55;
+  const base = (center - camera) * .55;
   const rect = (x: number, y: number, w: number, h: number, color: Color) => {
     g.fillColor = color; g.rect(base + x, y, w, h); g.fill();
   };
