@@ -4,6 +4,16 @@ export const FACTORY_PANIC_LAYOUT = {
   startX: -3550, checkpointX: -2600, runnerStartX: -3460, runnerSpacing: 120,
   runnerSpeedRatio: .9, beltY: -20, pitStart: -2750, pitEnd: -2575,
 };
+export const RECLAMATION_SIGNAL_PERIOD = 6;
+/** The three short warning flashes repeat in both the opening and the later batch line. */
+export function reclamationSignal(time: number) {
+  const phase = ((time % RECLAMATION_SIGNAL_PERIOD) + RECLAMATION_SIGNAL_PERIOD) % RECLAMATION_SIGNAL_PERIOD;
+  for (const start of [.14, .49, .84]) {
+    const t = phase - start;
+    if (t >= 0 && t < .2) return Math.sin(Math.PI * t / .2);
+  }
+  return 0;
+}
 
 /** Room surfaces hide the forest until the maintenance doorway opens onto it. */
 export function drawReclamationOpening(g: Graphics, time: number, alarm: boolean) {
@@ -73,7 +83,7 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   };
   const beltStart = -3480, beltEnd = FACTORY_PANIC_LAYOUT.pitStart, pitStart = FACTORY_PANIC_LAYOUT.pitStart;
   const pitEnd = FACTORY_PANIC_LAYOUT.pitEnd, beltY = FACTORY_PANIC_LAYOUT.beltY;
-  const pulse = .5 + .5 * Math.sin(time * 8.5);
+  const pulse = reclamationSignal(time);
 
   // Heavy overhead gantries and a warning line make the same-model crowd read as factory workers.
   rect(-3550, 178, 1040, 11, new Color(29, 40, 40));
@@ -83,7 +93,7 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   }
   line(-3550, 132, -2510, 132, new Color(81, 60, 48), 2);
   for (const x of [-3420, -3120, -2820]) {
-    rect(x, 133, 28, 19, new Color(170 + Math.round(pulse * 65), 42, 28, 230));
+    rect(x, 133, 28, 19, new Color(130 + Math.round(pulse * 105), 36, 26, 230));
     g.fillColor = new Color(224, 48, 31, Math.round(18 + pulse * 34));
     g.circle(sx(x + 14), 142, 44); g.fill();
   }
@@ -95,6 +105,12 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   const offset = (time * 58) % 72;
   for (let x = beltStart - 72 + offset; x < beltEnd; x += 72) {
     line(x, beltY + 2, x + 24, beltY + 21, new Color(170, 115, 59, 190), 4);
+  }
+  // Amber chevrons look like an evacuation route, but point directly toward the chute.
+  for (let x = beltStart + 35; x < beltEnd - 30; x += 112) {
+    const alpha = Math.round(72 + pulse * 170);
+    line(x, beltY + 43, x + 16, beltY + 34, new Color(209, 167, 77, alpha), 4);
+    line(x + 16, beltY + 34, x + 31, beltY + 43, new Color(209, 167, 77, alpha), 4);
   }
   // Below the belt is a deep receiving pit; scattered shells imply what happened to earlier units.
   rect(pitStart, -315, pitEnd - pitStart, 295, new Color(8, 14, 16));

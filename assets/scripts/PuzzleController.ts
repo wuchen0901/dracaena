@@ -1,7 +1,7 @@
 import { DogChaseSegment } from './DogChaseSegment';
 import { drawDogGap, drawCatRescueProps } from './DogGapArt';
 import { drawGuardPostSearch } from './GuardPostArt';
-import { drawScrapYard } from './ScrapYardArt';
+import { BATCH_REVEAL_LAYOUT, batchRunnerPosition, drawScrapYard } from './ScrapYardArt';
 import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
@@ -26,7 +26,7 @@ type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number;
 @ccclass('PuzzleController')
 export class PuzzleController extends Component {
   private opening!: Graphics; private openingSigns: Node[] = []; private dormantRobots: Node[] = [];
-  private factoryPanicArt!: Graphics; private factoryRunners: Node[] = [];
+  private factoryPanicArt!: Graphics; private factoryRunners: Node[] = []; private batchRunners: Node[] = [];
   private alarmTriggered = false; private factorySound!: AudioSource; private alarmSound!: AudioSource;
   private factoryClip: AudioClip | null = null; private alarmClip: AudioClip | null = null;
   private night = 0; private savedNight = 0; private search!: Graphics;
@@ -114,7 +114,7 @@ export class PuzzleController extends Component {
     this.journeyClues.push({ node: relayClue.node, x: 15955, y: roadHeight(15920) + 245, range: 700 });
     this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.factoryPanicArt = this.child('Factory alarm and conveyor escape', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
-    for (const [label, x, y] of [['待处理区 · 07', -1960, 115], ['拆解', -2340, 110], ['维修通道 →', -1210, 70]] as [string, number, number][]) {
+    for (const [label, x, y] of [['批次 · 07', -1960, 115], ['警报', -2340, 110], ['安全通道 →', -1210, 70]] as [string, number, number][]) {
       const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
     }
     this.boxArt = this.child('Movable crate and maintenance platform', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
@@ -128,7 +128,7 @@ export class PuzzleController extends Component {
     this.prisonSign.lineHeight = 18; this.prisonSign.node.setParent(this.sceneRoot);
     this.dogArt = this.child('Broken prison escape path', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.scrapArt = this.child('Abandoned robot salvage line', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
-    this.scrapSign = this.text('07 号报废线\n记忆清除', 0, 0, 17, 220); this.scrapSign.node.setParent(this.sceneRoot);
+    this.scrapSign = this.text('批次标记 · 07', 0, 0, 17, 220); this.scrapSign.node.setParent(this.sceneRoot);
     this.beaconSign = this.text('海岸中继\n信号微弱 →', 0, 0, 17, 220); this.beaconSign.node.setParent(this.sceneRoot);
     this.dogNode = this.child('Pursuing guard dog', 112, 112, 0, 0, this.sceneRoot);
     this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
@@ -194,6 +194,14 @@ export class PuzzleController extends Component {
       this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, 9680);
       this.world.checkpoint = 'city-ration'; this.world.opened = true; this.world.fill = 1;
       this.world.x = 9730; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('preview') === 'reveal') {
+      this.previewMode = true;
+      this.boxPuzzle.solved = false; this.pressPuzzle.solved = false;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(false);
+      this.world.checkpoint = 'batch-reveal'; this.world.opened = true; this.world.fill = 1;
+      this.world.x = SALVAGE.origin + 125; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
     if (typeof location !== 'undefined' && ['garden', 'water', 'signal'].indexOf(new URLSearchParams(location.search).get('preview') || '') >= 0) {
@@ -266,7 +274,21 @@ export class PuzzleController extends Component {
         const sprite = runner.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         sprite.spriteFrame = this.poses[16]; sprite.color = new Color(178, 168, 142, 230);
         runner.setScale(.78, .78, 1); runner.setSiblingIndex(this.actor.getSiblingIndex());
+        const mark = this.child('Batch mark', 14, 10, 8, 14, runner).addComponent(Graphics);
+        mark.fillColor = new Color(207, 64, 44, 245); mark.rect(-6, -4, 12, 8); mark.fill();
+        mark.fillColor = new Color(42, 48, 43, 245); mark.rect(0, 0, 5, 4); mark.fill();
         this.factoryRunners.push(runner);
+      }
+      for (let i = 0; i < 5; i++) {
+        const runner = this.child('Batch line robot ' + (i + 1), 82, 82, 0, BATCH_REVEAL_LAYOUT.beltY, this.sceneRoot);
+        runner.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[16]);
+        const sprite = runner.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        sprite.spriteFrame = this.poses[16]; sprite.color = new Color(178, 168, 142, 230);
+        runner.setScale(.78, .78, 1); runner.setSiblingIndex(this.actor.getSiblingIndex());
+        const mark = this.child('Batch mark', 14, 10, 8, 14, runner).addComponent(Graphics);
+        mark.fillColor = new Color(207, 64, 44, 245); mark.rect(-6, -4, 12, 8); mark.fill();
+        mark.fillColor = new Color(42, 48, 43, 245); mark.rect(0, 0, 5, 4); mark.fill();
+        this.batchRunners.push(runner);
       }
       this.actor.getComponent(UITransform)!.setContentSize(102, 102);
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, .06);
@@ -653,7 +675,10 @@ export class PuzzleController extends Component {
     if (this.policeEscape.cleared && this.world.checkpoint === 'police-approach') this.world.checkpoint = 'police-cleared';
     if (this.world.x >= -1040) this.alarmTriggered = true;
     const factoryVolume = Math.max(0, Math.min(1, (-this.world.x - 500) / 1000)) * .32;
-    const alarmVolume = this.alarmTriggered ? Math.max(0, 1 - Math.max(0, this.world.x + 3200) / 2200) * .3 : 0;
+    const openingAlarmVolume = this.alarmTriggered ? Math.max(0, 1 - Math.max(0, this.world.x + 3200) / 2200) * .3 : 0;
+    const revealDistance = Math.abs(this.world.x - (SALVAGE.origin + 580));
+    const revealAlarmVolume = Math.max(0, 1 - revealDistance / 520) * .22;
+    const alarmVolume = Math.max(openingAlarmVolume, revealAlarmVolume);
     this.factorySound.volume += (factoryVolume - this.factorySound.volume) * Math.min(1, dt * 3);
     this.alarmSound.volume += (alarmVolume - this.alarmSound.volume) * Math.min(1, dt * 3);
     this.saveNotice = Math.max(0, this.saveNotice - dt);
@@ -878,6 +903,16 @@ export class PuzzleController extends Component {
       sprite.color = new Color(178, 168, 142, Math.round(230 * (1 - fall * .72)));
       runner.setPosition(x - this.cameraOffset, FACTORY_PANIC_LAYOUT.beltY - fall * 230, 0);
       runner.setRotationFromEuler(0, 0, -fall * 78);
+    });
+    this.batchRunners.forEach((runner, i) => {
+      const state = batchRunnerPosition(this.time, i);
+      runner.active = this.world.checkpoint === 'batch-reveal' && state.visible;
+      if (!runner.active) return;
+      const sprite = runner.getComponent(Sprite)!;
+      sprite.spriteFrame = this.poses[16 + (Math.floor(this.time * 13 + i * 1.7) % 8)];
+      sprite.color = new Color(178, 168, 142, state.alpha);
+      runner.setPosition(state.x - this.cameraOffset, state.y, 0);
+      runner.setRotationFromEuler(0, 0, state.y < BATCH_REVEAL_LAYOUT.beltY ? -38 : 0);
     });
     const signsX = [-1960, -2340, -1210], signsY = [115, 110, 70];
     this.openingSigns.forEach((n, i) => n.setPosition(signsX[i] - this.cameraOffset, signsY[i], 0));
