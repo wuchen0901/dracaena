@@ -6,6 +6,7 @@ import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
+import { RiverCrossing, drawRiverBoatFront, drawRiverCrossing } from './RiverCrossing';
 import { drawPushBox } from './PushBoxArt';
 import { drawReclamationOpening } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
@@ -49,12 +50,13 @@ export class PuzzleController extends Component {
   private touchDirection = 0;
   private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label;
   private pressPuzzle = new IndustrialPressSegment(); private pressArt!: Graphics; private pressSign!: Label; private touchGrab = false;
+  private river = new RiverCrossing(); private riverArt!: Graphics; private riverFrontArt!: Graphics; private riverSign!: Label;
   private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
   private catNode!: Node; private catPoses: SpriteFrame[] = []; private catPropsArt!: Graphics;
   private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtTitle!: Label; private caughtHint!: Label;
-  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle);
+  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river);
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
@@ -112,6 +114,9 @@ export class PuzzleController extends Component {
     this.pressArt = this.child('Industrial pressure plate and sliding bridge', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.pressSign = this.text('废弃车间\n压住按钮，检修桥才会保持伸出', 0, 0, 14, 270);
     this.pressSign.lineHeight = 19; this.pressSign.node.setParent(this.sceneRoot);
+    this.riverArt = this.child('Ruined river and old ferry', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.riverSign = this.text('废城河道\n旧渡船顺流而下', 0, 0, 15, 240);
+    this.riverSign.lineHeight = 20; this.riverSign.node.setParent(this.sceneRoot);
     this.prisonSign = this.text('第七区监狱\n外围隔离墙', 0, 0, 13, 140);
     this.prisonSign.lineHeight = 18; this.prisonSign.node.setParent(this.sceneRoot);
     this.dogArt = this.child('Broken prison escape path', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
@@ -128,6 +133,7 @@ export class PuzzleController extends Component {
     this.policeCoverTree = this.child('Roadside shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    this.riverFrontArt = this.child('Ferry bow over the seated rider', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses();
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
@@ -285,6 +291,14 @@ export class PuzzleController extends Component {
   }
   private animateCharacter(dt: number) {
     if (!this.poses.length) return;
+    const onBoat = this.world.checkpoint === 'river-approach' && this.river.isOnBoat(this.world.x);
+    if (onBoat) {
+      this.pushPull.reset(); this.facing = 1; this.breathScaleY = 1 + Math.sin(this.time * 3.2) * .012;
+      this.actorSprite.spriteFrame = this.poses[0];
+      this.actor.getComponent(UITransform)!.setContentSize(88, 92);
+      this.actor.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[0]);
+      return;
+    }
     this.breathScaleY = 1;
     const index = this.animation.frame(dt, this.world.vx, this.world.vy, this.world.grounded);
     const guardCoverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
@@ -555,6 +569,8 @@ export class PuzzleController extends Component {
     else this.world.step(dt, direction * (underCover ? .5 : 1), !underCover && (this.touchRun || this.keys.has(KeyCode.SHIFT_LEFT) || this.keys.has(KeyCode.SHIFT_RIGHT)), this.touchGrab || this.keys.has(KeyCode.KEY_E));
     if (this.world.recoverySerial !== recovery) { this.releaseInputs(); this.dog.reset(this.world.checkpoint === 'dog-cleared'); }
     this.dog.step(dt, this.world.x, this.world.y, this.world.grounded);
+    const ridingRiver = this.world.checkpoint === 'river-approach' && (this.river.isOnBoat(this.world.x) || this.river.isOnRamp(this.world.x));
+    if (ridingRiver && this.dog.catRescued) { this.dog.catX = this.world.x - 54; this.dog.catY = this.world.y + 2; }
     if (this.dog.cleared && this.world.checkpoint === 'dog-approach') this.world.checkpoint = 'dog-cleared';
     if (this.dog.barking && this.audioUnlocked && this.barkClip && !this.barkSound.playing) {
       this.barkSound.clip = this.barkClip; this.barkSound.play();
@@ -595,10 +611,13 @@ export class PuzzleController extends Component {
     const nearPress = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const atPressurePlate = this.world.grounded && Math.abs(this.world.x - this.pressPuzzle.plateX) < 58 && Math.abs(this.world.y - this.pressPuzzle.layout.floor) < 5;
-    this.leverPrompt.string = nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    const atRiver = this.world.checkpoint === 'river-approach';
+    const onBoat = atRiver && this.river.isOnBoat(this.world.x);
+    const onLanding = atRiver && this.river.isOnRamp(this.world.x);
+    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
-    const promptX = nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const promptX = atRiver ? this.world.x + 110 : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = atRiver ? this.world.y + 126 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
@@ -739,7 +758,14 @@ export class PuzzleController extends Component {
       // Full-screen paintings stay in camera space; world parallax would move them offscreen.
       backdrop.node.setPosition(0, this.cameraLift, 0);
     }
-    this.drawCanal(); this.drawCoverTree(this.coverTree, COVER); this.drawCoverTree(this.policeCoverTree, POLICE_COVER);
+    this.drawCanal();
+    const onBoat = this.world.checkpoint === 'river-approach' && this.river.isOnBoat(this.world.x);
+    const onLanding = this.world.checkpoint === 'river-approach' && this.river.isOnRamp(this.world.x);
+    const boatX = onBoat ? this.world.x + 25 : onLanding || this.world.checkpoint === 'river-cleared' ? this.river.landingBoatX : this.river.launchBoatX;
+    drawRiverCrossing(this.riverArt, this.river, this.cameraOffset, this.time, boatX);
+    this.riverSign.node.active = Math.abs(this.world.x - this.river.layout.origin) < 700;
+    if (this.riverSign.node.active) this.riverSign.node.setPosition(this.river.layout.origin + 360 - this.cameraOffset, 190, 0);
+    this.drawCoverTree(this.coverTree, COVER); this.drawCoverTree(this.policeCoverTree, POLICE_COVER);
     drawGuardPostSearch(this.guardPost, this.cameraOffset, this.time);
     this.guardPostSign.node.setPosition((GUARD_POST.x - this.cameraOffset) * .55, 260, 0);
     drawDogGap(this.dogArt, this.dog, this.cameraOffset);
@@ -791,8 +817,9 @@ export class PuzzleController extends Component {
         this.flyArt.fill();
       }
     }
-    this.actor.setPosition(this.world.x - this.cameraOffset, foot + (this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
+    this.actor.setPosition(this.world.x - this.cameraOffset, foot + (onBoat ? -14 : this.poses.length ? 0 : 38), 0); this.actor.setScale(this.facing, this.breathScaleY, 1);
     this.actor.setRotationFromEuler(0, 0, 0);
+    drawRiverBoatFront(this.riverFrontArt, this.river, this.cameraOffset, this.time, this.world.x, onBoat);
     for (const l of this.layers) {
       let drift = l.drift ? ((l.x + 760 + this.time * l.drift) % 1520 + 1520) % 1520 - 760 - l.x : 0;
       let layerX = l.x - this.cameraOffset * l.parallax + drift;
