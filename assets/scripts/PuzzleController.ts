@@ -5,6 +5,7 @@ import { drawScrapYard } from './ScrapYardArt';
 import { cameraHeight } from './WorldCamera';
 import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
+import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { drawPushBox } from './PushBoxArt';
 import { drawReclamationOpening } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
@@ -46,13 +47,14 @@ export class PuzzleController extends Component {
   private scavengerNode!: Node; private flyArt!: Graphics;
   private keys = new Set<KeyCode>();
   private touchDirection = 0;
-  private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label; private touchGrab = false;
+  private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label;
+  private pressPuzzle = new IndustrialPressSegment(); private pressArt!: Graphics; private pressSign!: Label; private touchGrab = false;
   private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
   private catNode!: Node; private catPoses: SpriteFrame[] = []; private catPropsArt!: Graphics;
   private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtTitle!: Label; private caughtHint!: Label;
-  private world = new SluiceWorld(this.boxPuzzle, this.dog);
+  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle);
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
@@ -107,6 +109,9 @@ export class PuzzleController extends Component {
       const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
     }
     this.boxArt = this.child('Movable crate and maintenance platform', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.pressArt = this.child('Industrial pressure plate and sliding bridge', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.pressSign = this.text('废弃车间\n压住按钮，检修桥才会保持伸出', 0, 0, 14, 270);
+    this.pressSign.lineHeight = 19; this.pressSign.node.setParent(this.sceneRoot);
     this.prisonSign = this.text('第七区监狱\n外围隔离墙', 0, 0, 13, 140);
     this.prisonSign.lineHeight = 18; this.prisonSign.node.setParent(this.sceneRoot);
     this.dogArt = this.child('Broken prison escape path', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
@@ -285,11 +290,15 @@ export class PuzzleController extends Component {
     const guardCoverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
     const policeCoverFrame = this.policeCover.frame(dt, this.policeEscape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
     const coverFrame = guardCoverFrame !== null ? guardCoverFrame : policeCoverFrame;
+    const pressing = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const gripping = !(this.escape.caught || this.policeEscape.caught || this.dog.caught) && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
-      this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
-    const contact = this.world.x < this.boxPuzzle.x ? this.boxPuzzle.left : this.boxPuzzle.right;
-    const effort = this.pushPull.frame(dt, gripping, this.boxPuzzle.x - this.world.x,
-      this.world.vx, this.boxPuzzle.moving, Math.abs(contact - this.world.x));
+      (pressing || this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded));
+    const crateX = pressing ? this.pressPuzzle.crateX : this.boxPuzzle.x;
+    const crateLeft = pressing ? this.pressPuzzle.left : this.boxPuzzle.left;
+    const crateRight = pressing ? this.pressPuzzle.right : this.boxPuzzle.right;
+    const contact = this.world.x < crateX ? crateLeft : crateRight;
+    const effort = this.pushPull.frame(dt, gripping, crateX - this.world.x,
+      this.world.vx, pressing ? this.pressPuzzle.moving : this.boxPuzzle.moving, Math.abs(contact - this.world.x));
     this.actor.getComponent(UITransform)!.setContentSize(effort ? PUSH_PULL_CANVAS : 102, effort ? PUSH_PULL_CANVAS : 102);
     if (effort && this.pushPullPoses.length === 8) {
       this.actorSprite.spriteFrame = this.pushPullPoses[effort.index]; this.facing = effort.facing;
@@ -583,10 +592,14 @@ export class PuzzleController extends Component {
     this.siren.volume += (sirenVolume - this.siren.volume) * Math.min(1, dt * 2);
     this.animateCharacter(this.escape.caught || this.policeEscape.caught || this.dog.caught ? 0 : dt);
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
+    const nearPress = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
-    this.leverPrompt.string = nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    const atPressurePlate = this.world.grounded && Math.abs(this.world.x - this.pressPuzzle.plateX) < 58 && Math.abs(this.world.y - this.pressPuzzle.layout.floor) < 5;
+    this.leverPrompt.string = nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
-    this.leverPrompt.node.setPosition((nearBox ? this.boxPuzzle.x : CHANNEL.leverX) - this.cameraOffset, nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112, 0);
+    const promptX = nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
   private drawCanal() {
@@ -747,6 +760,9 @@ export class PuzzleController extends Component {
       this.catNode.setPosition(this.dog.catX - this.cameraOffset, this.dog.catY, 0);
     }
     drawPushBox(this.boxArt, this.boxPuzzle, this.cameraOffset);
+    drawIndustrialPress(this.pressArt, this.pressPuzzle, this.cameraOffset, this.time);
+    this.pressSign.node.active = Math.abs(this.world.x - this.pressPuzzle.plateX) < 700;
+    if (this.pressSign.node.active) this.pressSign.node.setPosition(this.pressPuzzle.layout.origin + 470 - this.cameraOffset, 255, 0);
     this.prisonSign.node.setPosition((this.boxPuzzle.wallX + this.boxPuzzle.wallEndX) / 2 - this.cameraOffset - 4, this.boxPuzzle.layout.floor + 113, 0);
     this.opening.node.setPosition(-this.cameraOffset, 0, 0);
     drawReclamationOpening(this.opening, this.time, this.alarmTriggered);
