@@ -3,7 +3,7 @@ import { Color, Graphics } from 'cc';
 /** Four short, playable environmental stories after the river crossing. */
 export type CityStorySave = {
   rationBox: number; battery: number; pumpOn: boolean; waterBowl: number;
-  pruningBranch?: number; wildWater?: boolean; relayPanel?: number;
+  pruningBranch?: number; wildWater?: boolean; relayPanel?: number; powerSwitches?: number;
 };
 export const CITY_STORY = {
   ration: { box: 9860, target: 10080, gate: 10430, worker: 10155, elder: 10215 },
@@ -14,7 +14,7 @@ export const CITY_STORY = {
     branch: 14540, branchTarget: 14825, pruningGate: 15220,
     valve: 15700, waterGate: 16220,
     panel: 16620, panelTarget: 16970, relay: 17120, signalGate: 17520,
-    finish: 17900,
+    powerGate: 18580, switches: [17770, 18020, 18270], finish: 19050,
   },
   floor: -140, propW: 82, propH: 74, pushSpeed: 112,
 };
@@ -30,6 +30,7 @@ export class CityStoryLevels {
   relayPanel = CITY_STORY.garden.panel;
   rationSolved = false; repairSolved = false; catSolved = false;
   pruningSolved = false; signalSolved = false;
+  powerSwitches = 0;
   private held: 'ration' | 'battery' | 'bowl' | 'branch' | 'panel' | null = null;
 
   restore(save?: CityStorySave) {
@@ -45,9 +46,10 @@ export class CityStoryLevels {
     this.catSolved = this.waterBowl >= CITY_STORY.cat.target;
     this.pruningSolved = this.pruningBranch >= CITY_STORY.garden.branchTarget;
     this.signalSolved = this.relayPanel >= CITY_STORY.garden.panelTarget;
+    this.powerSwitches = (save?.powerSwitches ?? 0) & 7;
     this.held = null;
   }
-  save(): CityStorySave { return { rationBox: this.rationBox, battery: this.battery, pumpOn: this.pumpOn, waterBowl: this.waterBowl, pruningBranch: this.pruningBranch, wildWater: this.wildWater, relayPanel: this.relayPanel }; }
+  save(): CityStorySave { return { rationBox: this.rationBox, battery: this.battery, pumpOn: this.pumpOn, waterBowl: this.waterBowl, pruningBranch: this.pruningBranch, wildWater: this.wildWater, relayPanel: this.relayPanel, powerSwitches: this.powerSwitches }; }
   private activeProp(playerX: number, grounded: boolean, grabbing: boolean) {
     if (!grounded || !grabbing) return null;
     const props: ['ration' | 'battery' | 'bowl' | 'branch' | 'panel', number, boolean, number][] = [
@@ -90,8 +92,13 @@ export class CityStoryLevels {
   interact(playerX: number, grounded: boolean) {
     if (grounded && Math.abs(playerX - CITY_STORY.pump.switchX) < 95 && !this.pumpOn) { this.pumpOn = true; return true; }
     if (grounded && Math.abs(playerX - CITY_STORY.garden.valve) < 95 && !this.wildWater) { this.wildWater = true; return true; }
+    if (grounded && this.signalSolved && !this.powerGateOpen) {
+      const i = CITY_STORY.garden.switches.findIndex((x, n) => !(this.powerSwitches & (1 << n)) && Math.abs(playerX - x) < 95);
+      if (i >= 0) { this.powerSwitches |= 1 << i; return true; }
+    }
     return false;
   }
+  get powerGateOpen() { return this.powerSwitches === 7; }
   get checkpoint(): 'river-cleared' | 'city-ration' | 'city-repair' | 'city-pump' | 'city-cat' | 'city-cleared' {
     if (this.catSolved) return 'city-cleared';
     if (this.pumpOn && this.repairSolved && this.rationSolved) return 'city-cat';
@@ -111,6 +118,7 @@ export class CityStoryLevels {
       ...(!this.pruningSolved ? [{ edge: s.garden.pruningGate, top: 240, right: true }] : []),
       ...(!this.wildWater ? [{ edge: s.garden.waterGate, top: 240, right: true }] : []),
       ...(!this.signalSolved ? [{ edge: s.garden.signalGate, top: 240, right: true }] : []),
+      ...(this.signalSolved && !this.powerGateOpen ? [{ edge: s.garden.powerGate, top: 240, right: true }] : []),
       ...(includeProps && !this.rationSolved ? this.propWall(this.rationBox) : []),
       ...(includeProps && !this.repairSolved ? this.propWall(this.battery) : []),
       ...(includeProps && !this.catSolved ? this.propWall(this.waterBowl) : []),
@@ -265,4 +273,31 @@ export function drawCityStories(g: Graphics, world: CityStoryLevels, camera: num
     else if (icon === 1) { line(x, floor + 142, x, floor + 154, new Color(214, 211, 155), 2); line(x - 6, floor + 148, x + 6, floor + 148, new Color(214, 211, 155), 2); }
     else line(x - 6, floor + 148, x + 6, floor + 148, new Color(214, 211, 155), 3);
   }
+  // The power gate blocks the route until all three wall switches feed it.
+  const gateOpen = world.powerGateOpen;
+  rect(garden.powerGate - 14, floor, 28, gateOpen ? 34 : 220, gateOpen ? new Color(74, 108, 75) : new Color(43, 54, 51));
+  if (!gateOpen) for (let y = floor + 12; y < floor + 216; y += 34) {
+    line(garden.powerGate - 14, y, garden.powerGate + 14, y + 18, new Color(94, 104, 78), 4);
+    line(garden.powerGate + 14, y, garden.powerGate - 14, y + 18, new Color(94, 104, 78), 4);
+  }
+  // Three isolated wall switches route power to the gate indicator.
+  for (let i = 0; i < garden.switches.length; i++) {
+    const x = garden.switches[i], on = !!(world.powerSwitches & (1 << i));
+    rect(x - 20, floor + 98, 40, 58, new Color(48, 61, 56));
+    line(x, floor + 108, x, floor + 145, new Color(111, 119, 91), 5);
+    line(x, floor + 126, x + (on ? 10 : -10), floor + (on ? 141 : 111), new Color(176, 163, 111), 5);
+    g.fillColor = on ? new Color(89, 196, 106, 220) : new Color(194, 70, 52, 200);
+    g.circle(sx(x), floor + 174, 8); g.fill();
+  }
+  const powered = world.powerGateOpen;
+  line(garden.switches[0], floor + 174, garden.switches[1], floor + 174, new Color(85, 116, 91, 120), 2);
+  line(garden.switches[1], floor + 174, garden.switches[2], floor + 174, new Color(85, 116, 91, 120), 2);
+  line(garden.switches[2], floor + 174, garden.powerGate, floor + 174, new Color(85, 116, 91, 120), 2);
+  g.fillColor = powered ? new Color(75, 221, 105, 240) : new Color(207, 66, 49, 220);
+  g.circle(sx(garden.powerGate), floor + 248, 12); g.fill();
+  if (powered) {
+    g.fillColor = new Color(98, 222, 122, 24);
+    g.rect(sx(garden.powerGate) - 150, floor, 300, 230); g.fill();
+  }
+
 }
