@@ -2,6 +2,7 @@ import { extname } from 'node:path';
 
 // Cocos resolves extensionless TypeScript imports; mirror that for Node tests.
 export async function resolve(specifier, context, nextResolve) {
+  if (specifier === 'cc') return { url: new URL('./cc-stub.mjs', import.meta.url).href, shortCircuit: true };
   try {
     return await nextResolve(specifier, context);
   } catch (error) {

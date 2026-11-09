@@ -537,7 +537,7 @@ export class PuzzleController extends Component {
   }
   private interact() {
     if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return;
-    if (this.world.interact() || this.cityStories.interact(this.world.x, this.world.grounded)) {
+    if (this.world.interact() || this.cityStories.interact(this.world.x, this.world.grounded, this.world.y)) {
       if (this.leverClip) this.leverSound.playOneShot(this.leverClip, .5);
       this.persist();
     }
@@ -748,6 +748,7 @@ export class PuzzleController extends Component {
     const nearPress = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearCityProp = this.cityStories.canGrab(this.world.x, this.world.grounded);
+    const atRationShade = this.cityStories.canInteractRationShade(this.world.x, this.world.y, this.world.grounded);
     const nearPump = this.world.grounded && Math.abs(this.world.x - CITY_STORY.pump.switchX) < 95 && !this.cityStories.pumpOn;
     const nearGardenValve = this.world.grounded && Math.abs(this.world.x - CITY_STORY.garden.valve) < 95 && !this.cityStories.wildWater;
     const nearPowerSwitch = this.world.grounded && this.cityStories.signalSolved && !this.cityStories.powerGateOpen && CITY_STORY.garden.switches.some((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95);
@@ -757,11 +758,11 @@ export class PuzzleController extends Component {
     const atRiver = this.world.checkpoint === 'river-approach';
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
-    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
     const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
-    const promptX = atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : nearCityProp || nearPump || nearGardenValve ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const promptX = atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : atRationShade ? this.world.y + 115 : nearCityProp || nearPump || nearGardenValve ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
