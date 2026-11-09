@@ -8,7 +8,7 @@ import { PushBoxSegment } from './PushBoxSegment';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { RiverCrossing, drawRiverBoatFront, drawRiverCrossing } from './RiverCrossing';
 import { drawPushBox } from './PushBoxArt';
-import { drawReclamationOpening } from './ReclamationOpening';
+import { drawFactoryPanic, drawReclamationOpening, FACTORY_PANIC_LAYOUT } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
 import { COVER, POLICE_COVER, GUARD_POST, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
@@ -25,6 +25,7 @@ type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number;
 @ccclass('PuzzleController')
 export class PuzzleController extends Component {
   private opening!: Graphics; private openingSigns: Node[] = []; private dormantRobots: Node[] = [];
+  private factoryPanicArt!: Graphics; private factoryRunners: Node[] = [];
   private alarmTriggered = false; private factorySound!: AudioSource; private alarmSound!: AudioSource;
   private factoryClip: AudioClip | null = null; private alarmClip: AudioClip | null = null;
   private night = 0; private savedNight = 0; private search!: Graphics;
@@ -107,6 +108,7 @@ export class PuzzleController extends Component {
     relayClue.color = new Color(163, 183, 143, 210); relayClue.node.setParent(this.sceneRoot);
     this.journeyClues.push({ node: relayClue.node, x: 15955, y: roadHeight(15920) + 245, range: 700 });
     this.opening = this.child('Reclamation station', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.factoryPanicArt = this.child('Factory alarm and conveyor escape', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     for (const [label, x, y] of [['待处理区 · 07', -1960, 115], ['拆解', -2340, 110], ['维修通道 →', -1210, 70]] as [string, number, number][]) {
       const sign = this.text(label, x, y, 18, 240); sign.node.setParent(this.sceneRoot); this.openingSigns.push(sign.node);
     }
@@ -149,7 +151,7 @@ export class PuzzleController extends Component {
       if (save) {
         this.world.restore(save); this.night = this.savedNight = save.night;
         this.escape.cleared = save.escaped; this.policeEscape.cleared = save.policeCleared === true;
-        this.alarmTriggered = save.alarm;
+        this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-escape';
         // One-time migration from older split atmosphere/patrol keys.
         if (raw && !Object.prototype.hasOwnProperty.call(JSON.parse(raw), 'escaped')) {
           const legacyNight = Number(sys.localStorage.getItem(SAVE_KEY + '.night'));
@@ -165,7 +167,7 @@ export class PuzzleController extends Component {
         const active = history.entries.find(e => e.id === history.activeId)!;
         this.world.restore(active.progress); this.night = this.savedNight = active.progress.night;
         this.escape.cleared = active.progress.escaped; this.policeEscape.cleared = active.progress.policeCleared === true;
-        this.alarmTriggered = active.progress.alarm;
+        this.alarmTriggered = active.progress.alarm || active.progress.checkpoint === 'reclamation' || active.progress.checkpoint === 'factory-escape';
         this.saved = JSON.stringify(active.progress);
       } else {
         const legacy = sys.localStorage.getItem(SAVE_KEY);
@@ -176,8 +178,9 @@ export class PuzzleController extends Component {
         }
       }
     } catch { this.storageFailed = true; }
+    if (this.world.checkpoint === 'reclamation') this.alarmTriggered = true;
     this.persist();
-    this.cameraOffset = Math.max(-2150, this.world.x - 100);
+    this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.cameraLift = cameraHeight(0, this.world.y, 1);
     this.setupSluiceAudio();
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
@@ -221,6 +224,14 @@ export class PuzzleController extends Component {
         const sprite = robot.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         sprite.spriteFrame = this.poses[0]; sprite.color = new Color(47, 58, 57);
         robot.setSiblingIndex(this.actor.getSiblingIndex()); this.dormantRobots.push(robot);
+      }
+      for (let i = 0; i < 5; i++) {
+        const runner = this.child('Escaping robot copy ' + (i + 1), 82, 82, 0, FACTORY_PANIC_LAYOUT.beltY, this.sceneRoot);
+        runner.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[16]);
+        const sprite = runner.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        sprite.spriteFrame = this.poses[16]; sprite.color = new Color(178, 168, 142, 230);
+        runner.setScale(.78, .78, 1); runner.setSiblingIndex(this.actor.getSiblingIndex());
+        this.factoryRunners.push(runner);
       }
       this.actor.getComponent(UITransform)!.setContentSize(102, 102);
       this.actor.getComponent(UITransform)!.setAnchorPoint(.5, .06);
@@ -489,9 +500,9 @@ export class PuzzleController extends Component {
   private loadEntry(entry: AutoSave) {
     const save = entry.progress;
     this.world.restore(save); this.night = this.savedNight = save.night;
-    this.escape.reset(); this.escape.cleared = save.escaped; this.policeEscape.reset(); this.policeEscape.cleared = save.policeCleared === true; this.alarmTriggered = save.alarm;
+    this.escape.reset(); this.escape.cleared = save.escaped; this.policeEscape.reset(); this.policeEscape.cleared = save.policeCleared === true; this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-escape';
     this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
-    this.facing = 1; this.cameraOffset = Math.max(-2150, this.world.x - 100);
+    this.facing = 1; this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.releaseInputs(); this.cover.reset(); this.policeCover.reset(); this.pushPull.reset(); this.animation.reset();
     // Keep later slots visible until a new milestone branches forward from this save.
     this.archive.activeId = entry.id; this.saved = JSON.stringify(save); this.writeArchive();
@@ -588,11 +599,11 @@ export class PuzzleController extends Component {
     if (this.policeEscape.cleared && this.world.checkpoint === 'police-approach') this.world.checkpoint = 'police-cleared';
     if (this.world.x >= -1040) this.alarmTriggered = true;
     const factoryVolume = Math.max(0, Math.min(1, (-this.world.x - 500) / 1000)) * .32;
-    const alarmVolume = this.alarmTriggered ? Math.max(0, 1 - Math.abs(this.world.x + 1100) / 1100) * .3 : 0;
+    const alarmVolume = this.alarmTriggered ? Math.max(0, 1 - Math.max(0, this.world.x + 3200) / 2200) * .3 : 0;
     this.factorySound.volume += (factoryVolume - this.factorySound.volume) * Math.min(1, dt * 3);
     this.alarmSound.volume += (alarmVolume - this.alarmSound.volume) * Math.min(1, dt * 3);
     this.saveNotice = Math.max(0, this.saveNotice - dt);
-    const target = Math.max(-2150, this.world.x - 100);
+    const target = Math.max(-3750, this.world.x - 100);
     this.cameraOffset += (target - this.cameraOffset) * (1 - Math.exp(-dt * 3));
     this.cameraLift = cameraHeight(this.cameraLift, this.world.y, dt);
     const proximity = Math.max(0, 1 - Math.abs(this.world.x - 1500) / 1000);
@@ -792,6 +803,22 @@ export class PuzzleController extends Component {
     this.prisonSign.node.setPosition((this.boxPuzzle.wallX + this.boxPuzzle.wallEndX) / 2 - this.cameraOffset - 4, this.boxPuzzle.layout.floor + 113, 0);
     this.opening.node.setPosition(-this.cameraOffset, 0, 0);
     drawReclamationOpening(this.opening, this.time, this.alarmTriggered);
+    const panicActive = this.world.checkpoint === 'reclamation' || this.world.checkpoint === 'factory-escape';
+    this.factoryPanicArt.node.active = panicActive;
+    if (panicActive) drawFactoryPanic(this.factoryPanicArt, this.time, this.cameraOffset);
+    const panicProgress = Math.max(0, this.world.x - FACTORY_PANIC_LAYOUT.startX);
+    this.factoryRunners.forEach((runner, i) => {
+      const x = FACTORY_PANIC_LAYOUT.runnerStartX + i * FACTORY_PANIC_LAYOUT.runnerSpacing + panicProgress * FACTORY_PANIC_LAYOUT.runnerSpeedRatio;
+      const fall = Math.max(0, Math.min(1, (x - FACTORY_PANIC_LAYOUT.pitStart) / (FACTORY_PANIC_LAYOUT.pitEnd - FACTORY_PANIC_LAYOUT.pitStart)));
+      const visible = panicActive && x < FACTORY_PANIC_LAYOUT.pitEnd + 18;
+      runner.active = visible;
+      if (!visible) return;
+      const sprite = runner.getComponent(Sprite)!;
+      sprite.spriteFrame = this.poses[16 + (Math.floor(this.time * 13 + i * 1.7) % 8)];
+      sprite.color = new Color(178, 168, 142, Math.round(230 * (1 - fall * .72)));
+      runner.setPosition(x - this.cameraOffset, FACTORY_PANIC_LAYOUT.beltY - fall * 230, 0);
+      runner.setRotationFromEuler(0, 0, -fall * 78);
+    });
     const signsX = [-1960, -2340, -1210], signsY = [115, 110, 70];
     this.openingSigns.forEach((n, i) => n.setPosition(signsX[i] - this.cameraOffset, signsY[i], 0));
     this.dormantRobots.forEach((n, i) => n.setPosition([-2250, -2150, -1850][i] - this.cameraOffset, CHANNEL.near, 0));

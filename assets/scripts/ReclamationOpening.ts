@@ -1,5 +1,10 @@
 import { Color, Graphics } from 'cc';
 
+export const FACTORY_PANIC_LAYOUT = {
+  startX: -3550, checkpointX: -2600, runnerStartX: -3460, runnerSpacing: 120,
+  runnerSpeedRatio: .9, beltY: -20, pitStart: -2750, pitEnd: -2575,
+};
+
 /** Room surfaces hide the forest until the maintenance doorway opens onto it. */
 export function drawReclamationOpening(g: Graphics, time: number, alarm: boolean) {
   g.clear();
@@ -54,4 +59,57 @@ export function drawReclamationOpening(g: Graphics, time: number, alarm: boolean
   }
   // Worn safety stripes reinforce the doorway and the exit direction.
   for (let x = -1200; x < -1030; x += 24) rect(x, -140, 12, 4, new Color(165, 144, 79));
+}
+
+/** A frightened batch follows the lit conveyor toward the scrap chute while the player has a lower service path. */
+export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
+  g.clear();
+  const sx = (x: number) => x - camera;
+  const rect = (x: number, y: number, w: number, h: number, color: Color) => {
+    g.fillColor = color; g.rect(sx(x), y, w, h); g.fill();
+  };
+  const line = (x: number, y: number, x2: number, y2: number, color: Color, width = 3) => {
+    g.strokeColor = color; g.lineWidth = width; g.moveTo(sx(x), y); g.lineTo(sx(x2), y2); g.stroke();
+  };
+  const beltStart = -3480, beltEnd = FACTORY_PANIC_LAYOUT.pitStart, pitStart = FACTORY_PANIC_LAYOUT.pitStart;
+  const pitEnd = FACTORY_PANIC_LAYOUT.pitEnd, beltY = FACTORY_PANIC_LAYOUT.beltY;
+  const pulse = .5 + .5 * Math.sin(time * 8.5);
+
+  // Heavy overhead gantries and a warning line make the same-model crowd read as factory workers.
+  rect(-3550, 178, 1040, 11, new Color(29, 40, 40));
+  for (const x of [-3480, -3230, -2980, -2730]) {
+    rect(x, 0, 13, 180, new Color(39, 49, 45));
+    rect(x - 18, 170, 48, 8, new Color(98, 76, 52));
+  }
+  line(-3550, 132, -2510, 132, new Color(81, 60, 48), 2);
+  for (const x of [-3420, -3120, -2820]) {
+    rect(x, 133, 28, 19, new Color(170 + Math.round(pulse * 65), 42, 28, 230));
+    g.fillColor = new Color(224, 48, 31, Math.round(18 + pulse * 34));
+    g.circle(sx(x + 14), 142, 44); g.fill();
+  }
+
+  // The marked conveyor looks like the route the identical units are following.
+  rect(beltStart, beltY, beltEnd - beltStart, 28, new Color(46, 50, 43));
+  rect(beltStart, beltY + 22, beltEnd - beltStart, 8, new Color(127, 94, 57));
+  line(beltStart, beltY - 4, beltEnd, beltY - 4, new Color(151, 119, 69), 4);
+  const offset = (time * 58) % 72;
+  for (let x = beltStart - 72 + offset; x < beltEnd; x += 72) {
+    line(x, beltY + 2, x + 24, beltY + 21, new Color(170, 115, 59, 190), 4);
+  }
+  // Below the belt is a deep receiving pit; scattered shells imply what happened to earlier units.
+  rect(pitStart, -315, pitEnd - pitStart, 295, new Color(8, 14, 16));
+  rect(pitStart - 13, beltY + 21, 15, 18, new Color(136, 81, 47));
+  rect(pitEnd - 2, beltY + 21, 15, 18, new Color(136, 81, 47));
+  line(pitStart, beltY + 25, pitStart, -295, new Color(82, 62, 45), 5);
+  line(pitEnd, beltY + 25, pitEnd, -295, new Color(82, 62, 45), 5);
+  for (let i = 0; i < 5; i++) {
+    const x = pitStart + 28 + i * 27;
+    rect(x, -285 + (i % 2) * 12, 18, 5, new Color(85, 83, 65, 170));
+    rect(x + 8, -278 + (i % 2) * 12, 5, 13, new Color(88, 85, 65, 155));
+  }
+  // The lower maintenance lane remains open, so the intro is tense without becoming a platform challenge.
+  for (let x = -3490; x < -2610; x += 145) {
+    const flow = (x + Math.floor(time * 42) % 145 + 145) % 145;
+    line(x + flow, -136, x + flow + 28, -136, new Color(141, 73, 46, 135), 3);
+  }
 }
