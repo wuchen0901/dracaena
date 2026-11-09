@@ -3,11 +3,11 @@ import { Color, Graphics } from 'cc';
 /** Four short, playable environmental stories after the river crossing. */
 export type CityStorySave = {
   rationBox: number; battery: number; pumpOn: boolean; waterBowl: number;
-  rationShadeDown?: boolean; pruningBranch?: number; wildWater?: boolean; relayPanel?: number; powerSwitches?: number;
+  rationShadeDown?: boolean; repairChoice?: 'robot' | 'gate' | null; pruningBranch?: number; wildWater?: boolean; relayPanel?: number; powerSwitches?: number;
 };
 export const CITY_STORY = {
   ration: { box: 9860, target: 10080, gate: 10430, worker: 10155, elder: 10215 },
-  repair: { battery: 10870, target: 11120, gate: 11500, robot: 11220 },
+  repair: { battery: 10870, doorTarget: 11040, target: 11300, gate: 11500, robot: 11220 },
   pump: { switchX: 12100, gate: 12700, cameraX: 12315, pumpX: 12480 },
   cat: { bowl: 13120, target: 13435, catX: 13510, survivorX: 13610, gate: 14120 },
   garden: {
@@ -24,6 +24,7 @@ export class CityStoryLevels {
   rationBox = CITY_STORY.ration.box;
   rationShadeDown = false;
   battery = CITY_STORY.repair.battery;
+  repairChoice: 'robot' | 'gate' | null = null;
   pumpOn = false;
   waterBowl = CITY_STORY.cat.bowl;
   pruningBranch = CITY_STORY.garden.branch;
@@ -39,20 +40,21 @@ export class CityStoryLevels {
     // Older saves treated the box alone as solving this story beat.
     this.rationShadeDown = save?.rationShadeDown ?? this.rationBox >= CITY_STORY.ration.target;
     this.battery = clamp(save?.battery ?? CITY_STORY.repair.battery, CITY_STORY.repair.battery, CITY_STORY.repair.target);
+    this.repairChoice = save?.repairChoice !== undefined ? save.repairChoice : this.battery >= 11120 ? 'gate' : null;
     this.pumpOn = save?.pumpOn ?? false;
     this.waterBowl = clamp(save?.waterBowl ?? CITY_STORY.cat.bowl, CITY_STORY.cat.bowl, CITY_STORY.cat.target);
     this.pruningBranch = clamp(save?.pruningBranch ?? CITY_STORY.garden.branch, CITY_STORY.garden.branch, CITY_STORY.garden.branchTarget);
     this.wildWater = save?.wildWater ?? false;
     this.relayPanel = clamp(save?.relayPanel ?? CITY_STORY.garden.panel, CITY_STORY.garden.panel, CITY_STORY.garden.panelTarget);
     this.rationSolved = this.rationBox >= CITY_STORY.ration.target && this.rationShadeDown;
-    this.repairSolved = this.battery >= CITY_STORY.repair.target;
+    this.repairSolved = this.repairChoice !== null;
     this.catSolved = this.waterBowl >= CITY_STORY.cat.target;
     this.pruningSolved = this.pruningBranch >= CITY_STORY.garden.branchTarget;
     this.signalSolved = this.relayPanel >= CITY_STORY.garden.panelTarget;
     this.powerSwitches = (save?.powerSwitches ?? 0) & 7;
     this.held = null;
   }
-  save(): CityStorySave { return { rationBox: this.rationBox, rationShadeDown: this.rationShadeDown, battery: this.battery, pumpOn: this.pumpOn, waterBowl: this.waterBowl, pruningBranch: this.pruningBranch, wildWater: this.wildWater, relayPanel: this.relayPanel, powerSwitches: this.powerSwitches }; }
+  save(): CityStorySave { return { rationBox: this.rationBox, rationShadeDown: this.rationShadeDown, battery: this.battery, repairChoice: this.repairChoice, pumpOn: this.pumpOn, waterBowl: this.waterBowl, pruningBranch: this.pruningBranch, wildWater: this.wildWater, relayPanel: this.relayPanel, powerSwitches: this.powerSwitches }; }
   private activeProp(playerX: number, grounded: boolean, grabbing: boolean) {
     if (!grounded || !grabbing) return null;
     const props: ['ration' | 'battery' | 'bowl' | 'branch' | 'panel', number, boolean, number][] = [
@@ -79,7 +81,7 @@ export class CityStoryLevels {
     else if (key === 'branch') this.pruningBranch = next;
     else this.relayPanel = next;
     this.rationSolved ||= this.rationBox >= CITY_STORY.ration.target && this.rationShadeDown;
-    this.repairSolved ||= this.battery >= CITY_STORY.repair.target;
+    this.repairSolved ||= this.repairChoice !== null;
     this.catSolved ||= this.waterBowl >= CITY_STORY.cat.target;
     this.pruningSolved ||= this.pruningBranch >= CITY_STORY.garden.branchTarget;
     this.signalSolved ||= this.relayPanel >= CITY_STORY.garden.panelTarget;
@@ -97,10 +99,19 @@ export class CityStoryLevels {
       Math.abs(playerX - CITY_STORY.ration.target) < 92 &&
       Math.abs(playerY - (CITY_STORY.floor + CITY_STORY.propH)) < 5;
   }
+  repairChoicePrompt(playerX: number, playerY: number, grounded: boolean): 'robot' | 'gate' | null {
+    if (this.repairSolved || !grounded || Math.abs(playerY - CITY_STORY.floor) >= 5) return null;
+    const repair = CITY_STORY.repair;
+    if (Math.abs(this.battery - repair.doorTarget) <= 34 && Math.abs(playerX - repair.doorTarget) < 76) return 'gate';
+    if (this.battery >= repair.target - 34 && Math.abs(playerX - repair.robot) < 88) return 'robot';
+    return null;
+  }
   interact(playerX: number, grounded: boolean, playerY = CITY_STORY.floor) {
     if (this.canInteractRationShade(playerX, playerY, grounded)) {
       this.rationShadeDown = true; this.rationSolved = true; return true;
     }
+    const repairChoice = this.repairChoicePrompt(playerX, playerY, grounded);
+    if (repairChoice) { this.repairChoice = repairChoice; this.repairSolved = true; return true; }
     if (grounded && Math.abs(playerX - CITY_STORY.pump.switchX) < 95 && !this.pumpOn) { this.pumpOn = true; return true; }
     if (grounded && Math.abs(playerX - CITY_STORY.garden.valve) < 95 && !this.wildWater) { this.wildWater = true; return true; }
     if (grounded && this.signalSolved && !this.powerGateOpen) {
@@ -185,12 +196,22 @@ export function drawCityStories(g: Graphics, world: CityStoryLevels, camera: num
   crate(world.rationBox, 'wood'); person(s.ration.worker, new Color(67, 77, 67)); person(s.ration.elder, new Color(81, 76, 68), 1);
   if (world.rationSolved) { rect(s.ration.elder - 22, floor + 42, 17, 9, new Color(190, 158, 95)); rect(s.ration.worker + 24, floor + 29, 9, 6, new Color(190, 158, 95)); rect(9810, floor + 195, 10, 5, new Color(50, 54, 47)); }
   else { g.fillColor = new Color(230, 176, 83); g.circle(sx(world.rationBox), floor + 106, 7); g.fill(); }
-  // A discarded cleaner receives power and becomes the one that lifts the service shutter.
+  // The battery can wake the discarded cleaner or power the old service-door relay.
   rect(10650, floor, 15, 194, new Color(54, 63, 58)); rect(10745, floor, 125, 13, new Color(62, 71, 65));
+  line(s.repair.battery - 25, floor + 11, s.repair.target + 30, floor + 11, new Color(66, 78, 66), 5);
+  line(s.repair.doorTarget, floor + 11, s.repair.doorTarget + 55, floor + 83, new Color(84, 92, 69), 4);
+  rect(s.repair.doorTarget + 39, floor + 78, 32, 40, world.repairChoice === 'gate' ? new Color(124, 157, 91) : new Color(63, 72, 59));
+  rect(s.repair.doorTarget + 50, floor + 92, 10, 8, new Color(183, 153, 82));
+  line(s.repair.robot - 24, floor + 11, s.repair.robot, floor + 32, new Color(84, 92, 69), 4);
   crate(world.battery, 'cell');
-  rect(s.repair.robot - 42, floor + 5, 84, 48, world.repairSolved ? new Color(91, 111, 82) : new Color(48, 57, 53));
-  g.fillColor = new Color(133, 176, 113, Math.round(world.repairSolved ? 195 : 55)); g.circle(sx(s.repair.robot + 29), floor + 38, 5); g.fill();
-  for (let i = 0; i < 3; i++) line(s.repair.robot - 28 + i * 22, floor + 7, s.repair.robot - 18 + i * 22, floor + 18 + (world.repairSolved ? Math.sin(time * 5 + i) * 3 : 0), new Color(133, 143, 115), 2);
+  const robotAwake = world.repairChoice === 'robot';
+  rect(s.repair.robot - 42, floor + 5, 84, 48, robotAwake ? new Color(91, 111, 82) : new Color(48, 57, 53));
+  g.fillColor = new Color(133, 176, 113, Math.round(robotAwake ? 195 : 55)); g.circle(sx(s.repair.robot + 29), floor + 38, 5); g.fill();
+  for (let i = 0; i < 3; i++) line(s.repair.robot - 28 + i * 22, floor + 7, s.repair.robot - 18 + i * 22, floor + 18 + (robotAwake ? Math.sin(time * 5 + i) * 3 : 0), new Color(133, 143, 115), 2);
+  if (world.repairChoice !== 'robot') {
+    line(s.repair.robot - 17, floor + 47, s.repair.robot + 17, floor + 35, new Color(139, 112, 73), 12);
+    rect(s.repair.robot + 30, floor + 18, 6, 17, new Color(180, 154, 99));
+  }
   if (world.repairSolved) rect(s.repair.gate - 10, floor, 20, 65, new Color(93, 111, 86));
   // One tactile switch redirects the live cable from surveillance to the public pump.
   line(11880, floor + 174, s.pump.switchX, floor + 174, new Color(71, 78, 66), 8);
@@ -222,6 +243,10 @@ export function drawCityStories(g: Graphics, world: CityStoryLevels, camera: num
     else if (kind === 1) { g.moveTo(sx(x) - 4, floor + 147); g.lineTo(sx(x), floor + 155); g.lineTo(sx(x) + 6, floor + 140); g.stroke(); }
     else if (kind === 2) { g.circle(sx(x), floor + 147, 5); g.fill(); }
     else { g.ellipse(sx(x), floor + 146, 6, 4); g.fill(); }
+  }
+  if (!world.repairSolved && Math.abs(s.repair.doorTarget - camera) < 730) {
+    g.strokeColor = new Color(220, 202, 143, 210); g.lineWidth = 2; g.circle(sx(s.repair.doorTarget), floor + 147, 13); g.stroke();
+    g.fillColor = new Color(220, 202, 143, 230); g.rect(sx(s.repair.doorTarget) - 6, floor + 144, 12, 7); g.fill();
   }
   // A fallen branch jams the pruning arm and leaves one wild plant untouched.
   const garden = s.garden;
