@@ -9,6 +9,7 @@ import { PushPullAnimation, PUSH_PULL_CANVAS } from './PushPullAnimation';
 import { PushBoxSegment } from './PushBoxSegment';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { RiverCrossing, drawRiverBoatFront, drawRiverCrossing } from './RiverCrossing';
+import { FactoryEscapePuzzle } from './FactoryEscapePuzzle';
 import { drawPushBox } from './PushBoxArt';
 import { drawFactoryPanic, drawReclamationOpening, FACTORY_PANIC_LAYOUT } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
@@ -58,6 +59,7 @@ export class PuzzleController extends Component {
   private keys = new Set<KeyCode>();
   private touchDirection = 0;
   private boxPuzzle = new PushBoxSegment(); private boxArt!: Graphics; private prisonSign!: Label;
+  private factoryPuzzle = new FactoryEscapePuzzle();
   private pressPuzzle = new IndustrialPressSegment(); private pressArt!: Graphics; private pressSign!: Label; private touchGrab = false;
   private river = new RiverCrossing(); private riverArt!: Graphics; private riverFrontArt!: Graphics; private riverSign!: Label;
   private dog = new DogChaseSegment(); private dogNode!: Node; private dogArt!: Graphics;
@@ -66,7 +68,7 @@ export class PuzzleController extends Component {
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtReason!: Label; private caughtDescription!: Label;
   private cityStories = new CityStoryLevels();
-  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river, this.cityStories);
+  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river, this.cityStories, this.factoryPuzzle);
   private previewMode = false;
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
@@ -169,7 +171,7 @@ export class PuzzleController extends Component {
       if (save) {
         this.world.restore(save); this.night = this.savedNight = save.night;
         this.escape.cleared = save.escaped; this.policeEscape.cleared = save.policeCleared === true;
-        this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-escape';
+        this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-solved' || save.checkpoint === 'factory-escape';
         // One-time migration from older split atmosphere/patrol keys.
         if (raw && !Object.prototype.hasOwnProperty.call(JSON.parse(raw), 'escaped')) {
           const legacyNight = Number(sys.localStorage.getItem(SAVE_KEY + '.night'));
@@ -185,7 +187,7 @@ export class PuzzleController extends Component {
         const active = history.entries.find(e => e.id === history.activeId)!;
         this.world.restore(active.progress); this.night = this.savedNight = active.progress.night;
         this.escape.cleared = active.progress.escaped; this.policeEscape.cleared = active.progress.policeCleared === true;
-        this.alarmTriggered = active.progress.alarm || active.progress.checkpoint === 'reclamation' || active.progress.checkpoint === 'factory-escape';
+        this.alarmTriggered = active.progress.alarm || active.progress.checkpoint === 'reclamation' || active.progress.checkpoint === 'factory-solved' || active.progress.checkpoint === 'factory-escape';
         this.saved = JSON.stringify(active.progress);
       } else {
         const legacy = sys.localStorage.getItem(SAVE_KEY);
@@ -393,7 +395,8 @@ export class PuzzleController extends Component {
   private animateCharacter(dt: number) {
     if (this.useWorld25) {
       if (this.touchGrab || this.keys.has(KeyCode.KEY_E)) {
-        const target = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.pressPuzzle.crateX
+        const target = this.factoryPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.factoryPuzzle.crateX
+          : this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.pressPuzzle.crateX
           : this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.boxPuzzle.x
           : this.cityStories.movableXNear(this.world.x, this.world.grounded);
         if (target !== null) this.facing = target >= this.world.x ? 1 : -1;
@@ -414,15 +417,16 @@ export class PuzzleController extends Component {
     const guardCoverFrame = this.cover.frame(dt, this.escape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
     const policeCoverFrame = this.policeCover.frame(dt, this.policeEscape.cleared ? -1000 : this.world.x, this.world.grounded, this.world.vx);
     const coverFrame = guardCoverFrame !== null ? guardCoverFrame : policeCoverFrame;
+    const factoryGrabbing = this.factoryPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const pressing = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const gripping = !(this.escape.caught || this.policeEscape.caught || this.dog.caught) && (this.touchGrab || this.keys.has(KeyCode.KEY_E)) &&
-      (pressing || this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded));
-    const crateX = pressing ? this.pressPuzzle.crateX : this.boxPuzzle.x;
-    const crateLeft = pressing ? this.pressPuzzle.left : this.boxPuzzle.left;
-    const crateRight = pressing ? this.pressPuzzle.right : this.boxPuzzle.right;
+      (factoryGrabbing || pressing || this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded));
+    const crateX = factoryGrabbing ? this.factoryPuzzle.crateX : pressing ? this.pressPuzzle.crateX : this.boxPuzzle.x;
+    const crateLeft = factoryGrabbing ? this.factoryPuzzle.left : pressing ? this.pressPuzzle.left : this.boxPuzzle.left;
+    const crateRight = factoryGrabbing ? this.factoryPuzzle.right : pressing ? this.pressPuzzle.right : this.boxPuzzle.right;
     const contact = this.world.x < crateX ? crateLeft : crateRight;
     const effort = this.pushPull.frame(dt, gripping, crateX - this.world.x,
-      this.world.vx, pressing ? this.pressPuzzle.moving : this.boxPuzzle.moving, Math.abs(contact - this.world.x));
+      this.world.vx, factoryGrabbing ? this.factoryPuzzle.moving : pressing ? this.pressPuzzle.moving : this.boxPuzzle.moving, Math.abs(contact - this.world.x));
     this.actor.getComponent(UITransform)!.setContentSize(effort ? PUSH_PULL_CANVAS : 102, effort ? PUSH_PULL_CANVAS : 102);
     if (effort && this.pushPullPoses.length === 8) {
       this.actorSprite.spriteFrame = this.pushPullPoses[effort.index]; this.facing = effort.facing;
@@ -617,7 +621,7 @@ export class PuzzleController extends Component {
   private loadEntry(entry: AutoSave) {
     const save = entry.progress;
     this.world.restore(save); this.night = this.savedNight = save.night;
-    this.escape.reset(); this.escape.cleared = save.escaped; this.policeEscape.reset(); this.policeEscape.cleared = save.policeCleared === true; this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-escape';
+    this.escape.reset(); this.escape.cleared = save.escaped; this.policeEscape.reset(); this.policeEscape.cleared = save.policeCleared === true; this.alarmTriggered = save.alarm || save.checkpoint === 'reclamation' || save.checkpoint === 'factory-solved' || save.checkpoint === 'factory-escape';
     this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
     this.facing = 1; this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.releaseInputs(); this.cover.reset(); this.policeCover.reset(); this.pushPull.reset(); this.animation.reset();
@@ -747,15 +751,17 @@ export class PuzzleController extends Component {
     const nearPump = this.world.grounded && Math.abs(this.world.x - CITY_STORY.pump.switchX) < 95 && !this.cityStories.pumpOn;
     const nearGardenValve = this.world.grounded && Math.abs(this.world.x - CITY_STORY.garden.valve) < 95 && !this.cityStories.wildWater;
     const nearPowerSwitch = this.world.grounded && this.cityStories.signalSolved && !this.cityStories.powerGateOpen && CITY_STORY.garden.switches.some((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95);
+    const nearFactoryBox = this.factoryPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
+    const atFactoryLever = this.factoryPuzzle.canInteract(this.world.x, this.world.y, this.world.grounded);
     const atPressurePlate = this.world.grounded && Math.abs(this.world.x - this.pressPuzzle.plateX) < 58 && Math.abs(this.world.y - this.pressPuzzle.layout.floor) < 5;
     const atRiver = this.world.checkpoint === 'river-approach';
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
-    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
     const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
-    const promptX = atRiver ? this.world.x + 110 : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = atRiver ? this.world.y + 126 : nearCityProp || nearPump || nearGardenValve ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const promptX = atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : nearCityProp || nearPump || nearGardenValve ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
@@ -922,11 +928,11 @@ export class PuzzleController extends Component {
     if (!this.actor) return;
     if (this.world25) {
       this.actor.setScale(this.facing, this.breathScaleY, 1);
-      this.world25.render({ world: this.world, box: this.boxPuzzle, press: this.pressPuzzle, river: this.river,
+      this.world25.render({ world: this.world, box: this.boxPuzzle, factory: this.factoryPuzzle, press: this.pressPuzzle, river: this.river,
         dog: this.dog, city: this.cityStories, escape: this.escape, police: this.policeEscape,
         scavenger: this.scavengerNode, backdrops: this.journeyBackdrops,
         cover: (!this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded)) || (!this.policeEscape.cleared && this.policeCover.contains(this.world.x, this.world.grounded)),
-        gripping: (this.touchGrab || this.keys.has(KeyCode.KEY_E)) && (this.boxPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.pressPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.cityStories.canGrab(this.world.x,this.world.grounded)),
+        gripping: (this.touchGrab || this.keys.has(KeyCode.KEY_E)) && (this.factoryPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.boxPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.pressPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.cityStories.canGrab(this.world.x,this.world.grounded)),
         time: this.time, night: this.night, alarm: this.alarmTriggered, facing: this.facing, cameraX: this.cameraOffset,
         prompt: this.leverPrompt.node, openingSigns: this.openingSigns, prisonSign: this.prisonSign.node,
         pressSign: this.pressSign.node, riverSign: this.riverSign.node, scrapSign: this.scrapSign.node,
@@ -976,10 +982,12 @@ export class PuzzleController extends Component {
     this.prisonSign.node.setPosition((this.boxPuzzle.wallX + this.boxPuzzle.wallEndX) / 2 - this.cameraOffset - 4, this.boxPuzzle.layout.floor + 113, 0);
     this.opening.node.setPosition(-this.cameraOffset, 0, 0);
     drawReclamationOpening(this.opening, this.time, this.alarmTriggered);
-    const panicActive = this.world.checkpoint === 'reclamation' || this.world.checkpoint === 'factory-escape';
+    const panicActive = ['reclamation', 'factory-solved', 'factory-escape'].indexOf(this.world.checkpoint) >= 0;
     this.factoryPanicArt.node.active = panicActive;
-    if (panicActive) drawFactoryPanic(this.factoryPanicArt, this.time, this.cameraOffset);
-    const panicProgress = Math.max(0, this.world.x - FACTORY_PANIC_LAYOUT.startX);
+    if (panicActive) drawFactoryPanic(this.factoryPanicArt, this.time, this.cameraOffset, this.factoryPuzzle);
+    const factoryRunnerX = this.factoryPuzzle.poweredOff ? this.factoryPuzzle.stopX : this.world.x;
+    const panicProgress = Math.max(0, factoryRunnerX - FACTORY_PANIC_LAYOUT.startX);
+    const runnerAnimationTime = this.factoryPuzzle.poweredOff ? 0 : this.time;
     this.factoryRunners.forEach((runner, i) => {
       const x = FACTORY_PANIC_LAYOUT.runnerStartX + i * FACTORY_PANIC_LAYOUT.runnerSpacing + panicProgress * FACTORY_PANIC_LAYOUT.runnerSpeedRatio;
       const fall = Math.max(0, Math.min(1, (x - FACTORY_PANIC_LAYOUT.pitStart) / (FACTORY_PANIC_LAYOUT.pitEnd - FACTORY_PANIC_LAYOUT.pitStart)));
@@ -987,7 +995,7 @@ export class PuzzleController extends Component {
       runner.active = visible;
       if (!visible) return;
       const sprite = runner.getComponent(Sprite)!;
-      sprite.spriteFrame = this.poses[16 + (Math.floor(this.time * 13 + i * 1.7) % 8)];
+      sprite.spriteFrame = this.poses[16 + (Math.floor(runnerAnimationTime * 13 + i * 1.7) % 8)];
       sprite.color = new Color(178, 168, 142, Math.round(230 * (1 - fall * .72)));
       runner.setPosition(x - this.cameraOffset, FACTORY_PANIC_LAYOUT.beltY - fall * 230, 0);
       runner.setRotationFromEuler(0, 0, -fall * 78);

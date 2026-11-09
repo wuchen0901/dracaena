@@ -1,4 +1,6 @@
 import { Color, Graphics } from 'cc';
+import type { FactoryEscapePuzzle } from './FactoryEscapePuzzle';
+import { FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
 
 export const FACTORY_PANIC_LAYOUT = {
   startX: -3550, checkpointX: -2600, runnerStartX: -3460, runnerSpacing: 120,
@@ -72,7 +74,7 @@ export function drawReclamationOpening(g: Graphics, time: number, alarm: boolean
 }
 
 /** A frightened batch follows the lit conveyor toward the scrap chute while the player has a lower service path. */
-export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
+export function drawFactoryPanic(g: Graphics, time: number, camera: number, puzzle?: FactoryEscapePuzzle) {
   g.clear();
   const sx = (x: number) => x - camera;
   const rect = (x: number, y: number, w: number, h: number, color: Color) => {
@@ -83,7 +85,8 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   };
   const beltStart = -3480, beltEnd = FACTORY_PANIC_LAYOUT.pitStart, pitStart = FACTORY_PANIC_LAYOUT.pitStart;
   const pitEnd = FACTORY_PANIC_LAYOUT.pitEnd, beltY = FACTORY_PANIC_LAYOUT.beltY;
-  const pulse = reclamationSignal(time);
+  const machineTime = puzzle?.poweredOff ? 0 : time;
+  const pulse = puzzle?.poweredOff ? 0 : reclamationSignal(time);
 
   // Heavy overhead gantries and a warning line make the same-model crowd read as factory workers.
   rect(-3550, 178, 1040, 11, new Color(29, 40, 40));
@@ -102,7 +105,7 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   rect(beltStart, beltY, beltEnd - beltStart, 28, new Color(46, 50, 43));
   rect(beltStart, beltY + 22, beltEnd - beltStart, 8, new Color(127, 94, 57));
   line(beltStart, beltY - 4, beltEnd, beltY - 4, new Color(151, 119, 69), 4);
-  const offset = (time * 58) % 72;
+  const offset = (machineTime * 58) % 72;
   for (let x = beltStart - 72 + offset; x < beltEnd; x += 72) {
     line(x, beltY + 2, x + 24, beltY + 21, new Color(170, 115, 59, 190), 4);
   }
@@ -125,7 +128,32 @@ export function drawFactoryPanic(g: Graphics, time: number, camera: number) {
   }
   // The lower maintenance lane remains open, so the intro is tense without becoming a platform challenge.
   for (let x = -3490; x < -2610; x += 145) {
-    const flow = (x + Math.floor(time * 42) % 145 + 145) % 145;
+    const flow = (x + Math.floor(machineTime * 42) % 145 + 145) % 145;
     line(x + flow, -136, x + flow + 28, -136, new Color(141, 73, 46, 135), 3);
+  }
+  if (puzzle) {
+    const c = FACTORY_ESCAPE_LAYOUT, floor = c.floor;
+    // Drag marks and the worn stop guide the player toward the box's useful position.
+    line(c.crateMin - 15, floor + 2, c.crateTarget + 7, floor + 2, new Color(169, 140, 87, 115), 3);
+    line(c.crateMin - 8, floor - 4, c.crateTarget + 10, floor - 4, new Color(92, 77, 55, 165), 2);
+    rect(c.crateMin - 20, floor, 12, 16, new Color(79, 86, 78));
+    rect(puzzle.left, floor, c.crateWidth, c.crateHeight, new Color(118, 91, 57));
+    rect(puzzle.left + 8, floor + 8, c.crateWidth - 16, c.crateHeight - 16, new Color(101, 78, 51));
+    line(puzzle.left + 12, floor + 16, puzzle.right - 12, floor + 16, new Color(158, 125, 76), 3);
+    line(puzzle.crateX, floor + 10, puzzle.crateX, floor + c.crateHeight - 10, new Color(78, 64, 47), 2);
+    // The waist-high service rail opens only after the nearby cutoff handle is pulled.
+    if (!puzzle.poweredOff) {
+      rect(c.gateX - 8, floor, 16, c.gateHeight, new Color(65, 78, 73));
+      for (let y = floor + 10; y < floor + c.gateHeight; y += 26) line(c.gateX - 7, y, c.gateX + 7, y + 9, new Color(139, 132, 101), 2);
+    } else {
+      rect(c.gateX - 15, floor + c.gateHeight - 14, 30, 14, new Color(65, 78, 73));
+    }
+    rect(c.leverX - 16, floor, 9, 88, new Color(63, 75, 70));
+    rect(c.leverX - 28, floor + 77, 34, 8, new Color(107, 96, 65));
+    line(c.leverX - 11, floor + 82, c.leverX + (puzzle.poweredOff ? 18 : -20), floor + (puzzle.poweredOff ? 53 : 66), new Color(209, 177, 105), 5);
+    rect(c.leverX - 24, floor + 98, 44, 24, new Color(puzzle.poweredOff ? 84 : 161, puzzle.poweredOff ? 151 : 54, puzzle.poweredOff ? 91 : 35));
+    if (puzzle.poweredOff) {
+      rect(-3370, floor + 182, 170, 6, new Color(95, 143, 99, 130));
+    }
   }
 }

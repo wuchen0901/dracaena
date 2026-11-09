@@ -3,6 +3,7 @@ import { ActorModelKit, Animal3D, Robot3D } from './Actors3D';
 import { Camera, Color, DirectionalLight, EffectAsset, gfx, Graphics, Layers, Material, Mesh, MeshRenderer, Node, Label, Sprite, SpriteFrame, UITransform, utils, Vec3, Vec4 } from 'cc';
 import { CHANNEL, ROAD, roadHeight, SALVAGE, SluiceWorld } from './SluiceWorld';
 import { PushBoxSegment } from './PushBoxSegment';
+import { FactoryEscapePuzzle, FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
 import { DogChaseSegment } from './DogChaseSegment';
@@ -26,6 +27,7 @@ type Backdrop = {
 export type World25DState = {
     world: SluiceWorld;
     box: PushBoxSegment;
+    factory: FactoryEscapePuzzle;
     press: IndustrialPressSegment;
     river: RiverCrossing;
     dog: DogChaseSegment;
@@ -222,11 +224,12 @@ export class World25D {
         this.catModel.pose(catX * S, (inCity ? roadHeight(catX) : s.dog.catY) * S, .9, s.facing, s.dog.catRescued, false, dt);
         this.sprite('Survivor and carrion', s.scavenger, CITY_STORY.cat.survivorX, ROAD.floor, -1.5, Math.abs(w.x - CITY_STORY.cat.survivorX) < 1400);
         [-2250, -2150, -1850].forEach((x, i) => this.robotCopy('Deactivated robot ' + i, x, CHANNEL.near, -2.5, Math.abs(w.x + 2050) < 1700, dt, true));
-        const panic = w.checkpoint === 'reclamation' || w.checkpoint === 'factory-escape';
+        const panic = ['reclamation', 'factory-solved', 'factory-escape'].indexOf(w.checkpoint) >= 0;
+        const factoryRunnerX = s.factory.poweredOff ? s.factory.stopX : w.x;
         for (let i = 0; i < 5; i++) {
-            const x = FACTORY_PANIC_LAYOUT.runnerStartX + i * FACTORY_PANIC_LAYOUT.runnerSpacing + Math.max(0, w.x - FACTORY_PANIC_LAYOUT.startX) * FACTORY_PANIC_LAYOUT.runnerSpeedRatio;
+            const x = FACTORY_PANIC_LAYOUT.runnerStartX + i * FACTORY_PANIC_LAYOUT.runnerSpacing + Math.max(0, factoryRunnerX - FACTORY_PANIC_LAYOUT.startX) * FACTORY_PANIC_LAYOUT.runnerSpeedRatio;
             const fall = Math.max(0, Math.min(1, (x - FACTORY_PANIC_LAYOUT.pitStart) / (FACTORY_PANIC_LAYOUT.pitEnd - FACTORY_PANIC_LAYOUT.pitStart)));
-            this.robotCopy('Factory runner ' + i, x, FACTORY_PANIC_LAYOUT.beltY + 28 - fall * 230, -4.5, panic && x < FACTORY_PANIC_LAYOUT.pitEnd + 18, dt, false, -fall * 78);
+            this.robotCopy('Factory runner ' + i, x, FACTORY_PANIC_LAYOUT.beltY + 28 - fall * 230, -4.5, panic && x < FACTORY_PANIC_LAYOUT.pitEnd + 18, dt, false, -fall * 78, s.factory.poweredOff ? 0 : 240);
         }
         for (let i = 0; i < 5; i++) {
             const b = batchRunnerPosition(s.time, i);
@@ -253,7 +256,7 @@ export class World25D {
         s.openingSigns.forEach((n, i) => this.caption(n, [-1960, -2340, -1210][i], [115, 110, 70][i], -5, Math.abs(w.x - [-1960, -2340, -1210][i]) < 1000));
         s.clues.forEach(c => this.caption(c.node, c.x, c.y, -1, Math.abs(w.x - c.x) < c.range));
     }
-    private robotCopy(name: string, x: number, y: number, z: number, visible: boolean, dt: number, seated = false, tilt = 0) {
+    private robotCopy(name: string, x: number, y: number, z: number, visible: boolean, dt: number, seated = false, tilt = 0, speed = 240) {
         let copy = this.robotCopies.get(name);
         if (!copy && visible) {
             copy = new Robot3D(this.root, this.kit, name);
@@ -265,7 +268,7 @@ export class World25D {
         copy.active = visible;
         if (!visible)
             return;
-        copy.pose({ x: x * S, y: y * S, z, vx: seated ? 0 : 240, vy: 0, grounded: true, facing: 1, cover: false, gripping: false, seated, floor: y * S, shadow: tilt === 0, dt });
+        copy.pose({ x: x * S, y: y * S, z, vx: seated ? 0 : speed, vy: 0, grounded: true, facing: 1, cover: false, gripping: false, seated, floor: y * S, shadow: tilt === 0, dt });
         copy.node.setRotationFromEuler(0, 0, tilt);
     }
     private terrain(s: World25DState) {
@@ -335,6 +338,11 @@ export class World25D {
         box(p.crateX, p.layout.floor + p.layout.crateHeight / 2, -.5, p.layout.crateWidth, p.layout.crateHeight, 1.6, new Color(108, 82, 51));
         box(s.box.x, s.box.layout.floor + s.box.layout.boxHeight / 2, -.5, s.box.layout.boxWidth, s.box.layout.boxHeight, 1.6, new Color(124, 99, 63));
         box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, 3, new Color(90, 104, 99));
+        const f = s.factory, fl = FACTORY_ESCAPE_LAYOUT;
+        box(f.crateX, fl.floor + fl.crateHeight / 2, -.5, fl.crateWidth, fl.crateHeight, 1.6, new Color(118, 91, 57));
+        if (!f.poweredOff) box(fl.gateX, fl.floor + fl.gateHeight / 2, -.8, 16, fl.gateHeight, 3, new Color(65, 78, 73));
+        box(fl.leverX - 12, fl.floor + 42, -.6, 8, 84, .8, new Color(63, 75, 70));
+        box(fl.leverX + (f.poweredOff ? 8 : -6), fl.floor + (f.poweredOff ? 70 : 80), -.15, 34, 6, .6, new Color(209, 177, 105));
         const r = s.river, atRiver = w.checkpoint === 'river-approach', onBoat = atRiver && r.isOnBoat(w.x), onRamp = atRiver && r.isOnRamp(w.x);
         const boatX = onBoat ? w.x + 25 : onRamp || w.checkpoint === 'river-cleared' ? r.landingBoatX : r.launchBoatX;
         g.surface(r.waterLeft * S, r.waterRight * S, r.layout.waterY * S, r.layout.waterY * S, 45, -58, new Color(40, 78, 76));
@@ -375,7 +383,7 @@ export class World25D {
     private art(s: World25DState) {
         const camera = s.cameraX, world = s.world;
         this.vector('Reclamation station', s, -5, g => drawReclamationOpening(g, s.time, s.alarm), .9);
-        this.vector('Factory escape conveyor', s, -4.5, g => drawFactoryPanic(g, s.time, camera), 1.4, camera);
+        this.vector('Factory escape conveyor', s, -4.5, g => drawFactoryPanic(g, s.time, camera, s.factory), 1.4, camera);
         this.vector('Salvage batch processing', s, -4.5, g => drawScrapYard(g, camera, s.time), 1.1, camera);
         this.vector('Prison wall and crate detail', s, .02, g => drawPushBox(g, s.box, camera), .7, camera);
         this.vector('Pressure plate and bridge detail', s, .02, g => drawIndustrialPress(g, s.press, camera, s.time), .7, camera);
