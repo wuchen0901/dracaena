@@ -13,7 +13,7 @@ import { SearchEscape } from './SearchEscape';
 import { COVER, POLICE_COVER, GUARD_POST, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, emptyArchive, readArchive, upsertAutosave, sameMilestone } from './SluiceWorld';
+import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, Checkpoint, emptyArchive, readArchive, upsertAutosave, sameMilestone, ensureOpeningAutosave } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt } from './JourneyStoryArt';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
@@ -56,7 +56,7 @@ export class PuzzleController extends Component {
   private catNode!: Node; private catPoses: SpriteFrame[] = []; private catPropsArt!: Graphics;
   private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
-  private caughtTitle!: Label; private caughtHint!: Label;
+  private caughtReason!: Label; private caughtDescription!: Label;
   private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river);
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
@@ -178,6 +178,9 @@ export class PuzzleController extends Component {
         }
       }
     } catch { this.storageFailed = true; }
+    const archiveBeforeOpeningSeed = this.archive;
+    this.archive = ensureOpeningAutosave(this.archive, Date.now());
+    if (this.archive !== archiveBeforeOpeningSeed) this.writeArchive();
     if (this.world.checkpoint === 'reclamation') this.alarmTriggered = true;
     this.persist();
     this.cameraOffset = Math.max(-3750, this.world.x - 100);
@@ -411,13 +414,14 @@ export class PuzzleController extends Component {
     const panel = this.child('Caught · retry', 1280, 590, 0, 0);
     const art = panel.addComponent(Graphics); art.fillColor = new Color(8, 13, 23, 210);
     art.rect(-640, -295, 1280, 590); art.fill();
-    const title = this.caughtTitle = this.text('被发现了', 0, 40, 32, 700); title.node.setParent(panel);
-    const hint = this.caughtHint = this.text('留在遮挡范围内，等搜寻结束', 0, -10, 18, 700); hint.node.setParent(panel);
+    const heading = this.text('本关失败', 0, 92, 32, 700); heading.node.setParent(panel);
+    const reason = this.caughtReason = this.text('', 0, 35, 22, 760); reason.node.setParent(panel);
+    const description = this.caughtDescription = this.text('', 0, -12, 17, 900); description.node.setParent(panel);
     const retry = this.child('Retry search encounter', 300, 60, 0, -85, panel);
     const button = retry.addComponent(Graphics); button.fillColor = new Color(48, 73, 65);
     button.roundRect(-150, -30, 300, 60, 8); button.fill();
-    const label = this.text('选择存档', 0, 0, 22, 300); label.node.setParent(retry);
-    retry.on(Node.EventType.TOUCH_END, () => this.showSaves());
+    const label = this.text('确认重试本关', 0, 0, 22, 300); label.node.setParent(retry);
+    retry.on(Node.EventType.TOUCH_END, () => this.retryCurrentLevel());
     this.caughtPanel = panel; panel.active = false;
   }
   private releaseInputs() { this.keys.clear(); this.touchDirection = 0; this.touchRun = false; this.touchGrab = false; this.world.vx = 0; }
@@ -426,7 +430,7 @@ export class PuzzleController extends Component {
     const fresh = !this.keys.has(e.keyCode); this.keys.add(e.keyCode);
     if (fresh && e.keyCode === KeyCode.ESCAPE) { this.togglePause(); return; }
     if (this.paused) return;
-    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.reset(); return; }
+    if (this.escape.caught || this.policeEscape.caught || this.dog.caught) { if (fresh && e.keyCode === KeyCode.KEY_R) this.retryCurrentLevel(); return; }
     if (fresh && [KeyCode.SPACE, KeyCode.KEY_W, KeyCode.ARROW_UP].indexOf(e.keyCode) >= 0) this.world.jump();
     if (fresh && e.keyCode === KeyCode.KEY_E) this.interact();
     if (fresh && e.keyCode === KeyCode.KEY_R) this.reset();
@@ -496,6 +500,23 @@ export class PuzzleController extends Component {
   private reset() {
     const latest = this.archive.entries[this.archive.entries.length - 1];
     if (latest) this.loadEntry(latest);
+  }
+  private retryCurrentLevel() {
+    const checkpoint: Checkpoint = this.dog.caught ? 'dog-approach' : this.policeEscape.caught ? 'police-approach' : 'patrol-approach';
+    const progress = {
+      ...this.world.save(), checkpoint,
+      night: this.savedNight, escaped: this.escape.cleared,
+      policeCleared: this.policeEscape.cleared, alarm: this.alarmTriggered,
+    };
+    this.world.restore(progress);
+    this.escape.reset(); this.escape.cleared = progress.escaped;
+    this.policeEscape.reset(); this.policeEscape.cleared = progress.policeCleared;
+    this.paused = false; this.saveList.active = this.pausePanel.active = this.caughtPanel.active = false;
+    this.facing = 1; this.cameraOffset = Math.max(-3750, this.world.x - 100);
+    this.releaseInputs(); this.cover.reset(); this.policeCover.reset(); this.pushPull.reset(); this.animation.reset();
+    this.saved = JSON.stringify(progress);
+    this.cameraLift = cameraHeight(0, this.world.y, 1);
+    this.animateCharacter(0); this.place();
   }
   private loadEntry(entry: AutoSave) {
     const save = entry.progress;
@@ -591,8 +612,8 @@ export class PuzzleController extends Component {
     this.escape.step(dt, this.cover.contains(this.world.x, this.world.grounded), this.world.x >= COVER.left);
     this.policeEscape.step(dt, this.policeCover.contains(this.world.x, this.world.grounded), this.world.x >= POLICE_COVER.left);
     if (this.escape.caught || this.policeEscape.caught || this.dog.caught) {
-      this.caughtTitle.string = this.dog.caught ? '被追犬追上了' : this.policeEscape.caught ? '被警车发现了' : '被园区岗哨发现了';
-      this.caughtHint.string = this.dog.caught ? '继续向右，在断口前跳到对岸' : this.policeEscape.caught ? '警车离开前，留在路边树的遮挡范围内' : '留在树的遮挡范围内，等园区岗哨转开视线';
+      this.caughtReason.string = this.dog.caught ? '失败原因：被追犬追上' : this.policeEscape.caught ? '失败原因：被警车发现' : '失败原因：被园区岗哨发现';
+      this.caughtDescription.string = this.dog.caught ? '没有及时跃过断口，追犬追上了机器人。' : this.policeEscape.caught ? '离开路边树的遮挡范围时，进入了警车的搜寻视线。' : '离开树的遮挡范围时，进入了园区岗哨的视线。';
       this.releaseInputs(); this.caughtPanel.active = true;
     }
     if (this.escape.cleared && this.world.checkpoint === 'patrol-approach') this.world.checkpoint = 'patrol-cleared';

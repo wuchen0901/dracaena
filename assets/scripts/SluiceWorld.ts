@@ -119,6 +119,18 @@ export function upsertAutosave(a: SaveArchive, progress: ProgressSave, createdAt
   entries.sort((x, y) => slotIndex(x.progress) - slotIndex(y.progress));
   return { version: 1, activeId: id, entries };
 }
+/** Keep the opening available as the first loadable checkpoint, including in older archives. */
+export function ensureOpeningAutosave(a: SaveArchive, createdAt: number): SaveArchive {
+  if (a.entries.some(entry => saveSlot(entry.progress) === 'reclamation')) return a;
+  const id = a.entries.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
+  const progress: ProgressSave = {
+    version: 1, checkpoint: 'reclamation', opened: false,
+    night: 0, escaped: false, alarm: true,
+  };
+  const entry: AutoSave = { id, name: saveName(progress), createdAt, progress };
+  const entries = [...a.entries, entry].sort((x, y) => slotIndex(x.progress) - slotIndex(y.progress));
+  return { version: 1, activeId: a.activeId ?? id, entries };
+}
 export class SluiceWorld {
   readonly box?: PushBoxSegment;
   readonly press?: IndustrialPressSegment;
