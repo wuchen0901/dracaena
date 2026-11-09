@@ -15,7 +15,7 @@ import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
 import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, Checkpoint, emptyArchive, readArchive, upsertAutosave, sameMilestone, ensureOpeningAutosave } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
-import { drawJourneyStoryArt } from './JourneyStoryArt';
+import { drawJourneyStoryArt, drawRoadsideCharacters } from './JourneyStoryArt';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
@@ -47,6 +47,7 @@ export class PuzzleController extends Component {
   private journeyBackdrops: JourneyBackdrop[] = [];
   private journeyStoryArt!: Graphics;
   private cityStoryArt!: Graphics;
+  private roadsideCharacters!: Graphics;
   private journeyClues: { node: Node; x: number; y: number; range: number }[] = [];
   private scavengerNode!: Node; private flyArt!: Graphics;
   private keys = new Set<KeyCode>();
@@ -105,6 +106,7 @@ export class PuzzleController extends Component {
     this.flyArt = this.child('Flies circling the carrion', 160, 110, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.journeyStoryArt = this.child('AI surveillance and ration traces', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.cityStoryArt = this.child('Playable ruined-city stories', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.roadsideCharacters = this.child('Travelers, fortune teller, singer and wildlife', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     const rationFloor = roadHeight(10030);
     const rationClue = this.text('配给仅限登记劳工', 10065, rationFloor + 113, 14, 250);
     rationClue.color = new Color(160, 154, 132, 210); rationClue.node.setParent(this.sceneRoot);
@@ -952,6 +954,7 @@ export class PuzzleController extends Component {
     drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.policeEscape.departure, POLICE_COVER.treeX);
     drawJourneyStoryArt(this.journeyStoryArt, this.cameraOffset, this.time);
     drawCityStories(this.cityStoryArt, this.cityStories, this.cameraOffset, this.time);
+    drawRoadsideCharacters(this.roadsideCharacters, this.cameraOffset, this.time);
     for (const clue of this.journeyClues) {
       const visible = Math.abs(this.world.x - clue.x) < clue.range;
       clue.node.active = visible;

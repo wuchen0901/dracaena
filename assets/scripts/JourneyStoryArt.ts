@@ -98,3 +98,118 @@ export function drawJourneyStoryArt(g: Graphics, camera: number, time: number) {
     }
   }
 }
+
+/** Quiet roadside characters and wildlife placed along the continuous journey. */
+export function drawRoadsideCharacters(g: Graphics, camera: number, time: number) {
+  g.clear();
+  const sx = (x: number) => x - camera;
+  const visible = (x: number, margin = 820) => Math.abs(x - camera) < margin;
+  const line = (x1: number, y1: number, x2: number, y2: number, color: Color, width = 4) => {
+    g.strokeColor = color; g.lineWidth = width; g.moveTo(sx(x1), y1); g.lineTo(sx(x2), y2); g.stroke();
+  };
+  const rect = (x: number, y: number, w: number, h: number, color: Color) => {
+    g.fillColor = color; g.roundRect(sx(x) - w / 2, y, w, h, Math.min(8, h / 3)); g.fill();
+  };
+  const circle = (x: number, y: number, radius: number, color: Color) => {
+    g.fillColor = color; g.circle(sx(x), y, radius); g.fill();
+  };
+  const human = (x: number, floor: number, coat: Color, skin: Color, crouched = false) => {
+    const lean = crouched ? 9 : 0;
+    circle(x + lean, floor + 75, 10, skin);
+    rect(x, floor + 26, crouched ? 25 : 30, crouched ? 43 : 54, coat);
+    line(x - 5, floor + 29, x - 13, floor + 3, coat, 7);
+    line(x + 8, floor + 30, x + 17, floor + 4, coat, 7);
+  };
+  const ground = (x: number) => roadHeight(x);
+
+  // The wanderer carries a tiny living garden through the dry city edge.
+  const wanderer = 8580, wf = ground(wanderer);
+  if (visible(wanderer)) {
+    human(wanderer, wf, new Color(91, 83, 64), new Color(157, 135, 108));
+    rect(wanderer - 23, wf + 29, 23, 42, new Color(64, 73, 59));
+    line(wanderer - 26, wf + 61, wanderer - 3, wf + 58, new Color(125, 110, 76), 4);
+    rect(wanderer + 10, wf + 23, 12, 18, new Color(111, 82, 54));
+    line(wanderer + 10, wf + 41, wanderer + 9, wf + 54, new Color(87, 126, 75), 3);
+    line(wanderer + 9, wf + 51, wanderer + 2, wf + 58, new Color(113, 157, 88), 3);
+    line(wanderer + 9, wf + 50, wanderer + 16, wf + 56, new Color(113, 157, 88), 3);
+    // A bundled bedroll and a tin cup make the silhouette read as a traveler.
+    line(wanderer - 29, wf + 70, wanderer - 9, wf + 91, new Color(139, 119, 84), 8);
+  }
+
+  // A salvage stall made from a torn awning, crate table and carefully sorted scraps.
+  const vendor = 9310, vf = ground(vendor);
+  if (visible(vendor)) {
+    line(vendor - 81, vf + 105, vendor + 74, vf + 105, new Color(73, 67, 53), 5);
+    line(vendor - 72, vf + 102, vendor - 52, vf + 153, new Color(83, 76, 58), 4);
+    line(vendor + 63, vf + 102, vendor + 44, vf + 153, new Color(83, 76, 58), 4);
+    line(vendor - 55, vf + 151, vendor + 47, vf + 151, new Color(117, 92, 61), 10);
+    line(vendor - 53, vf + 151, vendor - 37, vf + 128, new Color(110, 78, 58), 3);
+    line(vendor - 21, vf + 151, vendor - 3, vf + 131, new Color(137, 128, 94), 4);
+    line(vendor + 12, vf + 151, vendor + 32, vf + 130, new Color(71, 105, 87), 4);
+    human(vendor + 2, vf, new Color(73, 90, 78), new Color(148, 124, 98), true);
+    rect(vendor - 60, vf + 4, 30, 25, new Color(91, 77, 57));
+    rect(vendor + 48, vf + 4, 27, 32, new Color(61, 82, 72));
+    circle(vendor - 61, vf + 34, 4, new Color(182, 155, 92));
+    circle(vendor + 46, vf + 40, 5, new Color(192, 164, 91));
+  }
+
+  // The fortune teller reads broken city-sensor patterns through a cracked lens.
+  const seer = 11610, sf = ground(seer);
+  if (visible(seer)) {
+    rect(seer - 4, sf + 3, 55, 18, new Color(62, 65, 54));
+    human(seer + 8, sf, new Color(77, 80, 63), new Color(143, 121, 96), true);
+    line(seer - 22, sf + 21, seer + 18, sf + 21, new Color(139, 124, 86), 3);
+    circle(seer - 14, sf + 30, 5, new Color(196, 166, 91));
+    circle(seer + 1, sf + 30, 4, new Color(108, 157, 128));
+    circle(seer + 17, sf + 30, 5, new Color(185, 179, 139));
+    // A lens and dangling wire point back to the old surveillance network.
+    circle(seer + 52, sf + 44, 15, new Color(55, 73, 66));
+    circle(seer + 52, sf + 44, 9, new Color(115, 153, 129, 165));
+    line(seer + 49, sf + 30, seer + 42, sf + 3, new Color(92, 91, 67), 3);
+    line(seer + 42, sf + 3, seer + 58, sf - 1, new Color(92, 91, 67), 3);
+  }
+
+  // A street singer plays a salvaged string instrument; the notes are just brief warm glints.
+  const singer = 13920, mf = ground(singer), sway = Math.sin(time * 1.6);
+  if (visible(singer)) {
+    human(singer, mf, new Color(79, 76, 69), new Color(164, 139, 108));
+    line(singer + 4, mf + 49, singer + 29 + sway * 3, mf + 63, new Color(164, 139, 108), 5);
+    circle(singer + 38, mf + 50, 13, new Color(104, 83, 59));
+    circle(singer + 38, mf + 50, 5, new Color(59, 59, 49));
+    line(singer + 38, mf + 50, singer + 72, mf + 77, new Color(137, 117, 82), 4);
+    for (let i = 0; i < 3; i++) line(singer + 42 + i * 2, mf + 48, singer + 73 + i * 2, mf + 75, new Color(189, 165, 113, 175), 1);
+    if (Math.sin(time * 2.2) > .45) {
+      circle(singer + 87, mf + 101, 3, new Color(203, 174, 112, 190));
+      circle(singer + 101, mf + 118, 2, new Color(203, 174, 112, 155));
+    }
+  }
+
+  // A wary rooftop cat watches the traveler, keeping its own distance.
+  const stray = 10710, cf = ground(stray) + 104;
+  if (visible(stray)) {
+    rect(stray, ground(stray) + 92, 92, 14, new Color(62, 67, 56));
+    g.fillColor = new Color(103, 98, 79); g.ellipse(sx(stray), cf + 10, 25, 11); g.fill();
+    circle(stray + 17, cf + 21, 10, new Color(119, 110, 88));
+    line(stray + 10, cf + 27, stray + 8, cf + 39, new Color(119, 110, 88), 4);
+    line(stray + 23, cf + 27, stray + 25, cf + 39, new Color(119, 110, 88), 4);
+    line(stray - 21, cf + 11, stray - 34, cf + 22 + Math.sin(time * 1.2) * 3, new Color(119, 110, 88), 4);
+    circle(stray + 20, cf + 22, 1.7, new Color(196, 173, 108));
+  }
+
+  // Birds settle on old structures at three points along the route, then lift together.
+  const flocks = [
+    { x: 8780, y: ground(8780) + 240, count: 3 },
+    { x: 12460, y: ground(12460) + 280, count: 4 },
+    { x: 16180, y: ground(16180) + 210, count: 3 },
+  ];
+  for (const flock of flocks) {
+    if (!visible(flock.x, 950)) continue;
+    for (let i = 0; i < flock.count; i++) {
+      const bx = flock.x + i * 27, by = flock.y + Math.sin(time * 1.4 + i * 1.7) * 5;
+      const flap = Math.sin(time * 7 + i * 2.1) * 7;
+      line(bx - 10, by + flap, bx, by, new Color(44, 52, 46, 220), 3);
+      line(bx, by, bx + 10, by + flap, new Color(44, 52, 46, 220), 3);
+      circle(bx, by, 2.5, new Color(48, 54, 47, 230));
+    }
+  }
+}
