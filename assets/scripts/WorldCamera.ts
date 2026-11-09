@@ -10,7 +10,7 @@ export function backdropHeight(depth: number) {
   return CAMERA_HEIGHT - (CAMERA_Z - depth) * Math.tan(elevationRadians);
 }
 
-/** Fixed 590-unit viewport; reserve room for the full robot above its foot position. */
+/** Keep the robot in the lower-middle of the fixed viewport while the camera follows raised terrain. */
 export function cameraHeight(previous: number, feet: number, dt: number) {
   const target = Math.max(0, feet - 100);
   const smooth = previous + (target - previous) * (1 - Math.exp(-Math.max(0, dt) * 6));

@@ -246,6 +246,20 @@ export class PuzzleController extends Component {
       this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('preview') === 'mountain') {
+      this.previewMode = true;
+      this.cityStories.restore({
+        rationBox: CITY_STORY.ration.target, rationShadeDown: true,
+        battery: CITY_STORY.repair.target, repairChoice: 'gate', pumpOn: true,
+        waterBowl: CITY_STORY.cat.target, pruningBranch: CITY_STORY.garden.branchTarget,
+        wildWater: true, relayPanel: CITY_STORY.garden.panelTarget, powerSwitches: 7,
+      });
+      this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, ROAD.mountainStart - 500);
+      this.world.checkpoint = 'garden-cleared'; this.world.opened = true; this.world.fill = 1;
+      this.world.x = ROAD.mountainStart - 500; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
     if (typeof location !== 'undefined') {
       const stage = new URLSearchParams(location.search).get('preview');
       const checkpoints: Record<string, Checkpoint> = { factory: 'reclamation', forest: 'forest', sluice: 'sluice', patrol: 'patrol-approach', crate: 'crate-approach', dog: 'dog-approach', police: 'police-approach', press: 'industrial-approach', river: 'river-approach' };
@@ -813,6 +827,10 @@ export class PuzzleController extends Component {
       { x: 11800, earth: [49, 45, 41], edge: [119, 87, 62] },
       { x: 15500, earth: [41, 54, 42], edge: [82, 119, 72] },
       { x: 17000, earth: [47, 69, 43], edge: [99, 145, 78] },
+      { x: ROAD.mountainStart, earth: [57, 58, 54], edge: [119, 116, 99] },
+      { x: ROAD.mountainPeakStart, earth: [81, 84, 79], edge: [157, 155, 139] },
+      { x: ROAD.mountainDescentEnd, earth: [57, 55, 48], edge: [112, 96, 73] },
+      { x: ROAD.mountainDescentEnd + 800, earth: [47, 69, 43], edge: [99, 145, 78] },
     ];
     let before = palette[0], after = palette[palette.length - 1];
     for (let i = 1; i < palette.length; i++) {
@@ -825,7 +843,9 @@ export class PuzzleController extends Component {
     rect(viewLeft, -420, Math.max(0, Math.min(c.left, viewRight) - viewLeft), c.near + 420, earth);
     const farLeft = Math.max(c.right, viewLeft);
     if (viewRight > farLeft) {
-      const points = [farLeft, ROAD.descentStart, ROAD.descentEnd, this.dog.gapLeft, this.dog.gapRight, viewRight]
+      const mountainSamples: number[] = [];
+      for (let x = Math.ceil(Math.max(farLeft, ROAD.mountainStart) / 100) * 100; x < Math.min(viewRight, ROAD.mountainDescentEnd); x += 100) mountainSamples.push(x);
+      const points = [farLeft, ROAD.descentStart, ROAD.descentEnd, ROAD.mountainStart, ROAD.mountainPeakStart, ROAD.mountainPeakEnd, ROAD.mountainDescentEnd, this.dog.gapLeft, this.dog.gapRight, ...mountainSamples, viewRight]
         .filter(x => x >= farLeft && x <= viewRight).sort((a, b) => a - b);
       for (let i = 1; i < points.length; i++) {
         const a = points[i - 1], b = points[i];

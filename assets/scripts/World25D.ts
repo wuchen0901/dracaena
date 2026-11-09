@@ -203,7 +203,7 @@ export class World25D {
         const teleport = Math.abs(w.x - this.previousX) > 1200;
         this.previousX = w.x;
         const targetY = Math.max(ROAD.floor, w.y - 95) * S;
-        this.cameraY = teleport ? targetY : this.cameraY + (targetY - this.cameraY) * (1 - Math.exp(-dt * 5));
+        this.cameraY = teleport ? targetY : this.cameraY + (targetY - this.cameraY) * (1 - Math.exp(-dt * 7));
         this.camera.node.setPosition((s.cameraX + 100) * S, this.cameraY + CAMERA_HEIGHT, CAMERA_Z);
         for (const card of this.cards.values())
             card.node.active = false;
@@ -274,13 +274,17 @@ export class World25D {
     private terrain(s: World25DState) {
         const g = new WorldGeometry(), w = s.world, left = Math.floor((w.x - 1800) / 40) * 40, right = w.x + 2200;
         const gaps = [CHANNEL.left, CHANNEL.right, s.dog.gapLeft, s.dog.gapRight, s.press.layout.origin + s.press.layout.gapLeft, s.press.layout.origin + s.press.layout.gapRight, s.river.waterLeft, s.river.waterRight];
-        const boundaries = [left, right, ROAD.descentStart, ROAD.descentEnd, FACTORY_PANIC_LAYOUT.pitStart, FACTORY_PANIC_LAYOUT.pitEnd, ...gaps].filter(x => x >= left && x <= right).sort((a, b) => a - b);
+        const mountainSamples: number[] = [];
+        for (let x = Math.ceil(Math.max(left, ROAD.mountainStart) / 80) * 80; x < Math.min(right, ROAD.mountainDescentEnd); x += 80) mountainSamples.push(x);
+        const boundaries = [left, right, ROAD.descentStart, ROAD.descentEnd, ROAD.mountainStart, ROAD.mountainPeakStart, ROAD.mountainPeakEnd, ROAD.mountainDescentEnd, FACTORY_PANIC_LAYOUT.pitStart, FACTORY_PANIC_LAYOUT.pitEnd, ...mountainSamples, ...gaps].filter(x => x >= left && x <= right).sort((a, b) => a - b);
         for (let i = 1; i < boundaries.length; i++) {
             const a = boundaries[i - 1], b = boundaries[i], mid = (a + b) / 2;
             if (mid > CHANNEL.left && mid < CHANNEL.right || mid > s.dog.gapLeft && mid < s.dog.gapRight || mid > s.press.layout.origin + s.press.layout.gapLeft && mid < s.press.layout.origin + s.press.layout.gapRight || mid > s.river.waterLeft && mid < s.river.waterRight)
                 continue;
             const ay = a < CHANNEL.left ? CHANNEL.near : roadHeight(a), by = b <= CHANNEL.left ? CHANNEL.near : roadHeight(b);
-            const garden = mid > 14500, color = garden ? new Color(65, 82, 59) : mid < -1050 ? new Color(56, 63, 59) : new Color(72, 75, 63);
+            const mountain = mid >= ROAD.mountainStart - 400 && mid <= ROAD.mountainDescentEnd + 400;
+            const garden = mid > 14500 && !mountain;
+            const color = mountain ? new Color(72, 72, 66) : garden ? new Color(65, 82, 59) : mid < -1050 ? new Color(56, 63, 59) : new Color(72, 75, 63);
             if (mid > FACTORY_PANIC_LAYOUT.pitStart && mid < FACTORY_PANIC_LAYOUT.pitEnd) {
                 g.surface(a * S, b * S, ay * S, by * S, 45, -3, color);
                 g.surface(a * S, b * S, ay * S, by * S, -6, -58, color);
@@ -288,7 +292,7 @@ export class World25D {
             else {
                 g.surface(a * S, b * S, ay * S, by * S, 45, -58, color);
             }
-            g.surface(a * S, b * S, ay * S + .012, by * S + .012, 2.15, -1.85, garden ? new Color(91, 105, 72) : new Color(103, 98, 79));
+            g.surface(a * S, b * S, ay * S + .012, by * S + .012, 2.15, -1.85, mountain ? new Color(145, 141, 124) : garden ? new Color(91, 105, 72) : new Color(103, 98, 79));
             for (let x = Math.ceil(a / 180) * 180; x < b; x += 180) {
                 const y = x < CHANNEL.left ? CHANNEL.near : roadHeight(x);
                 g.surface(x * S, (x + 1.4) * S, y * S + .018, y * S + .018, 2.15, -1.85, new Color(67, 74, 62));
@@ -406,6 +410,20 @@ export class World25D {
     }
     private scenery(s: World25DState) {
         const g = new WorldGeometry(), left = s.world.x - 1900, right = s.world.x + 2400;
+        const mountainRanges: [number, number, number, number, Color][] = [
+            [19800, 1170, 5200, -72, new Color(49, 62, 66)],
+            [22000, 1510, 5700, -88, new Color(41, 54, 60)],
+            [24200, 1260, 5000, -104, new Color(51, 63, 66)],
+        ];
+        for (const [center, peakY, width, z, shade] of mountainRanges) {
+            if (Math.abs(center - s.world.x) > 3600) continue;
+            const l = (center - width / 2) * S, r = (center + width / 2) * S;
+            const base = (ROAD.floor - 130) * S, peak = peakY * S, cx = center * S;
+            g.face([[l, base, z], [cx, peak, z], [r, base, z]], shade);
+            g.face([[l, base, z - .02], [cx, peak, z - .02], [(center + width * .12) * S, base, z - .02]], new Color(60, 73, 74));
+            const snowY = peak - 180 * S;
+            g.face([[(center - 470) * S, snowY, z - .04], [cx, peak, z - .04], [(center + 390) * S, snowY + 70 * S, z - .04]], new Color(139, 148, 141, 205));
+        }
         for (let x = Math.floor(left / 220) * 220; x < right; x += 220) {
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S;
             if (x < -1050) {
@@ -413,11 +431,24 @@ export class World25D {
                 g.box(x * S + 1, y + 7.8, -11, 3, .25, 3, new Color(75, 79, 64));
                 g.box(x * S + 2, y + 1, -13, 2.4, 2, 2, new Color(53, 65, 61));
             }
-            else if (x < 3100 || x > 14500) {
+            else if (x < 3100 || (x > 14500 && x < ROAD.mountainStart - 700) || x > ROAD.mountainDescentEnd + 700) {
                 const h = 7 + (Math.abs(x) % 13) * .23;
                 g.box(x * S, y + h / 2, -14, .7, h, .8, new Color(46, 61, 46));
                 g.box(x * S, y + h - 1, -15, 3.8, 2.5, 2.5, new Color(44, 75, 51));
                 g.box(x * S + .7, y + h + .5, -15, 3, 2, 3, new Color(56, 85, 55));
+            }
+            else if (x >= ROAD.mountainStart - 700 && x <= ROAD.mountainDescentEnd + 700) {
+                const h = 3.5 + Math.abs(x * 7) % 4.5, cold = roadHeight(x) > ROAD.mountainPeak * .62;
+                g.box(x * S, y + h / 2, -14, .55, h, .55, cold ? new Color(68, 76, 75) : new Color(49, 61, 56));
+                if (!cold) {
+                    for (let tier = 0; tier < 3; tier++) {
+                        const tierY = y + h - 1.8 - tier * 1.65;
+                        g.box(x * S, tierY, -14.2, 3.6 - tier * .9, 2.2, 2.2, new Color(43 + tier * 4, 65 + tier * 4, 56 + tier * 3));
+                    }
+                } else {
+                    g.box(x * S, y + h + .8, -14.3, 1.7, .45, .9, new Color(134, 143, 139));
+                    if (Math.abs(x * 3) % 2 === 0) g.box(x * S + .8, y + .6, -14.5, 1.5, 1.1, 1.7, new Color(82, 88, 87));
+                }
             }
             else {
                 g.box(x * S, y + 1.1, -7, .12, 2.2, .12, new Color(52, 65, 58));

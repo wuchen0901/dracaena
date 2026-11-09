@@ -11,13 +11,30 @@ export const CHANNEL = {
   logLeft: 1440, logRight: 1700, logLow: -235, logHigh: -55,
   leverX: 1270, fillSeconds: 7,
 };
-/** The raised canal bank slopes back to the shared forest floor before the inner sentry. */
-export const ROAD = { descentStart: 2050, descentEnd: 2650, floor: CHANNEL.near };
+/** The raised canal bank returns to the road, which climbs over a mountain after the garden. */
+export const ROAD = {
+  descentStart: 2050, descentEnd: 2650, floor: CHANNEL.near,
+  mountainStart: 19200, mountainPeakStart: 21900, mountainPeakEnd: 22350,
+  mountainDescentEnd: 25150, mountainPeak: 820,
+};
+const smoothstep = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 export function roadHeight(x: number) {
   if (x <= ROAD.descentStart) return CHANNEL.far;
-  if (x >= ROAD.descentEnd) return ROAD.floor;
-  const t = (x - ROAD.descentStart) / (ROAD.descentEnd - ROAD.descentStart);
-  return CHANNEL.far + (ROAD.floor - CHANNEL.far) * t;
+  if (x < ROAD.descentEnd) {
+    const t = (x - ROAD.descentStart) / (ROAD.descentEnd - ROAD.descentStart);
+    return CHANNEL.far + (ROAD.floor - CHANNEL.far) * t;
+  }
+  if (x < ROAD.mountainStart) return ROAD.floor;
+  if (x < ROAD.mountainPeakStart) {
+    const t = smoothstep((x - ROAD.mountainStart) / (ROAD.mountainPeakStart - ROAD.mountainStart));
+    return ROAD.floor + (ROAD.mountainPeak - ROAD.floor) * t;
+  }
+  if (x < ROAD.mountainPeakEnd) return ROAD.mountainPeak;
+  if (x < ROAD.mountainDescentEnd) {
+    const t = smoothstep((x - ROAD.mountainPeakEnd) / (ROAD.mountainDescentEnd - ROAD.mountainPeakEnd));
+    return ROAD.mountainPeak + (ROAD.floor - ROAD.mountainPeak) * t;
+  }
+  return ROAD.floor;
 }
 export type Checkpoint = 'reclamation' | 'factory-solved' | 'factory-escape' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'batch-reveal' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared' | 'scrap-yard' | 'police-approach' | 'police-cleared' | 'industrial-approach' | 'industrial-cleared' | 'river-approach' | 'river-cleared' | 'city-ration' | 'city-repair' | 'city-pump' | 'city-cat' | 'city-cleared' | 'garden-pruning' | 'garden-water' | 'garden-signal' | 'garden-cleared';
 const CITY_CHECKPOINTS: Checkpoint[] = ['city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared', 'garden-pruning', 'garden-water', 'garden-signal', 'garden-cleared'];
