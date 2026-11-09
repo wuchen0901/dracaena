@@ -17,6 +17,7 @@ import { drawReclamationOpening, drawFactoryPanic, FACTORY_PANIC_LAYOUT } from '
 import { batchRunnerPosition, BATCH_REVEAL_LAYOUT, drawScrapYard } from './ScrapYardArt';
 import { drawGuardPostSearch } from './GuardPostArt';
 import { GeometryBatch, VectorWorldGraphics, WorldGeometry, WORLD_SCALE as S } from './WorldGeometry';
+const BLOCKING_WALL_DEPTH = 14;
 type Backdrop = {
     node: Node;
     sprite: Sprite;
@@ -319,7 +320,7 @@ export class World25D {
         const pit = FACTORY_PANIC_LAYOUT;
         g.surface(pit.pitStart * S, pit.pitEnd * S, -315 * S, -315 * S, -3, -6, new Color(15, 26, 28));
         for (const x of [pit.pitStart, pit.pitEnd])
-            g.box(x * S, -227.5 * S, -4.5, .13, 175 * S, 3, new Color(54, 63, 57));
+            g.box(x * S, -227.5 * S, -4.5, .13, 175 * S, BLOCKING_WALL_DEPTH, new Color(54, 63, 57));
         this.batch('Walkable terrain surfaces', g);
     }
     private dynamicSurfaces(s: World25DState) {
@@ -341,10 +342,10 @@ export class World25D {
         box(p.bridgeX, p.bridgeTop - 12, 0, p.layout.bridgeWidth, 24, 3.8, new Color(83, 101, 91));
         box(p.crateX, p.layout.floor + p.layout.crateHeight / 2, -.5, p.layout.crateWidth, p.layout.crateHeight, 1.6, new Color(108, 82, 51));
         box(s.box.x, s.box.layout.floor + s.box.layout.boxHeight / 2, -.5, s.box.layout.boxWidth, s.box.layout.boxHeight, 1.6, new Color(124, 99, 63));
-        box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, 3, new Color(90, 104, 99));
+        box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, BLOCKING_WALL_DEPTH, new Color(90, 104, 99));
         const f = s.factory, fl = FACTORY_ESCAPE_LAYOUT;
         box(f.crateX, fl.floor + fl.crateHeight / 2, -.5, fl.crateWidth, fl.crateHeight, 1.6, new Color(118, 91, 57));
-        if (!f.poweredOff) box(fl.gateX, fl.floor + fl.gateHeight / 2, -.8, 16, fl.gateHeight, 3, new Color(65, 78, 73));
+        if (!f.poweredOff) box(fl.gateX, fl.floor + fl.gateHeight / 2, -.8, 16, fl.gateHeight, BLOCKING_WALL_DEPTH, new Color(65, 78, 73));
         box(fl.leverX - 12, fl.floor + 42, -.6, 8, 84, .8, new Color(63, 75, 70));
         box(fl.leverX + (f.poweredOff ? 8 : -6), fl.floor + (f.poweredOff ? 70 : 80), -.15, 34, 6, .6, new Color(209, 177, 105));
         const r = s.river, atRiver = w.checkpoint === 'river-approach', onBoat = atRiver && r.isOnBoat(w.x), onRamp = atRiver && r.isOnRamp(w.x);
