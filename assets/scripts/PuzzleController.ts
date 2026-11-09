@@ -217,7 +217,7 @@ export class PuzzleController extends Component {
       this.world.x = SALVAGE.origin + 125; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
-    if (typeof location !== 'undefined' && ['garden', 'water', 'signal'].indexOf(new URLSearchParams(location.search).get('preview') || '') >= 0) {
+    if (typeof location !== 'undefined' && ['garden', 'water', 'signal', 'power'].indexOf(new URLSearchParams(location.search).get('preview') || '') >= 0) {
       const stage = new URLSearchParams(location.search).get('preview')!;
       this.previewMode = true;
       this.cityStories.restore({
@@ -225,13 +225,14 @@ export class PuzzleController extends Component {
         waterBowl: CITY_STORY.cat.target,
         pruningBranch: stage === 'garden' ? CITY_STORY.garden.branch : CITY_STORY.garden.branchTarget,
         wildWater: stage !== 'garden' && stage !== 'water',
-        relayPanel: CITY_STORY.garden.panel,
+        relayPanel: stage === 'power' ? CITY_STORY.garden.panelTarget : CITY_STORY.garden.panel,
+        powerSwitches: 0,
       });
       this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
       this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, 14420);
-      this.world.checkpoint = stage === 'garden' ? 'garden-pruning' : stage === 'water' ? 'garden-water' : 'garden-signal';
+      this.world.checkpoint = stage === 'garden' ? 'garden-pruning' : stage === 'water' ? 'garden-water' : stage === 'power' ? 'garden-cleared' : 'garden-signal';
       this.world.opened = true; this.world.fill = 1;
-      this.world.x = stage === 'garden' ? 14420 : stage === 'water' ? 15250 : 16250;
+      this.world.x = stage === 'garden' ? 14420 : stage === 'water' ? 15250 : stage === 'power' ? CITY_STORY.garden.switches[0] : 16250;
       this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
