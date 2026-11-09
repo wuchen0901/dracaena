@@ -16,7 +16,7 @@ import { SearchEscape } from './SearchEscape';
 import { COVER, POLICE_COVER, GUARD_POST, TreeCover } from './TreeCover';
 import { drawNightSearch } from './NightSearch';
 import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_ANCHORS } from './CharacterAnimation';
-import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, Checkpoint, emptyArchive, readArchive, upsertAutosave, sameMilestone, ensureOpeningAutosave } from './SluiceWorld';
+import { CHANNEL, ROAD, ROOM, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, Checkpoint, emptyArchive, readArchive, upsertAutosave, sameMilestone, ensureOpeningAutosave } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt, drawRoadsideCharacters } from './JourneyStoryArt';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
@@ -258,6 +258,20 @@ export class PuzzleController extends Component {
       this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, ROAD.mountainStart - 500);
       this.world.checkpoint = 'garden-cleared'; this.world.opened = true; this.world.fill = 1;
       this.world.x = ROAD.mountainStart - 500; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('preview') === 'room') {
+      this.previewMode = true;
+      this.cityStories.restore({
+        rationBox: CITY_STORY.ration.target, rationShadeDown: true,
+        battery: CITY_STORY.repair.target, repairChoice: 'gate', pumpOn: true,
+        waterBowl: CITY_STORY.cat.target, pruningBranch: CITY_STORY.garden.branchTarget,
+        wildWater: true, relayPanel: CITY_STORY.garden.panelTarget, powerSwitches: 7,
+      });
+      this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, ROOM.doorX - 240);
+      this.world.checkpoint = 'garden-cleared'; this.world.opened = true; this.world.fill = 1;
+      this.world.x = ROOM.doorX - 240; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
     if (typeof location !== 'undefined') {
@@ -802,11 +816,12 @@ export class PuzzleController extends Component {
     const atRiver = this.world.checkpoint === 'river-approach';
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
-    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    const nearRoomDoor = this.world.nearRoomDoor;
+    this.leverPrompt.string = nearRoomDoor ? '→ 推开房门' : atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
     const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
-    const promptX = atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : repairOption === 'gate' ? CITY_STORY.repair.doorTarget : repairOption === 'robot' ? CITY_STORY.repair.robot : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : atRationShade ? this.world.y + 115 : nearCityProp || nearPump || nearGardenValve || repairOption ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const promptX = nearRoomDoor ? ROOM.doorX : atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : repairOption === 'gate' ? CITY_STORY.repair.doorTarget : repairOption === 'robot' ? CITY_STORY.repair.robot : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = nearRoomDoor ? ROAD.floor + ROOM.doorHeight + 95 : atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : atRationShade ? this.world.y + 115 : nearCityProp || nearPump || nearGardenValve || repairOption ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }

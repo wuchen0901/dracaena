@@ -1,7 +1,7 @@
 import { CAMERA_ELEVATION, CAMERA_HEIGHT, CAMERA_Z, backdropHeight } from './WorldCamera';
 import { ActorModelKit, Animal3D, Robot3D } from './Actors3D';
 import { Camera, Color, DirectionalLight, EffectAsset, gfx, Graphics, Layers, Material, Mesh, MeshRenderer, Node, Label, Sprite, SpriteFrame, UITransform, utils, Vec3, Vec4 } from 'cc';
-import { CHANNEL, ROAD, roadHeight, SALVAGE, SluiceWorld } from './SluiceWorld';
+import { CHANNEL, ROAD, ROOM, roadHeight, SALVAGE, SluiceWorld } from './SluiceWorld';
 import { PushBoxSegment } from './PushBoxSegment';
 import { FactoryEscapePuzzle, FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
@@ -284,8 +284,9 @@ export class World25D {
                 continue;
             const ay = a < CHANNEL.left ? CHANNEL.near : roadHeight(a), by = b <= CHANNEL.left ? CHANNEL.near : roadHeight(b);
             const mountain = mid >= ROAD.mountainStart - 400 && mid <= ROAD.mountainDescentEnd + 400;
+            const indoors = mid >= ROOM.doorX + 45 && mid <= ROOM.endX + 80;
             const garden = mid > 14500 && !mountain;
-            const color = mountain ? new Color(72, 72, 66) : garden ? new Color(65, 82, 59) : mid < -1050 ? new Color(56, 63, 59) : new Color(72, 75, 63);
+            const color = indoors ? new Color(91, 75, 58) : mountain ? new Color(72, 72, 66) : garden ? new Color(65, 82, 59) : mid < -1050 ? new Color(56, 63, 59) : new Color(72, 75, 63);
             if (mid > FACTORY_PANIC_LAYOUT.pitStart && mid < FACTORY_PANIC_LAYOUT.pitEnd) {
                 g.surface(a * S, b * S, ay * S, by * S, 45, -3, color);
                 g.surface(a * S, b * S, ay * S, by * S, -6, -58, color);
@@ -293,7 +294,7 @@ export class World25D {
             else {
                 g.surface(a * S, b * S, ay * S, by * S, 45, -58, color);
             }
-            g.surface(a * S, b * S, ay * S + .012, by * S + .012, 2.15, -1.85, mountain ? new Color(145, 141, 124) : garden ? new Color(91, 105, 72) : new Color(103, 98, 79));
+            g.surface(a * S, b * S, ay * S + .012, by * S + .012, 2.15, -1.85, indoors ? new Color(174, 137, 90) : mountain ? new Color(145, 141, 124) : garden ? new Color(91, 105, 72) : new Color(103, 98, 79));
             for (let x = Math.ceil(a / 180) * 180; x < b; x += 180) {
                 const y = x < CHANNEL.left ? CHANNEL.near : roadHeight(x);
                 g.surface(x * S, (x + 1.4) * S, y * S + .018, y * S + .018, 2.15, -1.85, new Color(67, 74, 62));
@@ -350,6 +351,34 @@ export class World25D {
         box(fl.leverX + (f.poweredOff ? 8 : -6), fl.floor + (f.poweredOff ? 70 : 80), -.15, 34, 6, .6, new Color(209, 177, 105));
         const r = s.river, atRiver = w.checkpoint === 'river-approach', onBoat = atRiver && r.isOnBoat(w.x), onRamp = atRiver && r.isOnRamp(w.x);
         const boatX = onBoat ? w.x + 25 : onRamp || w.checkpoint === 'river-cleared' ? r.landingBoatX : r.launchBoatX;
+        if (w.x > ROOM.doorX - 1000 && w.x < ROOM.endX + 900) {
+            const roomLeft = ROOM.doorX + ROOM.doorWidth / 2;
+            const roomWidth = ROOM.endX - roomLeft;
+            // A warm, cutaway interior sits beyond the mountain road's doorway.
+            box((roomLeft + ROOM.endX) / 2, ROAD.floor + 260, -24, roomWidth, 520, 1.2, new Color(104, 91, 72));
+            box((roomLeft + ROOM.endX) / 2, ROAD.floor + 76, -22.8, roomWidth, 120, .9, new Color(125, 104, 77));
+            box((roomLeft + ROOM.endX) / 2, ROAD.floor + 480, -17, roomWidth, 18, 18, new Color(57, 58, 52));
+            box(ROOM.doorX - ROOM.doorWidth / 2 - 8, ROAD.floor + ROOM.doorHeight / 2, -14, 16, ROOM.doorHeight, 2.4, new Color(68, 62, 50));
+            box(ROOM.doorX + ROOM.doorWidth / 2 + 8, ROAD.floor + ROOM.doorHeight / 2, -14, 16, ROOM.doorHeight, 2.4, new Color(68, 62, 50));
+            box(ROOM.doorX, ROAD.floor + ROOM.doorHeight + 8, -14, ROOM.doorWidth + 32, 16, 2.4, new Color(68, 62, 50));
+            box(ROOM.doorX - 380, ROAD.floor + 270, -22, 220, 155, 1.4, new Color(49, 70, 72));
+            box(ROOM.doorX - 380, ROAD.floor + 270, -21.1, 184, 120, .3, new Color(157, 174, 158));
+            box(ROOM.doorX + 310, ROAD.floor + 62, -12, 210, 18, 1.5, new Color(78, 61, 43));
+            box(ROOM.doorX + 300, ROAD.floor + 107, -12, 16, 90, 1.28, new Color(89, 72, 51));
+            box(ROOM.doorX + 600, ROAD.floor + 100, -13, 185, 20, 1.1, new Color(112, 88, 60));
+            box(ROOM.doorX + 540, ROAD.floor + 200, -23, 250, 16, 1.8, new Color(76, 66, 49));
+            box(ROOM.doorX + 540, ROAD.floor + 232, -21.8, 192, 46, .6, new Color(160, 132, 88));
+            box(ROOM.doorX + 820, ROAD.floor + 300, -20, 18, 66, 2, new Color(207, 170, 100));
+            box(ROOM.doorX + 820, ROAD.floor + 300, -18.8, 48, 18, 1.2, new Color(223, 185, 110));
+            if (!w.roomDoorOpen) {
+                box(ROOM.doorX, ROAD.floor + ROOM.doorHeight / 2, -12.2, ROOM.doorWidth - 18, ROOM.doorHeight - 12, 1.2, new Color(89, 67, 46));
+                box(ROOM.doorX + 37, ROAD.floor + ROOM.doorHeight / 2, -11.5, 32, 126, .5, new Color(137, 103, 65));
+                box(ROOM.doorX - 37, ROAD.floor + ROOM.doorHeight / 2, -11.5, 32, 126, .5, new Color(137, 103, 65));
+                box(ROOM.doorX + 43, ROAD.floor + 102, -10.8, 4, 4, .8, new Color(221, 184, 107));
+            } else {
+                box(ROOM.doorX + ROOM.doorWidth / 2 - 9, ROAD.floor + ROOM.doorHeight / 2, -10.5, 14, ROOM.doorHeight - 8, 1.2, new Color(89, 67, 46));
+            }
+        }
         g.surface(r.waterLeft * S, r.waterRight * S, r.layout.waterY * S, r.layout.waterY * S, 45, -58, new Color(40, 78, 76));
         box(boatX, r.layout.deckY - 8, -.35, 168, 16, 3.6, new Color(110, 86, 54));
         box(boatX, r.layout.deckY + 8, 1.4, 170, 24, .12, new Color(79, 68, 48));
@@ -426,6 +455,7 @@ export class World25D {
             g.face([[(center - 470) * S, snowY, z - .04], [cx, peak, z - .04], [(center + 390) * S, snowY + 70 * S, z - .04]], new Color(139, 148, 141, 205));
         }
         for (let x = Math.floor(left / 220) * 220; x < right; x += 220) {
+            if (x > ROOM.doorX + ROOM.doorWidth / 2 && x < ROOM.endX) continue;
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S;
             if (x < -1050) {
                 g.box(x * S, y + 4, -11, .4, 8, .4, new Color(44, 58, 56));
