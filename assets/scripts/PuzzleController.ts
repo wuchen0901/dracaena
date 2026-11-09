@@ -196,6 +196,24 @@ export class PuzzleController extends Component {
       this.world.x = 9730; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
+    if (typeof location !== 'undefined' && ['garden', 'water', 'signal'].indexOf(new URLSearchParams(location.search).get('preview') || '') >= 0) {
+      const stage = new URLSearchParams(location.search).get('preview')!;
+      this.previewMode = true;
+      this.cityStories.restore({
+        rationBox: CITY_STORY.ration.target, battery: CITY_STORY.repair.target, pumpOn: true,
+        waterBowl: CITY_STORY.cat.target,
+        pruningBranch: stage === 'garden' ? CITY_STORY.garden.branch : CITY_STORY.garden.branchTarget,
+        wildWater: stage !== 'garden' && stage !== 'water',
+        relayPanel: CITY_STORY.garden.panel,
+      });
+      this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, 14420);
+      this.world.checkpoint = stage === 'garden' ? 'garden-pruning' : stage === 'water' ? 'garden-water' : 'garden-signal';
+      this.world.opened = true; this.world.fill = 1;
+      this.world.x = stage === 'garden' ? 14420 : stage === 'water' ? 15250 : 16250;
+      this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
     this.persist();
     this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.cameraLift = cameraHeight(0, this.world.y, 1);
@@ -657,17 +675,18 @@ export class PuzzleController extends Component {
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
     const nearPress = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
-    const nearCityProp = this.cityStories.canGrab(this.world.x, this.world.grounded, false);
+    const nearCityProp = this.cityStories.canGrab(this.world.x, this.world.grounded);
     const nearPump = this.world.grounded && Math.abs(this.world.x - CITY_STORY.pump.switchX) < 95 && !this.cityStories.pumpOn;
+    const nearGardenValve = this.world.grounded && Math.abs(this.world.x - CITY_STORY.garden.valve) < 95 && !this.cityStories.wildWater;
     const atPressurePlate = this.world.grounded && Math.abs(this.world.x - this.pressPuzzle.plateX) < 58 && Math.abs(this.world.y - this.pressPuzzle.layout.floor) < 5;
     const atRiver = this.world.checkpoint === 'river-approach';
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
-    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearCityProp || nearPump ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearCityProp || nearPump || nearGardenValve ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
-    const cityPropX = Math.abs(this.world.x - this.cityStories.rationBox) < 170 ? this.cityStories.rationBox : Math.abs(this.world.x - this.cityStories.battery) < 170 ? this.cityStories.battery : this.cityStories.waterBowl;
-    const promptX = atRiver ? this.world.x + 110 : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = atRiver ? this.world.y + 126 : nearCityProp || nearPump ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
+    const promptX = atRiver ? this.world.x + 110 : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = atRiver ? this.world.y + 126 : nearCityProp || nearPump || nearGardenValve ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
