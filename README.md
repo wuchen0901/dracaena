@@ -1,8 +1,14 @@
-# The Last Light — layered forest study
+# The Last Light — 2.5D puzzle adventure
 
 Open `assets/Main.scene` in Cocos Creator 3.8.8 and preview Current scene.
 
-## Independent images and nodes
+## Current 2.5D campaign
+
+The normal preview now uses a real perspective camera at a 10-degree elevation, horizontal ground/water surfaces, and articulated 3D robot, dog and kitten models. The player moves along X, jumps along Y, and stays on a fixed Z plane. The full existing campaign simulation, interactions, touch controls, audio and autosave history drive the new renderer. Procedural models are the initial art pass; distant paintings and converted vector details preserve the existing scenes.
+
+Use `?view=2d` to compare the original rendering, `?view=demo` for the initial depth experiment, or `?preview=city` (and other named sections) to inspect a section without writing saves. Architecture and validation boundaries: [2.5D migration](design/depth-preview.md).
+
+## Earlier 2D image layers
 
 The scene no longer uses a single flattened landscape. `assets/resources/layers/` contains separate PNGs for sky, distant forest, main tree, left tree, ground/cliff, cloud, bird, and foreground foliage. The character uses a transparent 32-frame sprite sheet in `assets/resources/character/actions-smooth.png` (the previous `actions.png` is retained); the original reference remains in `assets/resources/reference/character.png`.
 
@@ -14,7 +20,7 @@ Use **A/D** or **Left/Right** to walk. Hold **Shift** while moving to run; on-sc
 
 Checkpoints save automatically at the start, before the canal, when the lever opens, and after reaching the far bank. The gate state persists in local storage across reloads. **R** restores the latest safe checkpoint without clearing progress. A missed landing into deep water also returns the character safely to shore, preserving the open gate. Storage failures show a brief status message; in-memory checkpoints still work. The route continues to the right after the puzzle, without a victory screen.
 
-The sprite sheet has four rows of eight poses: idle, walk, run, and jump/landing. At normal movement speeds, walk displays 16 poses per second and run 24, retaining the same two/three gait cycles per second. Walk/run transitions preserve foot phase and use speed hysteresis; jump poses follow vertical motion, followed by two short landing poses. Per-frame foot anchors reduce baseline jitter while run flight frames can lift both feet. The engine slices rounded pixel cell boundaries at runtime. Prompt and asset details are in `design/character-animation.md`.
+In the earlier 2D comparison renderer, the sprite sheet has four rows of eight poses: idle, walk, run, and jump/landing. At normal movement speeds, walk displays 16 poses per second and run 24, retaining the same two/three gait cycles per second. Walk/run transitions preserve foot phase and use speed hysteresis; jump poses follow vertical motion, followed by two short landing poses. Per-frame foot anchors reduce baseline jitter while run flight frames can lift both feet. The engine slices rounded pixel cell boundaries at runtime. Prompt and asset details are in `design/character-animation.md`.
 
 ## Assets and preservation
 

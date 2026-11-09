@@ -240,7 +240,8 @@ export class SluiceWorld {
     const targetSpeed = rowing ? (direction > 0 ? this.river!.layout.rowingSpeed : 0) : direction * (holdingBox ? this.box!.layout.pushSpeed : holdingPress ? 75 : holdingCity ? 90 : running ? 240 : 145);
     this.vx += (targetSpeed - this.vx) * Math.min(1, dt * 15);
     const previousX = this.x, previousY = this.y;
-    let nextX = Math.max(-2350, this.x + this.vx * dt);
+    // The factory opening begins at -3550; its left bound must remain behind that spawn.
+    let nextX = Math.max(-3750, this.x + this.vx * dt);
     if (holdingBox) {
       const moved = this.box!.move(nextX - previousX); nextX = previousX + moved; this.vx = moved / dt;
     }

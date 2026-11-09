@@ -1,3 +1,5 @@
+import { World25D } from './World25D';
+import { DepthPreview } from './DepthPreview';
 import { DogChaseSegment } from './DogChaseSegment';
 import { drawDogGap, drawCatRescueProps } from './DogGapArt';
 import { drawGuardPostSearch } from './GuardPostArt';
@@ -17,7 +19,7 @@ import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt, drawRoadsideCharacters } from './JourneyStoryArt';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
-import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
+import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
 type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number; fade: number };
@@ -25,6 +27,9 @@ type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number;
 /** Independent image layers; the previous flat composition is archived in design/. */
 @ccclass('PuzzleController')
 export class PuzzleController extends Component {
+  private world25?: World25D;
+  private world25Loading = false;
+  private useWorld25 = typeof location === 'undefined' || new URLSearchParams(location.search).get('view') !== '2d';
   private opening!: Graphics; private openingSigns: Node[] = []; private dormantRobots: Node[] = [];
   private factoryPanicArt!: Graphics; private factoryRunners: Node[] = []; private batchRunners: Node[] = [];
   private alarmTriggered = false; private factorySound!: AudioSource; private alarmSound!: AudioSource;
@@ -76,25 +81,31 @@ export class PuzzleController extends Component {
   private status!: Label;
   private pending = 0; private failed = false;
   onLoad() {
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('view') === 'demo') {
+      this.enabled = false; this.node.addComponent(DepthPreview); return;
+    }
     const camera = this.node.scene.getChildByName('Main Camera')?.getComponent(Camera);
     if (camera) { camera.clearFlags = Camera.ClearFlag.SOLID_COLOR; camera.clearColor = new Color(0, 0, 0, 255); }
+    this.previewMode = typeof location !== 'undefined' && new URLSearchParams(location.search).has('preview');
     this.status = this.text('Loading scene layers…', 0, -328, 16, 900);
     this.frame = this.child('Layered Landscape', 1280, 590, 0, 0);
     this.frame.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
     this.sceneRoot = this.child('World camera', 1280, 590, 0, 0, this.frame);
-    this.layer('Sky', 'sky', 1400, 650, 0, 0, 0);
-    this.layer('Cloud west', 'cloud', 360, 120, -300, 85, .08, 3);
-    this.layer('Cloud east', 'cloud', 460, 154, 430, 10, .08, 2);
-    this.createRuins();
-    this.layer('Distant forest', 'distant-forest', 1440, 660, 0, -35, .18);
-    for (let i = 1; i <= 3; i++) {
-      this.layer('Forest continuation ' + i, 'distant-forest', 1440, 660, i * 1400, -35, .18);
-      this.layer('Tree continuation ' + i, 'main-tree', 1050, 610, i * 1100, 105, .78);
+    if (!this.useWorld25) {
+      this.layer('Sky', 'sky', 1400, 650, 0, 0, 0);
+      this.layer('Cloud west', 'cloud', 360, 120, -300, 85, .08, 3);
+      this.layer('Cloud east', 'cloud', 460, 154, 430, 10, .08, 2);
+      this.createRuins();
+      this.layer('Distant forest', 'distant-forest', 1440, 660, 0, -35, .18);
+      for (let i = 1; i <= 3; i++) {
+        this.layer('Forest continuation ' + i, 'distant-forest', 1440, 660, i * 1400, -35, .18);
+        this.layer('Tree continuation ' + i, 'main-tree', 1050, 610, i * 1100, 105, .78);
+      }
+      this.layer('Left tree', 'left-tree', 490, 735, -490, 125, .62);
+      this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
+      this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
+      this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
     }
-    this.layer('Left tree', 'left-tree', 490, 735, -490, 125, .62);
-    this.layer('Main tree', 'main-tree', 1050, 610, -120, 105, .78);
-    this.layer('Bird one', 'bird', 140, 94, 390, -5, .35, -17, 0, true);
-    this.layer('Bird two', 'bird', 110, 74, 515, 75, .35, -21, 2, true);
     this.createJourneyBackdrops();
     this.search = this.child('Police search outside prison', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.guardPost = this.child('Inner yard sentry post', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
@@ -133,17 +144,17 @@ export class PuzzleController extends Component {
     this.scrapSign = this.text('批次标记 · 07', 0, 0, 17, 220); this.scrapSign.node.setParent(this.sceneRoot);
     this.beaconSign = this.text('海岸中继\n信号微弱 →', 0, 0, 17, 220); this.beaconSign.node.setParent(this.sceneRoot);
     this.dogNode = this.child('Pursuing guard dog', 112, 112, 0, 0, this.sceneRoot);
-    this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadDogPoses();
+    this.dogNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; if (!this.useWorld25) this.loadDogPoses();
     this.catPropsArt = this.child('Kitten perch and blocking crate', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.catNode = this.child('Rescued kitten', 66, 66, 0, 0, this.sceneRoot);
-    this.catNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; this.loadCatPoses();
+    this.catNode.addComponent(Sprite).sizeMode = Sprite.SizeMode.CUSTOM; if (!this.useWorld25) this.loadCatPoses();
     // Depth order: distant police → shelter tree → robot on the viewer-facing side.
     this.coverTree = this.child('Foreground shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.policeCoverTree = this.child('Roadside shelter tree', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.riverFrontArt = this.child('Ferry bow over the seated rider', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
-    this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses();
+    if (!this.useWorld25) { this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses(); }
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
     this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  INTERACT / HOLD TO PUSH     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
@@ -224,16 +235,35 @@ export class PuzzleController extends Component {
       this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
+    if (typeof location !== 'undefined') {
+      const stage = new URLSearchParams(location.search).get('preview');
+      const checkpoints: Record<string, Checkpoint> = { factory: 'reclamation', forest: 'forest', sluice: 'sluice', patrol: 'patrol-approach', crate: 'crate-approach', dog: 'dog-approach', police: 'police-approach', press: 'industrial-approach', river: 'river-approach' };
+      if (stage && checkpoints[stage]) {
+        const checkpoint = checkpoints[stage];
+        this.world.restore({ version: 1, checkpoint, opened: ['factory', 'forest', 'sluice'].indexOf(stage) < 0, box: { position: 0, solved: ['police', 'press', 'river'].indexOf(stage) >= 0 }, press: { crate: 0, pressure: stage === 'river' ? 1 : 0, solved: stage === 'river' } });
+        this.escape.cleared = ['factory', 'forest', 'sluice', 'patrol'].indexOf(stage) < 0;
+        this.policeEscape.cleared = ['press', 'river'].indexOf(stage) >= 0;
+        this.alarmTriggered = true;
+      }
+    }
     this.persist();
     this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.cameraLift = cameraHeight(0, this.world.y, 1);
     this.setupSluiceAudio();
+    if (this.useWorld25) {
+      this.pending++; this.world25Loading = true; this.frame.active = false;
+      resources.load('campaign-actors', Material, (error, material) => {
+        this.pending--; this.world25Loading = false; if (!this.isValid) return;
+        if (error || !material?.effectAsset) { this.failed=true; this.frame.active = true; this.status.string='Could not load 3D actor material'; console.error(error); return; }
+        this.world25 = new World25D(this.node, material.effectAsset); this.frame.active = false; this.place();
+      });
+    }
     input.on(Input.EventType.KEY_DOWN, this.down, this); input.on(Input.EventType.KEY_UP, this.up, this);
     game.on(Game.EVENT_HIDE, this.releaseInputs, this);
     this.place();
     this.node.addComponent(ForestMusic);
   }
-  onDestroy() { game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); this.barkSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
+  onDestroy() { this.world25?.destroy(); if (!this.actor) return; game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); this.barkSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
   private child(name: string, w: number, h: number, x: number, y: number, parent: Node = this.node) {
     const n = new Node(name); n.setParent(parent); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
   }
@@ -360,6 +390,15 @@ export class PuzzleController extends Component {
     });
   }
   private animateCharacter(dt: number) {
+    if (this.useWorld25) {
+      if (this.touchGrab || this.keys.has(KeyCode.KEY_E)) {
+        const target = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.pressPuzzle.crateX
+          : this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded) ? this.boxPuzzle.x
+          : this.cityStories.movableXNear(this.world.x, this.world.grounded);
+        if (target !== null) this.facing = target >= this.world.x ? 1 : -1;
+      }
+      return;
+    }
     if (!this.poses.length) return;
     const onBoat = this.world.checkpoint === 'river-approach' && this.river.isOnBoat(this.world.x);
     if (onBoat) {
@@ -587,6 +626,7 @@ export class PuzzleController extends Component {
     this.animateCharacter(0); this.place();
   }
   private writeArchive() {
+    if (this.previewMode) return;
     try { sys.localStorage.setItem(ARCHIVE_KEY, JSON.stringify(this.archive)); this.storageFailed = false; }
     catch { this.storageFailed = true; }
   }
@@ -647,7 +687,7 @@ export class PuzzleController extends Component {
   }
   private up(e: EventKeyboard) { this.keys.delete(e.keyCode); }
   update(delta: number) {
-    if (this.paused) return;
+    if (this.paused || this.world25Loading) return;
     const dt = Math.min(delta, .25); this.time += dt;
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     if (direction) this.facing = direction;
@@ -879,6 +919,19 @@ export class PuzzleController extends Component {
   }
   private place() {
     if (!this.actor) return;
+    if (this.world25) {
+      this.actor.setScale(this.facing, this.breathScaleY, 1);
+      this.world25.render({ world: this.world, box: this.boxPuzzle, press: this.pressPuzzle, river: this.river,
+        dog: this.dog, city: this.cityStories, escape: this.escape, police: this.policeEscape,
+        scavenger: this.scavengerNode, backdrops: this.journeyBackdrops,
+        cover: (!this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded)) || (!this.policeEscape.cleared && this.policeCover.contains(this.world.x, this.world.grounded)),
+        gripping: (this.touchGrab || this.keys.has(KeyCode.KEY_E)) && (this.boxPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.pressPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.cityStories.canGrab(this.world.x,this.world.grounded)),
+        time: this.time, night: this.night, alarm: this.alarmTriggered, facing: this.facing, cameraX: this.cameraOffset,
+        prompt: this.leverPrompt.node, openingSigns: this.openingSigns, prisonSign: this.prisonSign.node,
+        pressSign: this.pressSign.node, riverSign: this.riverSign.node, scrapSign: this.scrapSign.node,
+        beaconSign: this.beaconSign.node, guardSign: this.guardPostSign.node, clues: this.journeyClues });
+      return;
+    }
     const foot = this.world.y;
     this.sceneRoot.setPosition(0, -this.cameraLift, 0);
     for (const backdrop of this.journeyBackdrops) {
