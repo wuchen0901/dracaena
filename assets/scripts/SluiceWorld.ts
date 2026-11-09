@@ -2,6 +2,7 @@ import type { DogChaseSegment } from './DogChaseSegment';
 import type { PushBoxSegment } from './PushBoxSegment';
 import type { IndustrialPressSegment } from './IndustrialPressSegment';
 import type { RiverCrossing } from './RiverCrossing';
+import type { CityStoryLevels, CityStorySave } from './CityStoryLevels';
 import { POLICE_COVER } from './TreeCover';
 /** Engine-independent sluice geometry, movement and save validation. Y points up. */
 export const CHANNEL = {
@@ -17,26 +18,32 @@ export function roadHeight(x: number) {
   const t = (x - ROAD.descentStart) / (ROAD.descentEnd - ROAD.descentStart);
   return CHANNEL.far + (ROAD.floor - CHANNEL.far) * t;
 }
-export type Checkpoint = 'reclamation' | 'factory-escape' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared' | 'scrap-yard' | 'police-approach' | 'police-cleared' | 'industrial-approach' | 'industrial-cleared' | 'river-approach' | 'river-cleared';
+export type Checkpoint = 'reclamation' | 'factory-escape' | 'station-exit' | 'forest' | 'sluice' | 'far-bank' | 'patrol-approach' | 'patrol-cleared' | 'crate-approach' | 'crate-cleared' | 'dog-approach' | 'dog-cleared' | 'scrap-yard' | 'police-approach' | 'police-cleared' | 'industrial-approach' | 'industrial-cleared' | 'river-approach' | 'river-cleared' | 'city-ration' | 'city-repair' | 'city-pump' | 'city-cat' | 'city-cleared';
 export const SALVAGE = { origin: 3650, end: 4900, checkpoint: 4900, beacon: 5020, floor: -140 };
 export const POLICE_SEARCH_APPROACH = 7200;
-export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean; box?: { position: number; solved: boolean }; press?: { crate: number; pressure: number; solved: boolean }; catRescued?: boolean };
+export type SluiceSave = { version: 1; checkpoint: Checkpoint; opened: boolean; box?: { position: number; solved: boolean }; press?: { crate: number; pressure: number; solved: boolean }; catRescued?: boolean; cityStories?: CityStorySave };
 export const SAVE_KEY = 'the-last-light.sluice.v1';
 export function readSave(raw: string | null): SluiceSave | null {
   try {
     const s = JSON.parse(raw || 'null');
     if (!s || s.version !== 1 || typeof s.opened !== 'boolean' ||
-      ['reclamation', 'factory-escape', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(s.checkpoint) < 0 ||
-      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
+      ['reclamation', 'factory-escape', 'station-exit', 'forest', 'sluice', 'far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) < 0 ||
+      (['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0 && !s.opened)) return null;
     if (s.box !== undefined && (!s.box || typeof s.box.position !== 'number' || !Number.isFinite(s.box.position) ||
         s.box.position < 0 || s.box.position > 1 || typeof s.box.solved !== 'boolean')) return null;
     if (s.catRescued !== undefined && typeof s.catRescued !== 'boolean') return null;
+    if (s.cityStories !== undefined && (!s.cityStories || !Number.isFinite(s.cityStories.rationBox) || s.cityStories.rationBox < 9860 || s.cityStories.rationBox > 10080 || !Number.isFinite(s.cityStories.battery) || s.cityStories.battery < 10870 || s.cityStories.battery > 11120 || typeof s.cityStories.pumpOn !== 'boolean' || !Number.isFinite(s.cityStories.waterBowl) || s.cityStories.waterBowl < 13120 || s.cityStories.waterBowl > 13435)) return null;
     if (s.press !== undefined && (!s.press || typeof s.press.crate !== 'number' || !Number.isFinite(s.press.crate) || s.press.crate < 0 || s.press.crate > 1 || typeof s.press.pressure !== 'number' || !Number.isFinite(s.press.pressure) || s.press.pressure < 0 || s.press.pressure > 1 || typeof s.press.solved !== 'boolean')) return null;
-    if ((['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(s.checkpoint) >= 0) && !s.box) return null;
+    if ((['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0) && !s.box) return null;
     if (['crate-cleared', 'dog-approach', 'dog-cleared', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(s.checkpoint) >= 0 && !s.box?.solved) return null;
     if ((s.checkpoint === 'industrial-approach' || s.checkpoint === 'industrial-cleared') && !s.press) return null;
     if (['industrial-cleared', 'river-approach', 'river-cleared'].indexOf(s.checkpoint) >= 0 && !s.press?.solved) return null;
-    return { version: 1, checkpoint: s.checkpoint, opened: s.opened, ...(s.box ? { box: { position: s.box.position, solved: s.box.solved } } : {}), ...(s.press ? { press: { crate: s.press.crate, pressure: s.press.pressure, solved: s.press.solved } } : {}), ...(s.catRescued === undefined ? {} : { catRescued: s.catRescued }) };
+    if (['city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0 && !s.cityStories) return null;
+    if (['city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0 && s.cityStories?.rationBox < 10080) return null;
+    if (['city-pump', 'city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0 && s.cityStories?.battery < 11120) return null;
+    if (['city-cat', 'city-cleared'].indexOf(s.checkpoint) >= 0 && !s.cityStories?.pumpOn) return null;
+    if (s.checkpoint === 'city-cleared' && s.cityStories?.waterBowl < 13435) return null;
+    return { version: 1, checkpoint: s.checkpoint, opened: s.opened, ...(s.box ? { box: { position: s.box.position, solved: s.box.solved } } : {}), ...(s.press ? { press: { crate: s.press.crate, pressure: s.press.pressure, solved: s.press.solved } } : {}), ...(s.catRescued === undefined ? {} : { catRescued: s.catRescued }), ...(s.cityStories ? { cityStories: { ...s.cityStories } } : {}) };
   } catch { return null; }
 }
 /** Atmosphere and story flags are saved atomically with the safe checkpoint. */
@@ -52,14 +59,14 @@ export function readProgress(raw: string | null): ProgressSave | null {
   if (typeof night !== 'number' || !Number.isFinite(night) || night < 0 || night > 1 ||
       typeof escaped !== 'boolean' || typeof alarm !== 'boolean' || typeof policeCleared !== 'boolean' ||
       (world.checkpoint === 'patrol-cleared' && !escaped) ||
-      (['police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(world.checkpoint) >= 0 && !policeCleared)) return null;
+      (['police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(world.checkpoint) >= 0 && !policeCleared)) return null;
   return { ...world, night, escaped, alarm, ...(s.policeCleared === undefined ? {} : { policeCleared }) };
 }
 export const ARCHIVE_KEY = 'the-last-light.autosaves.v1';
 export type AutoSave = { id: number; name: string; createdAt: number | null; progress: ProgressSave };
 export type SaveArchive = { version: 1; activeId: number | null; entries: AutoSave[] };
 export function emptyArchive(): SaveArchive { return { version: 1, activeId: null, entries: [] }; }
-const SAVE_SLOTS = ['reclamation', 'factory-escape', 'station-exit', 'forest', 'sluice', 'sluice-opened', 'far-bank', 'patrol-approach', 'patrol-cleared', 'scrap-yard', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'];
+const SAVE_SLOTS = ['reclamation', 'factory-escape', 'station-exit', 'forest', 'sluice', 'sluice-opened', 'far-bank', 'patrol-approach', 'patrol-cleared', 'scrap-yard', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'];
 export function saveSlot(s: ProgressSave): string {
   if (s.checkpoint === 'sluice' && s.opened) return 'sluice-opened';
   return s.checkpoint;
@@ -70,11 +77,13 @@ export function saveName(s: ProgressSave): string {
     reclamation: '工厂 · 警报响起', 'factory-escape': '工厂逃亡 · 只剩主角', 'station-exit': '逃出维修门', forest: '踏入森林',
     sluice: s.opened ? '水闸已开启' : '林间水闸', 'far-bank': '抵达对岸',
     'patrol-approach': '园区岗哨 · 视线逼近', 'patrol-cleared': '躲过园区岗哨', 'crate-approach': s.box && s.box.position > .99 ? '围墙前 · 箱子已就位' : '监狱围墙 · 旧木箱', 'crate-cleared': '翻越监狱围墙', 'dog-approach': s.catRescued ? '墙外 · 救下小猫' : '墙外 · 犬吠逼近', 'dog-cleared': '越过断口 · 甩开追犬', 'scrap-yard': '中继信号 · 指向海岸', 'police-approach': '墙外 · 警车搜寻', 'police-cleared': '甩开警车搜寻', 'industrial-approach': s.press?.solved ? '废弃车间 · 压力板已固定' : '废弃车间 · 移动检修桥', 'industrial-cleared': '越过断裂检修沟', 'river-approach': '废城河岸 · 旧渡船', 'river-cleared': '顺流划过废城河道',
+    'city-ration': '废城 · 配给队伍', 'city-repair': '废城 · 唤醒旧机器人', 'city-pump': '废城 · 恢复水泵', 'city-cat': '废城 · 幸存者与小猫', 'city-cleared': '穿过废城',
   };
   return s.checkpoint === 'reclamation' && s.alarm ? '工厂 · 警报响起' : names[s.checkpoint];
 }
 export function sameMilestone(a: ProgressSave, b: ProgressSave): boolean {
-  return a.checkpoint === b.checkpoint && a.opened === b.opened && a.escaped === b.escaped && a.alarm === b.alarm && Boolean(a.policeCleared) === Boolean(b.policeCleared) && Boolean(a.catRescued) === Boolean(b.catRescued) && JSON.stringify(a.box) === JSON.stringify(b.box) && JSON.stringify(a.press) === JSON.stringify(b.press);
+  const cityMark = (s: ProgressSave) => s.cityStories ? [s.cityStories.rationBox >= 10080, s.cityStories.battery >= 11120, s.cityStories.pumpOn, s.cityStories.waterBowl >= 13435].join(':') : '';
+  return a.checkpoint === b.checkpoint && a.opened === b.opened && a.escaped === b.escaped && a.alarm === b.alarm && Boolean(a.policeCleared) === Boolean(b.policeCleared) && Boolean(a.catRescued) === Boolean(b.catRescued) && JSON.stringify(a.box) === JSON.stringify(b.box) && JSON.stringify(a.press) === JSON.stringify(b.press) && cityMark(a) === cityMark(b);
 }
 export function readArchive(raw: string | null): SaveArchive | null {
   try {
@@ -135,8 +144,9 @@ export class SluiceWorld {
   readonly box?: PushBoxSegment;
   readonly press?: IndustrialPressSegment;
   readonly river?: RiverCrossing;
+  readonly city?: CityStoryLevels;
   readonly dog?: DogChaseSegment; recoverySerial = 0;
-  constructor(box?: PushBoxSegment, dog?: DogChaseSegment, press?: IndustrialPressSegment, river?: RiverCrossing) { this.box = box; this.dog = dog; this.press = press; this.river = river; }
+  constructor(box?: PushBoxSegment, dog?: DogChaseSegment, press?: IndustrialPressSegment, river?: RiverCrossing, city?: CityStoryLevels) { this.box = box; this.dog = dog; this.press = press; this.river = river; this.city = city; }
   x = -3550; y = CHANNEL.near; vx = 0; vy = 0; grounded = true;
   opened = false; fill = 0; checkpoint: Checkpoint = 'reclamation';
   private coyote = .12;
@@ -148,11 +158,11 @@ export class SluiceWorld {
   }
   interact() { if (!this.canInteract) return false; this.opened = true; return true; }
   jump() { if (!this.river?.isOnBoat(this.x)) this.buffer = .14; }
-  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(this.checkpoint) >= 0) ? { box: this.box.save() } : {}), ...(this.press && ['industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(this.checkpoint) >= 0 ? { press: this.press.save() } : {}), ...(this.dog && ['dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared'].indexOf(this.checkpoint) >= 0 ? { catRescued: this.dog.catRescued } : {}) }; }
+  save(): SluiceSave { return { version: 1, checkpoint: this.checkpoint, opened: this.opened, ...(this.box && (['crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(this.checkpoint) >= 0) ? { box: this.box.save() } : {}), ...(this.press && ['industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(this.checkpoint) >= 0 ? { press: this.press.save() } : {}), ...(this.dog && ['dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'industrial-approach', 'industrial-cleared', 'river-approach', 'river-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(this.checkpoint) >= 0 ? { catRescued: this.dog.catRescued } : {}), ...(this.city && ['city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(this.checkpoint) >= 0 ? { cityStories: this.city.save() } : {}) }; }
   restore(save: SluiceSave) {
-    this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0;
-    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -3550 : save.checkpoint === 'factory-escape' ? -2600 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : save.checkpoint === 'scrap-yard' ? SALVAGE.checkpoint : save.checkpoint === 'police-approach' ? POLICE_SEARCH_APPROACH : save.checkpoint === 'police-cleared' ? POLICE_COVER.right + 40 : -90;
-    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
+    this.checkpoint = save.checkpoint; this.opened = save.opened; this.fill = save.opened ? 1 : 0; this.city?.restore(save.cityStories);
+    this.x = save.checkpoint === 'far-bank' ? 1880 : save.checkpoint === 'sluice' ? 1190 : save.checkpoint === 'reclamation' ? -3550 : save.checkpoint === 'factory-escape' ? -2600 : save.checkpoint === 'station-exit' ? -980 : save.checkpoint === 'patrol-approach' ? 3080 : save.checkpoint === 'patrol-cleared' ? 3280 : save.checkpoint === 'scrap-yard' ? SALVAGE.checkpoint : save.checkpoint === 'police-approach' ? POLICE_SEARCH_APPROACH : save.checkpoint === 'police-cleared' ? POLICE_COVER.right + 40 : save.checkpoint === 'city-ration' ? 9730 : save.checkpoint === 'city-repair' ? 10750 : save.checkpoint === 'city-pump' ? 11940 : save.checkpoint === 'city-cat' ? 13020 : save.checkpoint === 'city-cleared' ? 14200 : -90;
+    this.y = ['far-bank', 'patrol-approach', 'patrol-cleared', 'crate-approach', 'crate-cleared', 'dog-approach', 'dog-cleared', 'scrap-yard', 'police-approach', 'police-cleared', 'city-ration', 'city-repair', 'city-pump', 'city-cat', 'city-cleared'].indexOf(save.checkpoint) >= 0 ? roadHeight(this.x) : CHANNEL.near;
     this.box?.restore(save.box);
     this.press?.restore(save.press);
     if (save.checkpoint === 'industrial-approach' || save.checkpoint === 'industrial-cleared') {
@@ -183,6 +193,7 @@ export class SluiceWorld {
     const gapGround = this.dog?.groundAt(x); if (gapGround !== null && gapGround !== undefined) return gapGround;
     const boxGround = this.box?.groundAt(x); if (boxGround !== null && boxGround !== undefined) return boxGround;
     const machineGround = this.press?.groundAt(x); if (machineGround !== null && machineGround !== undefined) return machineGround;
+    const cityGround = this.city?.groundAt(x); if (cityGround !== null && cityGround !== undefined) return cityGround;
     if (this.press && x >= this.press.layout.origin + this.press.layout.gapLeft && x <= this.press.layout.origin + this.press.layout.gapRight) return null;
     if (x <= CHANNEL.left) return CHANNEL.near;
     if (x >= CHANNEL.right) return roadHeight(x);
@@ -217,9 +228,10 @@ export class SluiceWorld {
     this.buffer = Math.max(0, this.buffer - dt);
     const holdingBox = !!this.box && grabbing && this.box.canGrab(this.x, this.y, this.grounded);
     const holdingPress = !!this.press && this.press.canGrab(this.x, this.y, this.grounded) && grabbing;
+    const holdingCity = !!this.city && this.city.beginMove(this.x, this.grounded, grabbing);
     const rowing = this.checkpoint === 'river-approach' && !!this.river?.isOnBoat(this.x);
     const onRamp = this.checkpoint === 'river-approach' && !!this.river?.isOnRamp(this.x);
-    const targetSpeed = rowing ? (direction > 0 ? this.river!.layout.rowingSpeed : 0) : direction * (holdingBox ? this.box!.layout.pushSpeed : holdingPress ? 75 : running ? 240 : 145);
+    const targetSpeed = rowing ? (direction > 0 ? this.river!.layout.rowingSpeed : 0) : direction * (holdingBox ? this.box!.layout.pushSpeed : holdingPress ? 75 : holdingCity ? 90 : running ? 240 : 145);
     this.vx += (targetSpeed - this.vx) * Math.min(1, dt * 15);
     const previousX = this.x, previousY = this.y;
     let nextX = Math.max(-2350, this.x + this.vx * dt);
@@ -229,6 +241,7 @@ export class SluiceWorld {
     if (holdingPress) {
       const moved = this.press!.moveCrate(nextX - previousX); nextX = previousX + moved; this.vx = moved / dt;
     }
+    if (holdingCity) { const moved = this.city!.moveProp(nextX - previousX); nextX = previousX + moved; this.vx = moved / dt; }
     const boardStarted = this.checkpoint === 'river-approach' && !!this.river && !this.river.isOnBoat(previousX) && this.river.isOnBoat(nextX);
     if (boardStarted) { this.y = this.river!.layout.deckY; this.vy = 0; this.grounded = true; }
     // Solid banks and log sides: feet must clear the top before crossing an edge.
@@ -240,6 +253,7 @@ export class SluiceWorld {
       ...(this.box ? this.box.walls(!holdingBox) : []),
       ...(this.press ? this.press.walls(!holdingPress) : []),
       ...(this.dog ? this.dog.walls() : []),
+      ...(this.city ? this.city.walls(!holdingCity) : []),
     ];
     for (const wall of walls) {
       if (this.y >= wall.top - 1) continue;
@@ -270,6 +284,11 @@ export class SluiceWorld {
     if (this.press && this.checkpoint === 'industrial-approach' && this.press.solved && this.grounded && this.x >= this.press.exitX) this.checkpoint = 'industrial-cleared';
     if (this.river && this.checkpoint === 'industrial-cleared' && this.grounded && this.x >= this.river.approachX) this.checkpoint = 'river-approach';
     if (this.river && this.checkpoint === 'river-approach' && this.grounded && this.x >= this.river.exitX) { this.checkpoint = 'river-cleared'; this.y = roadHeight(this.x); }
+    if (this.city && this.checkpoint === 'river-cleared' && this.grounded && this.x >= 9680) this.checkpoint = 'city-ration';
+    if (this.city && this.checkpoint === 'city-ration' && this.city.rationSolved && this.grounded && this.x >= 10510) this.checkpoint = 'city-repair';
+    if (this.city && this.checkpoint === 'city-repair' && this.city.repairSolved && this.grounded && this.x >= 11600) this.checkpoint = 'city-pump';
+    if (this.city && this.checkpoint === 'city-pump' && this.city.pumpOn && this.grounded && this.x >= 12800) this.checkpoint = 'city-cat';
+    if (this.city && this.checkpoint === 'city-cat' && this.city.catSolved && this.grounded && this.x >= 14200) this.checkpoint = 'city-cleared';
     if (this.box && this.grounded) {
       if (this.checkpoint === 'scrap-yard' && this.x >= this.box.entryX) this.checkpoint = 'crate-approach';
       if (this.checkpoint === 'crate-approach' && this.x >= this.box.wallEndX + 35 && Math.abs(this.y - this.box.layout.floor) < 1) {

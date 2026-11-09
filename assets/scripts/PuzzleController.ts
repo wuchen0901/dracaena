@@ -16,6 +16,7 @@ import { CharacterAnimation, CHARACTER_COLUMNS, CHARACTER_ROWS, CHARACTER_FOOT_A
 import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld, ARCHIVE_KEY, AutoSave, SaveArchive, Checkpoint, emptyArchive, readArchive, upsertAutosave, sameMilestone, ensureOpeningAutosave } from './SluiceWorld';
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt } from './JourneyStoryArt';
+import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
 import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
@@ -45,6 +46,7 @@ export class PuzzleController extends Component {
   private layers: Layer[] = [];
   private journeyBackdrops: JourneyBackdrop[] = [];
   private journeyStoryArt!: Graphics;
+  private cityStoryArt!: Graphics;
   private journeyClues: { node: Node; x: number; y: number; range: number }[] = [];
   private scavengerNode!: Node; private flyArt!: Graphics;
   private keys = new Set<KeyCode>();
@@ -57,7 +59,9 @@ export class PuzzleController extends Component {
   private scrapArt!: Graphics; private scrapSign!: Label; private beaconSign!: Label;
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtReason!: Label; private caughtDescription!: Label;
-  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river);
+  private cityStories = new CityStoryLevels();
+  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river, this.cityStories);
+  private previewMode = false;
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
@@ -100,6 +104,7 @@ export class PuzzleController extends Component {
     this.scavengerNode.getComponent(UITransform)!.setAnchorPoint(.5, .06);
     this.flyArt = this.child('Flies circling the carrion', 160, 110, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.journeyStoryArt = this.child('AI surveillance and ration traces', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
+    this.cityStoryArt = this.child('Playable ruined-city stories', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     const rationFloor = roadHeight(10030);
     const rationClue = this.text('配给仅限登记劳工', 10065, rationFloor + 113, 14, 250);
     rationClue.color = new Color(160, 154, 132, 210); rationClue.node.setParent(this.sceneRoot);
@@ -182,6 +187,15 @@ export class PuzzleController extends Component {
     this.archive = ensureOpeningAutosave(this.archive, Date.now());
     if (this.archive !== archiveBeforeOpeningSeed) this.writeArchive();
     if (this.world.checkpoint === 'reclamation') this.alarmTriggered = true;
+    // Isolated preview entry for quickly inspecting the new city level without touching saves on localhost.
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('preview') === 'city') {
+      this.previewMode = true;
+      this.cityStories.restore(); this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, 9680);
+      this.world.checkpoint = 'city-ration'; this.world.opened = true; this.world.fill = 1;
+      this.world.x = 9730; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
     this.persist();
     this.cameraOffset = Math.max(-3750, this.world.x - 100);
     this.cameraLift = cameraHeight(0, this.world.y, 1);
@@ -437,7 +451,7 @@ export class PuzzleController extends Component {
   }
   private interact() {
     if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return;
-    if (this.world.interact()) {
+    if (this.world.interact() || this.cityStories.interact(this.world.x, this.world.grounded)) {
       if (this.leverClip) this.leverSound.playOneShot(this.leverClip, .5);
       this.persist();
     }
@@ -535,6 +549,7 @@ export class PuzzleController extends Component {
     catch { this.storageFailed = true; }
   }
   private persist() {
+    if (this.previewMode) return;
     if (this.escape.active || this.policeEscape.active || this.escape.caught || this.policeEscape.caught || this.dog.caught || (this.dog.active && !this.dog.cleared) || this.boxPuzzle.moving) return;
     const progress = { ...this.world.save(), night: this.savedNight, escaped: this.escape.cleared, policeCleared: this.policeEscape.cleared, alarm: this.alarmTriggered };
     const previous = readProgress(this.saved);
@@ -642,14 +657,17 @@ export class PuzzleController extends Component {
     if (!this.failed && !this.pending) this.status.string = this.storageFailed ? 'Checkpoint kept for this session · local storage unavailable' : this.saveNotice > 0 ? '已自动保存' : '';
     const nearPress = this.pressPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
     const nearBox = this.boxPuzzle.canGrab(this.world.x, this.world.y, this.world.grounded);
+    const nearCityProp = this.cityStories.canGrab(this.world.x, this.world.grounded, false);
+    const nearPump = this.world.grounded && Math.abs(this.world.x - CITY_STORY.pump.switchX) < 95 && !this.cityStories.pumpOn;
     const atPressurePlate = this.world.grounded && Math.abs(this.world.x - this.pressPuzzle.plateX) < 58 && Math.abs(this.world.y - this.pressPuzzle.layout.floor) < 5;
     const atRiver = this.world.checkpoint === 'river-approach';
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
-    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.string = atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearCityProp || nearPump ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
-    const promptX = atRiver ? this.world.x + 110 : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = atRiver ? this.world.y + 126 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const cityPropX = Math.abs(this.world.x - this.cityStories.rationBox) < 170 ? this.cityStories.rationBox : Math.abs(this.world.x - this.cityStories.battery) < 170 ? this.cityStories.battery : this.cityStories.waterBowl;
+    const promptX = atRiver ? this.world.x + 110 : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = atRiver ? this.world.y + 126 : nearCityProp || nearPump ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
@@ -815,7 +833,9 @@ export class PuzzleController extends Component {
     if (this.catNode.active) {
       this.catNode.getComponent(Sprite)!.spriteFrame = this.catPoses[this.dog.catFrame];
       this.catNode.getComponent(UITransform)!.setAnchorPoint(.5, .09);
-      this.catNode.setPosition(this.dog.catX - this.cameraOffset, this.dog.catY, 0);
+      const inScavengerStory = this.world.x >= CITY_STORY.cat.bowl - 450 && this.world.x <= CITY_STORY.cat.gate + 150;
+      const storyCatX = this.cityStories.catSolved ? CITY_STORY.cat.survivorX - 40 : CITY_STORY.cat.catX;
+      this.catNode.setPosition((inScavengerStory ? storyCatX : this.dog.catX) - this.cameraOffset, inScavengerStory ? roadHeight(storyCatX) : this.dog.catY, 0);
     }
     drawPushBox(this.boxArt, this.boxPuzzle, this.cameraOffset);
     drawIndustrialPress(this.pressArt, this.pressPuzzle, this.cameraOffset, this.time);
@@ -845,12 +865,13 @@ export class PuzzleController extends Component {
     this.dormantRobots.forEach((n, i) => n.setPosition([-2250, -2150, -1850][i] - this.cameraOffset, CHANNEL.near, 0));
     drawNightSearch(this.search, this.cameraOffset, this.time, this.night, this.policeEscape.departure, POLICE_COVER.treeX);
     drawJourneyStoryArt(this.journeyStoryArt, this.cameraOffset, this.time);
+    drawCityStories(this.cityStoryArt, this.cityStories, this.cameraOffset, this.time);
     for (const clue of this.journeyClues) {
       const visible = Math.abs(this.world.x - clue.x) < clue.range;
       clue.node.active = visible;
       if (visible) clue.node.setPosition(clue.x - this.cameraOffset, clue.y, 0);
     }
-    const survivorX = 10250, survivorFloor = roadHeight(survivorX);
+    const survivorX = CITY_STORY.cat.survivorX, survivorFloor = roadHeight(survivorX);
     const survivorVisible = Math.abs(this.world.x - survivorX) < 820;
     this.scavengerNode.active = survivorVisible;
     this.flyArt.node.active = survivorVisible;
