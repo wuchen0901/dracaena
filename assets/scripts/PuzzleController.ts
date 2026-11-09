@@ -756,6 +756,37 @@ export class PuzzleController extends Component {
     }
     rect(c.left, -420, c.right - c.left, c.bed + 420, stone);
     if (viewLeft < c.left) line(viewLeft, c.near, Math.min(c.left, viewRight), c.near, grass, 4);
+    // Oblique ground plane: the gameplay line runs through the surface rather
+    // than along a paper-thin silhouette. Split at every height/gap boundary.
+    const depthX = 108, depthY = 62;
+    const boundaries = [viewLeft - depthX, viewRight, c.left, c.right,
+      ROAD.descentStart, ROAD.descentEnd, this.dog.gapLeft, this.dog.gapRight]
+      .filter(x => x >= viewLeft - depthX && x <= viewRight)
+      .sort((a, b) => a - b);
+    const solid = (x: number) => (x < c.left || x >= c.right)
+      && !(x > this.dog.gapLeft && x < this.dog.gapRight);
+    const floorAt = (x: number) => x < c.left ? c.near : roadHeight(x);
+    for (let i = 1; i < boundaries.length; i++) {
+      const a = boundaries[i - 1], b = boundaries[i];
+      if (b <= a || !solid((a + b) / 2)) continue;
+      const ay = floorAt(a), by = floorAt(b);
+      // Extend behind the feet; the near edge exposes a darker bank face.
+      g.fillColor = new Color(earth.r + 13, earth.g + 17, earth.b + 17);
+      g.moveTo(a - this.cameraOffset, ay - 14);
+      g.lineTo(b - this.cameraOffset, by - 14);
+      g.lineTo(b - this.cameraOffset + depthX, by + depthY);
+      g.lineTo(a - this.cameraOffset + depthX, ay + depthY);
+      g.close(); g.fill();
+      line(a, ay - 14, b, by - 14, new Color(22, 29, 29), 3);
+      line(a + depthX, ay + depthY, b + depthX, by + depthY,
+        new Color(grass.r, grass.g, grass.b, 65), 2);
+      // World-anchored seams keep the depth readable while the camera moves.
+      for (let x = Math.ceil(a / 180) * 180; x < b; x += 180) {
+        const y = floorAt(x);
+        line(x, y - 13, x + depthX, y + depthY,
+          new Color(18, 27, 28, 70), 1);
+      }
+    }
     // Masonry, mineral waterline and guide posts explain the former water level.
     for (let y = -250; y < 40; y += 28) {
       line(c.right, y, c.right + 65, y + 2, new Color(75, 85, 69));
