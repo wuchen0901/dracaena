@@ -20,7 +20,7 @@ import { CHANNEL, ROAD, SALVAGE, roadHeight, readProgress, SAVE_KEY, SluiceWorld
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt, drawRoadsideCharacters } from './JourneyStoryArt';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
-import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, Mask, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform } from 'cc';
+import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, macro, Mask, Material, Node, Rect, resources, screen, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform, view } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
 type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number; fade: number };
@@ -49,6 +49,7 @@ export class PuzzleController extends Component {
   private animation = new CharacterAnimation(); private breathScaleY = 1;
   private touchRun = false;
   private frame!: Node; private sceneRoot!: Node; private cameraLift = 0;
+  private touchButtons: Node[] = []; private topHint!: Label; private pauseToggle!: Label;
   private layers: Layer[] = [];
   private journeyBackdrops: JourneyBackdrop[] = [];
   private journeyStoryArt!: Graphics;
@@ -86,6 +87,7 @@ export class PuzzleController extends Component {
     if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('view') === 'demo') {
       this.enabled = false; this.node.addComponent(DepthPreview); return;
     }
+    view.setOrientation(macro.ORIENTATION_LANDSCAPE);
     const camera = this.node.scene.getChildByName('Main Camera')?.getComponent(Camera);
     if (camera) { camera.clearFlags = Camera.ClearFlag.SOLID_COLOR; camera.clearColor = new Color(0, 0, 0, 255); }
     this.previewMode = typeof location !== 'undefined' && new URLSearchParams(location.search).has('preview');
@@ -159,10 +161,14 @@ export class PuzzleController extends Component {
     if (!this.useWorld25) { this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses(); }
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
-    this.text('A / D  MOVE     SPACE / W / ↑  JUMP     E  INTERACT / HOLD TO PUSH     R  RESTORE CHECKPOINT', 0, 330, 17, 1100);
-    this.button('←', -555, -322, -1); this.button('→', 555, -322, 1); this.button('↑', 430, -322, 0);
-    this.button('RUN', -430, -322, 0, true);
-    this.button('E', 310, -322, 0, false, true);
+    this.topHint = this.text('← / → 移动     ↑ 跳跃     E 互动     R 重试', 0, 330, 17, 900);
+    this.touchButtons = [
+      this.button('←', 0, 0, -1), this.button('RUN', 0, 0, 0, true),
+      this.button('E', 0, 0, 0, false, true), this.button('↑', 0, 0, 0), this.button('→', 0, 0, 1),
+    ];
+    this.layoutTouchControls();
+    screen.on('window-resize', this.layoutTouchControls, this);
+    screen.on('orientation-change', this.layoutTouchControls, this);
     this.createCaughtPanel();
     this.createPauseMenu();
     this.saveList = this.child('Autosave history', 1280, 590, 0, 0); this.saveList.active = false;
@@ -268,7 +274,7 @@ export class PuzzleController extends Component {
     this.place();
     this.node.addComponent(ForestMusic);
   }
-  onDestroy() { this.world25?.destroy(); if (!this.actor) return; game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); this.barkSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
+  onDestroy() { screen.off('window-resize', this.layoutTouchControls, this); screen.off('orientation-change', this.layoutTouchControls, this); this.world25?.destroy(); if (!this.actor) return; game.off(Game.EVENT_HIDE, this.releaseInputs, this); this.waterSound?.stop(); this.siren?.stop(); this.factorySound?.stop(); this.alarmSound?.stop(); this.barkSound?.stop(); input.off(Input.EventType.KEY_DOWN, this.down, this); input.off(Input.EventType.KEY_UP, this.up, this); }
   private child(name: string, w: number, h: number, x: number, y: number, parent: Node = this.node) {
     const n = new Node(name); n.setParent(parent); n.layer = this.node.layer; n.setPosition(x, y, 0); n.addComponent(UITransform).setContentSize(w, h); return n;
   }
@@ -506,11 +512,31 @@ export class PuzzleController extends Component {
     const n = this.child(value, w, 48, x, y); const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size + 6; l.horizontalAlign = Label.HorizontalAlign.CENTER; l.color = new Color(220, 231, 218); return l;
   }
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
-    const n = this.child('Move ' + value, 90, 52, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-45, -26, 90, 52, 10); g.fill();
-    this.text(value, x, y, 30, 90);
+    const n = this.child('Move ' + value, 112, 80, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-56, -40, 112, 80, 14); g.fill();
+    const label = this.text(value, 0, 0, 30, 112); label.node.setParent(n);
     n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
     const release = () => { if (interact) this.touchGrab = false; if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
+    return n;
+  }
+  private layoutTouchControls() {
+    if (!this.topHint || !this.touchButtons.length) return;
+    const visible = view.getVisibleSize();
+    const scale = Math.max(.78, Math.min(1, visible.width / 800, visible.height / 420));
+    const halfWidth = visible.width / 2, halfHeight = visible.height / 2;
+    const edge = 66 * scale, spacing = 126 * scale;
+    const left = -halfWidth + edge, right = halfWidth - edge;
+    const y = -halfHeight + 57 * scale;
+    const positions = [left, left + spacing, right - spacing * 2, right - spacing, right];
+    this.touchButtons.forEach((button, index) => {
+      button.setPosition(positions[index], y, 0);
+      button.setScale(scale, scale, 1);
+    });
+    this.topHint.node.setPosition(0, halfHeight - 36 * scale, 0);
+    this.topHint.node.getComponent(UITransform)!.setContentSize(Math.max(160, Math.min(900, visible.width - 420 * scale)), 48);
+    this.topHint.fontSize = 17 * scale;
+    this.topHint.lineHeight = 23 * scale;
+    if (this.pauseToggle) this.pauseToggle.node.setPosition(halfWidth - 105 * scale, halfHeight - 36 * scale, 0);
   }
   private createCaughtPanel() {
     const panel = this.child('Caught · retry', 1280, 590, 0, 0);
@@ -545,8 +571,9 @@ export class PuzzleController extends Component {
     }
   }
   private createPauseMenu() {
-    const toggle = this.text('暂停 · ESC', -520, 277, 17, 180);
+    const toggle = this.pauseToggle = this.text('暂停 · ESC', 0, 0, 17, 180);
     toggle.node.on(Node.EventType.TOUCH_END, () => this.togglePause());
+    this.layoutTouchControls();
     const panel = this.child('Pause menu', 1280, 590, 0, 0);
     const art = panel.addComponent(Graphics); art.fillColor = new Color(8, 17, 23, 225);
     art.rect(-640, -295, 1280, 590); art.fill();
