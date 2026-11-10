@@ -18,6 +18,7 @@ import { batchRunnerPosition, BATCH_REVEAL_LAYOUT, drawScrapYard } from './Scrap
 import { drawGuardPostSearch } from './GuardPostArt';
 import { GeometryBatch, VectorWorldGraphics, WorldGeometry, WORLD_SCALE as S } from './WorldGeometry';
 const BLOCKING_WALL_DEPTH = 14;
+const PRISON_WALL_DEPTH = 40;
 type Backdrop = {
     node: Node;
     sprite: Sprite;
@@ -343,7 +344,7 @@ export class World25D {
         box(p.bridgeX, p.bridgeTop - 12, 0, p.layout.bridgeWidth, 24, 3.8, new Color(83, 101, 91));
         box(p.crateX, p.layout.floor + p.layout.crateHeight / 2, -.5, p.layout.crateWidth, p.layout.crateHeight, 1.6, new Color(108, 82, 51));
         box(s.box.x, s.box.layout.floor + s.box.layout.boxHeight / 2, -.5, s.box.layout.boxWidth, s.box.layout.boxHeight, 1.6, new Color(124, 99, 63));
-        box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, BLOCKING_WALL_DEPTH, new Color(90, 104, 99));
+        box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, PRISON_WALL_DEPTH, new Color(90, 104, 99));
         const f = s.factory, fl = FACTORY_ESCAPE_LAYOUT;
         box(f.crateX, fl.floor + fl.crateHeight / 2, -.5, fl.crateWidth, fl.crateHeight, 1.6, new Color(118, 91, 57));
         if (!f.poweredOff) box(fl.gateX, fl.floor + fl.gateHeight / 2, -.8, 16, fl.gateHeight, BLOCKING_WALL_DEPTH, new Color(65, 78, 73));
