@@ -6,6 +6,8 @@ The normal Creator preview URL (`http://localhost:7456/`) now runs the campaign 
 
 Ground and water are horizontal XZ surfaces, with slopes and interruptions matching the campaign geometry. Moving prop meshes share positions and dimensions with the simulation. Original vector scene details are converted to batched meshes by `WorldGeometry.ts`; large underground cutaway panels are omitted. Authored paintings remain distant backdrop cards. World prompts and plaques project into the separate UI canvas; pause, retry, music, touch controls and save history continue using the existing controller.
 
+The ruined-city stretch uses three depth layers of procedural building silhouettes, with exposed rust ribs and broken facade details on selected landmarks. Foreground and shelter trees use forked trunks and faceted, irregular foliage forms so their outlines read clearly while retaining lightweight batched geometry.
+
 The dog's visual Z approach is derived from its encounter distance: it reaches the player's plane before it can catch them. This preserves the existing encounter's collision rules; it is not unrestricted 3D navigation/pathfinding.
 
 ## Entry points

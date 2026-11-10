@@ -72,6 +72,27 @@ type Card = {
     mesh?: Mesh;
     key: string;
 };
+/** Angular foliage gives trees a readable silhouette without dense imported meshes. */
+function addTreeForm(g: WorldGeometry, x: number, groundY: number, z: number, scale: number, seed: number) {
+    const trunk = new Color(69 + seed * 3, 51 + seed * 2, 39);
+    const dark = new Color(31 + seed * 2, 53 + seed * 2, 38 + seed);
+    const mid = new Color(39 + seed * 2, 69 + seed * 2, 46 + seed);
+    const light = new Color(54 + seed * 2, 83 + seed * 2, 53 + seed);
+    g.box(x, groundY + 1.9 * scale, z, .42 * scale, 3.8 * scale, .7 * scale, trunk);
+    g.face([[x, groundY + 2.5 * scale, z + .36], [x - .95 * scale, groundY + 4.1 * scale, z + .36], [x - .72 * scale, groundY + 4.28 * scale, z + .36], [x + .12 * scale, groundY + 3.12 * scale, z + .36]], trunk);
+    g.face([[x + .03 * scale, groundY + 2.9 * scale, z + .38], [x + .8 * scale, groundY + 4.35 * scale, z + .38], [x + 1.04 * scale, groundY + 4.4 * scale, z + .38], [x + .2 * scale, groundY + 3.25 * scale, z + .38]], trunk);
+    const lobes: [number, number, number, number][] = [
+        [-.72, 4.45, 1.42, 1.95], [.45, 4.8, 1.5, 2.2], [1.1, 4.15, 1.18, 1.75], [-.05, 5.75, 1.45, 1.75],
+    ];
+    lobes.forEach(([ox, oy, width, height], i) => {
+        const cx = x + (ox + (seed % 2 ? .08 : -.08)) * scale, cy = groundY + oy * scale;
+        const w = width * scale, h = height * scale, planeZ = z + (i % 2 ? -.18 : .22) * scale;
+        const silhouette = [[cx - w * .48, cy - h * .18, planeZ], [cx - w * .42, cy + h * .22, planeZ], [cx - w * .2, cy + h * .48, planeZ], [cx + w * .14, cy + h * .5, planeZ], [cx + w * .44, cy + h * .22, planeZ], [cx + w * .5, cy - h * .12, planeZ], [cx + w * .22, cy - h * .42, planeZ], [cx - w * .18, cy - h * .46, planeZ]];
+        g.face(silhouette, dark);
+        g.face([[cx - w * .42, cy + h * .22, planeZ + .012], [cx - w * .2, cy + h * .48, planeZ + .012], [cx + w * .14, cy + h * .5, planeZ + .012], [cx + w * .02, cy + h * .04, planeZ + .012]], mid);
+        g.face([[cx + w * .02, cy + h * .04, planeZ + .014], [cx + w * .14, cy + h * .5, planeZ + .014], [cx + w * .44, cy + h * .22, planeZ + .014], [cx + w * .5, cy - h * .12, planeZ + .014]], i === 1 ? light : mid);
+    });
+}
 /** Campaign renderer. The original world simulation remains the single source of collision/save state. */
 export class World25D {
     private root = new Node('Campaign 2.5D world');
@@ -556,9 +577,7 @@ export class World25D {
         const tree = new WorldGeometry();
         for (const cover of [COVER, POLICE_COVER]) {
             const x = cover.treeX * S, y = roadHeight(cover.treeX) * S;
-            tree.box(x, y + 2.7, -.75, .85, 5.4, 1.4, new Color(36, 49, 39));
-            tree.box(x - .6, y + 6, -.95, 1.2, 2.4, .8, new Color(35, 57, 41));
-            tree.box(x + .8, y + 5.8, -.95, 1.5, 2, .8, new Color(35, 57, 41));
+            addTreeForm(tree, x, y, -.75, 1.12, 2);
             for (let i = 0; i < 5; i++)
                 tree.box(x - 1 + i * .5, y + .12, -.5, .6, .24, 1.8, new Color(46, 72, 45));
         }
@@ -614,6 +633,35 @@ export class World25D {
                 g.box(x * S, y + h / 2, -30, 3, h, 4, new Color(61, 74, 74));
             }
         }
+        // Layered ruined-city silhouettes sit behind the playable street; only landmarks
+        // get facade ribs, broken floors and a few dark window openings.
+        if (s.world.x > 7600 && s.world.x < 16600) {
+            const far = new Color(42, 57, 62), middle = new Color(53, 65, 67), near = new Color(68, 68, 62);
+            const cityBase = ROAD.floor * S;
+            const skyline: [number, number, number, number, number][] = [
+                [9300, 17, 8, -82, 0], [10050, 23, 10, -76, 1], [10820, 15, 8, -84, 0],
+                [11500, 28, 11, -78, 1], [12350, 20, 9, -85, 0], [13200, 25, 12, -77, 1],
+                [14100, 16, 9, -83, 0], [15150, 22, 10, -80, 1], [16000, 18, 8, -86, 0],
+            ];
+            skyline.forEach(([rawX, h, width, z, layer], i) => {
+                if (Math.abs(rawX - s.world.x) > 3500) return;
+                const x = rawX * S, height = h, w = width, base = cityBase - .2;
+                const color = layer ? middle : far;
+                g.box(x, base + height / 2, z, w, height, 2.2, color);
+                g.box(x - w * .22, base + height + .22, z - .04, w * .55, .42, 2.45, layer ? near : middle);
+                g.box(x + w * .31, base + height - .55, z - .06, w * .2, 1.1, 2.5, color);
+                if (!layer) return;
+                const rust = new Color(102, 73, 53), shadow = new Color(35, 44, 45);
+                g.box(x - w * .34, base + height * .48, z - 1.18, .16, height * .92, .12, rust);
+                g.box(x + w * .29, base + height * .34, z - 1.2, .13, height * .62, .12, rust);
+                for (let row = 0; row < 4; row++) {
+                    const yy = base + height * (.2 + row * .17);
+                    g.box(x - w * .13, yy, z - 1.21, .55, .54, .1, shadow);
+                    if ((row + i) % 2 === 0) g.box(x + w * .16, yy + .2, z - 1.22, .48, .3, .1, shadow);
+                }
+                g.face([[x - w * .48, base + height * .73, z - 1.25], [x - w * .4, base + height * .58, z - 1.25], [x - w * .31, base + height * .67, z - 1.25]], rust);
+            });
+        }
         // Near trunks and canopies pass in front of the character through forest and garden stretches.
         const foregroundTrees = [-900, -420, 350, 1150, 2320, 2900, 14600, 15400, 16200, 16900, 17800, 18600];
         for (let i = 0; i < foregroundTrees.length; i++) {
@@ -621,10 +669,7 @@ export class World25D {
             if (Math.abs(x - s.world.x) > 2300 || (x > CHANNEL.left - 100 && x < CHANNEL.right + 100) || (s.world.checkpoint === 'shadow-rescue' || s.world.checkpoint === 'shadow-cleared') && x >= SHADOW_RESCUE.entryX - 80 && x <= SHADOW_RESCUE.exitX + 420) continue;
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S, seed = i % 3;
             const z = 3.8;
-            g.box(x * S, y + 1.7, z, .48, 3.4, .9, new Color(66 + seed * 4, 49 + seed * 3, 37));
-            g.box(x * S, y + 4.1, z - .1, 2.55, 1.6, 1.7, new Color(32 + seed * 3, 58 + seed * 3, 39 + seed * 2));
-            g.box(x * S - .65, y + 3.55, z + .15, 1.9, 1.35, 1.55, new Color(38 + seed * 3, 70 + seed * 3, 44 + seed * 2));
-            g.box(x * S + .65, y + 3.55, z - .2, 1.9, 1.35, 1.55, new Color(35 + seed * 3, 64 + seed * 3, 41 + seed * 2));
+            addTreeForm(g, x * S, y, z, .72 + seed * .08, seed);
         }
         // The distant road is a horizontal surface, not a floating strip above the player.
         for (const center of [GUARD_POST.x, POLICE_COVER.treeX]) {
