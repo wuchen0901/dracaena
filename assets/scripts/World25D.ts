@@ -5,6 +5,7 @@ import { CHANNEL, ROAD, ROOM, roadHeight, SALVAGE, SluiceWorld } from './SluiceW
 import { PushBoxSegment } from './PushBoxSegment';
 import { FactoryEscapePuzzle, FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
 import { DISMANTLE_ROOM, FactoryDismantle } from './FactoryDismantle';
+import { SHADOW_RESCUE, ShadowRescueSegment } from './ShadowRescueSegment';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
 import { DogChaseSegment } from './DogChaseSegment';
@@ -32,6 +33,7 @@ export type World25DState = {
     box: PushBoxSegment;
     factory: FactoryEscapePuzzle;
     dismantle: FactoryDismantle;
+    shadow: ShadowRescueSegment;
     press: IndustrialPressSegment;
     river: RiverCrossing;
     dog: DogChaseSegment;
@@ -354,6 +356,57 @@ export class World25D {
         if (!f.poweredOff) box(fl.gateX, fl.floor + fl.gateHeight / 2, -.8, 16, fl.gateHeight, BLOCKING_WALL_DEPTH, new Color(65, 78, 73));
         box(fl.leverX - 12, fl.floor + 42, -.6, 8, 84, .8, new Color(63, 75, 70));
         box(fl.leverX + (f.poweredOff ? 8 : -6), fl.floor + (f.poweredOff ? 70 : 80), -.15, 34, 6, .6, new Color(209, 177, 105));
+        if (w.x > SHADOW_RESCUE.entryX - 100 && w.x < SHADOW_RESCUE.exitX + 500) {
+            const rescue = s.shadow, floor = ROAD.floor;
+            const left = SHADOW_RESCUE.entryX - 80, right = SHADOW_RESCUE.exitX + 420;
+            // A narrow service alley replaces the open forest edge before the mountain road.
+            box((left + right) / 2, floor + 250, -23, right - left, 500, 1.1, new Color(52, 61, 59));
+            box((left + right) / 2, floor + 485, -17, right - left, 16, 16, new Color(38, 45, 43));
+            for (let x = left + 80; x < right; x += 260) {
+                box(x, floor + 215, -16, 18, 430, 10, new Color(66, 73, 68));
+                box(x + 18, floor + 385, -15, 90, 14, 9, new Color(82, 87, 77));
+                box(x - 35, floor + 64, -15, 70, 16, 8, new Color(91, 91, 76));
+            }
+            // The closed shutter physically matches the collision wall; it lifts after the rescue.
+            if (!rescue.rescued) {
+                box(SHADOW_RESCUE.trapX, floor + 116, -5, 30, 232, 16, new Color(57, 67, 64));
+                for (let y = floor + 28; y < floor + 226; y += 30)
+                    box(SHADOW_RESCUE.trapX, y, 3.2, 32, 5, 1, new Color(115, 124, 110));
+            } else {
+                const isRepeating = rescue.toggleSeconds > .55;
+                box(SHADOW_RESCUE.trapX, floor + (isRepeating ? 116 : 225), -5, 30, isRepeating ? 232 : 20, 16, new Color(57, 67, 64));
+            }
+            // A red searchlight and the pursuing unit make the dead end read as an active chase.
+            if (rescue.stage < 2) {
+                const droneX = Math.min(w.x - 235, SHADOW_RESCUE.trapX - 210);
+                box(droneX, floor + 176, 4, 86, 46, 52, new Color(42, 49, 48));
+                box(droneX - 6, floor + 143, 4.4, 36, 20, 34, new Color(61, 69, 64));
+                box(droneX + 44, floor + 178, 4.8, 18, 12, 12, new Color(232, 57, 42));
+                box(droneX + 30, floor + 50, 4.2, 210, 95, 25, new Color(115, 43, 36, 85));
+            }
+            // The helper is only a silhouette through a grated partition, gone before the player arrives.
+            if (rescue.stage === 1) {
+                const figureX = SHADOW_RESCUE.switchX + 120;
+                box(figureX, floor + 119, 5, 34, 104, 9, new Color(19, 23, 22));
+                box(figureX, floor + 186, 5, 46, 46, 9, new Color(16, 20, 19));
+                box(figureX - 17, floor + 60, 5, 12, 82, 7, new Color(18, 22, 21));
+                box(figureX + 18, floor + 60, 5, 12, 82, 7, new Color(18, 22, 21));
+                box(figureX - 25, floor + 138, 5, 58, 12, 7, new Color(18, 22, 21));
+            }
+            // The same distinctive amber indicator changes state when the player flips the rescue switch.
+            box(SHADOW_RESCUE.switchX, floor + 92, 5.2, 70, 150, 3, new Color(66, 75, 69));
+            box(SHADOW_RESCUE.switchX, floor + 139, 5.6, 48, 42, .7, new Color(34, 42, 39));
+            box(SHADOW_RESCUE.switchX - 12, floor + 150, 6, 9, 16, .6,
+                rescue.confirmed ? new Color(210, 157, 66) : rescue.rescued ? new Color(98, 187, 124) : new Color(176, 53, 43));
+            box(SHADOW_RESCUE.switchX + (rescue.confirmed ? 11 : -11), floor + (rescue.confirmed ? 118 : 126), 6.2,
+                8, 42, .8, new Color(213, 180, 107));
+            if (!rescue.confirmed) {
+                box(SHADOW_RESCUE.exitX, floor + 124, -5, 22, 248, 14, new Color(59, 68, 64));
+                box(SHADOW_RESCUE.exitX, floor + 124, -4, 18, 236, 12, new Color(52, 63, 59));
+            } else {
+                box(SHADOW_RESCUE.exitX, floor + 235, -5, 22, 26, 14, new Color(59, 68, 64));
+            }
+        }
         const r = s.river, atRiver = w.checkpoint === 'river-approach', onBoat = atRiver && r.isOnBoat(w.x), onRamp = atRiver && r.isOnRamp(w.x);
         const boatX = onBoat ? w.x + 25 : onRamp || w.checkpoint === 'river-cleared' ? r.landingBoatX : r.launchBoatX;
         if (w.x > ROOM.doorX - 1000 && w.x < DISMANTLE_ROOM.endX + 900) {
@@ -482,7 +535,8 @@ export class World25D {
         this.vector('Prison wall and crate detail', s, .02, g => drawPushBox(g, s.box, camera), .7, camera);
         this.vector('Pressure plate and bridge detail', s, .02, g => drawIndustrialPress(g, s.press, camera, s.time), .7, camera);
         this.vector('Cat perch and barrier', s, -.1, g => drawCatRescueProps(g, s.dog, camera), 1.5, camera);
-        this.vector('City and garden interactions', s, .02, g => drawCityStories(g, s.city, camera, s.time), .7, camera);
+        if (world.checkpoint !== 'shadow-rescue' && world.checkpoint !== 'shadow-cleared')
+            this.vector('City and garden interactions', s, .02, g => drawCityStories(g, s.city, camera, s.time), .7, camera);
         this.vector('Journey story traces', s, -1.8, g => drawJourneyStoryArt(g, camera, s.time), .5, camera);
         this.vector('Roadside travelers and wildlife', s, -2.2, g => drawRoadsideCharacters(g, camera, s.time), .3, camera);
         // Remove the old simulated parallax; physical Z now determines distance and occlusion.
@@ -515,7 +569,7 @@ export class World25D {
             g.face([[(center - 470) * S, snowY, z - .04], [cx, peak, z - .04], [(center + 390) * S, snowY + 70 * S, z - .04]], new Color(139, 148, 141, 205));
         }
         for (let x = Math.floor(left / 220) * 220; x < right; x += 220) {
-            if (x > ROOM.doorX + ROOM.doorWidth / 2 && x < DISMANTLE_ROOM.endX) continue;
+            if ((x > SHADOW_RESCUE.entryX - 80 && x < SHADOW_RESCUE.exitX + 420) || (x > ROOM.doorX + ROOM.doorWidth / 2 && x < DISMANTLE_ROOM.endX)) continue;
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S;
             if (x < -1050) {
                 g.box(x * S, y + 4, -11, .4, 8, .4, new Color(44, 58, 56));
@@ -552,7 +606,7 @@ export class World25D {
         const foregroundTrees = [-900, -420, 350, 1150, 2320, 2900, 14600, 15400, 16200, 16900, 17800, 18600];
         for (let i = 0; i < foregroundTrees.length; i++) {
             const x = foregroundTrees[i];
-            if (Math.abs(x - s.world.x) > 2300 || (x > CHANNEL.left - 100 && x < CHANNEL.right + 100)) continue;
+            if (Math.abs(x - s.world.x) > 2300 || (x > CHANNEL.left - 100 && x < CHANNEL.right + 100) || (s.world.checkpoint === 'shadow-rescue' || s.world.checkpoint === 'shadow-cleared') && x >= SHADOW_RESCUE.entryX - 80 && x <= SHADOW_RESCUE.exitX + 420) continue;
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S, seed = i % 3;
             const z = 3.8;
             g.box(x * S, y + 1.7, z, .48, 3.4, .9, new Color(66 + seed * 4, 49 + seed * 3, 37));
