@@ -1,6 +1,6 @@
 import { CAMERA_ELEVATION, CAMERA_HEIGHT, CAMERA_Z, backdropHeight } from './WorldCamera';
 import { ActorModelKit, Animal3D, Robot3D } from './Actors3D';
-import { Camera, Color, DirectionalLight, EffectAsset, gfx, Graphics, Layers, Material, Mesh, MeshRenderer, Node, Label, Sprite, SpriteFrame, UITransform, utils, Vec3, Vec4 } from 'cc';
+import { AudioClip, AudioSource, Camera, Color, DirectionalLight, EffectAsset, gfx, Graphics, Layers, Material, Mesh, MeshRenderer, Node, Label, resources, Sprite, SpriteFrame, UITransform, utils, Vec3, Vec4 } from 'cc';
 import { CHANNEL, ROAD, ROOM, roadHeight, SALVAGE, SluiceWorld } from './SluiceWorld';
 import { PushBoxSegment } from './PushBoxSegment';
 import { FactoryEscapePuzzle, FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
@@ -97,6 +97,10 @@ export class World25D {
     private tint = new Color(255, 255, 255);
     private worldPoint = new Vec3();
     private uiPoint = new Vec3();
+    private footstep!: AudioSource;
+    private footstepClip: AudioClip | null = null;
+    private previousFootstepX = Number.NaN;
+    private footstepDistance = 0;
     constructor(canvas: Node, actorEffect: EffectAsset) {
         this.kit = new ActorModelKit(actorEffect);
         this.canvas = canvas;
@@ -133,6 +137,13 @@ export class World25D {
         const sun = light.addComponent(DirectionalLight);
         sun.color = new Color(237, 222, 191);
         sun.illuminance = 70000;
+        this.footstep = this.root.addComponent(AudioSource);
+        this.footstep.playOnAwake = false;
+        this.footstep.volume = .2;
+        resources.load('audio/step', AudioClip, (error, clip) => {
+            if (error) { console.warn('Footstep sound unavailable', error); return; }
+            this.footstepClip = clip;
+        });
     }
     private vertexMaterial(transparent: boolean) {
         const m = new Material();
@@ -207,6 +218,7 @@ export class World25D {
     render(s: World25DState) {
         const w = s.world, dt = this.clock < 0 ? 0 : Math.max(0, Math.min(.25, s.time - this.clock));
         this.clock = s.time;
+        this.updateFootsteps(w.x, w.vx, w.grounded);
         const teleport = Math.abs(w.x - this.previousX) > 1200;
         this.previousX = w.x;
         const targetY = Math.max(ROAD.floor, w.y - 95) * S;
@@ -621,6 +633,54 @@ export class World25D {
                 g.surface(x * S, (x + 65) * S, ROAD.floor * S + .02, ROAD.floor * S + .02, -17.96, -18.04, new Color(121, 126, 104));
         }
         this.batch('Depth scenery and service roads', g);
+        this.grass(s);
+    }
+    private inGrassland(x: number) {
+        return (x > -1050 && x < 1350) || (x > 14500 && x < 18900);
+    }
+    private grass(s: World25DState) {
+        const g = new WorldGeometry(), center = s.world.x;
+        const start = Math.floor((center - 1500) / 58) * 58;
+        const end = center + 1700;
+        for (let x = start; x < end; x += 58) {
+            if (!this.inGrassland(x) || (x > CHANNEL.left - 100 && x < CHANNEL.right + 100) ||
+                ((s.world.checkpoint === 'shadow-rescue' || s.world.checkpoint === 'shadow-cleared') && x >= SHADOW_RESCUE.entryX - 80 && x <= SHADOW_RESCUE.exitX + 420)) continue;
+            const floor = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S;
+            const phase = x * .067;
+            const nearPlayer = Math.max(0, 1 - Math.abs(x - center) / 132);
+            const stepLean = s.world.grounded ? -Math.sign(s.world.vx) * nearPlayer * Math.min(10, Math.abs(s.world.vx) * .045) : 0;
+            for (let blade = 0; blade < 3; blade++) {
+                const seed = phase + blade * 2.23;
+                const baseX = x * S + (blade - 1) * .17 + Math.sin(seed) * .1;
+                const z = 1.02 + blade * .025;
+                const height = (.25 + (Math.sin(seed * 1.7) + 1) * .055);
+                const sway = Math.sin(s.time * (1.8 + blade * .18) + seed) * .075;
+                const bend = stepLean * S + sway;
+                const width = .026;
+                const tipX = baseX + bend;
+                const tint = blade === 1 ? new Color(100, 137, 75) : new Color(77, 118, 67);
+                g.face([[baseX - width, floor, z], [baseX + width, floor, z], [tipX + width * .12, floor + height, z]], tint);
+            }
+        }
+        this.batch('Bending roadside grass', g);
+    }
+    private updateFootsteps(x: number, velocity: number, grounded: boolean) {
+        if (!Number.isFinite(this.previousFootstepX)) {
+            this.previousFootstepX = x;
+            return;
+        }
+        const distance = Math.abs(x - this.previousFootstepX);
+        this.previousFootstepX = x;
+        if (!grounded || Math.abs(velocity) < 24 || !this.inGrassland(x)) {
+            this.footstepDistance = 0;
+            return;
+        }
+        this.footstepDistance += distance;
+        const stride = Math.abs(velocity) > 190 ? 118 : 78;
+        if (this.footstepDistance >= stride) {
+            this.footstepDistance %= stride;
+            if (this.footstepClip) this.footstep.playOneShot(this.footstepClip, .55);
+        }
     }
     private police(s: World25DState) {
         const g = new WorldGeometry(), base = POLICE_COVER.treeX;
