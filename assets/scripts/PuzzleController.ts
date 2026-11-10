@@ -22,7 +22,7 @@ import { CHANNEL, ROAD, ROOM, SALVAGE, roadHeight, readProgress, SAVE_KEY, Sluic
 import { ForestMusic } from './ForestMusic';
 import { drawJourneyStoryArt, drawRoadsideCharacters } from './JourneyStoryArt';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
-import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, macro, Mask, Material, Node, Rect, resources, screen, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform, view } from 'cc';
+import { _decorator, AudioClip, AudioSource, Camera, Color, Component, EventKeyboard, game, Game, Graphics, Input, input, KeyCode, Label, macro, Mask, Material, Node, Rect, resources, screen, setDisplayStats, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform, view } from 'cc';
 const { ccclass } = _decorator;
 type Layer = { node: Node; x: number; y: number; parallax: number; drift: number; phase: number; bird: boolean };
 type JourneyBackdrop = { node: Node; sprite: Sprite; start: number; end: number; fade: number };
@@ -52,6 +52,7 @@ export class PuzzleController extends Component {
   private touchRun = false;
   private frame!: Node; private sceneRoot!: Node; private cameraLift = 0;
   private touchButtons: Node[] = []; private topHint!: Label; private pauseToggle!: Label;
+  private touchActionArt!: Graphics; private touchActionLabel!: Label;
   private layers: Layer[] = [];
   private journeyBackdrops: JourneyBackdrop[] = [];
   private journeyStoryArt!: Graphics;
@@ -93,6 +94,7 @@ export class PuzzleController extends Component {
       this.enabled = false; this.node.addComponent(DepthPreview); return;
     }
     view.setOrientation(macro.ORIENTATION_LANDSCAPE);
+    setDisplayStats(typeof location !== 'undefined' && new URLSearchParams(location.search).get('stats') === '1');
     const camera = this.node.scene.getChildByName('Main Camera')?.getComponent(Camera);
     if (camera) { camera.clearFlags = Camera.ClearFlag.SOLID_COLOR; camera.clearColor = new Color(0, 0, 0, 255); }
     this.previewMode = typeof location !== 'undefined' && new URLSearchParams(location.search).has('preview');
@@ -167,11 +169,13 @@ export class PuzzleController extends Component {
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
     this.dismantleSign = this.text('07 · 同批次', 0, 0, 22, 320); this.dismantleSign.node.setParent(this.sceneRoot); this.dismantleSign.node.active = false;
-    this.topHint = this.text('← / → 移动     ↑ 跳跃     E 互动     R 重试', 0, 330, 17, 900);
+    this.topHint = this.text(sys.isMobile ? '左侧移动 · 右侧跳跃 / 互动' : '← / → 移动     ↑ 跳跃     E 互动     R 重试', 0, 330, 17, 900);
     this.touchButtons = [
-      this.button('←', 0, 0, -1), this.button('RUN', 0, 0, 0, true),
-      this.button('E', 0, 0, 0, false, true), this.button('↑', 0, 0, 0), this.button('→', 0, 0, 1),
+      this.button('←', 0, 0, -1), this.button('跑', 0, 0, 0, true),
+      this.button('互动', 0, 0, 0, false, true), this.button('↑', 0, 0, 0), this.button('→', 0, 0, 1),
     ];
+    this.touchActionArt = this.touchButtons[2].getComponent(Graphics)!;
+    this.touchActionLabel = this.touchButtons[2].children[0].getComponent(Label)!;
     this.layoutTouchControls();
     screen.on('window-resize', this.layoutTouchControls, this);
     screen.on('orientation-change', this.layoutTouchControls, this);
@@ -577,7 +581,7 @@ export class PuzzleController extends Component {
   }
   private button(value: string, x: number, y: number, direction: number, run = false, interact = false) {
     const n = this.child('Move ' + value, 112, 80, x, y); const g = n.addComponent(Graphics); g.fillColor = new Color(30, 55, 51, 240); g.roundRect(-56, -40, 112, 80, 14); g.fill();
-    const label = this.text(value, 0, 0, 30, 112); label.node.setParent(n);
+    const label = this.text(value, 0, 0, interact || run ? 21 : 30, 112); label.node.setParent(n);
     n.on(Node.EventType.TOUCH_START, () => { this.unlockAudio(); if ((this.escape.caught || this.policeEscape.caught || this.dog.caught) || this.paused) return; if (interact) { this.touchGrab = true; this.interact(); } else if (run) this.touchRun = true; else if (direction) this.touchDirection = direction; else this.world.jump(); });
     const release = () => { if (interact) this.touchGrab = false; if (run) this.touchRun = false; else if (direction) this.touchDirection = 0; };
     n.on(Node.EventType.TOUCH_END, release); n.on(Node.EventType.TOUCH_CANCEL, release);
@@ -588,19 +592,23 @@ export class PuzzleController extends Component {
     const visible = view.getVisibleSize();
     const scale = Math.max(.78, Math.min(1, visible.width / 800, visible.height / 420));
     const halfWidth = visible.width / 2, halfHeight = visible.height / 2;
-    const edge = 66 * scale, spacing = 126 * scale;
-    const left = -halfWidth + edge, right = halfWidth - edge;
-    const y = -halfHeight + 57 * scale;
-    const positions = [left, left + spacing, right - spacing * 2, right - spacing, right];
+    const safe = sys.getSafeAreaRect();
+    const safeLeft = safe.x - halfWidth, safeRight = safe.x + safe.width - halfWidth;
+    const safeBottom = safe.y - halfHeight, safeTop = safe.y + safe.height - halfHeight;
+    const edge = 64 * scale, spacing = 116 * scale;
+    const left = safeLeft + edge, right = safeRight - edge;
+    const y = safeBottom + 54 * scale;
+    const positions = [left, left + spacing, right, right - spacing, left + spacing * 2];
     this.touchButtons.forEach((button, index) => {
       button.setPosition(positions[index], y, 0);
       button.setScale(scale, scale, 1);
     });
-    this.topHint.node.setPosition(0, halfHeight - 36 * scale, 0);
-    this.topHint.node.getComponent(UITransform)!.setContentSize(Math.max(160, Math.min(900, visible.width - 420 * scale)), 48);
+    const hintWidth = Math.max(140, Math.min(900, safe.width - 2 * edge - 344 * scale));
+    this.topHint.node.setPosition(safeLeft + edge + hintWidth / 2, safeTop - 36 * scale, 0);
+    this.topHint.node.getComponent(UITransform)!.setContentSize(hintWidth, 48);
     this.topHint.fontSize = 17 * scale;
     this.topHint.lineHeight = 23 * scale;
-    if (this.pauseToggle) this.pauseToggle.node.setPosition(halfWidth - 105 * scale, halfHeight - 36 * scale, 0);
+    if (this.pauseToggle) this.pauseToggle.node.setPosition(right - (sys.isMobile ? 56 : 90) * scale, safeTop - 36 * scale, 0);
   }
   private createCaughtPanel() {
     const panel = this.child('Caught · retry', 1280, 590, 0, 0);
@@ -635,7 +643,7 @@ export class PuzzleController extends Component {
     }
   }
   private createPauseMenu() {
-    const toggle = this.pauseToggle = this.text('暂停 · ESC', 0, 0, 17, 180);
+    const toggle = this.pauseToggle = this.text(sys.isMobile ? '暂停' : '暂停 · ESC', 0, 0, 17, sys.isMobile ? 112 : 180);
     toggle.node.on(Node.EventType.TOUCH_END, () => this.togglePause());
     this.layoutTouchControls();
     const panel = this.child('Pause menu', 1280, 590, 0, 0);
@@ -787,6 +795,7 @@ export class PuzzleController extends Component {
   update(delta: number) {
     if (this.paused || this.world25Loading) return;
     const dt = Math.min(delta, .25); this.time += dt;
+    if (this.time > 9 && this.topHint.node.active) this.topHint.node.active = false;
     const direction = this.touchDirection || Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
     if (direction) this.facing = direction;
     const underCover = (!this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded)) ||
@@ -855,8 +864,14 @@ export class PuzzleController extends Component {
     const nearRoomDoor = this.world.nearRoomDoor;
     const nearDismantle = this.world.nearDismantleConsole;
     const nearShadowSwitch = this.world.nearShadowSwitch;
+    const touchActionAvailable = nearDismantle || nearShadowSwitch || atFactoryLever || nearFactoryBox || atRationShade || !!repairOption || nearCityProp || nearPump || nearGardenValve || nearPowerSwitch || nearPress || nearBox || this.world.canInteract;
+    this.touchActionArt.clear();
+    this.touchActionArt.fillColor = touchActionAvailable ? new Color(142, 106, 45, 245) : new Color(30, 55, 51, 205);
+    this.touchActionArt.roundRect(-56, -40, 112, 80, 14); this.touchActionArt.fill();
+    this.touchActionLabel.color = touchActionAvailable ? new Color(255, 239, 196) : new Color(220, 231, 218, 190);
     const dismantleAction = ['启动警报', '点亮逃生灯带', '落下隔离闸门', '送入拆解压机'][this.dismantle.stepIndex] || '';
-    this.leverPrompt.string = nearRoomDoor ? '→ 推开房门' : atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearDismantle ? `E · ${dismantleAction}` : nearShadowSwitch ? 'E · 再拨一次救援开关' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    const actionPrompt = nearRoomDoor ? '→ 推开房门' : atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearDismantle ? `E · ${dismantleAction}` : nearShadowSwitch ? 'E · 再拨一次救援开关' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    this.leverPrompt.string = sys.isMobile ? actionPrompt.replace(/\bE\b/g, '互动') : actionPrompt;
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
     const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
     const promptX = nearRoomDoor ? ROOM.doorX : nearDismantle ? DISMANTLE_ROOM.consoleX : nearShadowSwitch ? SHADOW_RESCUE.switchX : atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : repairOption === 'gate' ? CITY_STORY.repair.doorTarget : repairOption === 'robot' ? CITY_STORY.repair.robot : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
