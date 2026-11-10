@@ -120,6 +120,7 @@ export class World25D {
     private uiPoint = new Vec3();
     private footstep!: AudioSource;
     private footstepClip: AudioClip | null = null;
+    private sun!: DirectionalLight;
     private previousFootstepX = Number.NaN;
     private footstepDistance = 0;
     constructor(canvas: Node, actorEffect: EffectAsset) {
@@ -155,9 +156,9 @@ export class World25D {
         const light = new Node('Soft directional actor lighting');
         light.setParent(this.root);
         light.setRotationFromEuler(-48, -35, 0);
-        const sun = light.addComponent(DirectionalLight);
-        sun.color = new Color(237, 222, 191);
-        sun.illuminance = 70000;
+        this.sun = light.addComponent(DirectionalLight);
+        this.sun.color = new Color(237, 222, 191);
+        this.sun.illuminance = 70000;
         this.footstep = this.root.addComponent(AudioSource);
         this.footstep.playOnAwake = false;
         this.footstep.volume = .2;
@@ -245,6 +246,13 @@ export class World25D {
         const targetY = Math.max(ROAD.floor, w.y - 95) * S;
         this.cameraY = teleport ? targetY : this.cameraY + (targetY - this.cameraY) * (1 - Math.exp(-dt * 7));
         this.camera.node.setPosition((s.cameraX + 100) * S, this.cameraY + CAMERA_HEIGHT, CAMERA_Z);
+        const atmosphere = this.atmosphere(w.x);
+        this.camera.clearColor = new Color(atmosphere.sky[0], atmosphere.sky[1], atmosphere.sky[2]);
+        const tint = new Color(atmosphere.tint[0], atmosphere.tint[1], atmosphere.tint[2]);
+        this.opaque.setProperty('mainColor', tint);
+        this.translucent.setProperty('mainColor', tint);
+        this.sun.color = new Color(atmosphere.sun[0], atmosphere.sun[1], atmosphere.sun[2]);
+        this.sun.illuminance = 7000 + 63000 * atmosphere.daylight;
         for (const card of this.cards.values())
             card.node.active = false;
         for (let i = 0; i < s.backdrops.length; i++) {
@@ -252,8 +260,10 @@ export class World25D {
             const alpha = Math.max(0, Math.min(1, enter, leave));
             // Distant paintings complement real foreground geometry rather than containing the walkable floor.
             const riverDistance = Math.abs(w.x - s.river.approachX);
-            const tint = riverDistance < 1500 ? new Color(144, 151, 144, alpha * 255) : new Color(210, 218, 207, alpha * 255);
-            this.card('Backdrop ' + i, b.sprite.spriteFrame, 150, 90, .5, .5, (s.cameraX + 100) * S, this.cameraY + backdropHeight(-68), -68, 1, tint);
+            const base = riverDistance < 1500 ? [144, 151, 144] : [210, 218, 207];
+            const backdropTint = new Color(base[0] * atmosphere.tint[0] / 255, base[1] * atmosphere.tint[1] / 255,
+                base[2] * atmosphere.tint[2] / 255, alpha * 255);
+            this.card('Backdrop ' + i, b.sprite.spriteFrame, 150, 90, .5, .5, (s.cameraX + 100) * S, this.cameraY + backdropHeight(-68), -68, 1, backdropTint);
         }
         // A short distant extension makes the crossing river taper toward a vanishing point.
         const riverDistance = Math.abs(w.x - s.river.approachX);
@@ -604,6 +614,7 @@ export class World25D {
             this.vector('City and garden interactions', s, .02, g => drawCityStories(g, s.city, camera, s.time), .7, camera);
         this.vector('Journey story traces', s, -1.8, g => drawJourneyStoryArt(g, camera, s.time), .5, camera);
         this.vector('Roadside travelers and wildlife', s, -2.2, g => drawRoadsideCharacters(g, camera, s.time), .3, camera);
+        this.weatherAndFireflies(s);
         // Remove the old simulated parallax; physical Z now determines distance and occlusion.
         this.vector('Guard post', s, -12, g => drawGuardPostSearch(g, GUARD_POST.x, s.time), 1.6, GUARD_POST.x, roadHeight(GUARD_POST.x));
         const tree = new WorldGeometry();
@@ -614,6 +625,61 @@ export class World25D {
                 tree.box(x - 1 + i * .5, y + .12, -.5, .6, .24, 1.8, new Color(46, 72, 45));
         }
         this.batch('Automatic shelter trees', tree);
+    }
+    /** Night escape, gradual dawn, midday, then a moonlit forest stretch. */
+    private atmosphere(x: number) {
+        const keys = [
+            { x: -5000, tint: [132, 151, 190], sky: [13, 23, 40], sun: [123, 143, 183], daylight: .12 },
+            { x: 2100, tint: [132, 151, 190], sky: [13, 23, 40], sun: [123, 143, 183], daylight: .12 },
+            { x: 6700, tint: [237, 202, 167], sky: [174, 126, 97], sun: [255, 190, 126], daylight: .68 },
+            { x: 9800, tint: [255, 255, 241], sky: [112, 151, 170], sun: [255, 239, 203], daylight: 1 },
+            { x: 14400, tint: [255, 255, 241], sky: [112, 151, 170], sun: [255, 239, 203], daylight: 1 },
+            { x: 16900, tint: [226, 183, 160], sky: [93, 79, 82], sun: [227, 156, 121], daylight: .48 },
+            { x: 18100, tint: [139, 158, 192], sky: [14, 26, 43], sun: [128, 150, 193], daylight: .15 },
+        ];
+        let a = keys[0], b = keys[keys.length - 1];
+        for (let i = 1; i < keys.length; i++) {
+            if (x <= keys[i].x) { a = keys[i - 1]; b = keys[i]; break; }
+        }
+        const t = Math.max(0, Math.min(1, (x - a.x) / Math.max(1, b.x - a.x)));
+        const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
+        return {
+            tint: a.tint.map((v, i) => mix(v, b.tint[i])), sky: a.sky.map((v, i) => mix(v, b.sky[i])),
+            sun: a.sun.map((v, i) => mix(v, b.sun[i])), daylight: a.daylight + (b.daylight - a.daylight) * t,
+        };
+    }
+    /** Light rain accompanies the escape; glowing insects appear in the later forest at night. */
+    private weatherAndFireflies(s: World25DState) {
+        const x = s.world.x, center = s.cameraX + 100;
+        const rain = Math.max(0, Math.min(1, (x + 3700) / 300, (900 - x) / 500));
+        const wet = new WorldGeometry();
+        if (rain > .02) {
+            for (let i = 0; i < 44; i++) {
+                const seed = i * 97.31;
+                const px = (center - 720 + (seed * 13.7) % 1440 + s.time * 19) * S;
+                const py = (ROAD.floor + 105 + (seed * 7.9 + s.time * 210) % 500) * S;
+                const z = -3 + (i % 8) * .04;
+                const c = new Color(149, 180, 193, 20 + 38 * rain);
+                wet.face([[px, py, z], [px + .026, py, z], [px - .11, py + .42, z], [px - .13, py + .42, z]], c);
+            }
+        }
+        this.batch('Night escape drizzle', wet, true);
+
+        const fireflyFade = Math.max(0, Math.min(1, (x - 16400) / 800, (19800 - x) / 700));
+        const lights = new WorldGeometry();
+        if (fireflyFade > .02) {
+            for (let i = 0; i < 24; i++) {
+                const seed = i * 2.399;
+                const drift = Math.sin(s.time * (.42 + (i % 4) * .07) + seed) * 260;
+                const px = (center + drift + Math.sin(seed * 3) * 570) * S;
+                const py = (roadHeight(center + drift) + 115 + Math.sin(s.time * .78 + seed * 2) * 100 + (i % 5) * 21) * S;
+                const pulse = .35 + .65 * Math.max(0, Math.sin(s.time * (1.5 + i % 3 * .25) + seed));
+                const alpha = Math.round(fireflyFade * pulse * 195);
+                const r = .075 + pulse * .035;
+                lights.face([[px, py + r, -7], [px + r, py, -7], [px, py - r, -7], [px - r, py, -7]], new Color(192, 235, 126, alpha));
+            }
+        }
+        this.batch('Moonlit forest fireflies', lights, true);
     }
     private scenery(s: World25DState) {
         const g = new WorldGeometry(), left = s.world.x - 1900, right = s.world.x + 2400;
