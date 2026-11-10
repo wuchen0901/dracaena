@@ -251,7 +251,39 @@ export class World25D {
             const b = s.backdrops[i], enter = w.x < b.start ? (w.x - b.start + b.fade) / b.fade : 1, leave = w.x > b.end ? (b.end + b.fade - w.x) / b.fade : 1;
             const alpha = Math.max(0, Math.min(1, enter, leave));
             // Distant paintings complement real foreground geometry rather than containing the walkable floor.
-            this.card('Backdrop ' + i, b.sprite.spriteFrame, 150, 90, .5, .5, (s.cameraX + 100) * S, this.cameraY + backdropHeight(-68), -68, 1, new Color(210, 218, 207, alpha * 255));
+            const riverDistance = Math.abs(w.x - s.river.approachX);
+            const tint = riverDistance < 1500 ? new Color(144, 151, 144, alpha * 255) : new Color(210, 218, 207, alpha * 255);
+            this.card('Backdrop ' + i, b.sprite.spriteFrame, 150, 90, .5, .5, (s.cameraX + 100) * S, this.cameraY + backdropHeight(-68), -68, 1, tint);
+        }
+        // A short distant extension makes the crossing river taper toward a vanishing point.
+        const riverDistance = Math.abs(w.x - s.river.approachX);
+        if (riverDistance < 1900) {
+            const c = (s.river.waterLeft + s.river.waterRight) / 2 * S;
+            const ridge = new WorldGeometry();
+            const backZ = -64;
+            const nearHalf = 6.4, farHalf = .15;
+            const waterY = s.river.layout.waterY * S + .035;
+            ridge.face([
+                [c - nearHalf, waterY, -57], [c + nearHalf, waterY, -57],
+                [c + farHalf, waterY, backZ - .2], [c - farHalf, waterY, backZ - .2],
+            ], new Color(43, 75, 73));
+            // Two muted banks guide the eye inward without building a wall across the skyline.
+            for (const side of [-1, 1]) {
+                const innerNear = c + side * nearHalf, outerNear = c + side * (nearHalf + .36);
+                const innerFar = c + side * farHalf, outerFar = c + side * (farHalf + .13);
+                ridge.face([
+                    [innerNear, waterY, -57], [outerNear, waterY + .18, -57],
+                    [outerFar, waterY + .18, backZ - .2], [innerFar, waterY, backZ - .2],
+                ], new Color(96, 91, 72));
+            }
+            ridge.face([
+                [c - 1.4, waterY + .012, -57], [c + 1.4, waterY + .012, -57],
+                [c + .08, waterY + .012, backZ - .2], [c - .08, waterY + .012, backZ - .2],
+            ], new Color(87, 110, 99));
+            this.batch('River distant channel', ridge);
+        }
+        else {
+            this.batch('River distant channel', new WorldGeometry());
         }
         const onBoat = w.checkpoint === 'river-approach' && s.river.isOnBoat(w.x);
         this.robot.pose({ x: w.x * S, y: w.y * S, z: .65, vx: w.vx, vy: w.vy, grounded: w.grounded, facing: s.facing, cover: s.cover, gripping: s.gripping, seated: onBoat, floor: (w.groundAt(w.x) ?? ROAD.floor) * S, dt });
