@@ -488,6 +488,18 @@ export class World25D {
                 g.box(x * S, y + h / 2, -30, 3, h, 4, new Color(61, 74, 74));
             }
         }
+        // Near trunks and canopies pass in front of the character through forest and garden stretches.
+        const foregroundTrees = [-900, -420, 350, 1150, 2320, 2900, 14600, 15400, 16200, 16900, 17800, 18600];
+        for (let i = 0; i < foregroundTrees.length; i++) {
+            const x = foregroundTrees[i];
+            if (Math.abs(x - s.world.x) > 2300 || (x > CHANNEL.left - 100 && x < CHANNEL.right + 100)) continue;
+            const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S, seed = i % 3;
+            const z = 3.8;
+            g.box(x * S, y + 1.7, z, .48, 3.4, .9, new Color(66 + seed * 4, 49 + seed * 3, 37));
+            g.box(x * S, y + 4.1, z - .1, 2.55, 1.6, 1.7, new Color(32 + seed * 3, 58 + seed * 3, 39 + seed * 2));
+            g.box(x * S - .65, y + 3.55, z + .15, 1.9, 1.35, 1.55, new Color(38 + seed * 3, 70 + seed * 3, 44 + seed * 2));
+            g.box(x * S + .65, y + 3.55, z - .2, 1.9, 1.35, 1.55, new Color(35 + seed * 3, 64 + seed * 3, 41 + seed * 2));
+        }
         // The distant road is a horizontal surface, not a floating strip above the player.
         for (const center of [GUARD_POST.x, POLICE_COVER.treeX]) {
             g.surface((center - 700) * S, (center + 1800) * S, ROAD.floor * S, ROAD.floor * S, -14, -22, new Color(45, 58, 59));
