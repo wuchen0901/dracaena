@@ -4,6 +4,7 @@ import { Camera, Color, DirectionalLight, EffectAsset, gfx, Graphics, Layers, Ma
 import { CHANNEL, ROAD, ROOM, roadHeight, SALVAGE, SluiceWorld } from './SluiceWorld';
 import { PushBoxSegment } from './PushBoxSegment';
 import { FactoryEscapePuzzle, FACTORY_ESCAPE_LAYOUT } from './FactoryEscapePuzzle';
+import { DISMANTLE_ROOM, FactoryDismantle } from './FactoryDismantle';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { CityStoryLevels, CITY_STORY, drawCityStories } from './CityStoryLevels';
 import { DogChaseSegment } from './DogChaseSegment';
@@ -30,6 +31,7 @@ export type World25DState = {
     world: SluiceWorld;
     box: PushBoxSegment;
     factory: FactoryEscapePuzzle;
+    dismantle: FactoryDismantle;
     press: IndustrialPressSegment;
     river: RiverCrossing;
     dog: DogChaseSegment;
@@ -46,6 +48,7 @@ export type World25DState = {
     facing: number;
     cameraX: number;
     prompt: Node;
+    dismantleSign: Node;
     openingSigns: Node[];
     prisonSign: Node;
     pressSign: Node;
@@ -255,6 +258,7 @@ export class World25D {
         this.caption(s.guardSign, GUARD_POST.x, roadHeight(GUARD_POST.x) + 250, -12, Math.abs(w.x - GUARD_POST.x) < 900);
         this.caption(s.scrapSign, SALVAGE.origin + 500, 255, -4, Math.abs(w.x - SALVAGE.origin - 500) < 1000);
         this.caption(s.beaconSign, SALVAGE.beacon, 142, -2, Math.abs(w.x - SALVAGE.beacon) < 700);
+        this.caption(s.dismantleSign, DISMANTLE_ROOM.revealX, ROAD.floor + 262, -1, s.dismantle.solved && Math.abs(w.x - DISMANTLE_ROOM.revealX) < 1100);
         s.openingSigns.forEach((n, i) => this.caption(n, [-1960, -2340, -1210][i], [115, 110, 70][i], -5, Math.abs(w.x - [-1960, -2340, -1210][i]) < 1000));
         s.clues.forEach(c => this.caption(c.node, c.x, c.y, -1, Math.abs(w.x - c.x) < c.range));
     }
@@ -285,7 +289,7 @@ export class World25D {
                 continue;
             const ay = a < CHANNEL.left ? CHANNEL.near : roadHeight(a), by = b <= CHANNEL.left ? CHANNEL.near : roadHeight(b);
             const mountain = mid >= ROAD.mountainStart - 400 && mid <= ROAD.mountainDescentEnd + 400;
-            const indoors = mid >= ROOM.doorX + 45 && mid <= ROOM.endX + 80;
+            const indoors = mid >= ROOM.doorX + 45 && mid <= DISMANTLE_ROOM.endX + 80;
             const garden = mid > 14500 && !mountain;
             const color = indoors ? new Color(91, 75, 58) : mountain ? new Color(72, 72, 66) : garden ? new Color(65, 82, 59) : mid < -1050 ? new Color(56, 63, 59) : new Color(72, 75, 63);
             if (mid > FACTORY_PANIC_LAYOUT.pitStart && mid < FACTORY_PANIC_LAYOUT.pitEnd) {
@@ -352,9 +356,9 @@ export class World25D {
         box(fl.leverX + (f.poweredOff ? 8 : -6), fl.floor + (f.poweredOff ? 70 : 80), -.15, 34, 6, .6, new Color(209, 177, 105));
         const r = s.river, atRiver = w.checkpoint === 'river-approach', onBoat = atRiver && r.isOnBoat(w.x), onRamp = atRiver && r.isOnRamp(w.x);
         const boatX = onBoat ? w.x + 25 : onRamp || w.checkpoint === 'river-cleared' ? r.landingBoatX : r.launchBoatX;
-        if (w.x > ROOM.doorX - 1000 && w.x < ROOM.endX + 900) {
+        if (w.x > ROOM.doorX - 1000 && w.x < DISMANTLE_ROOM.endX + 900) {
             const roomLeft = ROOM.doorX + ROOM.doorWidth / 2;
-            const roomWidth = ROOM.endX - roomLeft;
+            const roomWidth = DISMANTLE_ROOM.endX - roomLeft;
             // A warm, cutaway interior sits beyond the mountain road's doorway.
             box((roomLeft + ROOM.endX) / 2, ROAD.floor + 260, -24, roomWidth, 520, 1.2, new Color(104, 91, 72));
             box((roomLeft + ROOM.endX) / 2, ROAD.floor + 76, -22.8, roomWidth, 120, .9, new Color(125, 104, 77));
@@ -378,6 +382,61 @@ export class World25D {
                 box(ROOM.doorX + 43, ROAD.floor + 102, -10.8, 4, 4, .8, new Color(221, 184, 107));
             } else {
                 box(ROOM.doorX + ROOM.doorWidth / 2 - 9, ROAD.floor + ROOM.doorHeight / 2, -10.5, 14, ROOM.doorHeight - 8, 1.2, new Color(89, 67, 46));
+            }
+        }
+        if (w.x > DISMANTLE_ROOM.startX - 1200 && w.x < DISMANTLE_ROOM.endX + 800) {
+            const d = s.dismantle, floor = ROAD.floor;
+            const lit = d.stepIndex > 0, beltY = floor + 38;
+            // The warm shelter ends at an open fire door; the cold dismantling line fills the next bay.
+            box((DISMANTLE_ROOM.startX + DISMANTLE_ROOM.endX) / 2, floor + 255, -21.5, DISMANTLE_ROOM.endX - DISMANTLE_ROOM.startX, 510, .65, new Color(48, 58, 57));
+            box(DISMANTLE_ROOM.startX + 34, floor + 255, -20.9, 18, 510, 1, new Color(83, 66, 49));
+            box(DISMANTLE_ROOM.endX - 34, floor + 255, -20.9, 18, 510, 1, new Color(83, 66, 49));
+            box((DISMANTLE_ROOM.startX + DISMANTLE_ROOM.endX) / 2, floor + 498, -18, DISMANTLE_ROOM.endX - DISMANTLE_ROOM.startX, 14, 16, new Color(35, 44, 43));
+            // Conveyor, sorting bins and the press share the opening's industrial silhouette.
+            box(29210, beltY, -6, 1120, 36, 5, new Color(83, 89, 81));
+            for (let x = 28690; x < 29760; x += 100) {
+                box(x, floor + 15, -5.5, 5, 15, 2, new Color(48, 52, 49));
+                box(x, beltY + 19, -5.4, 9, 3, 5.4, new Color(128, 111, 79));
+            }
+            box(29610, floor + 214, -7, 165, 385, 8, new Color(67, 74, 69));
+            box(29610, floor + 75 + (d.stepIndex >= 4 ? -38 : 0), -3, 190, 22, 14, new Color(d.stepIndex >= 4 ? 147 : 102, 83, 72));
+            box(29610, floor + 423, -7, 380, 24, 10, new Color(89, 96, 85));
+            box(30010, floor + 52, -5, 390, 88, 6, new Color(69, 77, 69));
+            box(30010, floor + 100, -3.8, 310, 8, 1.4, new Color(135, 117, 80));
+            // Three warning lamps repeat the exact three-beat signal the player saw during the escape.
+            for (let i = 0; i < 3; i++) {
+                const beat = s.time % 1.8;
+                const pulse = d.stepIndex > 1 || (d.stepIndex > 0 && beat >= i * .48 && beat < i * .48 + .34);
+                box(29000 + i * 72, floor + 422, -8.5, 34, 32, 3, pulse ? new Color(196, 65, 47) : new Color(71, 58, 48));
+            }
+            // At first the robot waits on the belt; then it moves under the press and is reduced to sorted parts.
+            if (d.stepIndex < 4) {
+                const targetX = 29100;
+                const targetY = beltY + 22;
+                box(targetX, targetY + 34, 1.3, 36, 54, 5.4, new Color(117, 130, 119));
+                box(targetX, targetY + 70, 1.3, 31, 26, 5.4, new Color(140, 148, 132));
+                box(targetX - 26, targetY + 34, 1.3, 13, 44, 4, new Color(91, 106, 101));
+                box(targetX + 26, targetY + 34, 1.3, 13, 44, 4, new Color(91, 106, 101));
+                box(targetX - 11, targetY - 2, 1.3, 12, 28, 4.5, new Color(100, 108, 96));
+                box(targetX + 11, targetY - 2, 1.3, 12, 28, 4.5, new Color(100, 108, 96));
+                box(targetX + 15, targetY + 48, 4.2, 8, 11, .2, new Color(174, 56, 45));
+            } else {
+                for (let i = 0; i < 4; i++) box(29910 + i * 55, floor + 120 + (i % 2) * 10, -1.4, 30, 15, 4, new Color(115, 128, 116));
+                box(30100, floor + 141, .1, 48, 18, .3, new Color(172, 49, 39));
+            }
+            if (d.stepIndex >= 2) {
+                box(28960, floor + 90, -2, 15, 180, 6, new Color(70, 82, 75));
+                box(29440, floor + 90, -2, 15, 180, 6, new Color(70, 82, 75));
+                box(28750, floor + 10, 2.5, 130, 8, 1, new Color(76, 184, 126));
+                box(28890, floor + 10, 2.5, 80, 8, 1, new Color(76, 184, 126));
+            }
+            box(DISMANTLE_ROOM.consoleX, floor + 72, -2, 76, 128, 5, new Color(58, 74, 72));
+            box(DISMANTLE_ROOM.consoleX, floor + 92, .8, 48, 30, .5, lit ? new Color(184, 60, 42) : new Color(173, 145, 87));
+            box(DISMANTLE_ROOM.consoleX + 38, floor + 92, 1, 10, 40, .8, new Color(178, 143, 79));
+            // The same stamped batch mark appears beside the separated parts.
+            if (d.stepIndex >= 4) {
+                box(30100, floor + 178, 1.1, 92, 34, .8, new Color(184, 53, 42));
+                box(30100, floor + 178, 1.7, 58, 19, .25, new Color(229, 207, 155));
             }
         }
         g.surface(r.waterLeft * S, r.waterRight * S, r.layout.waterY * S, r.layout.waterY * S, 45, -58, new Color(40, 78, 76));
@@ -456,7 +515,7 @@ export class World25D {
             g.face([[(center - 470) * S, snowY, z - .04], [cx, peak, z - .04], [(center + 390) * S, snowY + 70 * S, z - .04]], new Color(139, 148, 141, 205));
         }
         for (let x = Math.floor(left / 220) * 220; x < right; x += 220) {
-            if (x > ROOM.doorX + ROOM.doorWidth / 2 && x < ROOM.endX) continue;
+            if (x > ROOM.doorX + ROOM.doorWidth / 2 && x < DISMANTLE_ROOM.endX) continue;
             const y = (x < CHANNEL.left ? CHANNEL.near : roadHeight(x)) * S;
             if (x < -1050) {
                 g.box(x * S, y + 4, -11, .4, 8, .4, new Color(44, 58, 56));

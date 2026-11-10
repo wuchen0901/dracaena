@@ -10,6 +10,7 @@ import { PushBoxSegment } from './PushBoxSegment';
 import { IndustrialPressSegment, drawIndustrialPress } from './IndustrialPressSegment';
 import { RiverCrossing, drawRiverBoatFront, drawRiverCrossing } from './RiverCrossing';
 import { FactoryEscapePuzzle } from './FactoryEscapePuzzle';
+import { DISMANTLE_ROOM, FactoryDismantle } from './FactoryDismantle';
 import { drawPushBox } from './PushBoxArt';
 import { drawFactoryPanic, drawReclamationOpening, FACTORY_PANIC_LAYOUT } from './ReclamationOpening';
 import { SearchEscape } from './SearchEscape';
@@ -69,11 +70,13 @@ export class PuzzleController extends Component {
   private dogPoses: SpriteFrame[] = []; private barkSound!: AudioSource; private barkClip: AudioClip | null = null;
   private caughtReason!: Label; private caughtDescription!: Label;
   private cityStories = new CityStoryLevels();
-  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river, this.cityStories, this.factoryPuzzle);
+  private dismantle = new FactoryDismantle();
+  private world = new SluiceWorld(this.boxPuzzle, this.dog, this.pressPuzzle, this.river, this.cityStories, this.factoryPuzzle, this.dismantle);
   private previewMode = false;
   private facing = 1; private time = 0;
   private terrain!: Graphics; private water!: Graphics;
   private leverPrompt!: Label; private saved = ''; private saveNotice = 0;
+  private dismantleSign!: Label;
   private waterSound!: AudioSource; private leverSound!: AudioSource;
   private waterClip: AudioClip | null = null; private leverClip: AudioClip | null = null;
   private audioUnlocked = false; private storageFailed = false;
@@ -161,6 +164,7 @@ export class PuzzleController extends Component {
     if (!this.useWorld25) { this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses(); }
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
+    this.dismantleSign = this.text('07 · 同批次', 0, 0, 22, 320); this.dismantleSign.node.setParent(this.sceneRoot); this.dismantleSign.node.active = false;
     this.topHint = this.text('← / → 移动     ↑ 跳跃     E 互动     R 重试', 0, 330, 17, 900);
     this.touchButtons = [
       this.button('←', 0, 0, -1), this.button('RUN', 0, 0, 0, true),
@@ -272,6 +276,21 @@ export class PuzzleController extends Component {
       this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, ROOM.doorX - 240);
       this.world.checkpoint = 'garden-cleared'; this.world.opened = true; this.world.fill = 1;
       this.world.x = ROOM.doorX - 240; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
+      this.alarmTriggered = true;
+    }
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('preview') === 'dismantle') {
+      this.previewMode = true;
+      this.cityStories.restore({
+        rationBox: CITY_STORY.ration.target, rationShadeDown: true,
+        battery: CITY_STORY.repair.target, repairChoice: 'gate', pumpOn: true,
+        waterBowl: CITY_STORY.cat.target, pruningBranch: CITY_STORY.garden.branchTarget,
+        wildWater: true, relayPanel: CITY_STORY.garden.panelTarget, powerSwitches: 7,
+      });
+      this.boxPuzzle.solved = true; this.pressPuzzle.solved = true;
+      this.escape.cleared = true; this.policeEscape.cleared = true; this.dog.reset(true, true, DISMANTLE_ROOM.consoleX);
+      this.dismantle.restore(0);
+      this.world.checkpoint = 'dismantle-room'; this.world.opened = true; this.world.fill = 1;
+      this.world.x = DISMANTLE_ROOM.consoleX - 70; this.world.y = roadHeight(this.world.x); this.world.grounded = true;
       this.alarmTriggered = true;
     }
     if (typeof location !== 'undefined') {
@@ -817,11 +836,14 @@ export class PuzzleController extends Component {
     const onBoat = atRiver && this.river.isOnBoat(this.world.x);
     const onLanding = atRiver && this.river.isOnRamp(this.world.x);
     const nearRoomDoor = this.world.nearRoomDoor;
-    this.leverPrompt.string = nearRoomDoor ? '→ 推开房门' : atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
+    const nearDismantle = this.world.nearDismantleConsole;
+    const dismantleAction = ['启动警报', '点亮逃生灯带', '落下隔离闸门', '送入拆解压机'][this.dismantle.stepIndex] || '';
+    this.leverPrompt.string = nearRoomDoor ? '→ 推开房门' : atRiver ? onBoat ? '已上船 · 按住 → 划向对岸' : onLanding ? '抵达对岸 · 向右下船' : '走上渡船 · 按住 → 划过河道' : nearDismantle ? `E · ${dismantleAction}` : atFactoryLever ? 'E · 拉下断电杆' : nearFactoryBox ? '按住 E / 交互键 · 推动箱子' : atRationShade ? 'E · 拉下遮阳布' : repairOption === 'robot' ? 'E · 唤醒清洁机器人' : repairOption === 'gate' ? 'E · 把电池接入服务门' : nearCityProp || nearPump || nearGardenValve || nearPowerSwitch ? 'E' : nearPress ? '按住 E / 交互键 · 推箱压住压力板' : atPressurePlate && !this.pressPuzzle.solved ? '踩住压力板启动检修桥，再用箱子压住它' : nearBox ? '按住 E / 交互键 · 左右推拉' : this.world.canInteract ? 'E · OPEN THE SLUICE' : '';
     this.leverPrompt.node.getComponent(UITransform)!.setContentSize(380, 48);
     const cityPropX = this.cityStories.movableXNear(this.world.x, this.world.grounded) ?? this.cityStories.waterBowl;
-    const promptX = nearRoomDoor ? ROOM.doorX : atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : repairOption === 'gate' ? CITY_STORY.repair.doorTarget : repairOption === 'robot' ? CITY_STORY.repair.robot : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
-    const promptY = nearRoomDoor ? ROAD.floor + ROOM.doorHeight + 95 : atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : atRationShade ? this.world.y + 115 : nearCityProp || nearPump || nearGardenValve || repairOption ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    const promptX = nearRoomDoor ? ROOM.doorX : nearDismantle ? DISMANTLE_ROOM.consoleX : atRiver ? this.world.x + 110 : atFactoryLever || nearFactoryBox ? this.factoryPuzzle.crateX : atRationShade ? CITY_STORY.ration.target : repairOption === 'gate' ? CITY_STORY.repair.doorTarget : repairOption === 'robot' ? CITY_STORY.repair.robot : nearCityProp ? cityPropX : nearPump ? CITY_STORY.pump.switchX : nearGardenValve ? CITY_STORY.garden.valve : nearPowerSwitch ? CITY_STORY.garden.switches.find((x, i) => !(this.cityStories.powerSwitches & (1 << i)) && Math.abs(this.world.x - x) < 95)! : nearPress ? this.pressPuzzle.crateX : atPressurePlate ? this.pressPuzzle.plateX : nearBox ? this.boxPuzzle.x : CHANNEL.leverX;
+    const promptY = nearRoomDoor ? ROAD.floor + ROOM.doorHeight + 95 : nearDismantle ? ROAD.floor + 220 : atRiver ? this.world.y + 126 : atFactoryLever ? this.world.y + 125 : nearFactoryBox ? this.factoryPuzzle.crateTop + 50 : atRationShade ? this.world.y + 115 : nearCityProp || nearPump || nearGardenValve || repairOption ? roadHeight(promptX) + 145 : nearPress || atPressurePlate ? this.pressPuzzle.layout.floor + 125 : nearBox ? this.boxPuzzle.layout.floor + 140 : CHANNEL.near + 112;
+    this.dismantleSign.active = this.dismantle.solved;
     this.leverPrompt.node.setPosition(promptX - this.cameraOffset, promptY, 0);
     this.place();
   }
@@ -994,13 +1016,13 @@ export class PuzzleController extends Component {
     if (!this.actor) return;
     if (this.world25) {
       this.actor.setScale(this.facing, this.breathScaleY, 1);
-      this.world25.render({ world: this.world, box: this.boxPuzzle, factory: this.factoryPuzzle, press: this.pressPuzzle, river: this.river,
+      this.world25.render({ world: this.world, box: this.boxPuzzle, factory: this.factoryPuzzle, dismantle: this.dismantle, press: this.pressPuzzle, river: this.river,
         dog: this.dog, city: this.cityStories, escape: this.escape, police: this.policeEscape,
         scavenger: this.scavengerNode, backdrops: this.journeyBackdrops,
         cover: (!this.escape.cleared && this.cover.contains(this.world.x, this.world.grounded)) || (!this.policeEscape.cleared && this.policeCover.contains(this.world.x, this.world.grounded)),
         gripping: (this.touchGrab || this.keys.has(KeyCode.KEY_E)) && (this.factoryPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.boxPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.pressPuzzle.canGrab(this.world.x,this.world.y,this.world.grounded) || this.cityStories.canGrab(this.world.x,this.world.grounded)),
         time: this.time, night: this.night, alarm: this.alarmTriggered, facing: this.facing, cameraX: this.cameraOffset,
-        prompt: this.leverPrompt.node, openingSigns: this.openingSigns, prisonSign: this.prisonSign.node,
+        prompt: this.leverPrompt.node, dismantleSign: this.dismantleSign.node, openingSigns: this.openingSigns, prisonSign: this.prisonSign.node,
         pressSign: this.pressSign.node, riverSign: this.riverSign.node, scrapSign: this.scrapSign.node,
         beaconSign: this.beaconSign.node, guardSign: this.guardPostSign.node, clues: this.journeyClues });
       return;
