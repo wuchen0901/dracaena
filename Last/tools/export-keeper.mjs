@@ -34,6 +34,6 @@ robot.position.y -= new THREE.Box3().setFromObject(robot).min.y;
 robot.scale.setScalar(0.135);
 robot.updateMatrixWorld(true);
 const data = await new GLTFExporter().parseAsync(robot,{binary:true,onlyVisible:true});
-const output = path.join(root,'models/simple-robot-v4.glb');
+const output = path.join(root,'models/simple-robot-v5.glb');
 fs.writeFileSync(output,Buffer.from(data));
 console.log(output, data.byteLength, 'bytes');
