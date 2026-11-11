@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>小机器人 · V3 灰蓝配色 · 3D 模型</title>
+<title>小机器人 · V4 修补痕迹 · 3D 模型</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 42%,#9c8f88 0%,#85786f 55%,#6a5f58 100%);font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#f4ece0}
   canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
@@ -19,7 +19,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint"><b>小机器人 · V3 灰蓝配色</b><br>拖动旋转 · 滚轮 / 双指缩放 · 右键拖动平移</div>
+<div id="hint"><b>小机器人 · V4 修补痕迹</b><br>拖动旋转 · 滚轮 / 双指缩放 · 右键拖动平移</div>
 <div id="bar">
   <button id="bAuto">自动旋转</button>
   <button id="bReset">重置视角</button>
@@ -106,10 +106,12 @@ addEventListener('resize', resize); resize();
 let _seed = 1;
 // Minimal neutral mannequin. Front faces +Z; separately named parts allow later animation.
 function buildRobot() {
- const root = new THREE.Group(); root.name = 'SimpleRobotV3';
+ const root = new THREE.Group(); root.name = 'SimpleRobotV4';
  const body = new THREE.MeshStandardMaterial({color: 0xd6d0bf, roughness: .88});
  const joint = new THREE.MeshStandardMaterial({color: 0x393f43, roughness: .9});
  const torsoPaint = new THREE.MeshStandardMaterial({color: 0x667f90, roughness: .82, metalness: .12});
+ const repairPaint = new THREE.MeshStandardMaterial({color: 0x7e8874, roughness: .9, metalness: .12});
+ const scratchMetal = new THREE.MeshStandardMaterial({color: 0x929185, roughness: .95, metalness: .15});
  function ellipsoid(name, x,y,z, sx,sy,sz, material=body) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1,32,24), material);
   mesh.name=name; mesh.position.set(x,y,z); mesh.scale.set(sx,sy,sz);
@@ -127,6 +129,16 @@ function buildRobot() {
   mesh.name=name;mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);return mesh;
  }
  rounded('Head',2.72,1.46,1.65,0,6.92,0,.32);
+ // A single tapered paint scratch on the flat front of the upper-left forehead.
+ // Kept shallow and inside the rounded face boundary, rather than a floating decal.
+ const scratchGeometry = new THREE.BufferGeometry();
+ scratchGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+  -.95,7.19,.826, -.79,7.255,.826, -.81,7.275,.826,
+  -.81,7.275,.826, -.79,7.255,.826, -.60,7.32,.826
+ ],3));
+ scratchGeometry.computeVertexNormals();
+ const scratch = new THREE.Mesh(scratchGeometry,scratchMetal);
+ scratch.name='ForeheadPaintScratch'; root.add(scratch);
  limb('Neck',[0,5.65,0],[0,6.4,0],.22,joint);
  rounded('Torso',1.35,1.55,.82,0,5.25,0,.2,torsoPaint);
  rounded('Pelvis',1.05,.48,.65,0,4.25,0,.15,torsoPaint);
@@ -135,6 +147,10 @@ function buildRobot() {
   const name=side<0?'Left':'Right';
   ellipsoid(name+'Eye',side*.51,6.62,.83,side>0?.13:.15,side>0?.13:.15,.045,joint);
   ellipsoid(name+'Shoulder',side*.77,5.72,0,.2,.2,.2,joint);
+  if(side === -1) {
+   rounded('ReplacementShoulderShell',.49,.27,.48,-.82,5.83,0,.10,repairPaint);
+   ellipsoid('ShoulderFastener',-.82,5.83,.242,.038,.038,.012,joint);
+  }
   limb(name+'UpperArm',[side*.81,5.66,0],[side*.99,4.78,0],.16);
   ellipsoid(name+'Elbow',side*1.01,4.68,0,.17,.17,.17,joint);
   limb(name+'Forearm',[side*1.02,4.58,0],[side*1.11,3.85,0],.18);
@@ -199,7 +215,7 @@ $('bGlb').onclick = async e => {
   try {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([await exportGLB()], { type: 'model/gltf-binary' }));
-    a.download = 'simple-robot-v3.glb'; a.click();
+    a.download = 'simple-robot-v4.glb'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   } catch (err) { console.error(err); alert('导出失败：' + err.message); }
   b.textContent = old; b.disabled = false;
