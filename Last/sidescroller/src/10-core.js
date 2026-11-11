@@ -30,7 +30,10 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const damp = (a, b, k, dt) => lerp(a, b, 1 - Math.exp(-k * dt));   // 与帧率无关的平滑
+const approach = (a, b, s) => a < b ? Math.min(b, a + s) : Math.max(b, a - s);   // 匀速靠近
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const hex3 = h => [(h >> 16 & 255) / 255, (h >> 8 & 255) / 255, (h & 255) / 255];   // 0xRRGGBB → [r, g, b]（不做色彩空间转换）
+const css = h => '#' + h.toString(16).padStart(6, '0');
 
 let _seed = 20261111;
 function rnd() {   // 固定种子的随机数：每次打开画面都一样
@@ -59,10 +62,13 @@ const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', Space: 'J', ArrowUp: 'J', KeyW: 'J',
   KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', KeyV: 'VIEW',
-  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
+  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C',
+  Escape: 'MENU', KeyP: 'MENU', Enter: 'OK', ArrowDown: 'DOWN', KeyS: 'DOWN' };
+const rawKeys = new Set();                        // 这一帧新按下的键（原始键码），菜单用
 let anyKey = false;
 addEventListener('keydown', e => {
-  const k = MAP[e.code]; anyKey = true;
+  const k = MAP[e.code]; if (e.code !== 'Escape' && e.code !== 'KeyP') anyKey = true;
+  if (!e.repeat) rawKeys.add(e.code);
   if (k) { if (!keys.has(k)) pressed.add(k); keys.add(k); e.preventDefault(); }
 });
 addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys.delete(k); });

@@ -70,7 +70,7 @@
 
 - `Last/sidescroller/src/40-character-build.js`：`buildRobot07()` 是造型；`profileShape` / `slab` 把一圈侧面轮廓挤成实体，改躯干、靴子的形状只要改那几个轮廓点。颜色在 `M`，比例在 `D`。旧版小机器人保留为 `buildOldRobot()`，只为对比。
 - `Last/sidescroller/src/42-character-anim.js`：`A.cover` 是捂灯的姿势，文件末尾 `if (Lm)` 那一段是灯的全部行为。
-- `Last/sidescroller/src/54-main.js`：`hide` 决定什么时候捂灯（现在是：在矮墙影子里、光束在 4–8 米内、基本站住）。
+- `Last/sidescroller/src/60-ch1-factory.js`：`HX.hide` 决定什么时候捂灯（现在是：在矮墙影子里、光束在 4–8 米内、基本站住）。各章节每帧往 `HX` 里写 `hide` / `alert` / `energy` / `pose`，由 `90-main.js` 交给主角动画。
 - 改完运行 `bash Last/sidescroller/build.sh` 重新生成 `Last/sidescroller.html`。
 - 在浏览器控制台里可以直接试颜色：`__g.hero().B.M.shell.color.setHex(0x85988b)`（自发光色是 `.emissive`）。
 
@@ -82,6 +82,6 @@
 
 - `Last/keeper-3d.html` 和 `Last/models/` 没有动，没有导出新的 GLB；Cocos 战役里的主角也没有换。
 - 灯没有进玩法。最自然的一步：没捂住的灯会让探照灯更快锁定，慢走时自动捂灯。
-- 灯的亮度还没有跟剧情走。剧本里 07 每次帮别人都要花掉自己的资源，灯可以随之一档一档变暗，到终点只剩一点。
-- 同型号的机器人还没有做。它们应该和 07 一模一样，只是灯灭着 —— 回收线上那一排，07 是唯一亮着的。
+- ~~灯的亮度还没有跟剧情走。~~ 已做：灯按章节一档一档变暗（`80-ui.js` 的 `energyFor`），电越少闪得越勤；结局“修复”里稳稳地亮回来，“旁路”里慢慢熄灭。
+- ~~同型号的机器人还没有做。~~ 已做：`buildRobot07({ npc: true })`，和 07 一模一样、灯灭着、不带光源。第一章上层通道里跑过去的队伍和回收线上的那一排都是它们。
 - 身体会随旅程变化的想法（捡来的零件颜色不一样）先不做：剪影稳定下来之前不加不对称。

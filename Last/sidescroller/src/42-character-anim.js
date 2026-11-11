@@ -11,18 +11,22 @@ function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
 
 const hash1 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 0..1 的固定“随机”数
 
-function makeCharacter(kind, prev) {
-  const B = buildBody(kind), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
+const NOPOSE = {};
+// o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
+function makeCharacter(kind, prev, o = {}) {
+  const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
   // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
   A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
-  scene.add(root);
+  (o.parent ?? scene).add(root);
 
   function update(dt, s) {
     const dir = s.facing, sp = Math.abs(s.vx), fwd = s.vx * dir, t = s.t;
     const push = s.mode === 'push', mant = s.mode === 'mantle';
+    // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
+    const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0;
     A.yaw = damp(A.yaw, dir > 0 ? 0 : -Math.PI, 13, dt); root.rotation.y = A.yaw;
-    root.position.set(s.x, s.y, 0);
+    root.position.set(s.x, s.y, s.z ?? 0);
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
     A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
     A.air = damp(A.air, s.grounded || mant ? 0 : 1, s.grounded ? 24 : 12, dt);
@@ -38,7 +42,8 @@ function makeCharacter(kind, prev) {
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
     if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
-    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
+    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
+    if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
     pelvis.position.set(0, hipY, 0);
 
     // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
@@ -47,10 +52,10 @@ function makeCharacter(kind, prev) {
     if (mant) leanT = 0.3;
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
-    leanT += 0.2 * A.cover;
+    leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
-    spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv);           // 站着时的呼吸
+    spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
     chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
 
     // 腿：先算出脚踝的目标位置，再用 IK 解出大腿和膝盖的角度
@@ -72,6 +77,7 @@ function makeCharacter(kind, prev) {
       tx = lerp(tx, ax * u, A.air); ty = lerp(ty, hipY + ay * u, A.air); pitch = lerp(pitch, -0.45, A.air);
       // 攀爬：收腿
       tx = lerp(tx, (i ? 0.03 : 0.12) * u, A.tuck); ty = lerp(ty, hipY + (i ? -0.4 : -0.27) * u, A.tuck);
+      if (sit) { tx = lerp(tx, (i ? 0.19 : 0.26) * u * (q.sitLeg ?? 1), sit); ty = lerp(ty, D.ankle, sit); pitch = lerp(pitch, 0, sit); }   // 坐着：两只脚搁在身前的地上
       const L = legs[i], [th, kn] = ik2(0, hipY - 0.005 * u, tx, ty, D.thigh, D.shin, true);
       L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) + pitch;
     }
@@ -93,13 +99,19 @@ function makeCharacter(kind, prev) {
         const [ua, fa] = ik2(shX, shY, lampX + (i ? 0.03 : 0.042) * u, lampY + (i ? -0.03 : 0.01) * u, D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.cover); b = lerp(b, fa, A.cover);
       }
+      if (limp) { a = lerp(a, A.lean, limp); b = lerp(b, 0.06, limp); }      // 断电：手臂直直垂着
+      if (q.reach && (q.reach.i === undefined || q.reach.i === i)) {         // 伸手去够世界里的一点
+        const [ua, fa] = ik2(shX, shY, (q.reach.x - s.x) * dir, q.reach.y - s.y, D.uarm, D.farm + 0.02 * u, false), k = q.reach.k ?? 1;
+        a = lerp(a, ua + A.lean, k); b = lerp(b, fa, k);
+      }
+      if (q.arms && q.arms[i]) { const o = q.arms[i], k = o.k ?? 1; a = lerp(a, o.a, k); b = lerp(b, o.b, k); }
       const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
       R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
-    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0) - 0.12 * A.cover);
+    A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
@@ -107,9 +119,11 @@ function makeCharacter(kind, prev) {
     }
     if (Lm) {                                                                // 07 胸口的灯：它的“表情”全在这盏灯上
       A.dip = Math.max(damp(A.dip, 0, 7, dt), clamp((s.impact - 5) * 0.14, 0, 1));   // 普通跳跃落地只晃一下，从高处摔下来才会暗得厉害
+      const en = s.energy ?? 1, steady = en > 1.05;                          // 剩余电量：一路上帮别人，灯一档一档暗下去；修复以后稳稳地亮着
       let L = 1 + 0.07 * Math.sin(t * 1.7);                                  // 平时：跟着呼吸一明一暗
-      const slot = Math.floor(t / 0.85);                                     // 老了，电压不稳：隔几秒闪两下
-      if (hash1(slot) < 0.14 && t / 0.85 - slot < 0.34) L *= hash1(Math.floor(t * 31)) < 0.5 ? 0.3 : 0.9;
+      const slot = Math.floor(t / 0.85);                                     // 老了，电压不稳：隔几秒闪两下；电越少闪得越勤
+      if (!steady && hash1(slot) < 0.14 + 0.3 * clamp(1 - en, 0, 1) && t / 0.85 - slot < 0.34) L *= hash1(Math.floor(t * 31)) < 0.5 ? 0.3 : 0.9;
+      L *= Math.min(en, 1.15);
       L *= 1 - 0.75 * A.dip * (0.55 + 0.45 * Math.sin(t * 71));              // 重重落地：被震得一暗
       L = lerp(L, 0.5 + 0.8 * hash1(Math.floor(t * 26) + 7), sstep(0.05, 0.6, s.alert || 0));   // 被探照灯盯上：慌乱地闪
       const k = clamp(L, 0, 1), out = L * lerp(1, 0.14, A.cover), ko = clamp(out, 0, 1);       // out：捂住以后漏出来的光
@@ -119,6 +133,6 @@ function makeCharacter(kind, prev) {
       Lm.beam.intensity = Lm.I * out; Lm.fill.intensity = Lm.fillI * out;
     }
   }
-  function dispose() { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   return { kind, B, A, root, H: u, update, dispose };
 }

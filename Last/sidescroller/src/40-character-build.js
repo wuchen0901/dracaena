@@ -9,13 +9,19 @@ const SKINS = {
   A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
   B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
   C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
+  // ---- 路上遇到的人（都是大人：头按比例缩小；颜色压得很灰，不和 07 的灯抢）----
+  W: { H: 1.62, skin: 0xcdb09a, hair: 0x2a2624, top: 0x77858a, leg: 0x3d4a52, shoe: 0x1b1b1f, bib: true, hairStyle: 'B', headK: .72, band: 0x7fbf7a },   // 登记劳工：手臂上一圈绿色标记
+  E: { H: 1.46, skin: 0xcbb2a0, hair: 0xb9b6ae, top: 0x6f6a60, leg: 0x3a3833, shoe: 0x2a2622, coat: true, hairStyle: 'A', headK: .76, cane: true },      // 被拒绝配给的老人：拄杖
+  G: { H: 1.5, skin: 0xcbb2a0, hair: 0xc9c6bd, top: 0x5f6b63, leg: 0x3a3d3a, shoe: 0x2a2622, coat: true, hairStyle: 'B', headK: .76 },                   // 照看清洁机器人的老人
+  S: { H: 1.62, skin: 0xb89f8c, hair: 0x3a332d, top: 0x5a5247, leg: 0x34302b, shoe: 0x1f1c19, coat: true, hairStyle: 'B', headK: .72 },                  // 废城里的幸存者
+  N: { H: 1.56, skin: 0xd2b6a2, hair: 0x2f2a27, top: 0x7c7468, leg: 0x41443f, shoe: 0x1f1c19, hairStyle: 'C', headK: .74 },                               // 街区的居民
 };
 const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
-function buildBody(kind) {
-  if (kind === 'R') return buildRobot07();
+function buildBody(kind, o = {}) {
+  if (kind === 'R') return buildRobot07(o);
   if (kind === 'O') return buildOldRobot();
-  const S = SKINS[kind], u = S.H;
+  const S = SKINS[kind], u = S.H, hs = S.hairStyle ?? kind;
   const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
   const M = { skin: self(S.skin), hair: lam(S.hair), top: self(S.top), leg: self(S.leg), shoe: lam(S.shoe), metal: lam(0x2a2e33) };
   const D = { thigh: 0.235 * u, shin: 0.235 * u, uarm: 0.158 * u, farm: 0.158 * u, ankle: 0.04 * u, hipY: 0.518 * u, hipZ: 0.058 * u, shY: 0.275 * u, shZ: 0.112 * u };
@@ -31,10 +37,10 @@ function buildBody(kind) {
   const hc = [0.004 * u, 0.105 * u, 0];                                  // 头的中心
   const cap = (r, theta, tilt) => { const m = add(head, new THREE.SphereGeometry(r, 20, 12, 0, 6.2832, 0, theta), M.hair, ...hc); m.rotation.z = tilt; m.scale.set(1.02, 1.08, 0.98); return m; };
   let tail = null;
-  if (kind === 'A') {            // 齐下巴的波波头
+  if (hs === 'A') {              // 齐下巴的波波头
     cap(0.119 * u, Math.PI * 0.61, 1.22);
     add(head, sph(0.09 * u), M.hair, -0.04 * u, 0.065 * u, 0).scale.set(0.9, 1.05, 1.22);
-  } else if (kind === 'B') {     // 乱糟糟的短发
+  } else if (hs === 'B') {       // 乱糟糟的短发
     cap(0.117 * u, Math.PI * 0.56, 1.1);
     for (const [x, y, z, r] of [[0.05, 0.215, 0.02, 0.04], [0.0, 0.232, -0.03, 0.045], [-0.05, 0.222, 0.03, 0.045], [-0.09, 0.185, -0.02, 0.04], [0.075, 0.185, -0.03, 0.032], [-0.1, 0.13, 0.03, 0.035]])
       add(head, sph(r * u, 8, 6), M.hair, x * u, y * u, z * u);
@@ -84,6 +90,9 @@ function buildBody(kind) {
     if (S.coat) add(foot, cy(0.04 * u, 0.045 * u, 0.075 * u, 10), M.shoe, 0, 0.012 * u, 0);                  // 靴筒
     return { hip, knee, foot };
   });
+  if (S.headK) head.scale.setScalar(S.headK);
+  if (S.band) for (const A of arms) add(A.sh, cy(0.035 * u, 0.035 * u, 0.032 * u, 10), lam(S.band, { emissive: S.band, emissiveIntensity: 0.35 }), 0, -0.085 * u, 0);
+  if (S.cane) add(root, cy(0.012 * u, 0.012 * u, 0.62 * u, 6), M.metal, 0.27 * u, 0.31 * u, 0.1 * u);              // 拐杖立在身前，手搭在上面（见 caneHand）
   return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
 }
 
@@ -174,13 +183,13 @@ function stencil07() {                                  // 头盔侧面喷的出
   return _stencil07 = canvasTex(c);
 }
 
-function buildRobot07() {
-  const S = SKINS.R, u = S.H;
+function buildRobot07(o = {}) {
+  const S = SKINS.R, u = S.H, npc = !!o.npc;            // npc：同一批次的其他机器人 —— 和 07 一模一样，只是灯灭着
   // 孩子的比例：腿占身高不到一半，头占五分之一，手垂下来到大腿中段
   const D = { thigh: .205 * u, shin: .205 * u, uarm: .17 * u, farm: .155 * u, ankle: .05 * u, hipY: .461 * u, hipZ: .046 * u, shY: .255 * u, shZ: .1 * u };   // hipY 比腿长略短：站着时膝盖总是微微弯着
   const root = new THREE.Group(), pelvis = grp(root, 0, D.hipY, 0), spine = grp(pelvis), chest = grp(spine, 0, D.shY, 0), head = grp(chest, .02 * u, .027 * u, 0);
   // 外壳带一点自发光：场景再暗，身体的明度也不会掉到看不清；照到强光时又不至于发白
-  const paint = c => lam(c, { emissive: c, emissiveIntensity: .22 });
+  const paint = c => lam(c, { emissive: c, emissiveIntensity: npc ? .09 : .22 });
   // 只有三个明度：机床灰绿的外壳、深一号的检修盖和靴子、近乎黑的关节 / 手 / 面罩。没有任何别的颜色
   const M = { shell: paint(0x85988b), panel: paint(0x5c6c62), dark: lam(0x1b1f20), visor: lam(0x08090a), sole: lam(0x121415) };
   const U = pts => pts.map(([x, y, r]) => r === undefined ? [x * u, y * u] : [x * u, y * u, r * u]);        // 轮廓坐标都以身高为单位
@@ -195,8 +204,10 @@ function buildRobot07() {
   // 胸口的灯：一颗凸出来的琥珀色指示灯，从侧面也看得见。亮度 = 它还剩多少能量
   const lx = .069 * u, ly = .185 * u;
   add(spine, cy(.031 * u, .031 * u, .014 * u, 18), M.dark, lx - .002 * u, ly, 0).rotation.z = Math.PI / 2;             // 灯座
-  const lens = add(spine, sph(.024 * u, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffc67e, fog: false }), lx + .004 * u, ly, 0, false);
+  const lens = add(spine, sph(.024 * u, 16, 12), new THREE.MeshBasicMaterial({ color: npc ? 0x2e1c10 : 0xffc67e, fog: !npc ? false : true }), lx + .004 * u, ly, 0, false);
   lens.scale.set(.75, 1, 1);
+  let lamp = null;
+  if (!npc) {
   const halo = glow(spine, 0xffa040, .27 * u, .85, lx + .02 * u, ly, 0);      // 近处的光晕：会被身体和手挡住
   const aura = glow(spine, 0xff9a3c, .62 * u, .16, lx + .02 * u, ly, 0);      // 一圈很淡的大光晕，转身时挪到朝镜头的一侧
   // 真正照亮东西的是两盏灯：一盏朝前下方的射灯（照亮身前的地面和手里的东西，不照自己的胸口），
@@ -204,7 +215,8 @@ function buildRobot07() {
   const beam = new THREE.SpotLight(0xffab52, 2.4, 4.6, 1.0, 1, 2); beam.position.set(lx + .03 * u, ly, 0);
   beam.target.position.set(lx + .9 * u, ly - .5 * u, 0); spine.add(beam, beam.target);
   const fill = new THREE.PointLight(0xffab52, .1, 1.2, 2); fill.position.set(lx + .1 * u, ly, 0); spine.add(fill);
-  const lamp = { lens, halo, aura, beam, fill, x: lx + .02 * u, y: ly, I: 2.4, fillI: .1, haloSize: .27 * u, auraOp: .16, dim: new THREE.Color(0x6e3410), lit: new THREE.Color(0xffc67e) };
+  lamp = { lens, halo, aura, beam, fill, x: lx + .02 * u, y: ly, I: 2.4, fillI: .1, haloSize: .27 * u, auraOp: .16, dim: new THREE.Color(0x6e3410), lit: new THREE.Color(0xffc67e) };
+  }
 
   // 头：一只扣着安全帽的“桶”。帽檐只往前伸，帽檐下面是一整块深色面罩 —— 没有眼睛，也就没有表情
   add(head, cy(.023 * u, .023 * u, .06 * u, 10), M.dark, 0, .012 * u, 0);                                                 // 脖子
