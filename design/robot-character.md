@@ -1,6 +1,8 @@
 # Old maintenance robot
 
-The active character atlas is `assets/resources/character/robot-actions.png`, generated with the built-in imagegen tool. It uses eight columns and four rows: idle, walk, run, jump/landing. The prior human atlases are preserved.
+The campaign protagonist uses `assets/resources/models/last-light-robot-detailed.glb`, based on the detailed robot model in the project root. The imported model has a 13-joint glTF skeleton with rigid per-part skin weights. `Robot3D` drives its head, torso, arms and legs from the existing movement state; the procedural low-poly actor remains as the fallback while the model loads and for distant robot characters.
+
+The earlier 2D character atlas `assets/resources/character/robot-actions.png` is retained for the legacy sprite preview. It uses eight columns and four rows: idle, walk, run, jump/landing. The prior human atlases are preserved.
 
 Direction: a quiet, lonely, hopeful mechanical world reclaimed by nature. A small maintenance robot has aged ivory plating, grey joints, amber eyes and a warm chest lamp. Its old maintenance assignment is a story proposal, not finalized plot.
 

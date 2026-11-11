@@ -2,20 +2,22 @@
 // ============================================================
 //  镜头 / 提示 / 界面 / 主循环
 // ============================================================
-const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8 };
+const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0 };
+let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
 function placeCamera() {
-  camera.position.set(cam.x, cam.y + cam.d * 0.05, cam.d); camera.lookAt(cam.x, cam.y, 0);
+  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
   key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
   rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
 }
 function updateCamera(dt) {
-  const [d, yo, xo] = camKey(P.x);
-  cam.look = damp(cam.look, P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);                // 镜头略微领先于前进方向
+  const [d, yo, xo] = closeUp ? [5.4, 0.66, 0] : camKey(P.x);
+  cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
+  cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
   const ty = (P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;      // 跳起来时镜头只跟一小半
-  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, 1.6, dt);
+  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt);
   placeCamera();
 }
-function snapCamera() { const [d, yo, xo] = camKey(P.x); cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
+function snapCamera() { const [d, yo, xo] = camKey(P.x); closeUp = false; cam.az = 0; cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
 
 const hintEl = $('hint'); let hintNow = '';
 const HINTS = [
@@ -55,6 +57,8 @@ function sim(dt) {
   T += dt;
   if (state === 'title' && anyKey) begin();
   for (const k of ['A', 'B', 'C']) if (pressed.has(k)) setSkin(k);
+  if (pressed.has('SKIN_R')) setSkin('R'); if (pressed.has('SKIN_O')) setSkin('O');
+  if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
   if (pressed.has('RESET') && state !== 'title' && state !== 'fade') reset();
 
@@ -68,7 +72,10 @@ function sim(dt) {
   }
 
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02;
-  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact,
+  // 躲在矮墙的影子里、光束又扫到附近时：站住不动的 07 会捂住胸口的灯
+  const nearYard = P.x > WATCH.cx - WATCH.amp - 4 && P.x < WATCH.cx + WATCH.amp + 4 && P.y < 2.4;
+  const hide = state === 'play' && nearYard && inShadow(P.x) ? sstep(8, 4, Math.abs(P.x - WATCH.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
+  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: WATCH.exposure,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? cart.x1 : cart.x2, y: 0.82 } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -82,7 +89,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.step(秒) 手动推进、__g.tp(x) 传送
-const DBG = window.__g = { P, cart, WATCH, door, LEVER, cam, keys, pressed, paused: false, setSkin, begin, reset,
+const DBG = window.__g = { P, cart, WATCH, door, LEVER, cam, keys, pressed, paused: false, setSkin, begin, reset, closeUp(on = !closeUp) { closeUp = on; },
   hero: () => hero, state: () => state, scene, camera, renderer,
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
   step(sec, dt = 1 / 60) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) sim(dt); renderer.render(scene, camera); },

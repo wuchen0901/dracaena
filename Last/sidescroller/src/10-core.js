@@ -58,7 +58,8 @@ const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
 // ---- 输入 ----
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', Space: 'J', ArrowUp: 'J', KeyW: 'J',
-  KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
+  KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', KeyV: 'VIEW',
+  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
 let anyKey = false;
 addEventListener('keydown', e => {
   const k = MAP[e.code]; anyKey = true;

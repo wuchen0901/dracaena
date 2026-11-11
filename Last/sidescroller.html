@@ -43,14 +43,14 @@
 <div id="bars" class="fx"></div>
 <div id="hint"></div>
 <div id="skins">
-  <button data-k="R">小机器人</button><button data-k="A">1 · 小拾荒者</button><button data-k="B">2 · 学徒</button><button data-k="C">3 · 机械臂</button>
+  <button data-k="R">0 · 07</button><button data-k="O">9 · 旧机器人</button><button data-k="A">1 · 小拾荒者</button><button data-k="B">2 · 学徒</button><button data-k="C">3 · 机械臂</button>
 </div>
 <div id="title" class="ov hide">
   <h1>铁锈与微光</h1>
   <div class="sub">横版原型</div>
   <div class="keys">
     <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 抓住推车 · 拉拉杆<br>
-    <b>1</b><b>2</b><b>3</b> 切换主角　　<b>Shift</b> 慢走　　<b>M</b> 静音　　<b>R</b> 重新开始
+    <b>0</b><b>9</b><b>1</b><b>2</b><b>3</b> 切换主角　　<b>V</b> 近看主角　　<b>Shift</b> 慢走　　<b>M</b> 静音　　<b>R</b> 重新开始
   </div>
   <div class="go">按任意键开始</div>
 </div>
@@ -129,7 +129,8 @@ const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
 // ---- 输入 ----
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', Space: 'J', ArrowUp: 'J', KeyW: 'J',
-  KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
+  KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', KeyV: 'VIEW',
+  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
 let anyKey = false;
 addEventListener('keydown', e => {
   const k = MAP[e.code]; anyKey = true;
@@ -618,11 +619,12 @@ function applyZone(e) {
 }
 
 // ============================================================
-//  主角：面数很少、没有五官，靠轮廓和一块颜色认人。三套外形共用同一副骨架
+//  主角：面数很少、没有五官，靠轮廓和一块颜色认人。所有外形共用同一副骨架
 //  角色的局部坐标：面朝 +x，y 向上；所有关节只在侧视平面内转动
 // ============================================================
 const SKINS = {
-  R: { H: 1.24, robot: true },
+  R: { H: 1.24, robot: true },                                                                                // 07：现在的主角，见文件末尾
+  O: { H: 1.24, robot: true },                                                                                // 旧版小机器人：只留着做对比
   A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
   B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
   C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
@@ -630,7 +632,8 @@ const SKINS = {
 const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
 function buildBody(kind) {
-  if (kind === 'R') return buildSimpleRobot();
+  if (kind === 'R') return buildRobot07();
+  if (kind === 'O') return buildOldRobot();
   const S = SKINS[kind], u = S.H;
   const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
   const M = { skin: self(S.skin), hair: lam(S.hair), top: self(S.top), leg: self(S.leg), shoe: lam(S.shoe), metal: lam(0x2a2e33) };
@@ -703,9 +706,9 @@ function buildBody(kind) {
   return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
 }
 
-// Same joint contract as the existing player, preserving walking and interaction IK.
-function buildSimpleRobot() {
- const S=SKINS.R,u=S.H;
+// 旧版小机器人（方脑袋 + 细杆四肢）。只为了在同一个场景里和 07 对比，确定不要了可以整段删掉
+function buildOldRobot() {
+ const S=SKINS.O,u=S.H;
  const D={thigh:.25*u,shin:.25*u,uarm:.158*u,farm:.158*u,ankle:.04*u,hipY:.548*u,hipZ:.05*u,shY:.235*u,shZ:.085*u};
  const root=new THREE.Group(),pelvis=grp(root,0,D.hipY,0),spine=grp(pelvis),chest=grp(spine,0,D.shY,0),head=grp(chest,.015*u,.035*u,0);
  const shell=lam(0xcac5b5,{emissive:0xcac5b5,emissiveIntensity:.12}),joint=lam(0x414746);
@@ -729,6 +732,136 @@ function buildSimpleRobot() {
  return {S,u,D,root,pelvis,spine,chest,head,tail:null,arms,legs};
 }
 
+
+// ============================================================
+//  07：量产的旧劳动机器人（主角）。设计说明见 design/protagonist-07.md
+//  三条规矩：先看侧面剪影；没有脸；全身只有胸口那盏灯是暖色
+//  关节约定和其他外形完全一样，所以行走 / 推车 / 攀爬的动画直接沿用
+// ============================================================
+// 侧面轮廓 → 实体：在 x-y 平面（x 向前、y 向上）画一圈带圆角的轮廓，再沿身体的左右方向挤出厚度
+// pts 里每个点是 [x, y] 或 [x, y, 这个角的圆角半径]
+function profileShape(pts, r) {
+  const sh = new THREE.Shape(), n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n];
+    const a = V3(p0[0] - p1[0], p0[1] - p1[1], 0), b = V3(p2[0] - p1[0], p2[1] - p1[1], 0);
+    const k = Math.min(p1[2] ?? r, a.length() / 2, b.length() / 2); a.setLength(k); b.setLength(k);
+    sh[i ? 'lineTo' : 'moveTo'](p1[0] + a.x, p1[1] + a.y);
+    sh.quadraticCurveTo(p1[0], p1[1], p1[0] + b.x, p1[1] + b.y);
+  }
+  sh.closePath(); return sh;
+}
+// 挤出来的模型每个三角面各有各的法线，看上去一棱一棱的。这里把夹角小的相邻面抹平，真正的棱角保留
+function smoothNormals(geo, crease = 0.7) {
+  const pos = geo.attributes.position, n = pos.count, fn = [], byPos = new Map(), keys = [];
+  const a = V3(), b = V3(), c = V3();
+  for (let i = 0; i < n; i++) {
+    const key = `${Math.round(pos.getX(i) * 2e4)},${Math.round(pos.getY(i) * 2e4)},${Math.round(pos.getZ(i) * 2e4)}`;
+    keys.push(key); if (!byPos.has(key)) byPos.set(key, []); byPos.get(key).push(Math.floor(i / 3));
+  }
+  for (let i = 0; i < n; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    const w = b.clone().sub(a).cross(c.clone().sub(a));                 // 长度是面积的两倍，正好用来加权
+    fn.push({ w, d: w.clone().normalize() });
+  }
+  const out = new Float32Array(n * 3), s = V3();
+  for (let i = 0; i < n; i++) {
+    const me = fn[Math.floor(i / 3)].d; s.set(0, 0, 0);
+    for (const f of byPos.get(keys[i])) if (fn[f].d.dot(me) > crease) s.add(fn[f].w);
+    s.normalize(); out[i * 3] = s.x; out[i * 3 + 1] = s.y; out[i * 3 + 2] = s.z;
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3)); return geo;
+}
+function slab(parent, pts, r, width, mat, bevel = width * 0.16) {
+  const geo = new THREE.ExtrudeGeometry(profileShape(pts, r), { depth: width - 2 * bevel, bevelEnabled: true, bevelThickness: bevel,
+    bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 3, curveSegments: 6, steps: 1 });
+  geo.translate(0, 0, -(width - 2 * bevel) / 2);
+  return add(parent, smoothNormals(geo), mat);
+}
+
+let _stencil07 = null;
+function stencil07() {                                  // 头盔侧面喷的出厂编号：玩的时候只是一小块深色，拉近了才看得清
+  if (_stencil07) return _stencil07;
+  const [c, g] = mkCanvas(192, 128);
+  let seed = 7; const rn = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };   // 自己的随机数，不动关卡用的那一套
+  g.fillStyle = 'rgba(30,34,34,.82)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '900 108px "Arial Narrow","Helvetica Neue","PingFang SC",Arial,sans-serif';
+  g.fillText('07', 96, 70);
+  g.globalCompositeOperation = 'destination-out';
+  g.fillStyle = '#000'; g.fillRect(0, 62, 192, 7);                                                     // 喷漆模板中间那道“桥”
+  for (let i = 0; i < 320; i++) { g.globalAlpha = 0.25 + 0.7 * rn(); g.fillRect(rn() * 192, rn() * 128, 1 + rn() * 5, 1 + rn() * 2.5); }   // 磨掉的漆
+  return _stencil07 = canvasTex(c);
+}
+
+function buildRobot07() {
+  const S = SKINS.R, u = S.H;
+  // 孩子的比例：腿占身高不到一半，头占五分之一，手垂下来到大腿中段
+  const D = { thigh: .205 * u, shin: .205 * u, uarm: .17 * u, farm: .155 * u, ankle: .05 * u, hipY: .461 * u, hipZ: .046 * u, shY: .255 * u, shZ: .1 * u };   // hipY 比腿长略短：站着时膝盖总是微微弯着
+  const root = new THREE.Group(), pelvis = grp(root, 0, D.hipY, 0), spine = grp(pelvis), chest = grp(spine, 0, D.shY, 0), head = grp(chest, .02 * u, .027 * u, 0);
+  // 外壳带一点自发光：场景再暗，身体的明度也不会掉到看不清；照到强光时又不至于发白
+  const paint = c => lam(c, { emissive: c, emissiveIntensity: .22 });
+  // 只有三个明度：机床灰绿的外壳、深一号的检修盖和靴子、近乎黑的关节 / 手 / 面罩。没有任何别的颜色
+  const M = { shell: paint(0x85988b), panel: paint(0x5c6c62), dark: lam(0x1b1f20), visor: lam(0x08090a), sole: lam(0x121415) };
+  const U = pts => pts.map(([x, y, r]) => r === undefined ? [x * u, y * u] : [x * u, y * u, r * u]);        // 轮廓坐标都以身高为单位
+
+  // 躯干：上宽下窄，胸口微鼓，背上隆起一块装电池的“驼背”—— 侧面看像个弓着背的小工人
+  slab(spine, U([[-.05, .04], [.046, .04], [.07, .13], [.068, .225], [.042, .285], [-.05, .285], [-.108, .238, .04], [-.112, .16, .04], [-.066, .095, .03]]), .026 * u, .17 * u, M.shell);
+  slab(spine, U([[-.1, .135], [-.052, .135], [-.052, .222], [-.1, .222]]), .012 * u, .176 * u, M.panel, .004 * u);   // 电池舱的检修盖（两侧各露出一块）
+  slab(pelvis, U([[-.04, -.03], [.036, -.03], [.042, .046], [-.046, .046]]), .02 * u, .1 * u, M.dark);
+  // 驼背顶上的吊环 —— 回收线就是钩着这只环把它们一台台吊走的
+  const eye = add(spine, new THREE.TorusGeometry(.02 * u, .006 * u, 6, 16), M.dark, -.083 * u, .273 * u, 0); eye.rotation.z = .7;
+
+  // 胸口的灯：一颗凸出来的琥珀色指示灯，从侧面也看得见。亮度 = 它还剩多少能量
+  const lx = .069 * u, ly = .185 * u;
+  add(spine, cy(.031 * u, .031 * u, .014 * u, 18), M.dark, lx - .002 * u, ly, 0).rotation.z = Math.PI / 2;             // 灯座
+  const lens = add(spine, sph(.024 * u, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffc67e, fog: false }), lx + .004 * u, ly, 0, false);
+  lens.scale.set(.75, 1, 1);
+  const halo = glow(spine, 0xffa040, .27 * u, .85, lx + .02 * u, ly, 0);      // 近处的光晕：会被身体和手挡住
+  const aura = glow(spine, 0xff9a3c, .62 * u, .16, lx + .02 * u, ly, 0);      // 一圈很淡的大光晕，转身时挪到朝镜头的一侧
+  // 真正照亮东西的是两盏灯：一盏朝前下方的射灯（照亮身前的地面和手里的东西，不照自己的胸口），
+  // 一盏很弱的点光（让帽檐底下和胸口沾一点暖色）
+  const beam = new THREE.SpotLight(0xffab52, 2.4, 4.6, 1.0, 1, 2); beam.position.set(lx + .03 * u, ly, 0);
+  beam.target.position.set(lx + .9 * u, ly - .5 * u, 0); spine.add(beam, beam.target);
+  const fill = new THREE.PointLight(0xffab52, .1, 1.2, 2); fill.position.set(lx + .1 * u, ly, 0); spine.add(fill);
+  const lamp = { lens, halo, aura, beam, fill, x: lx + .02 * u, y: ly, I: 2.4, fillI: .1, haloSize: .27 * u, auraOp: .16, dim: new THREE.Color(0x6e3410), lit: new THREE.Color(0xffc67e) };
+
+  // 头：一只扣着安全帽的“桶”。帽檐只往前伸，帽檐下面是一整块深色面罩 —— 没有眼睛，也就没有表情
+  add(head, cy(.023 * u, .023 * u, .06 * u, 10), M.dark, 0, .012 * u, 0);                                                 // 脖子
+  add(head, cy(.104 * u, .094 * u, .1 * u, 28), M.shell, 0, .085 * u, 0);
+  add(head, new THREE.SphereGeometry(.104 * u, 28, 12, 0, 6.2832, 0, Math.PI / 2), M.shell, 0, .135 * u, 0).scale.y = .86;
+  const brim = add(head, new THREE.CylinderGeometry(.109 * u, .109 * u, .013 * u, 24, 1, false, 0, Math.PI), M.shell, 0, .134 * u, 0);   // 只有前半圈
+  brim.scale.x = 1.56; brim.rotation.z = -.12;
+  add(head, new THREE.CylinderGeometry(.1044 * u, .0969 * u, .075 * u, 20, 1, true, .175, 2.79), M.visor, 0, .0895 * u, 0);
+  for (const side of [0, 1]) {                                                                                          // 两侧各喷一个编号
+    const m = new THREE.MeshLambertMaterial({ map: stencil07(), transparent: true, depthWrite: false });
+    add(head, new THREE.CylinderGeometry(.1032 * u, .0977 * u, .055 * u, 8, 1, true, side ? 3.281 : -.838, .698), m, 0, .0875 * u, 0, false);
+  }
+
+  // 四肢：细，关节只露出一道深色的缝；越往手脚越粗 —— 像戴着大一号的手套、穿着大一号的靴子
+  // gap0 / gap1：这一节外壳的上端、下端各让出多少给关节
+  const limb = (p, len, r1, r2, jr, gap0 = .55, gap1 = .45) => {
+    add(p, sph(jr, 12, 8), M.dark);
+    const y0 = -jr * gap0, y1 = -len + jr * gap1;
+    return add(p, cy(r1, r2, y0 - y1, 14), M.shell, 0, (y0 + y1) / 2, 0);
+  };
+  const arms = [0, 1].map(i => {
+    const sh = grp(chest, 0, -.012 * u, (i ? -1 : 1) * D.shZ); limb(sh, D.uarm, .024 * u, .021 * u, .024 * u, .2);
+    const el = grp(sh, 0, -D.uarm, 0); limb(el, D.farm, .02 * u, .03 * u, .02 * u, .6, 0);
+    add(el, sph(.029 * u, 12, 8), M.dark, .003 * u, -D.farm - .022 * u, 0).scale.set(.8, 1.08, .64);                    // 连指手套一样的手
+    add(el, sph(.012 * u, 8, 6), M.dark, .024 * u, -D.farm - .012 * u, 0);                                              // 拇指
+    return { sh, el };
+  });
+  const legs = [0, 1].map(i => {
+    const hip = grp(pelvis, 0, -.005 * u, (i ? -1 : 1) * D.hipZ); limb(hip, D.thigh, .034 * u, .028 * u, .03 * u, .35);
+    const knee = grp(hip, 0, -D.thigh, 0); limb(knee, D.shin, .026 * u, .035 * u, .027 * u, .6, 0);
+    const foot = grp(knee, 0, -D.shin, 0);
+    slab(foot, U([[-.048, -.05], [.098, -.05], [.104, -.03], [.066, .002], [.032, .014], [-.044, .014]]), .014 * u, .08 * u, M.panel);
+    slab(foot, U([[-.051, -.05], [.106, -.05], [.106, -.037], [-.051, -.037]]), .005 * u, .084 * u, M.sole, .008 * u);
+    return { hip, knee, foot };
+  });
+  return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp };
+}
+
 // ---- 程序化动画：不用预先做好的动作，每帧根据速度、是否腾空等状态算出姿势 ----
 // 两节肢体的反向运动学：从关节 (hx,hy) 伸向目标 (tx,ty)，返回 [上段角度, 下段相对角度]
 function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
@@ -739,10 +872,13 @@ function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
   return bendFwd ? [base + a1, -(Math.PI - c)] : [base - a1, Math.PI - c];    // 膝盖向前弯，手肘向后弯
 }
 
+const hash1 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 0..1 的固定“随机”数
+
 function makeCharacter(kind, prev) {
   const B = buildBody(kind), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
   // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
+  A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
   scene.add(root);
 
   function update(dt, s) {
@@ -755,6 +891,7 @@ function makeCharacter(kind, prev) {
     A.air = damp(A.air, s.grounded || mant ? 0 : 1, s.grounded ? 24 : 12, dt);
     A.grip = damp(A.grip, push || (mant && s.modeT < 0.72) ? 1 : 0, 14, dt);
     A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
+    A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
@@ -764,7 +901,7 @@ function makeCharacter(kind, prev) {
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
     if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
-    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck;
+    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
     pelvis.position.set(0, hipY, 0);
 
     // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
@@ -773,6 +910,7 @@ function makeCharacter(kind, prev) {
     if (mant) leanT = 0.3;
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
+    leanT += 0.2 * A.cover;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv);           // 站着时的呼吸
@@ -803,6 +941,8 @@ function makeCharacter(kind, prev) {
 
     // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
     const shX = Math.sin(A.lean) * D.shY, shY = hipY + Math.cos(A.lean) * D.shY - 0.012 * u;
+    const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
+    const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
     for (let i = 0; i < 2; i++) {
       const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
       let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
@@ -812,16 +952,34 @@ function makeCharacter(kind, prev) {
         const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir, s.hand.y - s.y + (i ? 0 : 0.012 * u), D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.grip); b = lerp(b, fa, A.grip);
       } else a += A.lean * 0.5;
-      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b; R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip);
+      if (A.cover > 0.01) {                                                  // 两只手一上一下拢在灯前面
+        const [ua, fa] = ik2(shX, shY, lampX + (i ? 0.03 : 0.042) * u, lampY + (i ? -0.03 : 0.01) * u, D.uarm, D.farm + 0.02 * u, false);
+        a = lerp(a, ua + A.lean, A.cover); b = lerp(b, fa, A.cover);
+      }
+      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
+      R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
-    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0));
+    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0) - 0.12 * A.cover);
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
       tail.rotation.z = A.ta - A.lean * 0.6; tail.userData.t2.rotation.z = (A.ta - target) * 0.7 - 0.25;
+    }
+    if (Lm) {                                                                // 07 胸口的灯：它的“表情”全在这盏灯上
+      A.dip = Math.max(damp(A.dip, 0, 7, dt), clamp((s.impact - 5) * 0.14, 0, 1));   // 普通跳跃落地只晃一下，从高处摔下来才会暗得厉害
+      let L = 1 + 0.07 * Math.sin(t * 1.7);                                  // 平时：跟着呼吸一明一暗
+      const slot = Math.floor(t / 0.85);                                     // 老了，电压不稳：隔几秒闪两下
+      if (hash1(slot) < 0.14 && t / 0.85 - slot < 0.34) L *= hash1(Math.floor(t * 31)) < 0.5 ? 0.3 : 0.9;
+      L *= 1 - 0.75 * A.dip * (0.55 + 0.45 * Math.sin(t * 71));              // 重重落地：被震得一暗
+      L = lerp(L, 0.5 + 0.8 * hash1(Math.floor(t * 26) + 7), sstep(0.05, 0.6, s.alert || 0));   // 被探照灯盯上：慌乱地闪
+      const k = clamp(L, 0, 1), out = L * lerp(1, 0.14, A.cover), ko = clamp(out, 0, 1);       // out：捂住以后漏出来的光
+      Lm.lens.material.color.copy(Lm.dim).lerp(Lm.lit, k);
+      Lm.halo.material.opacity = 0.9 * ko; Lm.halo.scale.setScalar(Lm.haloSize * (0.8 + 0.25 * out));
+      Lm.aura.material.opacity = Lm.auraOp * sstep(0.2, 1, out); Lm.aura.position.z = Math.cos(A.yaw) * 0.14 * u;
+      Lm.beam.intensity = Lm.I * out; Lm.fill.intensity = Lm.fillI * out;
     }
   }
   function dispose() { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -1018,20 +1176,22 @@ function updateAudio(ext, stepNow) {
 // ============================================================
 //  镜头 / 提示 / 界面 / 主循环
 // ============================================================
-const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8 };
+const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0 };
+let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
 function placeCamera() {
-  camera.position.set(cam.x, cam.y + cam.d * 0.05, cam.d); camera.lookAt(cam.x, cam.y, 0);
+  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
   key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
   rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
 }
 function updateCamera(dt) {
-  const [d, yo, xo] = camKey(P.x);
-  cam.look = damp(cam.look, P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);                // 镜头略微领先于前进方向
+  const [d, yo, xo] = closeUp ? [5.4, 0.66, 0] : camKey(P.x);
+  cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
+  cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
   const ty = (P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;      // 跳起来时镜头只跟一小半
-  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, 1.6, dt);
+  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt);
   placeCamera();
 }
-function snapCamera() { const [d, yo, xo] = camKey(P.x); cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
+function snapCamera() { const [d, yo, xo] = camKey(P.x); closeUp = false; cam.az = 0; cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
 
 const hintEl = $('hint'); let hintNow = '';
 const HINTS = [
@@ -1071,6 +1231,8 @@ function sim(dt) {
   T += dt;
   if (state === 'title' && anyKey) begin();
   for (const k of ['A', 'B', 'C']) if (pressed.has(k)) setSkin(k);
+  if (pressed.has('SKIN_R')) setSkin('R'); if (pressed.has('SKIN_O')) setSkin('O');
+  if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
   if (pressed.has('RESET') && state !== 'title' && state !== 'fade') reset();
 
@@ -1084,7 +1246,10 @@ function sim(dt) {
   }
 
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02;
-  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact,
+  // 躲在矮墙的影子里、光束又扫到附近时：站住不动的 07 会捂住胸口的灯
+  const nearYard = P.x > WATCH.cx - WATCH.amp - 4 && P.x < WATCH.cx + WATCH.amp + 4 && P.y < 2.4;
+  const hide = state === 'play' && nearYard && inShadow(P.x) ? sstep(8, 4, Math.abs(P.x - WATCH.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
+  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: WATCH.exposure,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? cart.x1 : cart.x2, y: 0.82 } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -1098,7 +1263,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.step(秒) 手动推进、__g.tp(x) 传送
-const DBG = window.__g = { P, cart, WATCH, door, LEVER, cam, keys, pressed, paused: false, setSkin, begin, reset,
+const DBG = window.__g = { P, cart, WATCH, door, LEVER, cam, keys, pressed, paused: false, setSkin, begin, reset, closeUp(on = !closeUp) { closeUp = on; },
   hero: () => hero, state: () => state, scene, camera, renderer,
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
   step(sec, dt = 1 / 60) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) sim(dt); renderer.render(scene, camera); },

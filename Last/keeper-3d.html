@@ -107,8 +107,8 @@ let _seed = 1;
 // Minimal neutral mannequin. Front faces +Z; separately named parts allow later animation.
 function buildRobot() {
  const root = new THREE.Group(); root.name = 'SimpleRobotV5';
- const body = new THREE.MeshStandardMaterial({color: 0xd6d0bf, roughness: .88});
- const joint = new THREE.MeshStandardMaterial({color: 0x393f43, roughness: .9});
+ const body = new THREE.MeshStandardMaterial({color: 0xd6d0bf, roughness: .72, metalness: .18});
+ const joint = new THREE.MeshStandardMaterial({color: 0x393f43, roughness: .67, metalness: .35});
  const torsoPaint = new THREE.MeshStandardMaterial({color: 0x667f90, roughness: .82, metalness: .12});
  const repairPaint = new THREE.MeshStandardMaterial({color: 0x7e8874, roughness: .9, metalness: .12});
  const scratchMetal = new THREE.MeshStandardMaterial({color: 0x929185, roughness: .95, metalness: .15});
@@ -127,6 +127,27 @@ function buildRobot() {
  function rounded(name,w,h,d,x,y,z,r,material=body) {
   const mesh=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,5,r),material);
   mesh.name=name;mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);return mesh;
+ }
+ // Exposed transverse axle held between two clevis cheeks; X is the hinge axis.
+ const axleMetal=new THREE.MeshStandardMaterial({color:0x646c70,roughness:.55,metalness:.62});
+ function hinge(name,x,y,z,r,width) {
+  const group=new THREE.Group();group.name=name;group.position.set(x,y,z);root.add(group);
+  function add(geo,material,px=0,py=0,pz=0) {
+   const m=new THREE.Mesh(geo,material);m.position.set(px,py,pz);
+   m.castShadow=true;m.receiveShadow=true;group.add(m);return m;
+  }
+  const axle=add(new THREE.CylinderGeometry(r*.65,r*.65,width+.025,16),axleMetal);
+  axle.rotation.z=Math.PI/2;
+  for(const side of [-1,1]) {
+   add(new RoundedBoxGeometry(.065,r*1.9,r*1.75,3,.025),joint,side*(width/2-.03));
+   const cap=add(new THREE.CylinderGeometry(r*.76,r*.76,.025,16),axleMetal,side*(width/2+.012));
+   cap.rotation.z=Math.PI/2;
+   const bolt=add(new THREE.CylinderGeometry(r*.25,r*.25,.03,6),joint,side*(width/2+.032));
+   bolt.rotation.z=Math.PI/2;
+  }
+  // A narrow central lug connects the axle to the limb shell below.
+  add(new RoundedBoxGeometry(width*.42,r*.88,r*.75,3,.02),axleMetal,0,-r*.7,0);
+  return group;
  }
  // Tapered rigid shells follow the existing joint positions.
  function shell(name,a,b,w,d,topWidth,bottomWidth) {
@@ -171,21 +192,21 @@ function buildRobot() {
  limb('Waist',[0,4.3,0],[0,4.7,0],.25,joint);
  for (const side of [-1,1]) {
   const name=side<0?'Left':'Right';
-  ellipsoid(name+'Shoulder',side*.77,5.72,0,.2,.2,.2,joint);
+  hinge(name+'Shoulder',side*.77,5.72,0,.20,.35);
   if(side === -1) {
    rounded('ReplacementShoulderShell',.49,.27,.48,-.82,5.83,0,.10,repairPaint);
    ellipsoid('ShoulderFastener',-.82,5.83,.242,.038,.038,.012,joint);
   }
   shell(name+'UpperArm',[side*.81,5.53,0],[side*.99,4.80,0],.36,.36,1,.87);
-  ellipsoid(name+'Elbow',side*1.01,4.68,0,.17,.17,.17,joint);
+  hinge(name+'Elbow',side*1.01,4.68,0,.17,.34);
   shell(name+'Forearm',[side*1.02,4.55,0],[side*1.11,3.88,0],.39,.37,1,.84);
   rounded(name+'Hand',.32,.43,.25,side*1.15,3.62,.025,.12);
   ellipsoid(name+'Thumb',side*.99,3.69,.09,.095,.15,.105).rotation.z=side*.28;
-  ellipsoid(name+'Hip',side*.36,4.02,0,.21,.21,.21,joint);
+  hinge(name+'Hip',side*.36,4.02,0,.21,.37);
   shell(name+'Thigh',[side*.37,3.84,0],[side*.42,2.51,0],.46,.45,1,.88);
-  ellipsoid(name+'Knee',side*.43,2.33,0,.2,.2,.2,joint);
+  hinge(name+'Knee',side*.43,2.33,0,.20,.40);
   shell(name+'Shin',[side*.43,2.15,0],[side*.46,.65,0],.45,.42,1,.83);
-  ellipsoid(name+'Ankle',side*.46,.5,0,.18,.18,.18,joint);
+  hinge(name+'Ankle',side*.46,.5,0,.16,.32);
   const foot=rounded(name+'Foot',.72,.43,.99,side*.48,.29,.22,.12);
   const fp=foot.geometry.attributes.position;
   for(let i=0;i<fp.count;i++) {
@@ -204,8 +225,41 @@ function buildRobot() {
  const light=new THREE.MeshStandardMaterial({color:0xa08c63,emissive:0xc58b42,emissiveIntensity:.1,roughness:.8});
  ellipsoid('ChestLightSocket',0,5.44,.414,.105,.105,.018,joint);
  ellipsoid('ChestLight',0,5.44,.432,.064,.064,.009,light);
+ // Shallow manufactured panels: rounded outline, inset seam and visible fasteners.
+ const seamMat=new THREE.MeshStandardMaterial({color:0x77786e,roughness:.9,metalness:.15});
+ const faceMat=new THREE.MeshStandardMaterial({color:0xded8c7,roughness:.77,metalness:.12});
+ const hatchMat=new THREE.MeshStandardMaterial({color:0x617886,roughness:.88,metalness:.12});
+ const fastenerMat=new THREE.MeshStandardMaterial({color:0x747b7c,roughness:.43,metalness:.7});
+ const headDetails=[], chestDetails=[];
+ function panel(name,w,h,r,x,y,z,mat,list) {
+  const shape=new THREE.Shape();
+  shape.absarc(w/2-r,h/2-r,r,0,Math.PI/2,false);
+  shape.absarc(-w/2+r,h/2-r,r,Math.PI/2,Math.PI,false);
+  shape.absarc(-w/2+r,-h/2+r,r,Math.PI,Math.PI*1.5,false);
+  shape.absarc(w/2-r,-h/2+r,r,Math.PI*1.5,Math.PI*2,false);
+  shape.closePath();
+  const g=new THREE.ExtrudeGeometry(shape,{depth:.012,bevelEnabled:false,curveSegments:8});
+  const mesh=new THREE.Mesh(g,mat); mesh.name=name; mesh.position.set(x,y,z);
+  mesh.castShadow=true; mesh.receiveShadow=true;root.add(mesh);list.push(name);return mesh;
+ }
+ panel('FaceSeam',2.34,1.14,.18,0,6.95,.824,seamMat,headDetails);
+ panel('FacePanel',2.305,1.105,.165,0,6.95,.837,faceMat,headDetails);
+ for(const n of ['LeftEyeSocket','LeftEye','RightEyeSocket','RightEye','ForeheadPaintScratch']) root.getObjectByName(n).position.z+=.031;
+ const sideSeam=panel('SideHatchSeam',.63,.55,.09,1.35,7.06,-.12,seamMat,headDetails);sideSeam.rotation.y=Math.PI/2;
+ const sideCover=panel('SideHatchCover',.595,.515,.075,1.364,7.06,-.12,body,headDetails);sideCover.rotation.y=Math.PI/2;
+ for(const y of [6.89,7.23]) {
+  const n='SideHatchBolt'+y;
+  ellipsoid(n,1.387,y,-.12,.009,.026,.026,fastenerMat);headDetails.push(n);
+ }
+ panel('ChestHatchSeam',.91,.96,.09,0,5.23,.412,seamMat,chestDetails);
+ panel('ChestHatch',.875,.925,.075,0,5.23,.425,hatchMat,chestDetails);
+ for(const n of ['ChestLightSocket','ChestLight'])root.getObjectByName(n).position.z+=.027;
+ for(const side of [-1,1]) {
+  const n='ChestFastener'+side;
+  ellipsoid(n,side*.34,5.59,.445,.025,.025,.008,fastenerMat);chestDetails.push(n);
+ }
  // Narrow the complete head assembly, including the surface scratch.
- for(const name of ['Head','LeftEyeSocket','LeftEye','RightEyeSocket','RightEye','ForeheadPaintScratch']) {
+ for(const name of ['Head','LeftEyeSocket','LeftEye','RightEyeSocket','RightEye','ForeheadPaintScratch',...headDetails]) {
   const part=root.getObjectByName(name);
   part.position.x *= .88; part.scale.x *= .88; part.position.y -= .10;
  }
@@ -232,6 +286,50 @@ function buildRobot() {
   part.geometry.computeVertexNormals();
   part.geometry.computeBoundingBox(); part.geometry.computeBoundingSphere();
  });
+ // Pose whole assemblies around anatomical pivots after proportion adjustments.
+ function assembly(name,names,pivot) {
+  root.updateMatrixWorld(true);
+  const group=new THREE.Group(); group.name=name; group.position.set(...pivot);
+  root.add(group); group.updateMatrixWorld(true);
+  for(const partName of names) {
+   const part=root.getObjectByName(partName);
+   if(!part) throw new Error('Missing pose part: '+partName);
+   group.attach(part);
+  }
+  return group;
+ }
+ const head=assembly('HeadAssembly',
+  ['Head','LeftEyeSocket','LeftEye','RightEyeSocket','RightEye','ForeheadPaintScratch',...headDetails],
+  [0,5.59,0]);
+ head.scale.z=.80;
+ head.rotation.x=.045;
+ // Slightly narrow the lower head outline without changing the forehead.
+ const headShell=root.getObjectByName('Head');
+ const hp=headShell.geometry.attributes.position;
+ headShell.geometry.computeBoundingBox();
+ const hb=headShell.geometry.boundingBox;
+ for(let i=0;i<hp.count;i++) {
+  const t=THREE.MathUtils.clamp((hp.getY(i)-hb.min.y)/(hb.max.y-hb.min.y),0,1);
+  hp.setX(i,hp.getX(i)*(0.94+0.06*Math.min(t*2,1)));
+ }
+ hp.needsUpdate=true; headShell.geometry.computeVertexNormals();
+ headShell.geometry.computeBoundingBox(); headShell.geometry.computeBoundingSphere();
+ for(const side of [-1,1]) {
+  const prefix=side<0?'Left':'Right';
+  const forearm=assembly(prefix+'ForearmAssembly',
+   ['Forearm','Hand','Thumb'].map(n=>prefix+n),[side*1.01,3.9968,0]);
+  forearm.rotation.x=-.11;
+  const names=[prefix+'Shoulder',prefix+'UpperArm',prefix+'Elbow',prefix+'ForearmAssembly'];
+  if(side<0) names.push('ReplacementShoulderShell','ShoulderFastener');
+  const shoulder=assembly(prefix+'ArmAssembly',names,[side*.77,5.0368,0]);
+  shoulder.position.z+=.035;
+  shoulder.position.y-=.025;
+ }
+ const upper=assembly('UpperBodyAssembly',
+  ['HeadAssembly','Neck','Torso','ChestLightSocket','ChestLight','LeftArmAssembly','RightArmAssembly',...chestDetails],
+  [0,3.77,0]);
+ upper.rotation.x=.025;
+ root.updateMatrixWorld(true);
  return root;
 }
 

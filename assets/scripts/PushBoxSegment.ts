@@ -1,7 +1,7 @@
 /** A self-contained puzzle in local coordinates. Move origin to relocate the segment. */
 export const PUSH_BOX_LAYOUT = {
   origin: 5100, floor: -140, entry: 60, boxStart: 310, boxMin: 180,
-  boxWidth: 110, boxHeight: 100, wall: 660, height: 205,
+  boxWidth: 100, boxHeight: 100, wall: 660, height: 205,
   wallEnd: 810, pushSpeed: 72,
 };
 export class PushBoxSegment {

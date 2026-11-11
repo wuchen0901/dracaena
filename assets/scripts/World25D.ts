@@ -93,6 +93,52 @@ function addTreeForm(g: WorldGeometry, x: number, groundY: number, z: number, sc
         g.face([[cx + w * .02, cy + h * .04, planeZ + .014], [cx + w * .14, cy + h * .5, planeZ + .014], [cx + w * .44, cy + h * .22, planeZ + .014], [cx + w * .5, cy - h * .12, planeZ + .014]], i === 1 ? light : mid);
     });
 }
+/** A detailed, solid cube crate. Decorative pieces stay flush with the collision top. */
+function addPushableCrate(g: WorldGeometry, x: number, floorY: number, width: number, height: number) {
+    const w = width * S, h = height * S, depth = w * .82, z = -.62;
+    const front = z + depth / 2;
+    const walnut = new Color(83, 59, 39), plankA = new Color(106, 76, 48), plankB = new Color(96, 67, 43);
+    const iron = new Color(89, 91, 79), ironLight = new Color(130, 124, 99), brass = new Color(157, 125, 69);
+    const y0 = floorY * S, y1 = y0 + h, yMid = (y0 + y1) / 2;
+    const panel = (px: number, py: number, pz: number, pw: number, ph: number, pd: number, color: Color) => g.box(px, py, pz, pw, ph, pd, color);
+
+    // Solid cubic wooden core, with four separate boards on each visible face.
+    g.box(x * S, yMid, z, w, h, depth, walnut);
+    const boardW = w / 4;
+    for (let i = 0; i < 4; i++) {
+        const plankX = x * S - w / 2 + boardW * (i + .5);
+        panel(plankX, yMid, front + .012, boardW - .018, h - .1, .025, i % 2 ? plankA : plankB);
+        panel(x * S + w / 2 + .012, yMid, z - depth / 4 + i * depth / 6, .025, h - .1, depth / 5, i % 2 ? plankA : plankB);
+    }
+    // Recessed-looking dark seams and a wide, flat top cap.
+    for (let i = 1; i < 4; i++) {
+        const seamX = x * S - w / 2 + boardW * i;
+        panel(seamX, yMid, front + .03, .018, h - .16, .012, new Color(50, 42, 32));
+    }
+    panel(x * S, y1 - .025, z, w - .06, .05, depth - .06, new Color(112, 83, 54));
+    for (let i = 1; i < 5; i++) {
+        const seamZ = z - depth / 2 + depth * i / 5;
+        panel(x * S, y1 + .001, seamZ, w - .12, .008, .014, new Color(62, 51, 38));
+    }
+    // Strong iron frame and corner plates. Their top edges sit below the walkable top plane.
+    for (const side of [-1, 1]) {
+        panel(x * S + side * (w / 2 - .105), yMid, front + .055, .19, h - .05, .085, iron);
+        panel(x * S + side * (w / 2 - .105), y1 - .055, z, .19, .09, depth - .04, ironLight);
+        panel(x * S + side * (w / 2 - .105), y0 + .055, z, .19, .09, depth - .04, iron);
+        panel(x * S + side * (w / 2 - .055), yMid, z + depth / 2 - .065, .10, h - .12, .12, ironLight);
+        for (const yy of [y0 + .19, y1 - .19]) {
+            panel(x * S + side * (w / 2 - .105), yy, front + .102, .055, .055, .018, brass);
+            panel(x * S + w / 2 + .068, yy, z + depth / 4, .018, .055, .055, brass);
+        }
+    }
+    // Small flush latch and a restrained stamped compass mark on the front.
+    panel(x * S, yMid, front + .075, .26, .32, .12, ironLight);
+    panel(x * S, yMid - .045, front + .145, .07, .18, .025, brass);
+    panel(x * S, yMid + .31, front + .035, .025, .22, .012, brass);
+    panel(x * S, yMid - .31, front + .035, .025, .22, .012, brass);
+    panel(x * S - .12, yMid, front + .035, .22, .025, .012, brass);
+    panel(x * S + .12, yMid, front + .035, .22, .025, .012, brass);
+}
 /** Campaign renderer. The original world simulation remains the single source of collision/save state. */
 export class World25D {
     private root = new Node('Campaign 2.5D world');
@@ -150,7 +196,7 @@ export class World25D {
         this.camera.node.setRotationFromEuler(-CAMERA_ELEVATION, 0, 0);
         this.opaque = this.vertexMaterial(false);
         this.translucent = this.vertexMaterial(true);
-        this.robot = new Robot3D(this.root, this.kit);
+        this.robot = new Robot3D(this.root, this.kit, 'Maintenance robot', true);
         this.dogModel = new Animal3D(this.root, this.kit);
         this.catModel = new Animal3D(this.root, this.kit, true);
         const light = new Node('Soft directional actor lighting');
@@ -424,7 +470,7 @@ export class World25D {
         box(1350, c.near + 42 + w.fill * 90, -.5, 32, 100, 1.4, new Color(60, 76, 67));
         box(p.bridgeX, p.bridgeTop - 12, 0, p.layout.bridgeWidth, 24, 3.8, new Color(83, 101, 91));
         box(p.crateX, p.layout.floor + p.layout.crateHeight / 2, -.5, p.layout.crateWidth, p.layout.crateHeight, 1.6, new Color(108, 82, 51));
-        box(s.box.x, s.box.layout.floor + s.box.layout.boxHeight / 2, -.5, s.box.layout.boxWidth, s.box.layout.boxHeight, 1.6, new Color(124, 99, 63));
+        addPushableCrate(g, s.box.x, s.box.layout.floor, s.box.layout.boxWidth, s.box.layout.boxHeight);
         box((s.box.wallX + s.box.wallEndX) / 2, s.box.layout.floor + s.box.layout.height / 2, -.8, s.box.wallEndX - s.box.wallX, s.box.layout.height, PRISON_WALL_DEPTH, new Color(90, 104, 99));
         const f = s.factory, fl = FACTORY_ESCAPE_LAYOUT;
         box(f.crateX, fl.floor + fl.crateHeight / 2, -.5, fl.crateWidth, fl.crateHeight, 1.6, new Color(118, 91, 57));

@@ -1,10 +1,11 @@
 
 // ============================================================
-//  主角：面数很少、没有五官，靠轮廓和一块颜色认人。三套外形共用同一副骨架
+//  主角：面数很少、没有五官，靠轮廓和一块颜色认人。所有外形共用同一副骨架
 //  角色的局部坐标：面朝 +x，y 向上；所有关节只在侧视平面内转动
 // ============================================================
 const SKINS = {
-  R: { H: 1.24, robot: true },
+  R: { H: 1.24, robot: true },                                                                                // 07：现在的主角，见文件末尾
+  O: { H: 1.24, robot: true },                                                                                // 旧版小机器人：只留着做对比
   A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
   B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
   C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
@@ -12,7 +13,8 @@ const SKINS = {
 const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
 function buildBody(kind) {
-  if (kind === 'R') return buildSimpleRobot();
+  if (kind === 'R') return buildRobot07();
+  if (kind === 'O') return buildOldRobot();
   const S = SKINS[kind], u = S.H;
   const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
   const M = { skin: self(S.skin), hair: lam(S.hair), top: self(S.top), leg: self(S.leg), shoe: lam(S.shoe), metal: lam(0x2a2e33) };
@@ -85,9 +87,9 @@ function buildBody(kind) {
   return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
 }
 
-// Same joint contract as the existing player, preserving walking and interaction IK.
-function buildSimpleRobot() {
- const S=SKINS.R,u=S.H;
+// 旧版小机器人（方脑袋 + 细杆四肢）。只为了在同一个场景里和 07 对比，确定不要了可以整段删掉
+function buildOldRobot() {
+ const S=SKINS.O,u=S.H;
  const D={thigh:.25*u,shin:.25*u,uarm:.158*u,farm:.158*u,ankle:.04*u,hipY:.548*u,hipZ:.05*u,shY:.235*u,shZ:.085*u};
  const root=new THREE.Group(),pelvis=grp(root,0,D.hipY,0),spine=grp(pelvis),chest=grp(spine,0,D.shY,0),head=grp(chest,.015*u,.035*u,0);
  const shell=lam(0xcac5b5,{emissive:0xcac5b5,emissiveIntensity:.12}),joint=lam(0x414746);
@@ -109,4 +111,134 @@ function buildSimpleRobot() {
   round(el,.024*u,.032*u,.026*u,.025*u,-D.farm+.012*u,0);return {sh,el};});
  const legs=[0,1].map(i=>{const hip=grp(pelvis,0,-.005*u,(i?-1:1)*D.hipZ);segment(hip,D.thigh,.023*u);const knee=grp(hip,0,-D.thigh,0);segment(knee,D.shin,.021*u);const foot=grp(knee,0,-D.shin,0);round(foot,.125*u,.048*u,.079*u,.03*u,-D.ankle+.024*u,0);return {hip,knee,foot};});
  return {S,u,D,root,pelvis,spine,chest,head,tail:null,arms,legs};
+}
+
+
+// ============================================================
+//  07：量产的旧劳动机器人（主角）。设计说明见 design/protagonist-07.md
+//  三条规矩：先看侧面剪影；没有脸；全身只有胸口那盏灯是暖色
+//  关节约定和其他外形完全一样，所以行走 / 推车 / 攀爬的动画直接沿用
+// ============================================================
+// 侧面轮廓 → 实体：在 x-y 平面（x 向前、y 向上）画一圈带圆角的轮廓，再沿身体的左右方向挤出厚度
+// pts 里每个点是 [x, y] 或 [x, y, 这个角的圆角半径]
+function profileShape(pts, r) {
+  const sh = new THREE.Shape(), n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n];
+    const a = V3(p0[0] - p1[0], p0[1] - p1[1], 0), b = V3(p2[0] - p1[0], p2[1] - p1[1], 0);
+    const k = Math.min(p1[2] ?? r, a.length() / 2, b.length() / 2); a.setLength(k); b.setLength(k);
+    sh[i ? 'lineTo' : 'moveTo'](p1[0] + a.x, p1[1] + a.y);
+    sh.quadraticCurveTo(p1[0], p1[1], p1[0] + b.x, p1[1] + b.y);
+  }
+  sh.closePath(); return sh;
+}
+// 挤出来的模型每个三角面各有各的法线，看上去一棱一棱的。这里把夹角小的相邻面抹平，真正的棱角保留
+function smoothNormals(geo, crease = 0.7) {
+  const pos = geo.attributes.position, n = pos.count, fn = [], byPos = new Map(), keys = [];
+  const a = V3(), b = V3(), c = V3();
+  for (let i = 0; i < n; i++) {
+    const key = `${Math.round(pos.getX(i) * 2e4)},${Math.round(pos.getY(i) * 2e4)},${Math.round(pos.getZ(i) * 2e4)}`;
+    keys.push(key); if (!byPos.has(key)) byPos.set(key, []); byPos.get(key).push(Math.floor(i / 3));
+  }
+  for (let i = 0; i < n; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    const w = b.clone().sub(a).cross(c.clone().sub(a));                 // 长度是面积的两倍，正好用来加权
+    fn.push({ w, d: w.clone().normalize() });
+  }
+  const out = new Float32Array(n * 3), s = V3();
+  for (let i = 0; i < n; i++) {
+    const me = fn[Math.floor(i / 3)].d; s.set(0, 0, 0);
+    for (const f of byPos.get(keys[i])) if (fn[f].d.dot(me) > crease) s.add(fn[f].w);
+    s.normalize(); out[i * 3] = s.x; out[i * 3 + 1] = s.y; out[i * 3 + 2] = s.z;
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3)); return geo;
+}
+function slab(parent, pts, r, width, mat, bevel = width * 0.16) {
+  const geo = new THREE.ExtrudeGeometry(profileShape(pts, r), { depth: width - 2 * bevel, bevelEnabled: true, bevelThickness: bevel,
+    bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 3, curveSegments: 6, steps: 1 });
+  geo.translate(0, 0, -(width - 2 * bevel) / 2);
+  return add(parent, smoothNormals(geo), mat);
+}
+
+let _stencil07 = null;
+function stencil07() {                                  // 头盔侧面喷的出厂编号：玩的时候只是一小块深色，拉近了才看得清
+  if (_stencil07) return _stencil07;
+  const [c, g] = mkCanvas(192, 128);
+  let seed = 7; const rn = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };   // 自己的随机数，不动关卡用的那一套
+  g.fillStyle = 'rgba(30,34,34,.82)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '900 108px "Arial Narrow","Helvetica Neue","PingFang SC",Arial,sans-serif';
+  g.fillText('07', 96, 70);
+  g.globalCompositeOperation = 'destination-out';
+  g.fillStyle = '#000'; g.fillRect(0, 62, 192, 7);                                                     // 喷漆模板中间那道“桥”
+  for (let i = 0; i < 320; i++) { g.globalAlpha = 0.25 + 0.7 * rn(); g.fillRect(rn() * 192, rn() * 128, 1 + rn() * 5, 1 + rn() * 2.5); }   // 磨掉的漆
+  return _stencil07 = canvasTex(c);
+}
+
+function buildRobot07() {
+  const S = SKINS.R, u = S.H;
+  // 孩子的比例：腿占身高不到一半，头占五分之一，手垂下来到大腿中段
+  const D = { thigh: .205 * u, shin: .205 * u, uarm: .17 * u, farm: .155 * u, ankle: .05 * u, hipY: .461 * u, hipZ: .046 * u, shY: .255 * u, shZ: .1 * u };   // hipY 比腿长略短：站着时膝盖总是微微弯着
+  const root = new THREE.Group(), pelvis = grp(root, 0, D.hipY, 0), spine = grp(pelvis), chest = grp(spine, 0, D.shY, 0), head = grp(chest, .02 * u, .027 * u, 0);
+  // 外壳带一点自发光：场景再暗，身体的明度也不会掉到看不清；照到强光时又不至于发白
+  const paint = c => lam(c, { emissive: c, emissiveIntensity: .22 });
+  // 只有三个明度：机床灰绿的外壳、深一号的检修盖和靴子、近乎黑的关节 / 手 / 面罩。没有任何别的颜色
+  const M = { shell: paint(0x85988b), panel: paint(0x5c6c62), dark: lam(0x1b1f20), visor: lam(0x08090a), sole: lam(0x121415) };
+  const U = pts => pts.map(([x, y, r]) => r === undefined ? [x * u, y * u] : [x * u, y * u, r * u]);        // 轮廓坐标都以身高为单位
+
+  // 躯干：上宽下窄，胸口微鼓，背上隆起一块装电池的“驼背”—— 侧面看像个弓着背的小工人
+  slab(spine, U([[-.05, .04], [.046, .04], [.07, .13], [.068, .225], [.042, .285], [-.05, .285], [-.108, .238, .04], [-.112, .16, .04], [-.066, .095, .03]]), .026 * u, .17 * u, M.shell);
+  slab(spine, U([[-.1, .135], [-.052, .135], [-.052, .222], [-.1, .222]]), .012 * u, .176 * u, M.panel, .004 * u);   // 电池舱的检修盖（两侧各露出一块）
+  slab(pelvis, U([[-.04, -.03], [.036, -.03], [.042, .046], [-.046, .046]]), .02 * u, .1 * u, M.dark);
+  // 驼背顶上的吊环 —— 回收线就是钩着这只环把它们一台台吊走的
+  const eye = add(spine, new THREE.TorusGeometry(.02 * u, .006 * u, 6, 16), M.dark, -.083 * u, .273 * u, 0); eye.rotation.z = .7;
+
+  // 胸口的灯：一颗凸出来的琥珀色指示灯，从侧面也看得见。亮度 = 它还剩多少能量
+  const lx = .069 * u, ly = .185 * u;
+  add(spine, cy(.031 * u, .031 * u, .014 * u, 18), M.dark, lx - .002 * u, ly, 0).rotation.z = Math.PI / 2;             // 灯座
+  const lens = add(spine, sph(.024 * u, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffc67e, fog: false }), lx + .004 * u, ly, 0, false);
+  lens.scale.set(.75, 1, 1);
+  const halo = glow(spine, 0xffa040, .27 * u, .85, lx + .02 * u, ly, 0);      // 近处的光晕：会被身体和手挡住
+  const aura = glow(spine, 0xff9a3c, .62 * u, .16, lx + .02 * u, ly, 0);      // 一圈很淡的大光晕，转身时挪到朝镜头的一侧
+  // 真正照亮东西的是两盏灯：一盏朝前下方的射灯（照亮身前的地面和手里的东西，不照自己的胸口），
+  // 一盏很弱的点光（让帽檐底下和胸口沾一点暖色）
+  const beam = new THREE.SpotLight(0xffab52, 2.4, 4.6, 1.0, 1, 2); beam.position.set(lx + .03 * u, ly, 0);
+  beam.target.position.set(lx + .9 * u, ly - .5 * u, 0); spine.add(beam, beam.target);
+  const fill = new THREE.PointLight(0xffab52, .1, 1.2, 2); fill.position.set(lx + .1 * u, ly, 0); spine.add(fill);
+  const lamp = { lens, halo, aura, beam, fill, x: lx + .02 * u, y: ly, I: 2.4, fillI: .1, haloSize: .27 * u, auraOp: .16, dim: new THREE.Color(0x6e3410), lit: new THREE.Color(0xffc67e) };
+
+  // 头：一只扣着安全帽的“桶”。帽檐只往前伸，帽檐下面是一整块深色面罩 —— 没有眼睛，也就没有表情
+  add(head, cy(.023 * u, .023 * u, .06 * u, 10), M.dark, 0, .012 * u, 0);                                                 // 脖子
+  add(head, cy(.104 * u, .094 * u, .1 * u, 28), M.shell, 0, .085 * u, 0);
+  add(head, new THREE.SphereGeometry(.104 * u, 28, 12, 0, 6.2832, 0, Math.PI / 2), M.shell, 0, .135 * u, 0).scale.y = .86;
+  const brim = add(head, new THREE.CylinderGeometry(.109 * u, .109 * u, .013 * u, 24, 1, false, 0, Math.PI), M.shell, 0, .134 * u, 0);   // 只有前半圈
+  brim.scale.x = 1.56; brim.rotation.z = -.12;
+  add(head, new THREE.CylinderGeometry(.1044 * u, .0969 * u, .075 * u, 20, 1, true, .175, 2.79), M.visor, 0, .0895 * u, 0);
+  for (const side of [0, 1]) {                                                                                          // 两侧各喷一个编号
+    const m = new THREE.MeshLambertMaterial({ map: stencil07(), transparent: true, depthWrite: false });
+    add(head, new THREE.CylinderGeometry(.1032 * u, .0977 * u, .055 * u, 8, 1, true, side ? 3.281 : -.838, .698), m, 0, .0875 * u, 0, false);
+  }
+
+  // 四肢：细，关节只露出一道深色的缝；越往手脚越粗 —— 像戴着大一号的手套、穿着大一号的靴子
+  // gap0 / gap1：这一节外壳的上端、下端各让出多少给关节
+  const limb = (p, len, r1, r2, jr, gap0 = .55, gap1 = .45) => {
+    add(p, sph(jr, 12, 8), M.dark);
+    const y0 = -jr * gap0, y1 = -len + jr * gap1;
+    return add(p, cy(r1, r2, y0 - y1, 14), M.shell, 0, (y0 + y1) / 2, 0);
+  };
+  const arms = [0, 1].map(i => {
+    const sh = grp(chest, 0, -.012 * u, (i ? -1 : 1) * D.shZ); limb(sh, D.uarm, .024 * u, .021 * u, .024 * u, .2);
+    const el = grp(sh, 0, -D.uarm, 0); limb(el, D.farm, .02 * u, .03 * u, .02 * u, .6, 0);
+    add(el, sph(.029 * u, 12, 8), M.dark, .003 * u, -D.farm - .022 * u, 0).scale.set(.8, 1.08, .64);                    // 连指手套一样的手
+    add(el, sph(.012 * u, 8, 6), M.dark, .024 * u, -D.farm - .012 * u, 0);                                              // 拇指
+    return { sh, el };
+  });
+  const legs = [0, 1].map(i => {
+    const hip = grp(pelvis, 0, -.005 * u, (i ? -1 : 1) * D.hipZ); limb(hip, D.thigh, .034 * u, .028 * u, .03 * u, .35);
+    const knee = grp(hip, 0, -D.thigh, 0); limb(knee, D.shin, .026 * u, .035 * u, .027 * u, .6, 0);
+    const foot = grp(knee, 0, -D.shin, 0);
+    slab(foot, U([[-.048, -.05], [.098, -.05], [.104, -.03], [.066, .002], [.032, .014], [-.044, .014]]), .014 * u, .08 * u, M.panel);
+    slab(foot, U([[-.051, -.05], [.106, -.05], [.106, -.037], [-.051, -.037]]), .005 * u, .084 * u, M.sole, .008 * u);
+    return { hip, knee, foot };
+  });
+  return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp };
 }

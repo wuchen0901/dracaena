@@ -9,10 +9,13 @@ function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
   return bendFwd ? [base + a1, -(Math.PI - c)] : [base - a1, Math.PI - c];    // 膝盖向前弯，手肘向后弯
 }
 
+const hash1 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 0..1 的固定“随机”数
+
 function makeCharacter(kind, prev) {
   const B = buildBody(kind), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
   // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
+  A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
   scene.add(root);
 
   function update(dt, s) {
@@ -25,6 +28,7 @@ function makeCharacter(kind, prev) {
     A.air = damp(A.air, s.grounded || mant ? 0 : 1, s.grounded ? 24 : 12, dt);
     A.grip = damp(A.grip, push || (mant && s.modeT < 0.72) ? 1 : 0, 14, dt);
     A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
+    A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
@@ -34,7 +38,7 @@ function makeCharacter(kind, prev) {
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
     if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
-    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck;
+    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
     pelvis.position.set(0, hipY, 0);
 
     // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
@@ -43,6 +47,7 @@ function makeCharacter(kind, prev) {
     if (mant) leanT = 0.3;
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
+    leanT += 0.2 * A.cover;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv);           // 站着时的呼吸
@@ -73,6 +78,8 @@ function makeCharacter(kind, prev) {
 
     // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
     const shX = Math.sin(A.lean) * D.shY, shY = hipY + Math.cos(A.lean) * D.shY - 0.012 * u;
+    const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
+    const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
     for (let i = 0; i < 2; i++) {
       const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
       let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
@@ -82,16 +89,34 @@ function makeCharacter(kind, prev) {
         const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir, s.hand.y - s.y + (i ? 0 : 0.012 * u), D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.grip); b = lerp(b, fa, A.grip);
       } else a += A.lean * 0.5;
-      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b; R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip);
+      if (A.cover > 0.01) {                                                  // 两只手一上一下拢在灯前面
+        const [ua, fa] = ik2(shX, shY, lampX + (i ? 0.03 : 0.042) * u, lampY + (i ? -0.03 : 0.01) * u, D.uarm, D.farm + 0.02 * u, false);
+        a = lerp(a, ua + A.lean, A.cover); b = lerp(b, fa, A.cover);
+      }
+      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
+      R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
-    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0));
+    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0) - 0.12 * A.cover);
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
       tail.rotation.z = A.ta - A.lean * 0.6; tail.userData.t2.rotation.z = (A.ta - target) * 0.7 - 0.25;
+    }
+    if (Lm) {                                                                // 07 胸口的灯：它的“表情”全在这盏灯上
+      A.dip = Math.max(damp(A.dip, 0, 7, dt), clamp((s.impact - 5) * 0.14, 0, 1));   // 普通跳跃落地只晃一下，从高处摔下来才会暗得厉害
+      let L = 1 + 0.07 * Math.sin(t * 1.7);                                  // 平时：跟着呼吸一明一暗
+      const slot = Math.floor(t / 0.85);                                     // 老了，电压不稳：隔几秒闪两下
+      if (hash1(slot) < 0.14 && t / 0.85 - slot < 0.34) L *= hash1(Math.floor(t * 31)) < 0.5 ? 0.3 : 0.9;
+      L *= 1 - 0.75 * A.dip * (0.55 + 0.45 * Math.sin(t * 71));              // 重重落地：被震得一暗
+      L = lerp(L, 0.5 + 0.8 * hash1(Math.floor(t * 26) + 7), sstep(0.05, 0.6, s.alert || 0));   // 被探照灯盯上：慌乱地闪
+      const k = clamp(L, 0, 1), out = L * lerp(1, 0.14, A.cover), ko = clamp(out, 0, 1);       // out：捂住以后漏出来的光
+      Lm.lens.material.color.copy(Lm.dim).lerp(Lm.lit, k);
+      Lm.halo.material.opacity = 0.9 * ko; Lm.halo.scale.setScalar(Lm.haloSize * (0.8 + 0.25 * out));
+      Lm.aura.material.opacity = Lm.auraOp * sstep(0.2, 1, out); Lm.aura.position.z = Math.cos(A.yaw) * 0.14 * u;
+      Lm.beam.intensity = Lm.I * out; Lm.fill.intensity = Lm.fillI * out;
     }
   }
   function dispose() { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }

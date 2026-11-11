@@ -1,4 +1,4 @@
-import { Color, Material, EffectAsset, MeshRenderer, Node, Layers, primitives, utils } from 'cc';
+import { Color, Material, EffectAsset, MeshRenderer, Node, Layers, primitives, utils, Prefab, resources, instantiate, isValid } from 'cc';
 /** Shared meshes/materials for articulated campaign actors; all dimensions are world units. */
 export class ActorModelKit {
     private cube = utils.createMesh(primitives.box());
@@ -58,7 +58,9 @@ export class Robot3D {
     private elbows: Node[] = [];
     private phase = 0;
     private shadow: Node;
-    constructor(parent: Node, kit: ActorModelKit, name = 'Maintenance robot') {
+    private detailedModel: Node | null = null;
+    private detailedBones = new Map<string, Node>();
+    constructor(parent: Node, kit: ActorModelKit, name = 'Maintenance robot', useDetailedModel = false) {
         this.node = kit.pivot(parent, name);
         this.body = kit.pivot(this.node, 'Animated body');
         const ivory = [207, 196, 160], edge = [145, 138, 112], joint = [48, 57, 54], dark = [27, 37, 37], amber = [238, 174, 63];
@@ -97,12 +99,61 @@ export class Robot3D {
             kit.part(elbow, 'Hand', .01, -.32, 0, .18, .17, .23, joint, true);
         }
         this.shadow = kit.part(parent, name + ' contact shadow', 0, 0, 0, .95, .008, .6, [35, 43, 37], true, true);
+        if (useDetailedModel) {
+            resources.load('models/last-light-robot-detailed/last-light-robot-detailed', Prefab, (error, prefab) => {
+                if (error || !prefab || !isValid(this.node)) {
+                    if (error) console.warn('Detailed robot model unavailable; using the built-in actor.', error);
+                    return;
+                }
+                const facingRoot = new Node('Detailed robot model');
+                facingRoot.setParent(this.node);
+                facingRoot.setScale(.72, .72, .72);
+                facingRoot.setRotationFromEuler(0, 90, 0);
+                const rig = instantiate(prefab);
+                rig.setParent(facingRoot);
+                this.detailedModel = facingRoot;
+                this.collectBones(rig);
+                this.body.active = false;
+                this.poseDetailed();
+            });
+        }
     }
+    private collectBones(root: Node) {
+        const visit = (node: Node) => {
+            if (node.name.startsWith('Bone_')) this.detailedBones.set(node.name.slice(5), node);
+            node.children.forEach(visit);
+        };
+        visit(root);
+    }
+    private bone(name: string, angle: number) {
+        this.detailedBones.get(name)?.setRotationFromEuler(angle, 0, 0);
+    }
+    private poseDetailed() {
+        if (!this.detailedModel) return;
+        const run = Math.abs(this.lastPose.vx) > 200;
+        const p = this.lastPose;
+        const wave = Math.sin(this.phase), stride = run ? 38 : 27;
+        this.detailedModel.setPosition(0, p.bob - (p.cover ? .23 : p.seated ? .32 : 0), 0);
+        this.bone('Spine', p.gripping ? -5 : p.cover ? -12 : run ? -5 : 0);
+        this.bone('Head', p.cover ? 8 : p.gripping ? -6 : 0);
+        for (const side of ['Left', 'Right']) {
+            const sign = side === 'Left' ? -1 : 1;
+            const swing = wave * sign;
+            const leg = !p.grounded ? (side === 'Left' ? -20 : 15) : swing * stride;
+            this.bone(side + 'Thigh', p.seated ? 68 : p.cover ? 40 : leg);
+            this.bone(side + 'Shin', p.seated ? -78 : p.cover ? -62 : !p.grounded ? -34 : -Math.max(0, -swing) * (run ? 55 : 30));
+            this.bone(side + 'Foot', p.seated ? 8 : -Math.max(0, swing) * 14);
+            this.bone(side + 'UpperArm', p.gripping ? -58 : p.seated ? 20 : p.cover ? -25 : -swing * (run ? 34 : 22));
+            this.bone(side + 'Forearm', p.gripping ? -14 : run ? -46 : 10);
+        }
+    }
+    private lastPose: RobotPose & { bob: number } = { x: 0, y: 0, z: 0, vx: 0, vy: 0, grounded: true, facing: 1, cover: false, gripping: false, seated: false, floor: 0, dt: 0, bob: 0 };
     pose(p: RobotPose) {
         const speed = Math.abs(p.vx), moving = speed > 3, run = speed > 200;
         if (moving && p.grounded)
             this.phase += p.dt * speed / 110 * Math.PI;
         const wave = Math.sin(this.phase), bob = moving && p.grounded ? Math.abs(Math.sin(this.phase * 2)) * (run ? .065 : .035) : Math.sin(this.phase) * .008;
+        this.lastPose = { ...p, bob };
         this.node.setPosition(p.x, p.y, p.z);
         this.node.setRotationFromEuler(0, p.facing < 0 ? 180 : 0, 0);
         const crouch = p.cover ? .32 : p.seated ? .45 : 0;
@@ -120,6 +171,7 @@ export class Robot3D {
         this.shadow.active = this.node.active && p.shadow !== false;
         this.shadow.setPosition(p.x, p.floor + .012, p.z);
         this.shadow.setScale(.95 / (1 + airborne * .1), .008, .6 / (1 + airborne * .1));
+        this.poseDetailed();
     }
     set active(value: boolean) { this.node.active = value; this.shadow.active = value; }
     destroy() { this.node.destroy(); this.shadow.destroy(); }
