@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>铁锈与微光 · 横版原型</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#06090a;color:#e6ebea;
+    font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;user-select:none;-webkit-user-select:none}
+  #c{display:block;width:100%;height:100%;outline:none}
+  .fx{position:fixed;inset:0;pointer-events:none}
+  #vig{background:radial-gradient(ellipse at 50% 46%,rgba(0,0,0,0) 44%,rgba(0,0,0,.3) 78%,rgba(0,0,0,.7) 100%)}
+  #grain{opacity:.075;mix-blend-mode:overlay;background-size:256px 256px}
+  #bars::before,#bars::after{content:"";position:absolute;left:0;right:0;height:6vh;background:#040607}
+  #bars::before{top:0}#bars::after{bottom:0}
+  #fade{background:#040607;opacity:1;transition:opacity 1.4s ease}
+  .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    transition:opacity .9s ease;padding:0 24px}
+  .ov.hide{opacity:0;pointer-events:none}
+  .ov h1{font-size:clamp(26px,4.2vw,46px);font-weight:300;letter-spacing:.42em;margin:0 0 0 .42em;color:#eef3f1}
+  .ov .sub{font-size:13px;letter-spacing:.3em;margin:14px 0 0 .3em;color:#8fa0a0}
+  .ov .keys{font-size:13px;line-height:2.1;color:#b4c0bf;margin:34px 0 0}
+  .ov .keys b{display:inline-block;min-width:1.5em;padding:0 .45em;margin:0 .15em;border:1px solid rgba(255,255,255,.28);border-radius:5px;
+    font-weight:500;color:#e6ebea;line-height:1.55}
+  .ov .go{font-size:13px;letter-spacing:.3em;margin:30px 0 0 .3em;color:#ffc56e;animation:pulse 2.2s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  #hint{position:fixed;left:50%;bottom:11vh;transform:translateX(-50%);font-size:13.5px;letter-spacing:.14em;color:#dfe7e5;
+    text-shadow:0 1px 6px rgba(0,0,0,.8);opacity:0;transition:opacity .6s ease;white-space:nowrap;pointer-events:none}
+  #hint b{display:inline-block;padding:0 .5em;margin:0 .3em;border:1px solid rgba(255,255,255,.4);border-radius:5px;font-weight:500;line-height:1.6}
+  #skins{position:fixed;left:18px;bottom:calc(6vh + 14px);display:flex;gap:6px;opacity:.0;transition:opacity .8s ease}
+  #skins.on{opacity:.78}
+  #skins button{font:inherit;font-size:12px;color:#dfe7e5;background:rgba(10,14,15,.55);border:1px solid rgba(255,255,255,.2);
+    border-radius:7px;padding:5px 9px;cursor:pointer}
+  #skins button.on{background:#c98f3d;border-color:#e6ae5c;color:#20160a}
+  #msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#b4c0bf;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0"></canvas>
+<div id="vig" class="fx"></div>
+<div id="grain" class="fx"></div>
+<div id="fade" class="fx"></div>
+<div id="bars" class="fx"></div>
+<div id="hint"></div>
+<div id="skins">
+  <button data-k="R">小机器人</button><button data-k="A">1 · 小拾荒者</button><button data-k="B">2 · 学徒</button><button data-k="C">3 · 机械臂</button>
+</div>
+<div id="title" class="ov hide">
+  <h1>铁锈与微光</h1>
+  <div class="sub">横版原型</div>
+  <div class="keys">
+    <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 抓住推车 · 拉拉杆<br>
+    <b>1</b><b>2</b><b>3</b> 切换主角　　<b>Shift</b> 慢走　　<b>M</b> 静音　　<b>R</b> 重新开始
+  </div>
+  <div class="go">按任意键开始</div>
+</div>
+<div id="end" class="ov hide">
+  <h1>铁锈与微光</h1>
+  <div class="sub">原型到此结束</div>
+  <div class="go">按 R 重新开始</div>
+</div>
+<div id="msg">正在加载…</div>
+<script>
+  setTimeout(function () {
+    if (!window.__ready) document.getElementById('msg').textContent = '加载失败：本页面需要联网，从 cdn.jsdelivr.net 加载 three.js';
+  }, 12000);
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================
+//  基础：渲染器 / 场景 / 相机 / 小工具 / 输入
+// ============================================================
+const $ = id => document.getElementById(id);
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;   // 不做色调映射：画出来的颜色就是看到的颜色
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e1518);
+scene.fog = new THREE.FogExp2(0x0e1518, 0.026);
+const camera = new THREE.PerspectiveCamera(28, 1, 0.5, 900);
+
+function resize() {
+  const w = innerWidth || 1280, h = innerHeight || 720;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w / h < 1.2 ? 40 : 28;      // 窄屏时放宽视野
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const damp = (a, b, k, dt) => lerp(a, b, 1 - Math.exp(-k * dt));   // 与帧率无关的平滑
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+let _seed = 20261111;
+function rnd() {   // 固定种子的随机数：每次打开画面都一样
+  _seed = _seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(_seed ^ _seed >>> 15, 1 | _seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+const rr = (a, b) => a + (b - a) * rnd();
+const pick = arr => arr[Math.floor(rnd() * arr.length)];
+
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
+function canvasTex(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.generateMipmaps = true;
+  return t;
+}
+function add(parent, geo, mat, x = 0, y = 0, z = 0, shadow = true) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
+  m.castShadow = m.receiveShadow = shadow; parent.add(m); return m;
+}
+function grp(parent, x = 0, y = 0, z = 0) { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; }
+const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
+
+// ---- 输入 ----
+const keys = new Set(), pressed = new Set();
+const MAP = { ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', Space: 'J', ArrowUp: 'J', KeyW: 'J',
+  KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', Digit1: 'A', Digit2: 'B', Digit3: 'C' };
+let anyKey = false;
+addEventListener('keydown', e => {
+  const k = MAP[e.code]; anyKey = true;
+  if (k) { if (!keys.has(k)) pressed.add(k); keys.add(k); e.preventDefault(); }
+});
+addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys.delete(k); });
+addEventListener('blur', () => keys.clear());
+addEventListener('pointerdown', () => { anyKey = true; });
+
+// ============================================================
+//  关卡数据与碰撞（单位：米；x 向右，y 向上，玩法平面 z = 0）
+// ============================================================
+// 地形：一条折线，坡度都很缓；陡的台阶用 SOLIDS 里的方块表示
+const TERRAIN = [[-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [90, 0], [92.1, 0.0875], [96, 0.25], [104, 1.0], [110, 1.3],
+  [116, 2.6], [122, 3.0], [460, 3.0]];
+function groundY(x) {
+  for (let i = 1; i < TERRAIN.length; i++) {
+    const a = TERRAIN[i - 1], b = TERRAIN[i];
+    if (x <= b[0]) return a[1] + (b[1] - a[1]) * clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
+  }
+  return TERRAIN[TERRAIN.length - 1][1];
+}
+const groundSlope = x => (groundY(x + 0.15) - groundY(x - 0.15)) / 0.3;
+
+// 实心方块（从 y1 到 y2）。玩家会被侧面挡住，可以站在顶上
+const SOLIDS = [
+  { id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 },
+  { id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45 },
+  { id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9 },
+  { id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0 },
+];
+const cart = { id: 'cart', x: 25.4, w: 1.5, h: 0.95, y1: 0, min: 23.4, max: 37.15, v: 0, x1: 0, x2: 0, y2: 0.95 };
+function syncCart() { cart.x1 = cart.x - cart.w / 2; cart.x2 = cart.x + cart.w / 2; }
+syncCart(); SOLIDS.push(cart);
+const door = { id: 'door', x1: 89.55, x2: 90.45, y1: 0, y2: 3.6, open: 0, opening: false };
+SOLIDS.push(door);
+
+const LEVER = { x: 86.2, pulled: false, t: 0 };
+// 探照灯：机器在背景深处（z < 0），光束扫过场地；玩家躲在矮墙前面的影子里
+const WATCH = { ex: 71, ey: 3.7, ez: -20, cx: 71, amp: 10.6, w: 0.5, r: 2.15, t: 0.6, bx: 71, exposure: 0, caught: 0,
+  wallZ: -0.9, wallH: 1.65, walls: [[60.6, 62.6], [66.4, 68.4], [72.4, 74.4], [78.4, 80.2]] };
+// 矮墙的影子投到玩法平面 z = 0 上的区间（点光源，所以会随位置略微偏移）
+const kShadow = -WATCH.wallZ / (WATCH.wallZ - WATCH.ez);
+WATCH.shadows = WATCH.walls.map(([a, b]) => [a + (a - WATCH.ex) * kShadow, b + (b - WATCH.ex) * kShadow]);
+const inShadow = x => WATCH.shadows.some(([a, b]) => x > a + 0.22 && x < b - 0.22);
+
+const CHECKPOINTS = [2, 40.2, 56.6, 85];
+const END_X = 121.5;
+
+// 镜头关键帧：[x, 距离, 目标高度偏移, 目标水平偏移]
+const CAMKEYS = [[-10, 14.5, 1.25, 0], [12, 15.5, 1.35, 0], [24, 18.5, 2.0, 1.5], [40, 18.5, 1.7, 0], [52, 19.5, 1.7, 1],
+  [58, 20.5, 2.0, 2], [83, 20.5, 2.0, 0], [87.5, 19, 1.8, -2.4], [90.4, 18, 1.7, -1.2], [93.5, 17, 1.6, 2.5], [104, 24, 2.6, 5], [118, 32, 4.6, 8.5], [130, 34, 5, 9]];
+function camKey(x) {
+  for (let i = 1; i < CAMKEYS.length; i++) {
+    const a = CAMKEYS[i - 1], b = CAMKEYS[i];
+    if (x <= b[0]) { const t = sstep(a[0], b[0], x); return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)]; }
+  }
+  return CAMKEYS[CAMKEYS.length - 1].slice(1);
+}
+
+// 玩家状态
+const P = { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, hw: 0.19, hh: 1.1, H: 1.24, coyote: 0, jumpBuf: 0,
+  mode: 'normal', modeT: 0, grab: 0, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false };
+
+function sideHit(nx, y) {      // 位置 (nx, y) 是否撞进某个方块的侧面
+  for (const s of SOLIDS) if (!s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
+  return null;
+}
+function floorY(x, y) {        // 脚下的支撑面高度（地形或方块顶面）
+  let f = groundY(x);
+  for (const s of SOLIDS) if (!s.off && x + 0.13 > s.x1 && x - 0.13 < s.x2 && s.y2 <= y + 0.28 && s.y1 <= f + 0.01) f = Math.max(f, s.y2);
+  return f;
+}
+
+// ============================================================
+//  布景板：用 2D 画布“画”出剪影，贴在不同深度的平面上，镜头移动时自然产生视差
+// ============================================================
+const FOG_IN = new THREE.Color(0x25343a), FOG_OUT = new THREE.Color(0xc9a47c);
+scene.background.copy(FOG_IN); scene.fog.color.copy(FOG_IN);
+
+// 世界范围 [x1,x2]×[y1,y2]，深度 z。draw(g) 里直接以“米”为单位、y 轴向上
+function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
+  let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
+  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k;
+  const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
+  if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
+  g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  draw(g);
+  const mat = new THREE.MeshBasicMaterial({ map: canvasTex(c), transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
+  if (o.additive) mat.blending = THREE.AdditiveBlending;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
+  m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z); m.renderOrder = o.order ?? Math.round(z * 4);
+  scene.add(m); return m;
+}
+
+// ---- 画笔小工具（坐标都是米，y 向上）----
+const box = (g, x, y, w, h) => g.fillRect(x, y, w, h);
+function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.closePath(); g.fill(); }
+function line(g, pts, lw) { g.lineWidth = lw; g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.stroke(); }
+function cable(g, x1, y1, x2, y2, sag, lw = 0.05) {      // 下垂的缆线
+  g.lineWidth = lw; g.beginPath(); g.moveTo(x1, y1); g.quadraticCurveTo((x1 + x2) / 2, (y1 + y2) / 2 - 2 * sag, x2, y2); g.stroke();
+}
+function truss(g, x1, x2, y, h, lw = 0.09) {             // 桁架梁：上下弦 + 斜撑
+  box(g, x1, y, x2 - x1, lw * 1.6); box(g, x1, y + h - lw * 1.6, x2 - x1, lw * 1.6);
+  const n = Math.max(2, Math.round((x2 - x1) / h)), pts = [];
+  for (let i = 0; i <= n; i++) pts.push([x1 + (x2 - x1) * i / n, y + (i % 2 ? h : 0)]);
+  line(g, pts, lw);
+}
+function ring(g, x, y, r, lw) { g.lineWidth = lw; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.stroke(); }
+function disc(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill(); }
+function fan(g, x, y, r) {                               // 大型排风扇
+  ring(g, x, y, r, r * 0.16); disc(g, x, y, r * 0.2);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * 6.2832 + 0.3; poly(g, [[x, y], [x + Math.cos(a) * r, y + Math.sin(a) * r], [x + Math.cos(a + 0.42) * r, y + Math.sin(a + 0.42) * r]]); }
+}
+function heap(g, x1, x2, y0, hMin, hMax, step = 0.5) {   // 高低不平的废料堆
+  const pts = [[x1, y0 - 4]];
+  for (let x = x1; x <= x2; x += step * rr(0.5, 1.5)) pts.push([x, y0 + rr(hMin, hMax)]);
+  pts.push([x2, y0 - 4]); poly(g, pts);
+}
+function setInk(g, col) { g.fillStyle = col; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round'; }
+
+// ---------------- 室内：废弃的巨型厂房 ----------------
+// 最远的后墙：一排高窗透进冷光
+backdrop(-90, 90, -2, 46, -32, 9, g => {
+  setInk(g, '#131b1e'); box(g, -90, -2, 180, 48);
+  for (let x = -84; x < 90; x += 8.5) {
+    const gr = g.createLinearGradient(0, 28, 0, 5); gr.addColorStop(0, '#93aab0'); gr.addColorStop(1, '#2b3a3f');
+    g.fillStyle = gr; box(g, x, 5, 1.7, 23);
+    setInk(g, '#131b1e'); for (let y = 8; y < 28; y += 3.2) box(g, x - 0.1, y, 1.9, 0.28);
+  }
+});
+// 高窗与天窗漏下来的光（叠加发光，不受雾影响）
+backdrop(-60, 92, -1, 26, -30, 7, g => {
+  for (let x = -84 + 8.5 * 3; x < 90; x += 8.5) {
+    const gr = g.createLinearGradient(0, 26, 0, 2); gr.addColorStop(0, 'rgba(150,185,192,.30)'); gr.addColorStop(1, 'rgba(150,185,192,0)');
+    g.fillStyle = gr; box(g, x - 1.4, 2, 4.5, 24);
+  }
+}, { additive: true, fog: false, blur: 6 });
+
+// 远景：一排高大的拱廊；探照灯机器站在中间那个大开口后面
+backdrop(-50, 92, -1, 26, -16, 20, g => {
+  setInk(g, '#0d1416');
+  g.beginPath(); g.rect(-50, -1, 142, 27);
+  const arch = (x1, x2, top) => { const r = (x2 - x1) / 2; g.moveTo(x1, -1); g.lineTo(x1, top - r); g.arc(x1 + r, top - r, r, Math.PI, 0, true); g.lineTo(x2, -1); g.closePath(); };
+  for (const x of [-46, -36, -26, -16, -6, 4, 14, 24, 34, 44]) arch(x, x + 7.2, 13);
+  g.moveTo(56.5, -1); g.lineTo(56.5, 11); g.lineTo(58.5, 13.5); g.lineTo(83.5, 13.5); g.lineTo(85.5, 11); g.lineTo(85.5, -1); g.closePath();
+  for (const x of [-11, 9, 29, 49]) { g.moveTo(x + 3.4, 19.5); g.arc(x + 0.6, 19.5, 2.8, 0, 6.2832); }   // 排风扇的圆洞
+  g.fill('evenodd');
+  for (const x of [-11, 9, 29, 49]) fan(g, x + 0.6, 19.5, 2.6);         // 洞里的扇叶
+  truss(g, 56.5, 85.5, 13.5, 1.4, 0.12);
+  for (const x of [61, 66.5, 75, 81]) cable(g, x, 13.6, x + rr(2, 4), 13.6, rr(1.5, 4), 0.07);
+});
+
+// 中景：机器残骸、龙门架、楼梯
+backdrop(-30, 92, -1, 20, -8, 26, g => {
+  setInk(g, '#0a1012');
+  // 熔炉 + 烟道
+  box(g, -1, 0, 7, 4.6); box(g, 0.2, 4.6, 1.5, 15.4); box(g, -1.4, 3.9, 7.8, 0.5); box(g, 3.2, 4.6, 2.2, 1.3);
+  for (const x of [0, 2, 4]) { g.clearRect(x + 0.35, 1.2, 1.1, 0.16); g.clearRect(x + 0.35, 1.6, 1.1, 0.16); }
+  // 储罐与箱堆
+  g.beginPath(); g.moveTo(13.5, 0); g.lineTo(13.5, 3.2); g.arc(15.4, 3.2, 1.9, Math.PI, 0, true); g.lineTo(17.3, 0); g.fill();
+  box(g, 14.9, 5.1, 0.35, 14.9); box(g, 18.2, 0, 1.9, 1.5); box(g, 18.5, 1.5, 1.4, 1.2); box(g, 20.4, 0, 1.3, 1.0);
+  // 龙门吊：两条腿 + 横梁 + 小车 + 吊钩
+  box(g, 26.2, 0, 0.55, 8.6); box(g, 35.6, 0, 0.55, 8.6); truss(g, 25, 37.6, 8.4, 1.1, 0.1);
+  box(g, 29.4, 7.7, 1.8, 0.75); line(g, [[30.3, 7.7], [30.3, 4.3]], 0.06); ring(g, 30.3, 3.9, 0.36, 0.13); g.clearRect(30.25, 3.9, 0.6, 0.5);
+  // 夹层的支架和栏杆（对应前景那段高台）
+  for (const x of [39, 43, 47, 51]) box(g, x, 0, 0.4, 5.2);
+  box(g, 38.4, 5.0, 13.8, 0.35); line(g, [[38.4, 6.3], [52.2, 6.3]], 0.07);
+  for (let x = 38.5; x <= 52.2; x += 1.25) line(g, [[x, 5.3], [x, 6.3]], 0.05);
+  // 探照灯场地：只放低矮的杂物，别挡住机器
+  heap(g, 57, 86, 0, 0.1, 0.7, 0.8); box(g, 63.2, 0, 1.6, 1.1); box(g, 77, 0, 2.2, 0.9);
+  // 大门旁边的配电柜和管束
+  box(g, 86.2, 0, 2.6, 5.4); for (const x of [86.6, 87.3, 88]) box(g, x, 5.4, 0.3, 14.6);
+  // 天花板垂下的链条和缆线
+  for (const [x, y] of [[8, 9.2], [10.6, 6.4], [22.5, 7.8], [41, 10.5], [54.5, 8.4]]) { line(g, [[x, 20], [x, y]], 0.05); ring(g, x, y - 0.3, 0.3, 0.1); }
+  for (let x = -28; x < 56; x += rr(7, 12)) cable(g, x, 20, x + rr(5, 9), 20, rr(2, 6), 0.06);
+});
+
+// 近景：一排工字钢立柱 + 吊车梁 + 管道（场地那段不放柱子）
+backdrop(-25, 92, -1, 15, -3.2, 34, g => {
+  const col = (x, w = 0.85) => {
+    const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0); gr.addColorStop(0, '#070b0d'); gr.addColorStop(0.75, '#0b1215'); gr.addColorStop(1, '#172226');
+    g.fillStyle = gr; box(g, x - w / 2, -1, w, 16);
+    setInk(g, '#070b0d'); box(g, x - w * 0.9, -1, w * 1.8, 1.45); box(g, x - w * 0.8, 6.3, w * 1.6, 0.4);
+    poly(g, [[x + w / 2, 5.2], [x + w * 1.5, 6.3], [x + w / 2, 6.3]]); poly(g, [[x - w / 2, 5.2], [x - w * 1.5, 6.3], [x - w / 2, 6.3]]);
+  };
+  setInk(g, '#070b0d');
+  truss(g, -25, 55, 6.7, 0.9, 0.08); box(g, 11.6, 5.55, 32, 0.2); box(g, 11.6, 5.15, 32, 0.14);
+  for (const x of [-4, 11.6, 27, 43.5, 54.5, 87.3]) col(x);
+  setInk(g, '#070b0d');
+  for (const [x, y] of [[3, 5.9], [18.5, 5.4], [33, 5.9]]) { line(g, [[x, 6.7], [x, y]], 0.04); box(g, x - 0.28, y - 0.22, 0.56, 0.22); }   // 吊灯
+  cable(g, 16, 6.7, 24, 6.7, 1.3); cable(g, 45, 6.7, 53.5, 6.7, 1.8); cable(g, -2, 6.7, 9, 6.7, 0.9);
+});
+
+// ---------------- 室外：黄昏的废土 ----------------
+// 天空：上冷下暖的渐变 + 几道薄云 + 低垂的太阳
+backdrop(-300, 700, -60, 260, -430, 1.6, g => {
+  const gr = g.createLinearGradient(0, 260, 0, -60);
+  [[0, '#2d3d46'], [0.36, '#5d7074'], [0.58, '#a99a82'], [0.72, '#e2b680'], [0.8, '#f1c88b'], [0.9, '#c79a6e'], [1, '#a37d5c']].forEach(([p, c]) => gr.addColorStop(p, c));
+  g.fillStyle = gr; box(g, -300, -60, 1000, 320);
+  const sun = g.createRadialGradient(292, 16, 0, 292, 16, 190);
+  sun.addColorStop(0, 'rgba(255,240,205,.95)'); sun.addColorStop(0.07, 'rgba(255,226,170,.75)'); sun.addColorStop(0.3, 'rgba(255,205,140,.28)'); sun.addColorStop(1, 'rgba(255,200,140,0)');
+  g.fillStyle = sun; box(g, 60, -60, 500, 320);
+  for (let i = 0; i < 26; i++) {                         // 薄云
+    const x = rr(-250, 650), y = rr(30, 150), w = rr(60, 190), h = rr(1.5, 5);
+    const c = g.createLinearGradient(x, 0, x + w, 0); const a = rr(0.05, 0.16);
+    c.addColorStop(0, 'rgba(255,225,190,0)'); c.addColorStop(0.5, `rgba(255,225,190,${a})`); c.addColorStop(1, 'rgba(255,225,190,0)');
+    g.fillStyle = c; g.beginPath(); g.ellipse(x + w / 2, y, w / 2, h, 0, 0, 6.2832); g.fill();
+  }
+}, { fog: false, order: -4000 });
+
+// 地平线上的巨像：一台跪坐着停机的巨型机器人，只剩一只眼睛还亮着
+backdrop(150, 300, -6, 76, -240, 7, g => {
+  const gr = g.createLinearGradient(0, 0, 0, 112); gr.addColorStop(0, '#b69a7c'); gr.addColorStop(0.3, '#93826f'); gr.addColorStop(1, '#5d6264');
+  setInk(g, gr);
+  const X = 232; g.translate(213, 0); g.scale(0.5, 0.5); g.translate(-X, 0);
+  poly(g, [[X - 46, -6], [X - 44, 14], [X - 30, 30], [X - 6, 34], [X + 14, 26], [X + 30, 10], [X + 34, -6]]);          // 盘坐的腿和基座
+  poly(g, [[X - 24, 28], [X - 30, 62], [X - 22, 82], [X + 2, 88], [X + 20, 78], [X + 22, 50], [X + 14, 28]]);          // 前倾的躯干
+  poly(g, [[X - 30, 78], [X - 44, 72], [X - 52, 44], [X - 50, 12], [X - 42, 10], [X - 38, 42], [X - 26, 60]]);         // 垂下的左臂
+  poly(g, [[X + 18, 78], [X + 36, 66], [X + 50, 40], [X + 62, 4], [X + 70, -6], [X + 52, -6], [X + 42, 34], [X + 22, 56]]); // 撑地的右臂
+  poly(g, [[X - 4, 86], [X - 2, 96], [X + 8, 104], [X + 24, 104], [X + 30, 92], [X + 26, 82], [X + 12, 80]]);          // 低垂的头
+  line(g, [[X + 4, 102], [X - 6, 118]], 0.9); line(g, [[X + 16, 104], [X + 18, 114]], 0.6);                            // 天线
+  for (const [x1, y1, x2, y2] of [[X - 20, 84, X - 60, -6], [X + 14, 84, X + 84, -6], [X - 46, 60, X - 76, -6]]) cable(g, x1, y1, x2, y2, 9, 0.35);
+}, { fog: false, order: -3000 });
+
+// 远处的天际线：断塔、烟囱、歪斜的吊臂
+backdrop(-40, 470, -6, 70, -150, 8, g => {
+  const gr = g.createLinearGradient(0, 0, 0, 46); gr.addColorStop(0, '#b4987a'); gr.addColorStop(1, '#5e5b58');
+  setInk(g, gr);
+  heap(g, -40, 470, 0, 0.5, 4, 9);
+  for (let x = -30; x < 460; x += rr(9, 26)) {
+    const w = rr(4, 13), h = rr(8, 44) * (x > 170 && x < 300 ? 0.45 : 1), t = rnd();
+    if (t < 0.4) { poly(g, [[x, -6], [x, h * rr(0.7, 0.95)], [x + w * rr(0.3, 0.6), h], [x + w, h * rr(0.5, 0.85)], [x + w, -6]]); }                // 断塔
+    else if (t < 0.6) { poly(g, [[x, -6], [x + w * 0.22, h * 1.1], [x + w * 0.5, h * 1.1], [x + w * 0.72, -6]]); }                                // 冷却塔 / 烟囱
+    else if (t < 0.8) { box(g, x, -6, 1.3, h + 6); line(g, [[x + 0.6, h], [x + rr(9, 18), h * rr(0.55, 0.85)]], 0.8); truss(g, x - 3, x + 4, h * 0.6, 1.6, 0.4); }   // 吊塔
+    else { for (let i = 0; i < 4; i++) box(g, x + i * 2.8, -6, 1.1, h * rr(0.3, 0.8) + 6); box(g, x - 1, h * 0.28, 12, 1.1); }                    // 管廊
+  }
+}, { fog: false, order: -2000 });
+
+// 中景：高压线塔、倒下的步行机械、支架上的管道
+backdrop(84, 300, -4, 36, -52, 18, g => {
+  setInk(g, '#1e1d1f');
+  { const pts = [[84, -4]]; for (let x = 84; x <= 300; x += rr(1.5, 4.5)) pts.push([x, groundY(x) + rr(0.3, 1.6)]); pts.push([300, -4]); poly(g, pts); }
+  const pylon = (x, h, lean) => {
+    const t = [x + lean * h, h];
+    line(g, [[x - 1.7, -1], t, [x + 1.7, -1]], 0.22);
+    for (let k = 0.2; k < 1; k += 0.2) line(g, [[lerp(x - 1.7, t[0], k), lerp(-1, h, k)], [lerp(x + 1.7, t[0], k + 0.1), lerp(-1, h, k + 0.1)], [lerp(x - 1.7, t[0], k + 0.2), lerp(-1, h, k + 0.2)]], 0.12);
+    for (const f of [0.72, 0.9]) line(g, [[t[0] - 3.4 * f, h * f], [t[0] + 3.4 * f, h * f]], 0.2);
+    return t;
+  };
+  const tops = [[100, 21, 0.02], [134, 24, -0.06], [171, 19, 0.16], [215, 23, 0.0], [262, 22, -0.03]].map(a => pylon(...a));
+  for (let i = 1; i < tops.length; i++) for (const d of [-3, 3]) cable(g, tops[i - 1][0] + d, tops[i - 1][1] * 0.9, tops[i][0] + d, tops[i][1] * 0.9, 5 + i, 0.07);
+  // 倒下的步行机械：一条拱起的腿和半埋的机身
+  g.translate(0, 2.8);
+  g.lineWidth = 1.5; g.beginPath(); g.moveTo(146, -1); g.quadraticCurveTo(150, 15, 160, 9); g.stroke();
+  line(g, [[160, 9], [168, -1]], 1.1); disc(g, 160, 9, 1.5);
+  poly(g, [[150, -1], [152, 5], [163, 6.5], [176, 3], [181, -1]]);
+  // 支架上的管道
+  box(g, 186, 5.2, 62, 1.1); box(g, 186, 3.6, 62, 0.6);
+  for (let x = 188; x < 248; x += 7.5) { box(g, x, -1, 0.5, 6.4); line(g, [[x - 1.6, -1], [x + 0.25, 4]], 0.2); }
+});
+
+// 近景：歪斜的杆子、铁丝网、矮废料堆
+backdrop(88, 170, -3, 14, -11, 30, g => {
+  setInk(g, '#151516');
+  { const pts = [[88, -3]]; for (let x = 88; x <= 170; x += rr(0.6, 1.6)) pts.push([x, groundY(x) + rr(-0.2, 0.32)]); pts.push([170, -3]); poly(g, pts); }
+  const base = x => groundY(x) - 0.3;
+  for (const [x, h, lean] of [[97, 5.5, 0.12], [103.5, 4.2, -0.2], [112.4, 6.4, 0.05], [125, 5.2, -0.1], [133, 7, 0.08], [146, 5, 0.2]]) {
+    line(g, [[x, base(x)], [x + lean * h, base(x) + h]], 0.2);
+    line(g, [[x + lean * h - 0.8, base(x) + h * 0.86], [x + lean * h + 0.8, base(x) + h * 0.9]], 0.12);
+  }
+  for (let x = 105; x < 121; x += 2.2) line(g, [[x, base(x)], [x + 0.15, base(x) + 1.7]], 0.09);        // 铁丝网的桩
+  for (const h of [0.7, 1.15, 1.55]) cable(g, 105, base(105) + h, 121, base(121) + h, 0.25, 0.035);
+  poly(g, [[127, base(127)], [128.5, base(127) + 2.3], [131.2, base(127) + 2.9], [134.6, base(127) + 1.2], [136, base(127)]]);   // 半埋的机壳
+});
+
+// 前景：离镜头最近的一层，全黑、略微虚焦。只占画面最下沿和最上沿，不挡住主角
+backdrop(-22, 150, -3, 10, 6, 22, g => {
+  setInk(g, '#040607');
+  const top = [[-22, -5]];
+  for (let x = -22; x <= 150; x += rr(0.4, 1.3)) {
+    const out = x > 91, h = out ? groundY(Math.max(x, 91) * 0.985 + 1) * 0.72 + rr(0.25, 0.6) : rr(0.1, 0.62);
+    top.push([x, h]);
+    if (rnd() < (out ? 0.5 : 0.1)) { top.push([x + 0.05, h + rr(0.25, out ? 0.7 : 1.3)], [x + 0.12, h]); }        // 草叶 / 钢筋
+  }
+  top.push([150, -5]); poly(g, top);
+  for (const [x, w] of [[7.2, 0.34], [52.4, 0.5]]) box(g, x, -3, w, 13);                       // 两根近处的柱子：经过时扫过画面
+  for (let x = -20; x < 88; x += rr(9, 17)) cable(g, x, 10, x + rr(6, 12), 10, rr(1.6, 2.5), 0.09);  // 顶上垂下的缆线
+}, { fog: false, blur: 2.2, order: 4000 });
+
+// ============================================================
+//  3D 道具：地面、障碍、推车、矮墙、拉杆、大门（都受光照、有影子）
+// ============================================================
+const MAT = {
+  concrete: lam(0x2a3336), dark: lam(0x12181a), rust: lam(0x6a4634), rust2: lam(0x4a3a31), steel: lam(0x39444a),
+  sheet: lam(0x40372f), edge: lam(0x4a585e), black: new THREE.MeshBasicMaterial({ color: 0x030506, fog: false, side: THREE.DoubleSide }),
+};
+const bx = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const cy = (rt, rb, h, seg = 16) => new THREE.CylinderGeometry(rt, rb, h, seg);
+
+{ // 地面：把地形折线沿 z 方向拉成一条很宽的带子。室内是深色水泥，室外是土色
+  const pos = [], col = [], cIn = new THREE.Color(0x1c2529), cOut = new THREE.Color(0x574839), Z0 = -450, Z1 = 14;
+  for (let i = 1; i < TERRAIN.length; i++) {
+    const [ax, ay] = TERRAIN[i - 1], [bxx, by] = TERRAIN[i], c = (ax + bxx) / 2 < 92.1 ? cIn : cOut;
+    pos.push(ax, ay, Z1, bxx, by, Z1, bxx, by, Z0, ax, ay, Z1, bxx, by, Z0, ax, ay, Z0);
+    for (let k = 0; k < 6; k++) col.push(c.r, c.g, c.b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); m.receiveShadow = true; scene.add(m);
+  // 地面的伸缩缝：一道道伸向远处的细线，增强纵深感
+  for (let x = -18; x < 88; x += 5.5) if (x < 46 || x > 58) add(scene, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
+  for (const z of [3.2, -4.5]) add(scene, bx(110, 0.012, 0.07), MAT.dark, 33, 0.004, z, false);
+}
+
+// 倒在地上的工字钢、水泥台、高台
+add(scene, bx(1.3, 0.45, 2.7), MAT.rust, 9.65, 0.225, -0.15).rotation.y = 0.07;
+add(scene, bx(1.36, 0.07, 2.76), MAT.rust2, 9.65, 0.45, -0.15).rotation.y = 0.07;
+add(scene, bx(4, 0.9, 4.4), MAT.concrete, 17, 0.45, -0.7);
+add(scene, bx(4.04, 0.06, 0.1), MAT.edge, 17, 0.9, 1.48, false);
+add(scene, bx(1.7, 0.55, 1.5), MAT.concrete, 20.3, 0.27, -2.2).rotation.y = 0.5;
+for (const [x, h] of [[15.5, 0.5], [16.1, 0.8], [18.6, 0.6]]) add(scene, cy(0.02, 0.02, h, 5), MAT.rust, x, 0.9 + h / 2, -2.6).rotation.z = rr(-0.3, 0.3);   // 露出的钢筋
+add(scene, bx(10, 3, 8.6), MAT.concrete, 43, 1.5, -2.05);
+add(scene, bx(10.04, 0.08, 0.12), MAT.edge, 43, 3.0, 2.22, false);
+for (let x = 38.6; x < 48; x += 2.35) add(scene, bx(0.5, 2.5, 0.14), MAT.dark, x + 0.5, 1.35, 2.26, false);       // 高台正面的凹槽
+for (let x = 38.3; x <= 57.2; x += 1.6) add(scene, cy(0.03, 0.03, 1.05, 6), MAT.dark, x, groundY(Math.max(x, 48.05)) + 0.52, -3.4);   // 栏杆
+{ const pts = []; for (let x = 38.3; x <= 57.2; x += 1.6) pts.push(V3(x, groundY(Math.max(x, 48.05)) + 1.05, -3.4));
+  add(scene, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05), 60, 0.03, 5), MAT.dark); }
+
+// 轨道 + 推车
+for (const z of [-0.42, 0.42]) add(scene, bx(16.6, 0.07, 0.07), MAT.steel, 30.3, 0.035, z, false).receiveShadow = true;
+for (let x = 22.4; x < 38.6; x += 0.8) add(scene, bx(0.16, 0.03, 1.25), MAT.dark, x, 0.016, 0, false).receiveShadow = true;
+const cartG = grp(scene, cart.x, 0, 0), wheels = [];
+add(cartG, bx(cart.w, 0.56, 1.15), MAT.rust, 0, 0.67, 0);
+add(cartG, bx(cart.w + 0.06, 0.07, 1.21), MAT.rust2, 0, 0.92, 0);
+add(cartG, bx(cart.w + 0.04, 0.1, 1.19), MAT.dark, 0, 0.42, 0);
+add(cartG, bx(0.5, 0.3, 1.17), lam(0x8a7a5c), 0.2, 0.68, 0);                     // 褪色的黄色标记
+for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+  const w = add(cartG, cy(0.19, 0.19, 0.1, 14), MAT.dark, sx * 0.48, 0.19, sz * 0.5); w.rotation.x = Math.PI / 2; wheels.push(w);
+  add(w, bx(0.3, 0.12, 0.04), MAT.steel, 0, 0, 0, false);
+}
+
+// 探照灯场地上的矮墙：一块块生锈的铁皮
+for (const [a, b] of WATCH.walls) {
+  add(scene, bx(b - a, WATCH.wallH, 0.14), MAT.sheet, (a + b) / 2, WATCH.wallH / 2, WATCH.wallZ);
+  add(scene, bx(b - a + 0.1, 0.08, 0.2), MAT.rust2, (a + b) / 2, WATCH.wallH, WATCH.wallZ);
+  for (const x of [a + 0.08, (a + b) / 2, b - 0.08]) add(scene, bx(0.12, WATCH.wallH + 0.25, 0.12), MAT.dark, x, WATCH.wallH / 2 + 0.1, WATCH.wallZ - 0.12);
+}
+
+// 拉杆 + 指示灯
+add(scene, bx(0.5, 0.95, 0.42), MAT.steel, LEVER.x, 0.47, -0.8);
+const leverArm = grp(scene, LEVER.x, 0.86, -0.55); leverArm.rotation.z = 0.7;
+add(leverArm, cy(0.03, 0.03, 0.62, 8), MAT.dark, 0, 0.31, 0);
+add(leverArm, new THREE.SphereGeometry(0.075, 12, 8), lam(0xb0452e), 0, 0.64, 0);
+const leverLampMat = new THREE.MeshBasicMaterial({ color: 0xff4a2a });
+add(scene, new THREE.SphereGeometry(0.07, 10, 8), leverLampMat, LEVER.x, 1.05, -0.62, false);
+const leverLight = new THREE.PointLight(0xff4a2a, 2.2, 5, 2); leverLight.position.set(LEVER.x, 1.2, 0.1); scene.add(leverLight);
+
+// 厂房尽头的墙和大门。靠镜头这一侧是一整面黑墙：镜头穿过它时正好切换室内 / 室外的光线
+add(scene, bx(1.4, 48, 30.7), MAT.concrete, 90, 23, -16.65);
+add(scene, bx(1.4, 44.4, 2.6), MAT.concrete, 90, 3.6 + 22.2, 0);
+add(scene, bx(1.4, 70, 40), MAT.black, 91.4, 30, 21.3, false);
+for (const z of [-1.32, 1.32]) add(scene, bx(1.6, 3.7, 0.22), MAT.steel, 90, 1.85, z);
+const doorMesh = add(scene, bx(0.5, 3.6, 2.44), MAT.rust2, 90, 1.8, 0);
+for (const y of [-1.2, 0, 1.2]) add(doorMesh, bx(0.56, 0.16, 2.46), MAT.rust, 0, y, 0, false);
+// 门外的天光：门升起来以后，门洞里是一片过曝的暖光
+const doorGlowMat = new THREE.MeshBasicMaterial({ color: 0xffdcaa, transparent: true, opacity: 0, fog: false, depthWrite: false });
+add(scene, new THREE.PlaneGeometry(2.44, 3.6), doorGlowMat, 90.62, 1.8, 0, false).rotation.y = -Math.PI / 2;
+const doorLight = new THREE.PointLight(0xffc98a, 0, 18, 1.3); doorLight.position.set(89.0, 1.5, 0.5); scene.add(doorLight);
+
+// ============================================================
+//  探照灯机器 / 灯光 / 尘埃 / 室内外切换
+// ============================================================
+function glowTex(stops) {
+  const [c, g] = mkCanvas(128, 128), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  stops.forEach(([p, col]) => gr.addColorStop(p, col)); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  return canvasTex(c);
+}
+const GLOW = glowTex([[0, 'rgba(255,255,255,1)'], [0.22, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
+function glow(parent, color, size, opacity, x = 0, y = 0, z = 0) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  s.scale.setScalar(size); s.position.set(x, y, z); s.renderOrder = 50; parent.add(s); return s;
+}
+
+glow(scene, 0xffb24a, 10, 0.95, 224, 46.4, -239).renderOrder = -2990;      // 巨像还亮着的那只眼睛
+
+// ---- 探照灯机器：三条长腿撑着一个会转动的“头”----
+const watcher = grp(scene, WATCH.ex, 0, WATCH.ez);
+for (const [x, z] of [[-2.8, -1.6], [2.8, -1.6], [0, 2.4]]) {
+  const a = V3(x, 0, z), b = V3(x * 0.12, 3.1, z * 0.12), leg = add(watcher, cy(0.09, 0.14, a.distanceTo(b), 8), MAT.dark);
+  leg.position.copy(a).add(b).multiplyScalar(0.5); leg.quaternion.setFromUnitVectors(V3(0, 1, 0), b.clone().sub(a).normalize());
+}
+add(watcher, cy(0.5, 0.62, 0.5, 12), MAT.dark, 0, 3.1, 0);
+add(watcher, cy(0.05, 0.05, 4.2, 6), MAT.dark, -0.5, 5.6, -0.4);
+const wHead = grp(watcher, 0, WATCH.ey, 0);
+add(wHead, bx(1.25, 0.85, 1.5), MAT.dark, 0, 0, -0.1);
+add(wHead, cy(0.36, 0.42, 0.4, 16), MAT.steel, 0, 0, 0.72).rotation.x = Math.PI / 2;
+const eyeMat = new THREE.MeshBasicMaterial({ color: 0xeaf4f6, fog: false });
+add(wHead, new THREE.CircleGeometry(0.3, 20), eyeMat, 0, 0, 0.93, false);
+const eyeGlow = glow(wHead, 0xdfeef2, 5.5, 0.85, 0, 0, 1.0);
+
+const beam = new THREE.SpotLight(0xe2eef2, 30, 80, 0.118, 0.4, 0);
+beam.position.set(WATCH.ex, WATCH.ey, WATCH.ez + 0.95); beam.castShadow = true;
+beam.shadow.mapSize.set(1024, 1024); beam.shadow.camera.near = 6; beam.shadow.camera.far = 40; beam.shadow.bias = -0.0015;
+scene.add(beam, beam.target);
+// 看得见的光柱：两层半透明的圆锥叠在一起
+const beamCones = [];
+{ const [c, g] = mkCanvas(8, 128), gr = g.createLinearGradient(0, 0, 0, 128);
+  gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#5a5a5a'); gr.addColorStop(1, '#161616'); g.fillStyle = gr; g.fillRect(0, 0, 8, 128);
+  const map = canvasTex(c), len = 26;
+  for (const [k, op] of [[1, 0.075], [0.55, 0.09]]) {
+    const geo = new THREE.ConeGeometry(Math.tan(0.118) * len * k, len, 28, 1, true); geo.translate(0, -len / 2, 0); geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, color: 0xd8ecf2, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    m.position.copy(beam.position); m.renderOrder = 60; scene.add(m); beamCones.push(m);
+  }
+}
+const C_CALM = new THREE.Color(0xe2eef2), C_ALERT = new THREE.Color(0xff5030);
+function aimWatcher(tx, ty, alert) {
+  beam.target.position.set(tx, ty, 0);
+  const len = Math.hypot(tx - beam.position.x, ty - beam.position.y, beam.position.z) + 1.2;
+  for (const c of beamCones) { c.lookAt(tx, ty, 0); c.scale.setScalar(len / 26); c.material.color.lerpColors(C_CALM, C_ALERT, alert); }
+  wHead.lookAt(tx, ty, 0);
+  beam.color.lerpColors(C_CALM, C_ALERT, alert); eyeMat.color.copy(beam.color); eyeGlow.material.color.copy(beam.color);
+}
+
+// ---- 灯光 ----
+const hemi = new THREE.HemisphereLight(0x9fb6bd, 0x1c2224, 0.6); scene.add(hemi);
+const key = new THREE.DirectionalLight(0xd4e6ec, 0.85); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
+Object.assign(key.shadow.camera, { left: -17, right: 17, top: 13, bottom: -9, near: 1, far: 110 });
+scene.add(key, key.target);
+const rim = new THREE.DirectionalLight(0xa9cdd8, 0.7); rim.position.set(-6, 5, -10); scene.add(rim, rim.target);
+const KEY_IN = V3(0.22, 1, 0.32).normalize(), KEY_OUT = V3(0.74, 0.34, -0.5).normalize(), keyDir = KEY_IN.clone();
+
+// 天窗漏下来的几束冷光（打在地上是一圈亮斑），和推车上方一盏暖色的吊灯
+const pools = [[3.5, 10, 0.3], [30.5, 11, 0.3], [44.5, 12, 3.2], [18.5, 10, 0.9]].map(([x, y, ty]) => {
+  const s = new THREE.SpotLight(0xcfe6ee, 3.1, 40, 0.3, 0.95, 0); s.position.set(x + 1.6, y, 2.5); s.target.position.set(x, ty, -0.4);
+  scene.add(s, s.target); return s;
+});
+const bulb = new THREE.PointLight(0xffb463, 9, 11, 1.6); bulb.position.set(33, 5.0, -1.6); scene.add(bulb);
+const bulbGlow = glow(scene, 0xffbe72, 2.6, 0.9, 33, 5.62, -3.15);
+// 光束本身：几块斜着的发光薄片
+backdrop(-6, 52, -0.5, 16, -2.2, 12, g => {
+  for (const [x, w, a] of [[3.5, 3.4, 0.2], [30.5, 3.8, 0.17], [44.5, 3.4, 0.15], [18.5, 2.6, 0.1]]) {
+    const gr = g.createLinearGradient(0, 16, 0, 0); gr.addColorStop(0, `rgba(190,222,230,${a})`); gr.addColorStop(0.75, `rgba(190,222,230,${a * 0.55})`); gr.addColorStop(1, 'rgba(190,222,230,0)');
+    g.fillStyle = gr; poly(g, [[x + 2.4, 16], [x + 3.3, 16], [x + w / 2 + 0.2, 0], [x - w / 2, 0]]);
+  }
+}, { additive: true, fog: false, blur: 9, order: 40 });
+
+// ---- 空气里的尘埃 ----
+const DUST_N = 520, dustPos = new Float32Array(DUST_N * 3), dustVel = [];
+for (let i = 0; i < DUST_N; i++) {
+  dustPos.set([rr(-24, 24), rr(-0.5, 11), rr(-10, 7)], i * 3);
+  dustVel.push([rr(-0.12, 0.12), rr(-0.07, 0.03), rr(0.4, 1.6)]);        // [vx, vy, 相位]
+}
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({ map: GLOW, color: 0xcfe2e6, size: 0.085, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+const dust = new THREE.Points(dustGeo, dustMat); dust.frustumCulled = false; dust.renderOrder = 45; scene.add(dust);
+function updateDust(dt, t, camX, wind) {
+  for (let i = 0; i < DUST_N; i++) {
+    const v = dustVel[i], j = i * 3;
+    let x = dustPos[j] + (v[0] + wind) * dt + Math.sin(t * v[2] + i) * 0.0016, y = dustPos[j + 1] + v[1] * dt;
+    if (x < camX - 24) x += 48; else if (x > camX + 24) x -= 48;
+    if (y < -0.5) y = 11; else if (y > 11) y = -0.5;
+    dustPos[j] = x; dustPos[j + 1] = y;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+}
+
+// ---- 室内 ↔ 室外：镜头穿过那面黑墙的瞬间切换 ----
+const HEMI_IN = [new THREE.Color(0x9fb6bd), new THREE.Color(0x1c2224)], HEMI_OUT = [new THREE.Color(0xffe6c4), new THREE.Color(0x4a4038)];
+const KEYC_IN = new THREE.Color(0xd4e6ec), KEYC_OUT = new THREE.Color(0xffc48a), DUST_IN = new THREE.Color(0xcfe2e6), DUST_OUT = new THREE.Color(0xffe2b8);
+let zoneExt = -1;
+function applyZone(e) {
+  if (Math.abs(e - zoneExt) < 1e-3) return; zoneExt = e;
+  scene.fog.color.lerpColors(FOG_IN, FOG_OUT, e); scene.background.copy(scene.fog.color);
+  scene.fog.density = lerp(0.026, 0.0052, e);
+  hemi.color.lerpColors(HEMI_IN[0], HEMI_OUT[0], e); hemi.groundColor.lerpColors(HEMI_IN[1], HEMI_OUT[1], e); hemi.intensity = lerp(0.6, 0.95, e);
+  key.color.lerpColors(KEYC_IN, KEYC_OUT, e); key.intensity = lerp(0.85, 2.3, e); keyDir.lerpVectors(KEY_IN, KEY_OUT, e).normalize();
+  rim.intensity = lerp(0.7, 0.25, e);
+  dustMat.color.lerpColors(DUST_IN, DUST_OUT, e); dustMat.opacity = lerp(0.5, 0.38, e);
+  for (const s of pools) s.visible = e < 0.5;
+  bulb.visible = bulbGlow.visible = beam.visible = e < 0.5; for (const c of beamCones) c.visible = e < 0.5;
+}
+
+// ============================================================
+//  主角：面数很少、没有五官，靠轮廓和一块颜色认人。三套外形共用同一副骨架
+//  角色的局部坐标：面朝 +x，y 向上；所有关节只在侧视平面内转动
+// ============================================================
+const SKINS = {
+  R: { H: 1.24, robot: true },
+  A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
+  B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
+  C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
+};
+const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
+
+function buildBody(kind) {
+  if (kind === 'R') return buildSimpleRobot();
+  const S = SKINS[kind], u = S.H;
+  const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
+  const M = { skin: self(S.skin), hair: lam(S.hair), top: self(S.top), leg: self(S.leg), shoe: lam(S.shoe), metal: lam(0x2a2e33) };
+  const D = { thigh: 0.235 * u, shin: 0.235 * u, uarm: 0.158 * u, farm: 0.158 * u, ankle: 0.04 * u, hipY: 0.518 * u, hipZ: 0.058 * u, shY: 0.275 * u, shZ: 0.112 * u };
+  const root = new THREE.Group(), pelvis = grp(root, 0, D.hipY, 0), spine = grp(pelvis), chest = grp(spine, 0, D.shY, 0), head = grp(chest, 0, 0.03 * u, 0);
+  // 一节肢体：关节处一个小球 + 一段上粗下细的圆柱，从关节向下伸出 len
+  const seg = (parent, len, r1, r2, mat) => { add(parent, sph(r1, 10, 8), mat); return add(parent, cy(r1, r2, len, 10), mat, 0, -len / 2, 0); };
+
+  // 躯干、骨盆、脖子、头
+  const torso = add(spine, new THREE.CapsuleGeometry(0.082 * u, 0.17 * u, 5, 14), M.top, 0, 0.142 * u, 0); torso.scale.set(0.8, 1, 1.2);
+  add(pelvis, sph(0.086 * u), M.leg, 0, 0.005 * u, 0).scale.set(0.86, 0.72, 1.14);
+  add(chest, cy(0.027 * u, 0.03 * u, 0.06 * u, 8), M.skin, 0, 0.02 * u, 0);
+  const skull = add(head, sph(0.108 * u, 20, 14), M.skin, 0.004 * u, 0.105 * u, 0); skull.scale.set(1, 1.08, 0.94);
+  const hc = [0.004 * u, 0.105 * u, 0];                                  // 头的中心
+  const cap = (r, theta, tilt) => { const m = add(head, new THREE.SphereGeometry(r, 20, 12, 0, 6.2832, 0, theta), M.hair, ...hc); m.rotation.z = tilt; m.scale.set(1.02, 1.08, 0.98); return m; };
+  let tail = null;
+  if (kind === 'A') {            // 齐下巴的波波头
+    cap(0.119 * u, Math.PI * 0.61, 1.22);
+    add(head, sph(0.09 * u), M.hair, -0.04 * u, 0.065 * u, 0).scale.set(0.9, 1.05, 1.22);
+  } else if (kind === 'B') {     // 乱糟糟的短发
+    cap(0.117 * u, Math.PI * 0.56, 1.1);
+    for (const [x, y, z, r] of [[0.05, 0.215, 0.02, 0.04], [0.0, 0.232, -0.03, 0.045], [-0.05, 0.222, 0.03, 0.045], [-0.09, 0.185, -0.02, 0.04], [0.075, 0.185, -0.03, 0.032], [-0.1, 0.13, 0.03, 0.035]])
+      add(head, sph(r * u, 8, 6), M.hair, x * u, y * u, z * u);
+  } else {                       // 马尾：发根一个小结，后面一条会甩动的辫子
+    cap(0.117 * u, Math.PI * 0.58, 1.15);
+    add(head, sph(0.034 * u, 8, 6), M.hair, -0.1 * u, 0.15 * u, 0);
+    tail = grp(head, -0.112 * u, 0.15 * u, 0);
+    add(tail, cy(0.034 * u, 0.022 * u, 0.13 * u, 8), M.hair, 0, -0.065 * u, 0);
+    const t2 = grp(tail, 0, -0.13 * u, 0); add(t2, sph(0.022 * u, 8, 6), M.hair); add(t2, cy(0.022 * u, 0.006 * u, 0.13 * u, 8), M.hair, 0, -0.065 * u, 0);
+    tail.userData.t2 = t2;
+  }
+
+  // 衣服上的大色块
+  if (S.coat) {                  // 大了好几号的外套：下摆散开，背后一个兜帽
+    const c = add(spine, cy(0.09 * u, 0.138 * u, 0.36 * u, 16), M.top, 0, 0.118 * u, 0); c.scale.set(0.84, 1, 1.1);
+    add(spine, sph(0.09 * u), M.top, 0, 0.298 * u, 0).scale.set(0.84, 0.45, 1.1);
+    add(spine, sph(0.078 * u), M.top, -0.07 * u, 0.292 * u, 0).scale.set(0.85, 0.95, 1.2);
+  }
+  if (S.bib) {                   // 背带裤：腰以上一圈 + 前后两块 + 两条背带
+    add(spine, cy(0.087 * u, 0.088 * u, 0.15 * u, 16), M.leg, 0, 0.072 * u, 0).scale.set(0.82, 1, 1.22);
+    add(spine, bx(0.014 * u, 0.1 * u, 0.115 * u), M.leg, 0.064 * u, 0.185 * u, 0);
+    add(spine, bx(0.014 * u, 0.07 * u, 0.115 * u), M.leg, -0.064 * u, 0.17 * u, 0);
+    for (const z of [-0.048, 0.048]) add(spine, new THREE.TorusGeometry(0.068 * u, 0.008 * u, 5, 14, Math.PI), M.leg, 0, 0.225 * u, z * u);
+  }
+
+  // 手臂（i = 0 是角色的右侧，朝右走时靠近镜头）
+  const arms = [0, 1].map(i => {
+    const z = i ? -D.shZ : D.shZ, mech = S.mech && i === 0, up = mech ? M.metal : S.coat ? M.top : M.skin, r = S.coat ? 0.037 : mech ? 0.03 : 0.029;
+    const sh = grp(chest, 0, -0.012 * u, z); seg(sh, D.uarm, r * u, (r - 0.004) * u, up);
+    if (S.bib) add(sh, cy(0.036 * u, 0.037 * u, 0.075 * u, 10), M.top, 0, -0.03 * u, 0);                    // 短袖
+    const el = grp(sh, 0, -D.uarm, 0); seg(el, D.farm, (r - 0.003) * u, (r - (S.coat ? 0.004 : 0.008)) * u, up);
+    if (mech) {
+      add(el, sph(0.036 * u, 10, 8), M.metal);
+      add(el, sph(0.014 * u, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffb648 }), 0, 0, 0.034 * u, false); glow(el, 0xffb040, 0.2 * u, 0.7, 0, 0, 0.05 * u);
+    }
+    add(el, sph(0.027 * u, 10, 8), mech ? M.metal : M.skin, 0, -D.farm - 0.01 * u, 0);                       // 手
+    return { sh, el };
+  });
+
+  // 腿和脚
+  const legs = [0, 1].map(i => {
+    const z = i ? -D.hipZ : D.hipZ, r1 = S.coat ? 0.04 : 0.05, r2 = S.coat ? 0.033 : S.bib ? 0.045 : 0.043, r3 = S.coat ? 0.027 : S.bib ? 0.041 : 0.037;
+    const hip = grp(pelvis, 0, -0.005 * u, z); seg(hip, D.thigh, r1 * u, r2 * u, M.leg);
+    const knee = grp(hip, 0, -D.thigh, 0); seg(knee, D.shin, r2 * u, r3 * u, M.leg);
+    const foot = grp(knee, 0, -D.shin, 0);
+    const shoe = add(foot, sph(0.046 * u, 12, 8), M.shoe, 0.03 * u, -D.ankle + 0.029 * u, 0); shoe.scale.set(S.coat ? 1.75 : 1.6, S.coat ? 0.74 : 0.63, S.coat ? 1.08 : 0.95);
+    if (S.coat) add(foot, cy(0.04 * u, 0.045 * u, 0.075 * u, 10), M.shoe, 0, 0.012 * u, 0);                  // 靴筒
+    return { hip, knee, foot };
+  });
+  return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
+}
+
+// Same joint contract as the existing player, preserving walking and interaction IK.
+function buildSimpleRobot() {
+ const S=SKINS.R,u=S.H;
+ const D={thigh:.25*u,shin:.25*u,uarm:.158*u,farm:.158*u,ankle:.04*u,hipY:.548*u,hipZ:.05*u,shY:.235*u,shZ:.085*u};
+ const root=new THREE.Group(),pelvis=grp(root,0,D.hipY,0),spine=grp(pelvis),chest=grp(spine,0,D.shY,0),head=grp(chest,.015*u,.035*u,0);
+ const shell=lam(0xcac5b5,{emissive:0xcac5b5,emissiveIntensity:.12}),joint=lam(0x414746);
+ const round=(p,w,h,d,x,y,z,m=shell)=>add(p,new THREE.CapsuleGeometry(1,1,4,12),m,x,y,z).scale.set(w/2,h/3,d/2);
+ // Rounded rectangular shells made from beveled extruded outlines.
+ function plate(p,w,h,d,r,x,y,z,m=shell){
+  const shape=new THREE.Shape();shape.moveTo(-w/2+r,-h/2);shape.lineTo(w/2-r,-h/2);shape.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r);shape.lineTo(w/2,h/2-r);shape.quadraticCurveTo(w/2,h/2,w/2-r,h/2);shape.lineTo(-w/2+r,h/2);shape.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r);shape.lineTo(-w/2,-h/2+r);shape.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2);
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:d-2*r,bevelEnabled:true,bevelThickness:r,bevelSize:r*.35,bevelSegments:3,steps:1,curveSegments:5});geo.translate(0,0,-(d-2*r)/2);return add(p,geo,m,x,y,z);
+ }
+ plate(spine,.12*u,.19*u,.15*u,.015*u,0,.12*u,0);
+ round(pelvis,.12*u,.06*u,.12*u,0,0,0,joint);
+ add(chest,cy(.021*u,.021*u,.07*u,10),joint,0,.02*u,0);
+ plate(head,.195*u,.175*u,.245*u,.025*u,0,.105*u,0);
+ for(const sign of [-1,1])add(head,sph((sign>0?.013:.010)*u),joint,.104*u,.085*u,sign*.059*u).scale.set(.35,1,1);
+ const lamp=new THREE.MeshBasicMaterial({color:0xe5bd79});add(spine,sph(.012*u),lamp,.067*u,.15*u,.026*u).scale.set(.4,1,1);
+ function segment(p,len,r){add(p,sph(r*1.15),joint);add(p,cy(r*.8,r*.8,len*.78,10),shell,0,-len/2,0);}
+ const arms=[0,1].map(i=>{const sh=grp(chest,0,-.012*u,(i?-1:1)*D.shZ);segment(sh,D.uarm,.021*u);const el=grp(sh,0,-D.uarm,0);segment(el,D.farm,.02*u);round(el,.049*u,.058*u,.046*u,0,-D.farm,0);
+  // A single thumb keeps the mitten silhouette legible at gameplay scale.
+  round(el,.024*u,.032*u,.026*u,.025*u,-D.farm+.012*u,0);return {sh,el};});
+ const legs=[0,1].map(i=>{const hip=grp(pelvis,0,-.005*u,(i?-1:1)*D.hipZ);segment(hip,D.thigh,.023*u);const knee=grp(hip,0,-D.thigh,0);segment(knee,D.shin,.021*u);const foot=grp(knee,0,-D.shin,0);round(foot,.125*u,.048*u,.079*u,.03*u,-D.ankle+.024*u,0);return {hip,knee,foot};});
+ return {S,u,D,root,pelvis,spine,chest,head,tail:null,arms,legs};
+}
+
+// ---- 程序化动画：不用预先做好的动作，每帧根据速度、是否腾空等状态算出姿势 ----
+// 两节肢体的反向运动学：从关节 (hx,hy) 伸向目标 (tx,ty)，返回 [上段角度, 下段相对角度]
+function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
+  const dx = tx - hx, dy = ty - hy, d = clamp(Math.hypot(dx, dy), Math.abs(l1 - l2) + 1e-3, l1 + l2 - 1e-3);
+  const base = Math.atan2(dx, -dy);
+  const a1 = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const c = Math.acos(clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
+  return bendFwd ? [base + a1, -(Math.PI - c)] : [base - a1, Math.PI - c];    // 膝盖向前弯，手肘向后弯
+}
+
+function makeCharacter(kind, prev) {
+  const B = buildBody(kind), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
+  // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
+  const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
+  scene.add(root);
+
+  function update(dt, s) {
+    const dir = s.facing, sp = Math.abs(s.vx), fwd = s.vx * dir, t = s.t;
+    const push = s.mode === 'push', mant = s.mode === 'mantle';
+    A.yaw = damp(A.yaw, dir > 0 ? 0 : -Math.PI, 13, dt); root.rotation.y = A.yaw;
+    root.position.set(s.x, s.y, 0);
+    A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
+    A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
+    A.air = damp(A.air, s.grounded || mant ? 0 : 1, s.grounded ? 24 : 12, dt);
+    A.grip = damp(A.grip, push || (mant && s.modeT < 0.72) ? 1 : 0, 14, dt);
+    A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
+    A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
+
+    // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
+    const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u;
+    A.ph = ((A.ph + fwd * dt * duty / stride) % 1 + 1) % 1;
+    const bobPh = Math.cos(4 * Math.PI * (A.ph - duty / 2));
+    const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
+    if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
+    A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
+    const hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck;
+    pelvis.position.set(0, hipY, 0);
+
+    // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
+    let leanT = (lerp(0.05, 0.2, A.run) * A.mv + clamp(A.acc * 0.011, -0.12, 0.16)) * (fwd < -0.05 ? -0.4 : 1);
+    if (push) leanT = fwd > 0.1 ? 0.42 : fwd < -0.1 ? -0.2 : 0.16;
+    if (mant) leanT = 0.3;
+    leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
+    if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
+    A.lean = damp(A.lean, leanT, 9, dt);
+    spine.rotation.z = -A.lean;
+    spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv);           // 站着时的呼吸
+    chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
+
+    // 腿：先算出脚踝的目标位置，再用 IK 解出大腿和膝盖的角度
+    const slope = clamp(s.slope * dir, -0.6, 0.6), rise = sstep(-2.5, 3.5, s.vy), lift = lerp(0.055, 0.2, A.run) * u;
+    for (let i = 0; i < 2; i++) {
+      const p = (A.ph + i * 0.5) % 1; let fx, fy, pitch;
+      if (p < duty) {                                                        // 支撑期：脚相对身体匀速向后
+        const k = p / duty, toe = sstep(0.68, 1, k) * (0.35 + 0.65 * A.run);
+        fx = lerp(0.42, -0.58, k) * stride; fy = toe * 0.04 * u; pitch = -toe * 0.6;
+      } else {                                                               // 摆动期：抬脚向前迈
+        const k = (p - duty) / (1 - duty), e = k * k * (3 - 2 * k);
+        fx = lerp(-0.58, 0.42, e) * stride; fy = lift * 4 * k * (1 - k) * (1.35 - 0.7 * k); pitch = lerp(-0.7, 0.28, k) * (0.3 + 0.7 * A.run);
+      }
+      const idleX = (i ? -0.03 : 0.034) * u;
+      fx = lerp(idleX, fx, A.mv); fy *= A.mv; pitch = pitch * A.mv + Math.atan(slope);
+      let tx = fx, ty = fy + fx * slope + D.ankle;
+      // 腾空：一条腿屈膝在前，一条腿拖在后；下落时两腿伸开准备着地
+      const ax = i ? lerp(-0.07, -0.12, rise) : lerp(0.06, 0.14, rise), ay = i ? lerp(-0.455, -0.4, rise) : lerp(-0.43, -0.3, rise);
+      tx = lerp(tx, ax * u, A.air); ty = lerp(ty, hipY + ay * u, A.air); pitch = lerp(pitch, -0.45, A.air);
+      // 攀爬：收腿
+      tx = lerp(tx, (i ? 0.03 : 0.12) * u, A.tuck); ty = lerp(ty, hipY + (i ? -0.4 : -0.27) * u, A.tuck);
+      const L = legs[i], [th, kn] = ik2(0, hipY - 0.005 * u, tx, ty, D.thigh, D.shin, true);
+      L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) + pitch;
+    }
+
+    // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
+    const shX = Math.sin(A.lean) * D.shY, shY = hipY + Math.cos(A.lean) * D.shY - 0.012 * u;
+    for (let i = 0; i < 2; i++) {
+      const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
+      let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
+      let b = lerp(0.14, lerp(0.3, 1.5, A.run), A.mv) + 0.3 * Math.max(0, sw) * A.mv;
+      a = lerp(a, i ? lerp(0.5, -0.45, rise) : lerp(0.75, 1.25, rise), A.air); b = lerp(b, 0.7, A.air);
+      if (A.grip > 0.01 && s.hand) {
+        const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir, s.hand.y - s.y + (i ? 0 : 0.012 * u), D.uarm, D.farm + 0.02 * u, false);
+        a = lerp(a, ua + A.lean, A.grip); b = lerp(b, fa, A.grip);
+      } else a += A.lean * 0.5;
+      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b; R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip);
+    }
+
+    // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
+    A.look = damp(A.look, s.alert > 0.05 ? dir * 1.0 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv), 6, dt);
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0));
+    if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
+      const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
+      A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
+      tail.rotation.z = A.ta - A.lean * 0.6; tail.userData.t2.rotation.z = (A.ta - target) * 0.7 - 0.25;
+    }
+  }
+  function dispose() { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  return { kind, B, A, root, H: u, update, dispose };
+}
+
+// ============================================================
+//  玩家控制：移动 / 跳跃 / 攀爬 / 推车 / 拉杆 / 探照灯
+// ============================================================
+const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
+let hero = makeCharacter('B'), state = 'title', T = 0, ctl = true, autoDir = 0;
+const sfx = {};                                   // 音效函数在后面的音频部分填进来
+const fx = (name, ...a) => { if (sfx[name]) sfx[name](...a); };
+function fitHero() { P.H = hero.H; P.hh = hero.H * 0.9; }
+fitHero();
+function setSkin(k) {
+  if (hero.kind !== k) { const prev = hero; prev.dispose(); hero = makeCharacter(k, prev); fitHero(); }
+  document.querySelectorAll('#skins button').forEach(b => b.classList.toggle('on', b.dataset.k === hero.kind));
+}
+
+function startMantle(s, side) {                   // 抓住方块 s 的边缘翻上去；side = 1 表示方块在右边
+  const ex = side > 0 ? s.x1 : s.x2, h = s.y2 - P.y;
+  P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };
+  P.mode = 'mantle'; P.modeT = 0; P.vx = P.vy = 0; P.facing = side; fx('grab');
+}
+
+function stepPlayer(dt) {
+  const d = ctl ? (keys.has('R') ? 1 : 0) - (keys.has('L') ? 1 : 0) : autoDir;      // autoDir：结尾时自动往前走几步
+  P.impact = 0;
+  if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
+  P.jumpBuf -= dt; P.coyote -= dt;
+
+  if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
+    const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
+    P.y = lerp(m.y0, m.top, e); P.x = lerp(m.x0, m.x1, sstep(0.45, 1, k));
+    if (k >= 1) { P.mode = 'normal'; P.grounded = true; P.y = m.top; P.vy = 0; P.coyote = 0; }
+    return;
+  }
+
+  if (P.mode === 'push') {                        // 抓着推车：人和车一起慢慢移动
+    const side = P.grab, want = (side > 0 ? cart.x1 : cart.x2) - side * (P.hw + 0.2);
+    if (!keys.has('E') || !ctl || !P.grounded) { P.mode = 'normal'; cart.v = 0; return; }
+    cart.v = damp(cart.v, d * PUSH, 7, dt);
+    let nx = clamp(cart.x + cart.v * dt, cart.min, cart.max), dx = nx - cart.x;
+    cart.off = true; if (sideHit(P.x + dx, P.y)) dx = 0; cart.off = false;     // 人被别的东西挡住，车也就拉不动了
+    if (dx === 0) cart.v = damp(cart.v, 0, 20, dt);
+    cart.x += dx; syncCart();
+    P.x = damp(P.x + dx, want + dx, 14, dt); P.vx = dx / dt; P.facing = side;
+    if (Math.abs(dx) > 1e-5) P.pushed = true;
+    return;
+  }
+
+  // ---- 普通状态 ----
+  const speed = keys.has('S') || !ctl ? WALK : RUN;
+  P.vx = damp(P.vx, d * speed, P.grounded ? (d ? 9 : 14) : 3.5, dt);
+  if (d) { P.facing = d; P.moved = true; }
+  if (Math.abs(P.vx) < 0.02 && !d) P.vx = 0;
+
+  if (P.jumpBuf > 0 && (P.grounded || P.coyote > 0)) {
+    P.vy = JUMP_V; P.grounded = false; P.jumpBuf = 0; P.coyote = 0; P.jumped = true; fx('jump');
+  }
+  if (!P.grounded && P.vy > 0 && !(ctl && keys.has('J'))) P.vy -= GRAV * 1.3 * dt;   // 松开跳跃键就跳得矮一些
+
+  // 水平移动，被方块侧面挡住
+  let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
+  if (hit) {
+    const side = P.vx > 0 ? 1 : -1;
+    nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
+    const h = hit.y2 - P.y;                      // 腾空时贴着墙、够得着边缘就攀上去
+    if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6) { P.x = nx; startMantle(hit, side); return; }
+    P.vx = 0;
+  }
+  P.x = nx;
+
+  // 垂直方向：贴地行走，或者受重力下落
+  const f = floorY(P.x, P.y);
+  if (P.grounded) {
+    if (f < P.y - 0.3) { P.grounded = false; P.coyote = 0.1; P.gy = P.y; } else P.y = f;
+  }
+  if (!P.grounded) {
+    P.vy -= GRAV * dt; const ny = P.y + P.vy * dt;
+    if (P.vy <= 0 && ny <= f) { P.y = f; P.impact = -P.vy; P.vy = 0; P.grounded = true; fx('land', P.impact); }
+    else P.y = ny;
+  } else { P.vy = 0; P.gy = P.y; }
+
+  // 抓推车 / 拉拉杆
+  if (ctl && P.grounded && keys.has('E')) {
+    const gr = cart.x1 - (P.x + P.hw), gl = (P.x - P.hw) - cart.x2;
+    if (Math.abs(P.y - cart.y1) < 0.06 && ((gr > -0.06 && gr < 0.45) || (gl > -0.06 && gl < 0.45))) { P.mode = 'push'; P.grab = gr > -0.06 && gr < 0.45 ? 1 : -1; P.facing = P.grab; cart.v = 0; }
+    else if (!LEVER.pulled && Math.abs(P.x - LEVER.x) < 0.95 && pressed.has('E')) { LEVER.pulled = true; door.opening = true; fx('lever'); }
+  }
+  for (let i = CHECKPOINTS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CHECKPOINTS[i]) { P.cp = i; break; }
+}
+
+function stepWorld(dt) {
+  // 推车的轮子、拉杆、大门
+  cartG.position.x = cart.x; for (const w of wheels) w.rotation.y = -cart.x / 0.19;
+  if (LEVER.pulled) { LEVER.t = Math.min(1, LEVER.t + dt * 3.5); leverArm.rotation.z = lerp(0.7, -0.7, sstep(0, 1, LEVER.t)); leverLampMat.color.set(0x6dff9a); leverLight.color.set(0x6dff9a); }
+  if (door.opening && door.open < 1) {
+    door.open = Math.min(1, door.open + dt / 2.8); door.y1 = door.open * 3.75; doorMesh.position.y = 1.8 + sstep(0, 1, door.open) * 3.55;
+    if (door.open >= 1) fx('doorStop');
+  }
+  doorGlowMat.opacity = zoneExt > 0.5 ? 0 : 0.96 * sstep(0.02, 0.8, door.open); doorLight.intensity = zoneExt > 0.5 ? 0 : 16 * door.open;
+  // 探照灯：来回扫；照到没有遮挡的玩家就开始“盯住”，盯满了就算被发现
+  const W = WATCH;
+  if (W.caught > 0) {
+    W.caught += dt; aimWatcher(P.x, P.y + 0.6, 1);
+    if (W.caught > 1.25 && state === 'play') respawn();
+    return;
+  }
+  W.t += dt * W.w * (1 - 0.85 * W.exposure);
+  W.bx = W.cx + W.amp * Math.sin(W.t);
+  const inYard = P.x > W.cx - W.amp - W.r && P.x < W.cx + W.amp + W.r && P.y < 2.4;
+  const lit = state === 'play' && inYard && Math.abs(P.x - W.bx) < W.r * 0.9 && !inShadow(P.x);
+  W.exposure = clamp(W.exposure + (lit ? dt / 0.55 : -dt / 0.9), 0, 1);
+  if (W.exposure >= 1) { W.caught = 1e-3; ctl = false; fx('alarm'); }
+  const k = sstep(0.15, 1, W.exposure);
+  aimWatcher(lerp(W.bx, P.x, k), lerp(0.35, P.y + 0.6, k), k);
+}
+
+function respawn() {                               // 被发现：黑屏，回到最近的存档点
+  state = 'fade'; $('fade').style.opacity = 1;
+  setTimeout(() => {
+    Object.assign(P, { x: CHECKPOINTS[P.cp], vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1 }); P.y = floorY(P.x, 50);
+    Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 });
+    snapCamera(); ctl = true; state = 'play'; $('fade').style.opacity = 0;
+  }, 1100);
+}
+
+// ============================================================
+//  声音：全部用 WebAudio 现场合成，不加载任何音频文件
+// ============================================================
+let AC = null, master = null, noiseBuf = null, muted = false;
+const loops = {};
+function initAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  master = AC.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(AC.destination);
+  noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const loopNoise = (type, freq, q) => {            // 一直循环的滤波噪声，音量由游戏状态控制
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q; g.gain.value = 0;
+    src.connect(f).connect(g).connect(master); src.start(); return { f, g };
+  };
+  const loopOsc = (type, freq, lp) => {
+    const o = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = type; o.frequency.value = freq; f.type = 'lowpass'; f.frequency.value = lp; g.gain.value = 0;
+    o.connect(f).connect(g).connect(master); o.start(); return { o, f, g };
+  };
+  loops.room = loopNoise('lowpass', 210, 0.4);      // 厂房里的低沉底噪
+  loops.wind = loopNoise('bandpass', 420, 0.7);     // 室外的风
+  loops.cart = loopNoise('bandpass', 95, 1.4);      // 推车的滚动声
+  loops.door = loopNoise('lowpass', 120, 1.0);      // 大门升起的轰隆声
+  loops.hum = loopOsc('sawtooth', 52, 240);         // 探照灯机器的嗡鸣
+  loops.drone = loopOsc('sine', 41, 400);
+}
+const setGain = (l, v, k = 0.08) => { if (AC && loops[l]) loops[l].g.gain.setTargetAtTime(v, AC.currentTime, k); };
+
+function hit(freq, q, vol, dur, type = 'bandpass') { // 一下短促的噪声：脚步、落地、碰撞
+  if (!AC) return;
+  const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), t = AC.currentTime;
+  src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  src.connect(f).connect(g).connect(master); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.02);
+}
+function tone(f0, f1, vol, dur, type = 'sine', delay = 0) {
+  if (!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + delay;
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0008, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+Object.assign(sfx, {
+  step: (out, soft) => hit(out ? rr(900, 1500) : rr(520, 820), 1.1, soft ? 0.035 : 0.075, out ? 0.09 : 0.065),
+  jump: () => hit(760, 0.9, 0.05, 0.07),
+  grab: () => hit(420, 1.2, 0.09, 0.09),
+  land: v => { hit(170, 0.7, clamp(v * 0.045, 0.08, 0.4), 0.2, 'lowpass'); tone(85, 48, clamp(v * 0.02, 0.03, 0.16), 0.16); },
+  lever: () => { hit(1400, 2, 0.16, 0.05); tone(190, 70, 0.2, 0.22, 'square', 0.04); },
+  doorStop: () => { hit(110, 0.6, 0.5, 0.5, 'lowpass'); tone(60, 34, 0.25, 0.5); },
+  alarm: () => { for (let i = 0; i < 3; i++) tone(620, 330, 0.11, 0.26, 'sawtooth', i * 0.3); },
+});
+function updateAudio(ext, stepNow) {
+  if (!AC) return;
+  setGain('room', ext ? 0 : 0.2, 0.4); setGain('drone', ext ? 0.015 : 0.05, 0.4); setGain('wind', ext ? 0.085 + 0.03 * Math.sin(T * 0.6) : 0, 0.5);
+  setGain('cart', P.mode === 'push' ? clamp(Math.abs(cart.v) * 0.45, 0, 0.5) : 0, 0.05);
+  setGain('door', door.opening && door.open < 1 ? 0.5 : 0, 0.12);
+  const near = ext ? 0 : sstep(34, 6, Math.abs(P.x - WATCH.cx));
+  setGain('hum', near * (0.02 + 0.05 * WATCH.exposure), 0.2);
+  loops.hum.o.frequency.setTargetAtTime(52 + 60 * WATCH.exposure, AC.currentTime, 0.1);
+  if (stepNow) sfx.step(ext, keys.has('S') || P.mode === 'push');
+}
+
+// ============================================================
+//  镜头 / 提示 / 界面 / 主循环
+// ============================================================
+const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8 };
+function placeCamera() {
+  camera.position.set(cam.x, cam.y + cam.d * 0.05, cam.d); camera.lookAt(cam.x, cam.y, 0);
+  key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
+  rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
+}
+function updateCamera(dt) {
+  const [d, yo, xo] = camKey(P.x);
+  cam.look = damp(cam.look, P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);                // 镜头略微领先于前进方向
+  const ty = (P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;      // 跳起来时镜头只跟一小半
+  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, 1.6, dt);
+  placeCamera();
+}
+function snapCamera() { const [d, yo, xo] = camKey(P.x); cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
+
+const hintEl = $('hint'); let hintNow = '';
+const HINTS = [
+  [() => !P.moved, '<b>←</b><b>→</b> 移动'],
+  [() => P.x > 5.5 && P.x < 9 && !P.jumped, '<b>空格</b> 跳跃'],
+  [() => !P.pushed && P.y < 0.5 && Math.abs(P.x - cart.x) < 2.6 && P.mode !== 'push', '按住 <b>E</b> 抓住推车，再按方向键推或拉'],
+  [() => P.y < 1.2 && cart.x > 36.6 && P.x > 32 && P.x < 38 && P.mode !== 'push', '跳上推车，再跳向高台的边缘'],
+  [() => P.x > 55.5 && P.x < 60.4 && P.cp < 3, '躲进矮墙的影子里，等光束扫过去'],
+  [() => !LEVER.pulled && Math.abs(P.x - LEVER.x) < 1.7, '按 <b>E</b> 拉下拉杆'],
+];
+function updateHint() {
+  let h = ''; if (state === 'play') for (const [c, html] of HINTS) if (c()) { h = html; break; }
+  if (h !== hintNow) { hintNow = h; if (h) hintEl.innerHTML = h; hintEl.style.opacity = h ? 1 : 0; }
+}
+
+{ // 胶片颗粒：一张噪点图铺满屏幕，每隔一帧随机挪一下位置
+  const [c, g] = mkCanvas(256, 256), im = g.createImageData(256, 256);
+  for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+  g.putImageData(im, 0, 0); $('grain').style.backgroundImage = `url(${c.toDataURL()})`;
+}
+
+function begin() {
+  if (state !== 'title') return;
+  state = 'play'; $('title').classList.add('hide'); $('fade').style.opacity = 0; $('skins').classList.add('on'); initAudio();
+}
+let endT = 0, prevPh = 0;
+function reset() {
+  Object.assign(P, { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, mode: 'normal', cp: 0, moved: false, jumped: false, pushed: false });
+  cart.x = 25.4; cart.v = 0; syncCart();
+  Object.assign(door, { y1: 0, open: 0, opening: false }); doorMesh.position.y = 1.8;
+  Object.assign(LEVER, { pulled: false, t: 0 }); leverArm.rotation.z = 0.7; leverLampMat.color.set(0xff4a2a); leverLight.color.set(0xff4a2a);
+  Object.assign(WATCH, { exposure: 0, caught: 0, t: 0.6 });
+  ctl = true; autoDir = 0; endT = 0; state = 'play'; $('end').classList.add('hide'); $('fade').style.opacity = 0; snapCamera();
+}
+
+function sim(dt) {
+  T += dt;
+  if (state === 'title' && anyKey) begin();
+  for (const k of ['A', 'B', 'C']) if (pressed.has(k)) setSkin(k);
+  if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
+  if (pressed.has('RESET') && state !== 'title' && state !== 'fade') reset();
+
+  let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
+  if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
+  stepWorld(dt);
+  if (state === 'play' && P.x > END_X) { state = 'end'; ctl = false; autoDir = 1; }
+  if (state === 'end') {
+    endT += dt; if (P.x > 124.4) autoDir = 0;
+    if (endT > 3.6 && $('end').classList.contains('hide')) { $('end').classList.remove('hide'); $('fade').style.opacity = 0.45; }
+  }
+
+  const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02;
+  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact,
+    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: WATCH.exposure,
+    hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? cart.x1 : cart.x2, y: 0.82 } : null });
+  const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
+
+  updateCamera(dt);
+  applyZone(camera.position.x > 91.4 ? 1 : 0);
+  updateDust(dt, T, cam.x, zoneExt > 0.5 ? -0.9 : 0.04);
+  bulb.intensity = 9 * (0.93 + 0.07 * Math.sin(T * 13) * Math.sin(T * 7.3));     // 吊灯微微闪烁
+  updateHint(); updateAudio(zoneExt > 0.5, stepNow);
+  pressed.clear(); anyKey = false;
+}
+
+// 调试接口：在控制台里用 __g.step(秒) 手动推进、__g.tp(x) 传送
+const DBG = window.__g = { P, cart, WATCH, door, LEVER, cam, keys, pressed, paused: false, setSkin, begin, reset,
+  hero: () => hero, state: () => state, scene, camera, renderer,
+  view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
+  step(sec, dt = 1 / 60) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) sim(dt); renderer.render(scene, camera); },
+  tp(x) { Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal' }); P.y = floorY(x, 50); for (let i = 0; i < CHECKPOINTS.length; i++) if (x >= CHECKPOINTS[i]) P.cp = i; snapCamera(); } };
+
+let lastT = performance.now(), frameN = 0;
+function frame(now) {
+  const dt = clamp((now - lastT) / 1000, 0.001, 0.05); lastT = now;
+  if (!DBG.paused) { sim(dt); renderer.render(scene, camera); }
+  if (++frameN % 2 === 0) $('grain').style.backgroundPosition = `${Math.random() * 256 | 0}px ${Math.random() * 256 | 0}px`;
+  requestAnimationFrame(frame);
+}
+
+document.querySelectorAll('#skins button').forEach(b => b.addEventListener('click', () => { setSkin(b.dataset.k); b.blur(); canvas.focus(); }));
+setSkin('R'); snapCamera(); applyZone(0); aimWatcher(WATCH.bx, 0.35, 0);
+$('title').classList.remove('hide'); $('fade').style.opacity = 0.42; $('msg').remove();
+window.__ready = true;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>学徒 · 3D 角色</title>
+<style>
+  :root{--pw:236px}
+  html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellipse at 42% 58%,#56676b 0%,#2f3b3f 45%,#12181b 100%);font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#e6eeee}
+  /* 背景里的一束顶光（纯装饰，不参与 3D 渲染） */
+  body::before{content:"";position:fixed;left:calc((100% - var(--pw))/2);top:-6%;width:78vmin;height:112%;transform:translateX(-50%);background:linear-gradient(rgba(226,240,240,.9),rgba(226,240,240,0) 88%);clip-path:polygon(40% 0,60% 0,100% 100%,0 100%);filter:blur(30px);opacity:.14;pointer-events:none;z-index:0}
+  canvas{position:fixed;left:0;top:0;width:calc(100% - var(--pw));height:100%;display:block;touch-action:none;cursor:grab;z-index:1}
+  canvas:active{cursor:grabbing}
+  #bar{position:fixed;left:calc((100% - var(--pw))/2);bottom:18px;transform:translateX(-50%);display:flex;gap:6px;align-items:center;padding:8px 10px;border-radius:14px;background:rgba(14,19,22,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);white-space:nowrap;z-index:2}
+  button{font:inherit;font-size:13px;color:#e6eeee;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:7px 10px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.18)}
+  button.on{background:#b4613a;border-color:#d07a4f;color:#fff}
+  #hint{position:fixed;left:18px;top:14px;font-size:12.5px;line-height:1.7;opacity:.9;text-shadow:0 1px 2px rgba(0,0,0,.4);pointer-events:none;z-index:2}
+  #hint b{font-size:15px;letter-spacing:.04em}
+  #stats{opacity:.75}
+  #msg{position:fixed;left:0;top:0;bottom:0;right:var(--pw);display:flex;align-items:center;justify-content:center;font-size:14px;pointer-events:none;text-align:center;padding:0 24px;z-index:2}
+  /* 外观面板 */
+  #panel{position:fixed;right:0;top:0;bottom:0;width:var(--pw);box-sizing:border-box;padding:14px 14px 18px;background:rgba(12,17,20,.84);border-left:1px solid rgba(255,255,255,.08);overflow:auto;z-index:3;font-size:12.5px}
+  #panel h3{margin:0 0 4px;font-size:14px;font-weight:600}
+  #panel h4{margin:14px 0 6px;font-size:12px;font-weight:500;opacity:.62}
+  .seg{display:flex;gap:6px}
+  .seg button{flex:1;padding:6px 0;font-size:12.5px}
+  .sl{display:grid;grid-template-columns:58px 1fr 32px;align-items:center;gap:6px;margin:7px 0}
+  .sl input{width:100%;margin:0;accent-color:#b4613a}
+  .sl output{text-align:right;opacity:.7;font-variant-numeric:tabular-nums}
+  .cl{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+  .cl label{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px;opacity:.88}
+  .cl input{width:34px;height:26px;padding:0;border:1px solid rgba(255,255,255,.22);border-radius:6px;background:none;cursor:pointer}
+  #bDefault{width:100%;margin-top:14px}
+  #params{width:100%;box-sizing:border-box;font:11px ui-monospace,Menlo,monospace;color:#b9c6c6;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:6px;resize:none;height:104px}
+  .lab{position:fixed;transform:translate(-50%,-100%);font-size:12.5px;line-height:1.35;text-align:center;white-space:nowrap;padding:4px 9px;border-radius:9px;background:rgba(14,19,22,.62);cursor:pointer;z-index:2}
+  .lab:hover{background:rgba(180,97,58,.85)}
+  body.lineup{--pw:0px}
+  body.lineup #panel{display:none}
+  .lab b{font-size:14px}
+  .lab span{opacity:.7;font-size:11.5px}
+  #bCompare{width:100%;margin-top:6px}
+  @media (max-width:560px){:root{--pw:0px} #panel{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint"><b>学徒</b><br>拖动旋转 · 滚轮 / 双指缩放 · 右键拖动平移<br><span id="stats"></span></div>
+<div id="bar">
+  <button id="bWalk" class="on">行走</button>
+  <button id="bIdle">站立</button>
+  <button id="bAuto">自动旋转</button>
+  <button id="bReset">重置视角</button>
+  <button id="bLineup">四套对比</button>
+  <button id="bGlb">导出 GLB</button>
+</div>
+<aside id="panel">
+  <h3>外观</h3>
+  <h4>服装</h4>
+  <div class="seg"><button data-outfit="coverall">系腰工装</button><button data-outfit="jacket">大号夹克</button></div>
+  <div class="seg" style="margin-top:6px"><button data-outfit="poncho">拾荒斗篷</button><button data-outfit="vest">背心背包</button></div>
+  <h4>头身比例预设</h4>
+  <div class="seg"><button data-preset="base">原版</button><button data-preset="chibi">Q 版</button><button data-preset="tall">瘦高</button></div>
+  <h4>比例</h4>
+  <label class="sl">头部大小<input type="range" data-k="head" min="0.8" max="1.35" step="0.01"><output></output></label>
+  <label class="sl">腿长<input type="range" data-k="leg" min="0.7" max="1.2" step="0.01"><output></output></label>
+  <label class="sl">四肢粗细<input type="range" data-k="thick" min="0.75" max="1.4" step="0.01"><output></output></label>
+  <label class="sl">身体宽度<input type="range" data-k="body" min="0.8" max="1.3" step="0.01"><output></output></label>
+  <h4>发型</h4>
+  <div class="seg"><button data-hair="messy">乱发</button><button data-hair="bowl">锅盖头</button><button data-hair="buzz">寸头</button></div>
+  <h4>五官</h4>
+  <div class="seg"><button data-face="none">无</button><button data-face="dots">小圆点</button></div>
+  <h4>小细节</h4>
+  <div class="seg"><button data-opt="cowlick">头顶的呆毛</button></div>
+  <h4>颜色</h4>
+  <div class="cl">
+    <label><input type="color" data-k="hairC">头发</label>
+    <label><input type="color" data-k="skin">肤色</label>
+    <label><input type="color" data-k="shoe">鞋</label>
+  </div>
+  <button id="bDefault">恢复默认</button>
+  <h4>当前参数（调好后复制发给我）</h4>
+  <textarea id="params" readonly></textarea>
+</aside>
+<div id="labels"></div>
+<div id="msg">正在加载…</div>
+<script>
+  setTimeout(function () {
+    if (!window.__ready) document.getElementById('msg').textContent = '加载失败：本页面需要联网，从 cdn.jsdelivr.net 加载 three.js';
+  }, 10000);
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ============================================================
+//  场景 / 相机 / 灯光（没有实时阴影、没有后期，尽量省）
+// ============================================================
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 50);
+const HOME = { pos: new THREE.Vector3(2.6, 0.95, 3.5), tgt: new THREE.Vector3(0, 0.62, 0) };
+camera.position.copy(HOME.pos);
+const controls = new OrbitControls(camera, canvas);
+controls.target.copy(HOME.tgt);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 1.2; controls.maxDistance = 12;
+controls.maxPolarAngle = Math.PI * 0.53;
+controls.autoRotateSpeed = 1.4;
+
+scene.add(new THREE.HemisphereLight(0xe4efef, 0x2c3336, 1.05));            // 冷色天光 + 暗色地面反光
+const key = new THREE.DirectionalLight(0xfff3e4, 2.0); key.position.set(2.5, 5, 3.5); scene.add(key);
+const rim = new THREE.DirectionalLight(0xc6e4ea, 1.5); rim.position.set(-3, 3.5, -4); scene.add(rim);
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w / h < 0.8 ? 36 : 28;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+
+// ============================================================
+//  角色建模：所有部件合并成一个网格，颜色写在顶点上（不用贴图）
+//  先用“设计单位”建模（默认身高约 440），最后统一缩放成米
+//  身体全部用“截面放样”做出直线、棱角和粗细变化；服装是可以整套替换的
+// ============================================================
+const S = 1.25 / 440;
+const DEF = { outfit: 'coverall', head: 1, leg: 1, thick: 1, body: 1, hair: 'messy', face: 'none', cowlick: true, hairC: '#3a322d', skin: '#d9b69f', shoe: '#3b3330' };
+const PRESETS = {
+  base: { head: 1, leg: 1, thick: 1, body: 1 },
+  chibi: { head: 1.22, leg: 0.8, thick: 1.22, body: 1.08 },
+  tall: { head: 0.9, leg: 1.12, thick: 0.9, body: 0.94 },
+};
+const OUTFITS = { coverall: '系腰工装', jacket: '大号夹克', poncho: '拾荒斗篷', vest: '背心背包' };
+const P = { ...DEF };
+const BONES = ['hips', 'spine', 'head', 'armL', 'foreL', 'armR', 'foreR', 'legL', 'shinL', 'footL', 'legR', 'shinR', 'footR'];
+const B = Object.fromEntries(BONES.map((n, i) => [n, i]));
+const MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+const shade = (c, k) => new THREE.Color(c).lerp(new THREE.Color(k < 0 ? '#000000' : '#ffffff'), Math.abs(k));
+
+// ---------- 基础形状 ----------
+// 椭球（可传入 fn 在单位球上做变形）
+function ball(sx, sy, sz, ws = 14, hs = 10, fn) {
+  let g = new THREE.SphereGeometry(1, ws, hs); g.deleteAttribute('uv'); g.deleteAttribute('normal');
+  g = mergeVertices(g);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const v = [p.getX(i), p.getY(i), p.getZ(i)]; if (fn) fn(v); p.setXYZ(i, v[0] * sx, v[1] * sy, v[2] * sz); }
+  g.computeVertexNormals(); return g;
+}
+// 头发的底：球面的一部分，向后倾斜露出脸
+function hairCap(theta, tilt, sc, ws = 18, hs = 8) {
+  let g = new THREE.SphereGeometry(1, ws, hs, 0, Math.PI * 2, 0, theta); g.deleteAttribute('uv'); g.deleteAttribute('normal');
+  g = mergeVertices(g); g.rotateX(tilt); g.scale(...sc); g.computeVertexNormals();
+  return g;
+}
+// “超椭圆”截面上的一圈点：n = 2 是椭圆，n 越大越接近圆角矩形 —— 靠它做出直线和棱角
+function ringPts([y, w, d, n = 2, ox = 0, oz = 0], seg, out) {
+  const t0 = Math.PI / 2 + Math.PI / seg, e = 2 / n;
+  for (let j = 0; j < seg; j++) {
+    const t = t0 + j * 2 * Math.PI / seg, c = Math.cos(t), k = Math.sin(t);
+    out.push(ox + w * Math.sign(c) * Math.pow(Math.abs(c), e), y, oz + d * Math.sign(k) * Math.pow(Math.abs(k), e));
+  }
+}
+const geoOf = (pos, idx) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); if (idx) g.setIndex(idx); g.computeVertexNormals(); return g; };
+// 一个朝上或朝下的平面封口（深色的用来表现袖口、裤脚、下摆的“开口”）
+function disc(sec, seg, up) {
+  const pos = [], idx = [];
+  ringPts(sec, seg, pos); pos.push(sec[4] || 0, sec[0], sec[5] || 0);
+  for (let j = 0; j < seg; j++) { const q = (j + 1) % seg; up ? idx.push(seg, q, j) : idx.push(seg, j, q); }
+  return geoOf(pos, idx);
+}
+// 截面放样：自下而上的一串截面 [y, 半宽, 半厚, 方度 n, x 偏移, z 偏移]
+function loft(secs, seg, capB = true, capT = true) {
+  const pos = [], idx = [];
+  secs.forEach(s => ringPts(s, seg, pos));
+  for (let i = 0; i < secs.length - 1; i++) for (let j = 0; j < seg; j++) { const a = i * seg + j, b = i * seg + (j + 1) % seg; idx.push(a, a + seg, b, b, a + seg, b + seg); }
+  const cap = (s, top) => {   // 封口单独一圈顶点，边缘才是硬的
+    const base = pos.length / 3; ringPts(s, seg, pos); pos.push(s[4] || 0, s[0], s[5] || 0);
+    for (let j = 0; j < seg; j++) { const p = base + j, q = base + (j + 1) % seg; top ? idx.push(base + seg, q, p) : idx.push(base + seg, p, q); }
+  };
+  if (capB) cap(secs[0], false);
+  if (capT) cap(secs[secs.length - 1], true);
+  return geoOf(pos, idx);
+}
+// 一块贴在表面上的布片：f(i, j) 返回第 i 行第 j 列的点
+function patch(rows, cols, f) {
+  const pos = [], idx = [];
+  for (let i = 0; i <= rows; i++) for (let j = 0; j <= cols; j++) pos.push(...f(i, j));
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) { const a = i * (cols + 1) + j, b = a + 1, c = a + cols + 1; idx.push(a, c, b, b, c, c + 1); }
+  return geoOf(pos, idx);
+}
+// 一条双面的布：rows = [[左点, 右点], ...]
+function strip2(rows) {
+  const pos = [], tri = (a, b, c) => pos.push(...a, ...b, ...c);
+  for (let i = 0; i < rows.length - 1; i++) { const [a, b] = rows[i], [c, d] = rows[i + 1]; tri(a, c, b); tri(b, c, d); tri(a, b, c); tri(b, d, c); }
+  return geoOf(pos);
+}
+// 一撮头发：从 b 到 tip 的四棱锥，扁的一面朝外（不共用顶点，所以每个面都是平的）
+function tuft(b, tip, w, th, out) {
+  const B0 = new THREE.Vector3(...b), T = new THREE.Vector3(...tip), a = T.clone().sub(B0).normalize();
+  const u = new THREE.Vector3().crossVectors(a, new THREE.Vector3(...out)).normalize().multiplyScalar(w);
+  const v = new THREE.Vector3().crossVectors(u, a).normalize().multiplyScalar(th);
+  const Q = [B0.clone().add(u), B0.clone().add(v), B0.clone().sub(u), B0.clone().sub(v), T], pos = [];
+  for (const t of [[1, 0, 4], [2, 1, 4], [3, 2, 4], [0, 3, 4], [0, 1, 2], [0, 2, 3]]) for (const i of t) pos.push(Q[i].x, Q[i].y, Q[i].z);
+  return geoOf(pos);
+}
+
+// ============================================================
+//  造一个角色：返回 { mesh, bones, bone(), rig, tris }
+// ============================================================
+function makeHero(outfit) {
+  const parts = [], tk = P.thick, hs = P.head, F = false;                 // F：切面风格的开关，目前不用
+  const rig = { thigh: 87 * P.leg, shin: 71 * P.leg, ankle: 26 };
+  const dy = 158 * (P.leg - 1), kneeY = rig.ankle + rig.shin, hipY = kneeY + rig.thigh;
+  const sL = F ? 6 : 12, sT = F ? 8 : 18, nn = n => F ? 2 : n;
+  const bw = P.body, bd = 0.6 + 0.4 * P.body, hand = (0.7 + 0.3 * tk) * 1.12, shoe = (0.75 + 0.25 * tk) * 1.06;
+  const AX = 36 * bw + 4 * tk, LX = 14.5 + (tk - 1) * 4.5 + (bw - 1) * 8, shY = 306 + dy, elY = 246 + dy;
+
+  const part = (geo, color, boneName, x = 0, y = 0, z = 0) => {   // 登记一个部件：上色，并整块绑定到一根骨骼上
+    geo.deleteAttribute('uv'); geo.translate(x, y, z);
+    if (geo.index) geo = geo.toNonIndexed();
+    const n = geo.attributes.position.count, c = new THREE.Color(color);
+    const col = new Float32Array(n * 3), si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { col.set([c.r, c.g, c.b], i * 3); si[i * 4] = B[boneName]; sw[i * 4] = 1; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+    geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+    parts.push(geo);
+  };
+  const up = (geo, color, x = 0, y = 0, z = 0) => part(geo, color, 'spine', x, y + dy, z);                                 // 躯干上的部件（腿长变了要跟着上下移）
+  const headPart = (geo, color, x = 0, y = 0, z = 0) => part(geo.translate(x, y - 340, z).scale(hs, hs, hs), color, 'head', 0, 340 + dy, 0);   // 头上的部件，以脖子顶端为中心缩放
+
+  // ---------- 躯干的截面表，和在表面上取点的工具 ----------
+  const sc = T => T.map(([y, w, d, n]) => [y, w * bw, d * bd, nn(n)]);
+  const TEE = sc([[200, 31, 21.5, 3], [236, 31, 21.5, 3], [268, 33.5, 23, 3], [298, 37, 22.5, 3.2], [314, 34, 20, 3], [324, 20, 15, 2.6], [331, 12.5, 11.5, 2.2]]);
+  const HIP = sc([[171, 35.5, 24.5, 3.2], [192, 36, 25, 3.2], [214, 34.5, 24.5, 3.2], [239, 33.5, 24, 3.2]]);
+  const interp = (T, y) => { for (let i = 1; i < T.length; i++) if (y <= T[i][0]) { const a = T[i - 1], b = T[i], k = (y - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k]; } return T[T.length - 1].slice(1); };
+  const surf = (T, y, deg, off) => { const [w, d, n] = interp(T, y), t = deg * Math.PI / 180, c = Math.cos(t), k = Math.sin(t), e = 2 / n; return [(w + off) * Math.sign(c) * Math.pow(Math.abs(c), e), y, (d + off) * Math.sign(k) * Math.pow(Math.abs(k), e)]; };
+  const zOn = (T, x, y, off) => { const [w, d, n] = interp(T, y); return (d + off) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(x) / (w + off), n)), 1 / n); };
+
+  // ---------- 各套服装共用的部件 ----------
+  const shirt = col => {                                             // 上衣：肩宽、腰收，领口是一圈罗纹，里面是暗的
+    up(loft(TEE, sT), col);
+    up(loft(sc([[325, 16, 14, 2.4], [331.5, 14.6, 13, 2.4]]), sT, false, false), shade(col, -0.1));
+    up(disc(sc([[331.3, 14.3, 12.7, 2.4]])[0], sT, true), shade(col, -0.5));
+  };
+  const hips = col => {                                              // 裤子的腰胯：底部平切，裤腿从里面伸出来
+    up(loft(HIP, sT, false, false), col);
+    up(disc(sc([[171.2, 35.2, 24.2, 3.2]])[0], sT, false), shade(col, -0.45));
+  };
+  const neck = () => up(loft([[322, 11, 11.5], [346, 10.2, 10.6]], F ? 6 : 10), P.skin);
+  const straps = (col, ys, T = TEE) => {                             // 两条从胸前翻过肩膀到背后的带子
+    for (const sx of [-17 * bw, 17 * bw]) {
+      const pos = [], nor = [], idx = [], top = ys.indexOf(Math.max(...ys));
+      ys.forEach((y, i) => {
+        for (const dx of [-4.5, 4.5]) {
+          const x = sx + dx, z = (i > top ? -1 : 1) * zOn(T, x, y, 2.6), n = new THREE.Vector3(x * 0.5, Math.max(0, (y - 300) / 30) * 22, z).normalize();
+          pos.push(x, y, z); nor.push(n.x, n.y, n.z);
+        }
+        if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2, a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+      });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setIndex(idx);
+      up(g, col);
+    }
+  };
+  // 手臂。sleeve: 'none' 无袖 / 'rolled' 卷到手肘 / 'long' 长袖；glove 手套颜色；wraps 小臂上缠的布条颜色
+  const arms = ({ sleeve, col, cuffCol = shade(col || '#888888', 0.16), glove, wraps }) => {
+    for (const [k, d] of [['L', 1], ['R', -1]]) {
+      const ax = AX * d, a = (y, w, dd, n = 2.4) => [shY + y, w * tk, dd * tk, nn(n), ax, 0];
+      if (sleeve === 'none') part(loft([a(-66, 8.4, 8.4), a(-30, 9.3, 9.3), a(-6, 10, 10.2), a(6, 8.8, 9.2), a(12, 4.6, 5)], sL), P.skin, 'arm' + k);
+      else part(loft([a(-66, 8.4, 8.4), a(-30, 9.3, 9.3), a(-18, 9.4, 9.4)], sL), P.skin, 'arm' + k);
+      if (sleeve === 'rolled') {
+        part(loft([a(-52, 12.4, 12.6, 2.8), a(-30, 12.8, 13, 2.8), a(-12, 13, 13.2, 2.8), a(3, 12.2, 12.6, 2.6), a(11, 7, 8)], sL, false, true), col, 'arm' + k);
+        part(loft([a(-61, 14.4, 14.6, 2.8), a(-50, 14.4, 14.6, 2.8)], sL), cuffCol, 'arm' + k);
+      }
+      if (sleeve === 'long') {
+        part(loft([a(-64, 11, 11.2, 2.6), a(-30, 12.2, 12.4, 2.8), a(-12, 13, 13.2, 2.8), a(3, 12.2, 12.6, 2.6), a(11, 7, 8)], sL), col, 'arm' + k);
+        part(loft([a(-108, 10.4, 10.8, 2.6), a(-76, 11.6, 11.8, 2.6), a(-55, 11.2, 11.4, 2.6)], sL, false, true), col, 'fore' + k);
+        part(loft([a(-115, 11.8, 12.2, 2.8), a(-104, 11.8, 12.2, 2.8)], sL, false, true), cuffCol, 'fore' + k);
+        part(disc(a(-114.8, 11.5, 11.9, 2.8), sL, false), shade(col, -0.5), 'fore' + k);
+      } else part(loft([a(-113, 6.6, 7), a(-100, 7.4, 7.8), a(-74, 9.3, 9.3), a(-55, 8.7, 8.7)], sL), P.skin, 'fore' + k);
+      if (wraps) for (const y of [-80, -93]) { const r = sleeve === 'long' ? 12.1 : 9.6; part(loft([a(y - 3.5, r, r + 0.3), a(y + 3.5, r + 0.2, r + 0.5)], sL, false, false), wraps, 'fore' + k); }
+      const h = (y, w, dd, curl) => [shY + y, w * hand, dd * hand, nn(2.8), ax - d * curl * hand, 1.5];
+      part(loft([h(-143, 2.6, 6.2, 3.6), h(-135, 4, 8.2, 1.5), h(-124, 4.6, 8.8, 0), h(-112, 3.9, 6.4, 0)], F ? 6 : 8), glove || P.skin, 'fore' + k);   // 手：微微内扣的连指
+      part(ball(2.6 * hand, 5.6 * hand, 3 * hand, 6, 4).rotateX(-0.55), glove || P.skin, 'fore' + k, ax - d * hand, shY - 123, 10 * hand);              // 拇指
+      if (glove) part(loft([a(-119, 8.6, 9, 2.8), a(-108, 9.4, 9.8, 2.8)], sL, false, true), glove, 'fore' + k);                                        // 手套的袖筒
+    }
+  };
+  // 腿和靴子。cuff 卷边；tuck 裤腿塞进高帮靴；pad 护膝颜色；cargo 大腿外侧口袋颜色；knee 单膝补丁颜色
+  const legs = ({ col, cuff, tuck, pad, cargo, knee }) => {
+    for (const [k, d] of [['L', 1], ['R', -1]]) {
+      const lx = LX * d, l = (y, w, dd, n = 3) => [y, w * tk, dd * tk, nn(n), lx, 0];
+      const onKnee = (y0, off) => (i, j) => { const t = (55 + j * 23.3) * Math.PI / 180, c = Math.cos(t), q = Math.sin(t), e = 2 / nn(3); return [lx + (17.1 * tk + off) * Math.sign(c) * Math.pow(Math.abs(c), e), y0 + i * 12, (18.1 * tk + off) * Math.sign(q) * Math.pow(Math.abs(q), e)]; };
+      part(loft([l(kneeY - 8, 17, 18), l(kneeY + 30 * P.leg, 17.2, 18.2), l(hipY - 10, 18.6, 19.6), l(hipY + 12, 17.6, 18.6)], sL), col, 'leg' + k);
+      if (pad) part(patch(2, 3, onKnee(kneeY - 5, 1.8)), pad, 'leg' + k);
+      if (knee && k === 'L') part(patch(2, 3, onKnee(kneeY + 2, 1)), knee, 'leg' + k);
+      if (cargo) part(loft([[kneeY + 32 * P.leg, 4.4, 9.5, nn(3.6), lx + d * (17.2 * tk + 2.2), 0], [kneeY + 58 * P.leg, 4.4, 9.5, nn(3.6), lx + d * (17.2 * tk + 2.2), 0]], F ? 4 : 8), cargo, 'leg' + k);
+      const bt = (y, w, dd, oz, n = 3.2) => [y, w * shoe, dd * shoe, nn(n), lx, oz * shoe];
+      if (tuck) {   // 裤腿在靴口上方鼓出来一圈
+        part(loft([l(rig.ankle + 28, 14.5, 15.5), l(rig.ankle + 38, 19.8, 20.8), l(kneeY - 14 * P.leg, 18.8, 19.8), l(kneeY + 8, 16, 17)], sL), col, 'shin' + k);
+        part(loft([bt(28, 12.4, 13.4, -0.5), bt(62, 13.8, 14.8, -0.5)], F ? 8 : 12, true, false), P.shoe, 'shin' + k);            // 高帮靴筒
+        part(loft([bt(57, 14.6, 15.6, -0.5), bt(63, 14.6, 15.6, -0.5)], F ? 8 : 12), shade(P.shoe, 0.14), 'shin' + k);
+      } else {
+        part(loft([l(rig.ankle + 5, 18.6, 19.6), l(kneeY - 22 * P.leg, 17.4, 18.4), l(kneeY + 8, 16, 17)], sL, false, true), col, 'shin' + k);
+        if (cuff) part(loft([l(rig.ankle + 4, 20.2, 21.2), l(rig.ankle + 14, 20.2, 21.2)], sL, false, true), shade(col, 0.18), 'shin' + k);
+        part(disc(cuff ? l(rig.ankle + 4.2, 19.9, 20.9) : l(rig.ankle + 5.2, 18.3, 19.3), sL, false), shade(col, -0.5), 'shin' + k);
+      }
+      part(loft([bt(0, 14.5, 27, 9, 4), bt(6, 14.5, 27, 9, 4)], F ? 8 : 14), shade(P.shoe, -0.35), 'foot' + k);                                         // 厚鞋底
+      part(loft([bt(6, 13.5, 25.5, 8.5), bt(15, 13, 23, 6.5), bt(23, 12, 16, 1.5), bt(33, 11.5, 12.5, -0.5)], F ? 8 : 14), P.shoe, 'foot' + k);         // 鞋面
+    }
+  };
+
+  // ---------- 头、头发（四套服装共用） ----------
+  headPart(ball(34, 43, 38, 18, 12, v => {
+    if (v[1] < 0) { const k = 1 - 0.24 * Math.pow(-v[1], 1.4); v[0] *= k; v[2] *= k; v[2] += 0.1 * v[1] * v[1]; }   // 下巴收窄并前探
+    v[2] *= v[2] > 0 ? 0.96 : 1.06;
+  }), P.skin, 0, 384, 2);
+  for (const sx of [-33.5, 33.5]) headPart(ball(3.2, 7, 5, 8, 6), P.skin, sx, 380, -1);                             // 耳朵
+  const hd = (az, el, k = 1.06) => { const a = az * Math.PI / 180, e = el * Math.PI / 180; return [Math.sin(a) * Math.cos(e) * 34 * k, 384 + Math.sin(e) * 43 * k, 2 + Math.cos(a) * Math.cos(e) * 38 * k]; };
+  const lock = (az, el, az2, el2, w, th, k2 = 1.12) => { const b = hd(az, el), t = hd(az2, el2, k2); headPart(tuft(b, t, w, th, [b[0], b[1] - 384, b[2] - 2]), P.hairC); };
+  if (P.hair === 'buzz') headPart(hairCap(1.5, -0.55, [35.2, 44.2, 39.2]), P.hairC, 0, 384, 2);
+  else {
+    headPart(hairCap(P.hair === 'bowl' ? 1.84 : 1.7, P.hair === 'bowl' ? -0.3 : -0.72, [36, 45, 40]), P.hairC, 0, 384.5, 1.5);
+    if (P.hair === 'messy') {
+      for (const [az, len, sw] of [[-44, 27, 9], [-24, 37, 7], [-4, 30, 9], [16, 39, 6], [36, 28, 8]]) lock(az, 46, az + sw, 46 - len, 11, 3.6, 1.17);    // 刘海：长短不一地搭在额头上
+      for (const s of [-1, 1]) { lock(66 * s, 34, 74 * s, 0, 8, 3.2); lock(98 * s, 26, 106 * s, -12, 10, 3.4); }                                    // 鬓角和耳后
+      for (const [az, el, az2, el2, k2] of [[10, 80, 150, 70, 1.36], [-50, 64, -120, 60, 1.3], [60, 62, 125, 56, 1.3]]) lock(az, el, az2, el2, 9, 4.5, k2);   // 头顶往后翘的几撮
+      for (const az of [150, 180, 210]) lock(az, 8, az, -30, 12, 3.6);                                                                               // 后脑勺
+    }
+    if (P.cowlick) lock(-14, 80, 40, 87, 5.5, 4, 1.7);                                                               // 呆毛
+  }
+  if (P.face === 'dots') for (const sx of [-12, 12]) headPart(ball(2.7, 3.4, 2, 6, 4), '#2a2422', sx, 382, 38.2);
+
+  // ---------- 四套服装 ----------
+  const OUT = {
+    // A 系腰工装：连体工装的上半截褪下来系在腰上，里面一件无袖衫，戴着手套
+    coverall() {
+      const cov = '#5b7180', tank = '#d6d0c2', glove = '#4a3b30', zf = zOn(HIP, 0, 216, 5.5);
+      shirt(tank); hips(cov); neck();
+      up(loft(sc([[204, 38, 27.5, 2.6], [210, 40.5, 29.5, 2.4], [222, 40.5, 29.5, 2.4], [230, 37.5, 27, 2.6]]), sT), shade(cov, -0.1));        // 腰上鼓鼓的一圈
+      up(ball(9.5, 8.5, 6.5, 8, 6), shade(cov, -0.16), 3, 215, zf + 1.5);                                                                    // 前面打的结
+      for (const [x0, x1, y0] of [[-10, -3, 174], [16, 8, 183]]) up(loft([[y0, 5.4, 2.6, nn(2.6), x0, zf + 1], [212, 6.8, 3.2, nn(2.6), x1, zf + 2.4]], F ? 4 : 8), cov);   // 垂下来的两只袖子
+      up(patch(2, 2, (i, j) => { const x = (-22 + j * 8) * bw, y = 180 + i * 11; return [x, y, -zOn(HIP, x, y, 1)]; }), shade(cov, -0.2));     // 后裤兜
+      const zb = -zOn(HIP, -14 * bw, 198, 1);                                                                                                // 后兜里塞着的抹布
+      up(strip2([[202, -20, -9, 1.5], [191, -21, -9.5, 3.2], [180, -20, -8, 4.8], [168, -22.5, -11, 6]].map(([y, xl, xr, o], i) => [[xl * bw, y, zb - o - (i === 3 ? 1.5 : 0)], [xr * bw, y - (i === 3 ? 4 : 0), zb - o]])), '#c06a3a');
+      arms({ sleeve: 'none', glove });
+      legs({ col: cov, knee: shade(cov, -0.28) });
+    },
+    // B 大号夹克：大了好几号的工装夹克，立领、长袖卷着边，护目镜推在头顶
+    jacket() {
+      const jk = '#727650', lin = '#b9a77e', pants = '#3d3a37';
+      const JK = sc([[164, 39.5, 28.5, 3.4], [200, 38.5, 27.5, 3.4], [240, 37, 26, 3.2], [270, 37.5, 25.5, 3.2], [298, 40.5, 25, 3.4], [314, 37.5, 22.5, 3], [324, 22, 17, 2.6], [330, 15.5, 13.5, 2.4]]);
+      up(loft(JK, sT, false, true), jk);
+      up(disc(sc([[164.3, 39.2, 28.2, 3.4]])[0], sT, false), shade(jk, -0.55));                                                               // 下摆里面是暗的
+      up(loft(sc([[322, 20, 17, 2.6], [339, 18.5, 16.5, 2.6]]), sT, false, false), lin);                                                     // 立领
+      up(disc(sc([[338.6, 18.2, 16.2, 2.6]])[0], sT, true), shade(lin, -0.5));
+      up(patch(6, 1, (i, j) => surf(JK, 168 + i * 25.5, 87.5 + j * 5, 0.9)), shade(jk, -0.32));                                               // 门襟
+      up(patch(2, 3, (i, j) => surf(JK, 262 + i * 10, 56 + j * 7, 1.2)), shade(jk, -0.18));                                                   // 胸袋
+      up(patch(2, 3, (i, j) => surf(JK, 184 + i * 12, 108 + j * 9, 1.2)), shade(jk, -0.18));                                                  // 下摆口袋
+      neck();
+      arms({ sleeve: 'long', col: jk, cuffCol: lin });
+      legs({ col: pants });
+      const tilt = g => g.rotateX(-0.34);                                                                                                    // 护目镜：推到头顶，向后仰
+      headPart(tilt(loft([[-3.5, 36.6, 40.6], [3.5, 36.3, 40.3]], 18, false, false)), '#2f2a26', 0, 411, -3);                                 // 绑带
+      const frame = loft([[-8, 23, 5.2, nn(3.6)], [8, 23, 5.2, nn(3.6)]], F ? 6 : 10).rotateX(-0.62);
+      headPart(frame, '#3a3f42', 0, 424, 27);
+      for (const sx of [-11, 11]) headPart(new THREE.CylinderGeometry(6.6, 6.6, 3, 10).rotateX(Math.PI / 2).translate(sx, 0, 5.4).rotateX(-0.62), '#93b5b8', 0, 424, 27);   // 镜片
+    },
+    // C 拾荒斗篷：破边的帆布斗篷 + 厚围巾，小臂缠着布条，裤腿塞进高帮靴
+    poncho() {
+      const pon = '#9c8a69', band = '#7a4a3a', under = '#4a4f55', pants = '#5f6650', scarf = '#8a5a48', wrap = '#cfc2a4';
+      shirt(under); hips(pants); neck();
+      const g = loft(sc([[230, 58, 40, 2.6], [262, 56, 37, 2.6], [298, 53.5, 30, 2.8], [312, 45, 25, 2.6], [321, 30, 20, 2.5], [329, 16.5, 14, 2.4]]), sT, false, true);   // 盖住肩膀和上臂
+      for (let j = 0, p = g.attributes.position; j < sT; j++) p.setY(j, p.getY(j) + [8, -4, 3, -6][j % 4]);                                   // 下摆撕得参差不齐
+      g.computeVertexNormals();
+      up(g, pon);
+      up(disc(sc([[240, 56.6, 38.4, 2.6]])[0], sT, false), shade(pon, -0.55));
+      up(loft(sc([[245, 57.7, 39.2, 2.6], [252, 57.3, 38.6, 2.6]]), sT, false, false), band);                                                   // 下摆上方一道暗红条纹
+      up(loft(sc([[320, 20, 17.5, 2.4], [329, 23.5, 20.5, 2.2], [341, 19.5, 17, 2.4]]), sT), scarf);                                          // 围巾
+      up(strip2([[336, 6, 16, 19], [318, 5, 15, 24], [298, 7, 16, 29], [282, 5, 13, 31]].map(([y, xl, xr, z]) => [[xl * bw, y, -z * bd], [xr * bw, y - 3, -z * bd - 1]])), scarf);   // 围巾垂在背后的一截
+      arms({ sleeve: 'long', col: under, cuffCol: shade(under, 0.1), wraps: wrap });
+      legs({ col: pants, tuck: true });
+    },
+    // D 背心背包：衬衫卷着袖子，外面一件背心，腰上工具带，背后背包上绑着一只气罐
+    vest() {
+      const vest = '#46606b', sh = '#cfc6b2', belt = '#6b4a35', pouch = '#7c5c42', pants = '#5a5348', pad = '#2f2e2c', pack = '#6e7458', tank = '#b4613a';
+      shirt(sh); hips(pants); neck();
+      const vy = [234, 250, 268, 290, 306, 316];
+      up(patch(5, 16, (i, j) => surf(TEE, vy[i], 96.5 + j / 16 * 347, 2.3)), vest);                                                             // 背心：前面敞着一条缝
+      up(ball(15, 8.5, 8, 8, 6), vest, 0, 323, -17 * bd);                                                                                    // 背后垂着的兜帽
+      up(loft(sc([[197, 37.3, 26.3, 3.2], [209, 37.1, 26.1, 3.2]]), sT), belt);                                                              // 工具带
+      up(loft([[198, 5.5, 1.8, nn(3.6), 0, zOn(HIP, 0, 203, 2.4)], [208, 5.5, 1.8, nn(3.6), 0, zOn(HIP, 0, 203, 2.4)]], F ? 4 : 8), '#b59a5b');
+      for (const [s, y0] of [[1, 174], [-1, 183]]) up(loft([[y0, 5.6, 9.5, nn(3.6), s * (36.5 * bw + 4.2), 3], [203, 5.6, 9.5, nn(3.6), s * (36.5 * bw + 4.2), 3]], F ? 4 : 8), pouch);   // 两侧的腰包
+      const zc = -(23 * bd + 12);                                                                                                            // 背包
+      up(loft([[232, 23 * bw, 12, nn(3.6), 0, zc], [298, 23 * bw, 12, nn(3.6), 0, zc]], F ? 4 : 10), pack);
+      up(loft([[292, 24.2 * bw, 13.2, nn(3.6), 0, zc], [302, 24.2 * bw, 13.2, nn(3.6), 0, zc]], F ? 4 : 10), shade(pack, -0.2));
+      up(new THREE.CylinderGeometry(7.5, 7.5, 48, 10), tank, 9 * bw, 262, zc - 17);                                                           // 气罐
+      up(new THREE.CylinderGeometry(3.2, 3.2, 8, 8), '#2f2e2c', 9 * bw, 290, zc - 17);
+      straps(belt, [252, 270, 290, 304, 314, 321, 326.8, 321, 314, 304, 296]);
+      arms({ sleeve: 'rolled', col: sh });
+      legs({ col: pants, pad, cargo: shade(pants, -0.18) });
+    },
+  };
+  OUT[outfit]();
+
+  let geo = mergeGeometries(parts);
+  geo = mergeVertices(geo);                 // 把重复的顶点焊回去，导出的文件更小
+  geo.scale(S, S, S);
+
+  // ---------- 骨骼 ----------
+  const JOINT = {
+    hips: [null, 0, hipY, 0], spine: ['hips', 0, 196 + dy, 0], head: ['spine', 0, 340 + dy, 0],
+    armL: ['spine', AX, shY, 0], foreL: ['armL', AX, elY, 0], armR: ['spine', -AX, shY, 0], foreR: ['armR', -AX, elY, 0],
+    legL: ['hips', LX, hipY, 0], shinL: ['legL', LX, kneeY, 0], footL: ['shinL', LX, rig.ankle, 0],
+    legR: ['hips', -LX, hipY, 0], shinR: ['legR', -LX, kneeY, 0], footR: ['shinR', -LX, rig.ankle, 0],
+  };
+  const bones = BONES.map(n => { const b = new THREE.Bone(); b.name = n; return b; }), bone = n => bones[B[n]];
+  for (const n of BONES) {
+    const [pn, x, y, z] = JOINT[n], pp = pn ? JOINT[pn] : [null, 0, 0, 0];
+    bone(n).position.set((x - pp[1]) * S, (y - pp[2]) * S, (z - pp[3]) * S);
+    if (pn) bone(pn).add(bone(n));
+  }
+  const mesh = new THREE.SkinnedMesh(geo, MAT);
+  mesh.name = 'Apprentice'; mesh.frustumCulled = false;
+  mesh.add(bone('hips'));
+  mesh.bind(new THREE.Skeleton(bones));
+  return { outfit, mesh, bones, bone, rig, tris: geo.index.count / 3, height: (340 + dy + 97 * hs) * S };
+}
+
+// ============================================================
+//  动作：站立（轻微呼吸）和行走（原地循环），烘焙成动画片段，导出 GLB 时一并带上
+// ============================================================
+function poseWalk(h, t) {                    // t: 0..1 一个完整的步态循环
+  const p = t * Math.PI * 2, { bone, rig } = h;
+  let reach = 0;
+  for (const [k, d, q] of [['L', 1, p], ['R', -1, p + Math.PI]]) {
+    const s = Math.sin(q);
+    const hip = -0.5 * s;                                                      // 大腿前后摆
+    const knee = 0.95 * Math.pow(Math.max(0, Math.cos(q + 0.5)), 1.3);          // 腿往前送的时候屈膝
+    bone('leg' + k).rotation.set(hip, 0, 0);
+    bone('shin' + k).rotation.set(knee, 0, 0);
+    bone('foot' + k).rotation.set(-(hip + knee) * 0.75, 0, 0);                 // 脚掌尽量保持水平
+    bone('arm' + k).rotation.set(0.42 * s, 0, d * 0.07);                       // 手臂与同侧的腿反向摆动
+    bone('fore' + k).rotation.set(-0.4 + 0.22 * s, 0, 0);
+    reach = Math.max(reach, rig.thigh * Math.cos(hip) + rig.shin * Math.cos(hip + knee));
+  }
+  bone('hips').position.set(0, (reach + rig.ankle) * S, 0);                    // 胯的高度跟着支撑腿走，脚才不会悬空或入地
+  bone('hips').rotation.set(0, 0.06 * Math.sin(p), 0);
+  bone('spine').rotation.set(0.06, -0.12 * Math.sin(p), 0);
+  bone('head').rotation.set(-0.04, 0.06 * Math.sin(p), 0);
+}
+function poseIdle(h, t) {                    // t: 0..1 一次呼吸
+  const s = Math.sin(t * Math.PI * 2), c = Math.sin(t * Math.PI * 2 + 1.2), spread = 0.035, { bone, rig } = h;
+  for (const [k, d] of [['L', 1], ['R', -1]]) {
+    const relax = k === 'R' ? 1 : 0;                                           // 右腿稍微放松、往前一点，站姿不那么僵
+    bone('leg' + k).rotation.set(-0.08 * relax, d * 0.13, d * spread);         // 脚尖略微朝外
+    bone('shin' + k).rotation.set(0.16 * relax, 0, 0);
+    bone('foot' + k).rotation.set(-0.08 * relax, 0, -d * spread);
+    bone('arm' + k).rotation.set(0.06 + 0.03 * c, 0, d * (0.1 + 0.012 * s));
+    bone('fore' + k).rotation.set(-0.28 - 0.02 * s, 0, 0);
+  }
+  bone('hips').position.set(0, ((rig.thigh + rig.shin) * Math.cos(spread) + rig.ankle) * S, 0);
+  bone('hips').rotation.set(0, 0.05, 0);
+  bone('spine').rotation.set(0.05 + 0.012 * s, -0.05, 0);                     // 微微含胸
+  bone('head').rotation.set(-0.02 - 0.01 * c, 0.03 * c, 0);
+}
+function bake(h, name, dur, fn, n = 32) {
+  const times = [], rot = BONES.map(() => []), pos = [];
+  for (let i = 0; i <= n; i++) {
+    fn(h, i / n); times.push(dur * i / n);
+    h.bones.forEach((b, j) => rot[j].push(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w));
+    pos.push(...h.bone('hips').position.toArray());
+  }
+  const tracks = BONES.map((b, j) => new THREE.QuaternionKeyframeTrack(b + '.quaternion', times, rot[j]));
+  tracks.push(new THREE.VectorKeyframeTrack('hips.position', times, pos));
+  return new THREE.AnimationClip(name, dur, tracks);
+}
+
+// ============================================================
+//  场景里的角色：单个，或三种风格并排对比
+// ============================================================
+const ORDER = Object.keys(OUTFITS);
+let heroes = [], floors = [], current = 'idle', frames = 0, compare = true;   // compare：四套服装并排
+const $ = id => document.getElementById(id);
+
+const floorMat = (() => {   // 一张小渐变图同时充当脚下的阴影和顶光照出的光斑
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  let gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(214,232,232,.26)'); gr.addColorStop(0.55, 'rgba(214,232,232,.12)'); gr.addColorStop(1, 'rgba(214,232,232,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  gr = g.createRadialGradient(128, 128, 0, 128, 128, 27);
+  gr.addColorStop(0, 'rgba(6,9,11,.75)'); gr.addColorStop(0.6, 'rgba(6,9,11,.42)'); gr.addColorStop(1, 'rgba(6,9,11,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false });
+})();
+const floorGeo = new THREE.PlaneGeometry(3.4, 3.4).rotateX(-Math.PI / 2);
+
+function rebuild() {
+  const t = heroes[0] ? heroes[0].actions[current].time : 0;
+  for (const h of heroes) { scene.remove(h.mesh); h.mesh.geometry.dispose(); h.mesh.skeleton.dispose(); }
+  floors.forEach(f => scene.remove(f));
+  const list = compare ? ORDER : [P.outfit];
+  document.body.classList.toggle('lineup', compare); resize();   // 并排时收起右侧面板，画面更宽
+  heroes = list.map((s, i) => {
+    const h = makeHero(s);
+    h.mesh.position.x = (i - (list.length - 1) / 2) * 0.74;
+    h.clips = { idle: bake(h, 'Idle', 3.2, poseIdle), walk: bake(h, 'Walk', 0.95, poseWalk) };
+    h.mixer = new THREE.AnimationMixer(h.mesh);
+    h.actions = { idle: h.mixer.clipAction(h.clips.idle), walk: h.mixer.clipAction(h.clips.walk) };
+    h.actions[current].play(); h.actions[current].time = t % h.clips[current].duration;
+    scene.add(h.mesh);
+    return h;
+  });
+  floors = heroes.map(h => { const f = new THREE.Mesh(floorGeo, floorMat); f.position.x = h.mesh.position.x; f.scale.setScalar(compare ? 0.5 : 1); scene.add(f); return f; });
+  $('labels').innerHTML = compare ? heroes.map((h, i) => `<div class="lab" data-outfit="${h.outfit}"><b>${'ABCD'[i]} ${OUTFITS[h.outfit]}</b><br><span>${h.tris.toLocaleString()} 面</span></div>`).join('') : '';
+  frames = 0; syncUI();
+}
+function setAction(name) {
+  if (name !== current) {
+    for (const h of heroes) { h.actions[name].reset().setEffectiveWeight(1).play(); h.actions[current].crossFadeTo(h.actions[name], 0.35, false); }
+    current = name;
+  }
+  $('bWalk').classList.toggle('on', name === 'walk');
+  $('bIdle').classList.toggle('on', name === 'idle');
+}
+// 根据当前是单个还是并排，把相机摆到能看全的位置
+function frameAll() {
+  const vf = camera.fov * Math.PI / 360, width = compare ? 3.0 : 1.25, height = 1.7;
+  const dist = Math.max(height / 2 / Math.tan(vf), width / 2 / (Math.tan(vf) * camera.aspect)) * 1.12;
+  const az = (compare ? 24 : 36) * Math.PI / 180, el = 6 * Math.PI / 180;
+  HOME.tgt.set(0, 0.66, 0);
+  HOME.pos.set(Math.sin(az) * Math.cos(el) * dist, 0.66 + Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
+  camera.position.copy(HOME.pos); controls.target.copy(HOME.tgt); controls.maxDistance = dist * 2.2;
+}
+const _v = new THREE.Vector3();
+function placeLabels() {
+  const els = $('labels').children, w = canvas.clientWidth, hgt = canvas.clientHeight;
+  for (let i = 0; i < els.length; i++) {
+    _v.set(heroes[i].mesh.position.x, heroes[i].height + 0.07, 0).project(camera);
+    els[i].style.left = ((_v.x * 0.5 + 0.5) * w) + 'px'; els[i].style.top = ((-_v.y * 0.5 + 0.5) * hgt) + 'px';
+  }
+}
+
+// ============================================================
+//  外观面板
+// ============================================================
+function syncUI() {
+  document.querySelectorAll('#panel input[data-k]').forEach(el => {
+    el.value = P[el.dataset.k];
+    if (el.type === 'range') el.nextElementSibling.textContent = (+P[el.dataset.k]).toFixed(2);
+  });
+  const same = n => ['head', 'leg', 'thick', 'body'].every(k => Math.abs(P[k] - PRESETS[n][k]) < 0.005);
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('on', same(b.dataset.preset)));
+  document.querySelectorAll('[data-hair]').forEach(b => b.classList.toggle('on', P.hair === b.dataset.hair));
+  document.querySelectorAll('[data-face]').forEach(b => b.classList.toggle('on', P.face === b.dataset.face));
+  document.querySelectorAll('[data-opt]').forEach(b => b.classList.toggle('on', !!P[b.dataset.opt]));
+  document.querySelectorAll('#panel [data-outfit]').forEach(b => b.classList.toggle('on', P.outfit === b.dataset.outfit));
+  $('bLineup').classList.toggle('on', compare);
+  $('params').value = JSON.stringify(P);
+}
+$('panel').addEventListener('input', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  P[k] = e.target.type === 'range' ? +e.target.value : e.target.value;
+  rebuild();
+});
+$('panel').addEventListener('click', e => {
+  const d = e.target.dataset;
+  if (d.outfit) { P.outfit = d.outfit; rebuild(); return; }
+  if (d.preset) Object.assign(P, PRESETS[d.preset]);
+  else if (d.hair) P.hair = d.hair;
+  else if (d.face) P.face = d.face;
+  else if (d.opt) P[d.opt] = !P[d.opt];
+  else if (e.target.id === 'bDefault') Object.assign(P, DEF);
+  else return;
+  rebuild();
+});
+
+// ============================================================
+//  底部按钮
+// ============================================================
+function setAuto(on) { controls.autoRotate = on; $('bAuto').classList.toggle('on', on); }
+$('bWalk').onclick = () => setAction('walk');
+$('bIdle').onclick = () => setAction('idle');
+$('bAuto').onclick = () => setAuto(!controls.autoRotate);
+$('bReset').onclick = () => { camera.position.copy(HOME.pos); controls.target.copy(HOME.tgt); };
+canvas.addEventListener('pointerdown', () => setAuto(false));
+$('bLineup').onclick = () => { compare = !compare; rebuild(); frameAll(); };
+$('labels').addEventListener('click', e => {   // 并排时点名字，单独看那一套
+  const el = e.target.closest('[data-outfit]'); if (!el) return;
+  P.outfit = el.dataset.outfit; compare = false; rebuild(); frameAll();
+});
+
+// 导出 GLB：当前选中风格的带骨骼网格 + Idle、Walk 两段动画
+async function exportGLB() {
+  const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+  const h = heroes.find(x => x.outfit === P.outfit) || heroes[0], x = h.mesh.position.x;
+  h.mesh.position.x = 0;
+  try { return await new GLTFExporter().parseAsync(h.mesh, { binary: true, animations: [h.clips.idle, h.clips.walk] }); }
+  finally { h.mesh.position.x = x; }
+}
+$('bGlb').onclick = async e => {
+  const b = e.currentTarget, old = b.textContent;
+  b.disabled = true; b.textContent = '导出中…';
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([await exportGLB()], { type: 'model/gltf-binary' }));
+    a.download = 'apprentice.glb'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (err) { console.error(err); alert('导出失败：' + err.message); }
+  b.textContent = old; b.disabled = false;
+};
+
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  for (const h of heroes) h.mixer.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  placeLabels();
+  if (++frames === 3) $('stats').textContent = compare
+    ? `四套服装并排 · 点名字可以单独看 · 每个角色 1 次绘制调用`
+    : `${heroes[0].tris.toLocaleString()} 个三角面 · 角色 1 次绘制调用 · 不用贴图`;
+  requestAnimationFrame(frame);
+}
+
+// 调试用
+window.__view = (az = 36, el = 6, dist = 4.4, ty = 0.66, tx = 0) => {
+  setAuto(false);
+  const a = az * Math.PI / 180, e = el * Math.PI / 180;
+  controls.target.set(tx, ty, 0);
+  camera.position.set(tx + Math.sin(a) * Math.cos(e) * dist, ty + Math.sin(e) * dist, Math.cos(a) * Math.cos(e) * dist);
+  controls.update(); renderer.render(scene, camera); placeLabels();
+};
+window.__pose = (name, t) => {   // 定格到某个动作的某一帧（t: 0..1）；不传 t 则恢复播放
+  for (const h of heroes) {
+    h.mixer.stopAllAction(); h.actions[name].reset().setEffectiveWeight(1).play();
+    h.mixer.timeScale = t == null ? 1 : 0;
+    if (t != null) { h.actions[name].time = t * h.clips[name].duration; h.mixer.update(0); }
+  }
+  current = name; setAction(name); renderer.render(scene, camera);
+};
+window.__mode = (cmp, o) => { compare = cmp; if (o) P.outfit = o; rebuild(); frameAll(); return heroes.map(h => h.outfit + ':' + h.tris).join(' '); };
+window.__set = o => { Object.assign(P, o); rebuild(); return JSON.stringify(P); };
+window.__glbSize = async () => (await exportGLB()).byteLength;
+window.__info = () => ({ triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, heroes: heroes.map(h => ({ outfit: h.outfit, tris: h.tris, verts: h.mesh.geometry.attributes.position.count })) });
+
+rebuild(); frameAll(); setAction(current);
+window.__ready = true;
+$('msg').remove();
+frame();
+</script>
+</body>
+</html>
