@@ -5,16 +5,18 @@
 let ROOT = scene;                                   // 布景板当前挂到哪个节点下（各章节搭建时会换成自己的）
 
 // 世界范围 [x1,x2]×[y1,y2]，深度 z。draw(g) 里直接以“米”为单位、y 轴向上
-// o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米
+// o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
+//    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
-  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k;
+  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
+  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处
   g.save();
   if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
-  g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  place();
   draw(g);
-  g.restore(); g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  g.restore(); place();
   g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {     // 两端渐隐：和相邻章节的远景接上时看不出边
     const gr = g.createLinearGradient(a, 0, a + b * w, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -25,7 +27,8 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   mat.userData.own = true;                          // 这一章被卸载时，连同贴图一起释放
   const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
-  m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z); m.renderOrder = o.order ?? Math.round(z * 4);
+  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); } else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+  m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
 
@@ -54,6 +57,12 @@ function heap(g, x1, x2, y0, hMin, hMax, step = 0.5) {   // 高低不平的废�
   pts.push([x2, y0 - 4]); poly(g, pts);
 }
 function setInk(g, col) { g.fillStyle = col; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round'; }
+function hull(pts) {                                     // 一堆点的外轮廓（凸包），按顺序给出，可以直接交给 poly
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const q of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
 function vgrad(g, y0, y1, c0, c1) { const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, c0); gr.addColorStop(1, c1); return gr; }
 
 // 沿着高度函数 f(x) 起伏的一条轮廓，下面一直填到 y0

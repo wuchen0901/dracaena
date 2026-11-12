@@ -8,8 +8,17 @@ function glowTex(stops) {
   return canvasTex(c);
 }
 const GLOW = glowTex([[0, 'rgba(255,255,255,1)'], [0.22, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
-function glow(parent, color, size, opacity, x = 0, y = 0, z = 0) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+// 大光晕用的另一张：中心一个亮核，外面一圈衰减得很慢的晕，一直淡到看不出边（上面那张放大以后，边缘是一条看得出来的圆）
+const GLOW_SOFT = (() => {
+  const [c, g] = mkCanvas(256, 256), im = g.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    const r = Math.hypot(x - 127.5, y - 127.5) / 127.5, a = r >= 1 ? 0 : 0.62 * Math.pow(1 - r, 2.6) + 0.5 * Math.exp(-r * r * 46), i = (y * 256 + x) * 4;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.min(255, a * 255);
+  }
+  g.putImageData(im, 0, 0); return canvasTex(c);
+})();
+function glow(parent, color, size, opacity, x = 0, y = 0, z = 0, map = GLOW) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, color, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   s.scale.setScalar(size); s.position.set(x, y, z); s.renderOrder = 50; parent.add(s); return s;
 }
 

@@ -266,16 +266,18 @@ const standingOn = s => P.grounded && P.x + 0.13 > s.x1 && P.x - 0.13 < s.x2 && 
 let ROOT = scene;                                   // 布景板当前挂到哪个节点下（各章节搭建时会换成自己的）
 
 // 世界范围 [x1,x2]×[y1,y2]，深度 z。draw(g) 里直接以“米”为单位、y 轴向上
-// o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米
+// o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
+//    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
-  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k;
+  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
+  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处
   g.save();
   if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
-  g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  place();
   draw(g);
-  g.restore(); g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  g.restore(); place();
   g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {     // 两端渐隐：和相邻章节的远景接上时看不出边
     const gr = g.createLinearGradient(a, 0, a + b * w, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -286,7 +288,8 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   mat.userData.own = true;                          // 这一章被卸载时，连同贴图一起释放
   const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
-  m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z); m.renderOrder = o.order ?? Math.round(z * 4);
+  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); } else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+  m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
 
@@ -315,6 +318,12 @@ function heap(g, x1, x2, y0, hMin, hMax, step = 0.5) {   // 高低不平的废�
   pts.push([x2, y0 - 4]); poly(g, pts);
 }
 function setInk(g, col) { g.fillStyle = col; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round'; }
+function hull(pts) {                                     // 一堆点的外轮廓（凸包），按顺序给出，可以直接交给 poly
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const q of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
 function vgrad(g, y0, y1, c0, c1) { const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, c0); gr.addColorStop(1, c1); return gr; }
 
 // 沿着高度函数 f(x) 起伏的一条轮廓，下面一直填到 y0
@@ -539,8 +548,17 @@ function glowTex(stops) {
   return canvasTex(c);
 }
 const GLOW = glowTex([[0, 'rgba(255,255,255,1)'], [0.22, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
-function glow(parent, color, size, opacity, x = 0, y = 0, z = 0) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+// 大光晕用的另一张：中心一个亮核，外面一圈衰减得很慢的晕，一直淡到看不出边（上面那张放大以后，边缘是一条看得出来的圆）
+const GLOW_SOFT = (() => {
+  const [c, g] = mkCanvas(256, 256), im = g.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    const r = Math.hypot(x - 127.5, y - 127.5) / 127.5, a = r >= 1 ? 0 : 0.62 * Math.pow(1 - r, 2.6) + 0.5 * Math.exp(-r * r * 46), i = (y * 256 + x) * 4;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.min(255, a * 255);
+  }
+  g.putImageData(im, 0, 0); return canvasTex(c);
+})();
+function glow(parent, color, size, opacity, x = 0, y = 0, z = 0, map = GLOW) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, color, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   s.scale.setScalar(size); s.position.set(x, y, z); s.renderOrder = 50; parent.add(s); return s;
 }
 
@@ -1855,8 +1873,10 @@ const CH1 = (() => {
   checkpoint(2); checkpoint(40.2); checkpoint(56.6); checkpoint(85); checkpoint(99.5);
   camKeys([-10, 14.5, 1.25, 0], [12, 15.5, 1.35, 0], [24, 18.5, 2.0, 1.5], [40, 18.5, 1.7, 0], [52, 19.5, 1.7, 1], [58, 20.5, 2.0, 2], [83, 20.5, 2.0, 0],
     [89, 21.5, 2.5, 2.5], [96, 21.5, 2.6, 0.8], [99.5, 21, 2.5, -0.2], [102, 19, 1.9, -1.8], [104.4, 18, 1.7, -1.2]);
-  env(-60, {});                                          // 室内：沿用默认的一套冷色
-  env(104.7, {});
+  // 整章的光：逆光。颜色还是默认的冷青灰，但环境光和主光压暗、从背后来的轮廓光提亮；
+  // 最远的后墙和高窗比雾亮（见下面的布景板），站在它前面的东西都成了剪影
+  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1 });
+  env(104.7, {});                                        // 一直保持到出口那面黑墙；镜头穿过黑墙时换成第二章的晨光
 
   hint(() => !P.moved, '<b>←</b><b>→</b> 移动');
   hint(() => P.x > 5.5 && P.x < 9 && !P.jumped, '<b>空格</b> 跳跃');
@@ -1891,8 +1911,8 @@ const CH1 = (() => {
 
   function* build(R) {
     // ---------------- 布景板：废弃的巨型厂房 ----------------
-    // 最远的后墙：一排高窗透进冷光
-    backdrop(-90, 106, -2, 46, -32, 9, g => {
+    // 最远的后墙：一排高窗透进冷光。逆光的关键在这里 —— 整块板提亮 30 倍，隔着八成多的雾，墙和窗还是比雾亮
+    const backWall = (x1, x2) => backdrop(x1, x2, -2, 46, -32, 9, g => {
       setInk(g, '#131b1e'); box(g, -90, -2, 196, 48);
       for (let x = -84; x < 104; x += 8.5) {
         const gr = g.createLinearGradient(0, 28, 0, 5); gr.addColorStop(0, '#93aab0'); gr.addColorStop(1, '#2b3a3f');
@@ -1900,6 +1920,33 @@ const CH1 = (() => {
         setInk(g, '#131b1e'); for (let y = 8; y < 28; y += 3.2) box(g, x - 0.1, y, 1.9, 0.28);
       }
     });
+    backWall(-90, 104.7).material.color.setScalar(30);
+    backWall(104.7, 106);                                 // 出口那面墙外侧露出的一小段不提亮：从第二章回头看，它只是厂房的一条暗边
+    yield;
+    // 高窗照进来的光：朝着镜头、斜着向下穿过雾，从每扇窗往左下铺开一片。
+    // 它是紧贴在后墙前面的一层发光的薄片，不是立体的光柱：真的光柱要往镜头这边走十几米才落地，会罩在远处那排柱子和
+    // 探照灯前面，把它们的剪影冲淡。每一片的形状 = 从定稿那一屏的镜头看过去，那道光柱的轮廓落在后墙上的样子
+    // （离那一屏很远的窗子，就当镜头在它的斜对面）。坡道上方那一扇（x = 52）不画：它的光会落在远处的坡面上，成了一块亮斑
+    const WINS = []; for (let x = -58.5; x < 100; x += 8.5) if (Math.abs(x - 52) > 1) WINS.push(x);
+    const REF = [69.43, 3.025, 20.5], LD = [-0.16, -0.83, 0.53];   // 定稿那一屏（主角站在 x = 67.25）的镜头位置；光的方向
+    backdrop(-90, 106, -2, 29, -31.9, 10, g => {
+      const gr = g.createLinearGradient(0, 6.66, 0, -0.98);         // 窗子下面最亮，越往地面越淡
+      gr.addColorStop(0, 'rgba(190,222,230,.22)'); gr.addColorStop(0.55, 'rgba(190,222,230,.1)'); gr.addColorStop(1, 'rgba(190,222,230,.02)');
+      g.fillStyle = gr;
+      for (const x of WINS) {
+        const cx = clamp(REF[0], x - 17, x + 9), pts = [];
+        for (const [wx, wy] of [[x, 5], [x + 1.7, 5], [x, 28], [x + 1.7, 28]]) {                 // 窗子的四个角，和从每个角出发的光落到地上的那一点
+          const t = wy / -LD[1], fx = wx + LD[0] * t, fz = -32 + LD[2] * t, k = (-32 - REF[2]) / (fz - REF[2]);
+          pts.push([wx, wy], [cx + (fx - cx) * k, REF[1] * (1 - k)]);                             // 落地点沿着视线投到后墙上
+        }
+        poly(g, hull(pts));
+      }
+    }, { additive: true, fog: false, blur: 4, order: -127 });
+    // 光落在地上的那一块：靠墙的一头亮，朝镜头这一头淡下去
+    backdrop(-90, 106, -31, -11, 0, 5, g => {
+      g.fillStyle = vgrad(g, -29, -13, 'rgba(190,222,230,.15)', 'rgba(190,222,230,.03)');
+      for (const x of WINS) poly(g, [[x - 0.96, -28.8], [x + 0.74, -28.8], [x - 3.7, -14.1], [x - 5.4, -14.1]]);
+    }, { floor: 0.03, additive: true, fog: false, blur: 2, order: -100 });
     yield;
     // 高窗与天窗漏下来的光（叠加发光，不受雾影响）
     backdrop(-60, 106, -1, 26, -30, 7, g => {
@@ -1921,6 +1968,26 @@ const CH1 = (() => {
       for (const x of [-11, 9, 29, 49, 94.5]) fan(g, x + 0.6, 19.5, 2.6);   // 洞里的扇叶
       truss(g, 56.5, 85.5, 13.5, 1.4, 0.12);
       for (const x of [61, 66.5, 75, 81]) cable(g, x, 13.6, x + rr(2, 4), 13.6, rr(1.5, 4), 0.07);
+    });
+    yield;
+    // 拱廊后面的大厅：一排阶形柱（下半截粗，到了托行车梁的肩部收窄，上半截细）。
+    // 前半章只能从拱洞里看到它们；到了探照灯场地，拱廊让开一个大口，整排柱子露出来，中间两根正好一左一右夹着那台机器。
+    // 探照灯的眼睛在 z = -19，光束扫的是它前面的三角形：高的东西要么像这一排站在它后面，要么像下面那两根近柱靠在两侧
+    const pillar = (x, z, shadow) => {
+      add(R, bx(1.5, 8.6, 1.5), MAT.concrete, x, 3.3, z, shadow); add(R, bx(1.95, 0.5, 1.95), MAT.concrete, x, 7.85, z, shadow);
+      add(R, bx(1.0, 40, 1.0), MAT.concrete, x, 28.1, z, shadow); add(R, bx(2.1, 1.1, 2.1), MAT.concrete, x, 0.55, z, shadow);   // 柱身、肩、上柱、柱脚
+    };
+    for (let x = -35; x < 103; x += 8.5) pillar(x, -26, false);
+    // 行车梁：一道桁架，架在这排柱子的肩上，从坡道后面那根柱子一直到厂房尽头的墙。
+    // （没有往前半章延伸：那边近处已经有一道桁架，两道叠在一起看着乱）
+    backdrop(49.2, 103.3, 3, 11.5, -25, 48, g => {
+      setInk(g, '#0a1012');
+      truss(g, 49.2, 103.3, 8.15, 1.25, 0.11); box(g, 49.2, 9.4, 54.1, 0.14);
+      // 探照灯场地左边那一跨停着行车的小车：两股链条吊着滑轮组和钩子，从定稿那一屏看过去正好垂在一扇高窗前面
+      box(g, 61.25, 7.45, 2.4, 0.72); box(g, 60.95, 8.02, 3.0, 0.2); disc(g, 61.6, 8.22, 0.2); disc(g, 63.3, 8.22, 0.2);
+      line(g, [[62.3, 7.45], [62.3, 6.5]], 0.06); line(g, [[62.6, 7.45], [62.6, 6.5]], 0.06);
+      box(g, 62.08, 5.75, 0.74, 0.8); g.beginPath(); g.ellipse(62.45, 5.75, 0.37, 0.2, 0, 0, 6.2832); g.fill();
+      g.lineWidth = 0.13; g.beginPath(); g.moveTo(62.45, 5.6); g.lineTo(62.45, 5.25); g.arc(62.2, 5.25, 0.25, 0, Math.PI, true); g.stroke();
     });
     yield;
     // 中景：机器残骸、龙门架、楼梯
@@ -1966,15 +2033,24 @@ const CH1 = (() => {
       cable(g, 16, 6.7, 24, 6.7, 1.3); cable(g, 45, 6.7, 53.5, 6.7, 1.8); cable(g, -2, 6.7, 9, 6.7, 0.9);
     });
     yield;
-    // 前景：离镜头最近的一层，全黑、略微虚焦。只占画面最下沿和最上沿，不挡住主角
+    // 前景：离镜头最近的一层，全黑、略微虚焦，不挡住主角。
+    // （原来沿着画面下沿还有一道废料堆的剪影；以这个镜头的高度看过去，它前面还露着一截地面，成了横在地面中间的一道黑带，去掉了）
     backdrop(-22, 104.6, -3, 10, 6, 22, g => {
       setInk(g, '#040607');
-      const top = [[-22, -5]];
-      for (let x = -22; x <= 104.6; x += rr(0.4, 1.3)) { const h = rr(0.1, 0.62); top.push([x, h]); if (rnd() < 0.1) top.push([x + 0.05, h + rr(0.25, 1.3)], [x + 0.12, h]); }   // 露出的钢筋
-      top.push([104.6, -5]); poly(g, top);
       for (const [x, w] of [[7.2, 0.34], [52.4, 0.5]]) box(g, x, -3, w, 13);                       // 两根近处的柱子：经过时扫过画面
       for (let x = -20; x < 100; x += rr(9, 17)) cable(g, x, 10, x + rr(6, 12), 10, rr(1.6, 2.5), 0.09);  // 顶上垂下的缆线
     }, { fog: false, blur: 2.2, order: 4000 });
+    // 探照灯场地的前景：更靠近镜头的地方垂着几根链条，左边一根挂着环，右边一根挂着带滑轮的吊钩。只占画面上半。
+    // 它们随着镜头移动会从探照灯机器前面扫过去，所以最低也要停在它的头顶以上，不能挡住那只“眼睛”
+    backdrop(62, 77, -1.2, 6.4, 8, 60, g => {
+      setInk(g, '#05080a');
+      const chain = (x, y) => { g.setLineDash([0.075, 0.05]); line(g, [[x, 6.4], [x, y]], 0.05); g.setLineDash([]); };
+      chain(72.55, 4.45); box(g, 72.38, 4.02, 0.34, 0.44); g.beginPath(); g.ellipse(72.55, 4.02, 0.17, 0.1, 0, 0, 6.2832); g.fill();
+      g.lineWidth = 0.065; g.beginPath(); g.moveTo(72.55, 3.95); g.lineTo(72.55, 3.8); g.arc(72.43, 3.8, 0.12, 0, Math.PI, true); g.stroke();
+      chain(65.2, 4.25); ring(g, 65.2, 4.13, 0.12, 0.05);
+      chain(73.9, 4.9);
+      cable(g, 61.5, 5.75, 68.6, 6.5, 0.55, 0.05); cable(g, 70.2, 6.5, 77.5, 5.5, 0.75, 0.05); cable(g, 66.5, 6.5, 74.5, 6.5, 0.45, 0.035);
+    }, { fog: false, blur: 2.4, order: 4000 });
     yield;
     // 光束本身：几块斜着的发光薄片
     backdrop(-6, 104, -0.5, 16, -2.2, 12, g => {
@@ -2017,6 +2093,8 @@ const CH1 = (() => {
     }
     v.bulbGlow = glow(R, 0xffbe72, 2.6, 0.9, 33, 5.62, -3.15);
     yield;
+    // 探照灯场地两侧的两根近柱：和远处那一排同一个样子，站在光束扫不到的地方，把这一屏的画面收住
+    pillar(62, -12, true); pillar(79.5, -12, true);
     // 探照灯场地上的矮墙：一块块生锈的铁皮
     for (const [a, b] of WATCH.walls) {
       add(R, bx(b - a, WATCH.wallH, 0.14), MAT.sheet, (a + b) / 2, WATCH.wallH / 2, WATCH.wallZ);
@@ -2036,7 +2114,7 @@ const CH1 = (() => {
     add(v.wHead, cy(0.36, 0.42, 0.4, 16), MAT.steel, 0, 0, 0.72).rotation.x = Math.PI / 2;
     v.eyeMat = unlit(0xeaf4f6, { fog: false });
     add(v.wHead, new THREE.CircleGeometry(0.3, 20), v.eyeMat, 0, 0, 0.93, false);
-    v.eyeGlow = glow(v.wHead, 0xdfeef2, 5.5, 0.85, 0, 0, 1.0);
+    v.eyeGlow = glow(v.wHead, 0xdfeef2, 8, 0.85, 0, 0, 1.0, GLOW_SOFT);   // 眼睛外面一大圈柔和的光晕
     v.cones = [];                                        // 看得见的光柱：两层半透明的圆锥叠在一起
     for (const [k, op] of [[1, 0.075], [0.55, 0.09]]) {
       const geo = new THREE.ConeGeometry(Math.tan(0.118) * 26 * k, 26, 28, 1, true); geo.translate(0, -13, 0); geo.rotateX(-Math.PI / 2);
