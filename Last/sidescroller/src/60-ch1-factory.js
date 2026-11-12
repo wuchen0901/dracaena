@@ -18,13 +18,21 @@ const CH1 = (() => {
   const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0 });      // 轮挡正好把它停在断电杆下面
   const door = gate({ id: 'door1', x: 104 });
   const LEVER = { x: 97.0, pulled: false, t: 0, reach: 0 };
-  // 探照灯：机器在背景深处（z < 0），光束扫过场地；玩家躲在矮墙前面的影子里
+  // 探照灯：机器在背景深处（z < 0），光束扫过场地；玩家躲在一处处铁柜前面的影子里
   const WATCH = { ex: 71, ey: 3.7, ez: -20, cx: 71, amp: 10.6, w: 0.5, r: 2.15, t: 0.6, bx: 71, exposure: 0, caught: 0,
-    wallZ: -0.9, wallH: 1.65, walls: [[60.6, 62.6], [66.4, 68.4], [72.4, 74.4], [78.4, 80.2]] };
-  // 矮墙的影子投到玩法平面 z = 0 上的区间（点光源，所以会随位置略微偏移）
-  const kShadow = -WATCH.wallZ / (WATCH.wallZ - WATCH.ez);
-  WATCH.shadows = WATCH.walls.map(([a, b]) => [a + (a - WATCH.ex) * kShadow, b + (b - WATCH.ex) * kShadow]);
-  const inShadow = x => WATCH.shadows.some(([a, b]) => x > a + 0.22 && x < b - 0.22);
+    walls: [[60.6, 62.6], [66.4, 68.4], [72.4, 74.4], [78.4, 80.2]] };     // 能躲的四处，各占一段 x
+  // 每一处是并排的三只配电柜：[占这一处宽度的几成, 高, 深]。正面齐平在 z = CAB_Z，高矮、深浅不一；单数的那几处左右反过来摆。
+  // 最矮的一只也有 1.65 米，比主角高出一截
+  const CAB = [[0.36, 1.76, 0.5], [0.27, 1.65, 0.42], [0.37, 1.86, 0.54]], CAB_Z = -0.7;
+  const cabinets = i => i % 2 ? CAB.slice().reverse() : CAB;
+  // 铁柜的影子投到玩法平面 z = 0 上的区间。灯是点光源，影子朝背着灯的方向偏：
+  // 离灯远的那一端是那只柜子的背面投出来的（偏得多），离灯近的那一端是正面投出来的（偏得少）。照实际的柜子算，看着躲好了才算躲好了
+  const LAMP_Z = WATCH.ez + 0.95, shift = z => -z / (z - LAMP_Z);
+  WATCH.shadows = WATCH.walls.map(([a, b], i) => {
+    const c = cabinets(i), near = shift(CAB_Z), farL = shift(CAB_Z - c[0][2]), farR = shift(CAB_Z - c[2][2]);
+    return a < WATCH.ex ? [a + (a - WATCH.ex) * farL, b + (b - WATCH.ex) * near] : [a + (a - WATCH.ex) * near, b + (b - WATCH.ex) * farR];
+  });
+  const inShadow = x => WATCH.shadows.some(([a, b]) => x > a + 0.22 && x < b - 0.22);     // 0.22：主角半个身子的宽度，再留一点余量
   // 回收线：上层输送带把同型号的机器人一台台送进压机。下压前，侧面的检修灯固定亮三次
   const BELT_Y = 3.9, BELT_Z = -5.2, BAY = 101.9, GAP = 5.6;
   const LINE = { on: true, v: 0.95, spd: 0.95, phase: 'move', t: 0, ram: 0, lamp: 0, parts: 3, hit: false, bots: [0, 1, 2, 3].map(i => ({ x: BAY - 2.2 - i * GAP })) };
@@ -230,6 +238,53 @@ const CH1 = (() => {
     // 地面的伸缩缝：一道道伸向远处的细线，增强纵深感
     for (let x = -18; x < 102; x += 5.5) if (x < 46 || x > 58) add(R, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
     for (const z of [3.2, -4.5]) add(R, bx(124, 0.012, 0.07), MAT.dark, 40, 0.004, z, false);
+    yield;
+    // ---------------- 探照灯场地的地面 ----------------
+    // 一层贴在地上、跟着灯光和影子明暗的薄片。上面画着：每块水泥板略有不同的深浅、油渍、零星的黑点、几块补过的地方、拖痕；
+    // 再上面是一摊摊浅水 —— 水面比干的地方暗。形状用自带种子的随机数，不跟着这一章里别的随机数变
+    const seeded = s => () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    const pools = [];                                    // 每一摊水由四个椭圆叠成 [x, z, 半长, 半宽]
+    { const rn = seeded(23); for (let i = 0; i < 60; i++) { const x = 55 + rn() * 31, z = -7 + rn() * 16, r = 0.6 + rn() * 1.6; for (let k = 0; k < 4; k++) pools.push([x + (rn() - 0.5) * r * 2.4, z + (rn() - 0.5) * r * 0.9, r * (0.5 + rn()), r * (0.25 + 0.35 * rn())]); } }
+    const water = g => { g.beginPath(); for (const [x, z, rx, rz] of pools) { g.moveTo(x + rx, z); g.ellipse(x, z, rx, rz, 0, 0, 6.2832); } g.fill(); };
+    backdrop(53.5, 87, -26, 12, 0, 40, g => {
+      const rn = seeded(7), xs = [53.5, 59, 64.5, 70, 75.5, 81, 86.5], zs = [-26, -19.5, -12, -4.5, 3.2, 12];
+      for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {           // 水泥板：沿着伸缩缝一格一格
+        g.fillStyle = rn() < 0.55 ? `rgba(0,0,0,${(0.08 + 0.3 * rn()).toFixed(3)})` : `rgba(150,172,178,${(0.03 + 0.08 * rn()).toFixed(3)})`;
+        g.fillRect(xs[i], zs[j], xs[i + 1] - xs[i], zs[j + 1] - zs[j]);
+      }
+      const blot = (x, z, r, sx, a) => {                                                          // 一团污渍：中间一大片是实的，只有边上一圈晕开
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, r); gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.78, `rgba(0,0,0,${a * 0.9})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.save(); g.translate(x, z); g.scale(sx, 1); g.fillStyle = gr; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore();
+      };
+      for (let i = 0; i < 30; i++) { const x = 55 + rn() * 30, z = -9 + rn() * 17, r = 0.2 + rn() * 0.7, a = 0.1 + 0.13 * rn(); for (let k = 0; k < 3; k++) blot(x + (rn() - 0.5) * r * 2, z + (rn() - 0.5) * r, r * (0.5 + 0.6 * rn()), 1 + rn() * 1.6, a); }
+      for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${(0.2 + 0.35 * rn()).toFixed(2)})`; g.fillRect(55 + rn() * 30, -9 + rn() * 17, 0.03 + rn() * 0.09, 0.03 + rn() * 0.06); }
+      for (const [a, b] of WATCH.walls) blot((a + b) / 2, -0.75, 0.7, 1.9, 0.3);                  // 铁柜脚下积着的黑
+      for (const [x, z, w, d] of [[61.2, 1.0, 1.7, 1.1], [72.3, -2.6, 2.3, 1.3], [78.6, 5.2, 1.5, 1.8]]) { g.fillStyle = 'rgba(160,180,186,.11)'; g.fillRect(x, z, w, d); }   // 补过的几块
+      g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineCap = 'round';
+      for (let i = 0; i < 9; i++) { const x = 56 + rn() * 24, z = -3 + rn() * 7; g.lineWidth = 0.04 + rn() * 0.07; g.beginPath(); g.moveTo(x, z); g.quadraticCurveTo(x + 2 + rn() * 2, z + (rn() - 0.5) * 0.6, x + 4 + rn() * 5, z + (rn() - 0.5) * 0.9); g.stroke(); }   // 拖痕
+      if ('filter' in g) g.filter = 'blur(3px)';
+      g.fillStyle = 'rgba(4,7,10,.45)'; water(g);                                                 // 水
+      if ('filter' in g) g.filter = 'none';
+    }, { floor: 0.006, lit: true, order: -30, fadeL: 2.5, fadeR: 2.5 });                           // 两头渐渐淡掉，和场地外面干净的地面接上时看不出一条边
+    yield;
+    // 探照灯在水里的倒影：一道朝着镜头拉长的亮光，只留在有水的地方。
+    // 它落在哪里取决于镜头在哪里（灯关于地面的镜像和镜头的连线穿过地面的那一点），所以这一块面上叠了两张贴图：
+    // 水的形状是不动的；光的那一张每一帧在 update 里平移、旋转到该在的位置。没有用材质自带的高光 —— 这盏灯太亮，贴着地面看过去高光会白成平平的一大片
+    {
+      const [lc, lg] = mkCanvas(64, 512), gr = lg.createRadialGradient(0, 0, 0, 0, 0, 1);
+      gr.addColorStop(0, 'rgba(215,232,238,.8)'); gr.addColorStop(0.35, 'rgba(215,232,238,.42)'); gr.addColorStop(1, 'rgba(215,232,238,0)');
+      lg.setTransform(30, 0, 0, 254, 32, 256); lg.fillStyle = gr; lg.fillRect(-1, -1, 2, 2);       // 四周留一圈透明的边，贴图外面才是空的
+      const [mc, mg] = mkCanvas(858, 520);
+      if ('filter' in mg) mg.filter = 'blur(2px)';
+      mg.setTransform(26, 0, 0, 26, -54 * 26, 9 * 26); mg.fillStyle = '#fff'; water(mg);
+      const light = canvasTex(lc), mask = canvasTex(mc); light.matrixAutoUpdate = false; mask.colorSpace = THREE.NoColorSpace;
+      light.generateMipmaps = false; light.minFilter = THREE.LinearFilter;                          // 不要缩小用的那几级贴图：贴着地面看过去它们会把这道光抹平、抹宽，四周那圈透明的边也会被抹掉
+      const mat = new THREE.MeshBasicMaterial({ map: light, alphaMap: mask, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+      mat.userData.own = true;
+      v.glint = new THREE.Mesh(new THREE.PlaneGeometry(33, 20), mat);                              // 铺在 x = 54 … 87、z = -9 … 11 这一片地上
+      v.glint.rotation.x = -Math.PI / 2; v.glint.position.set(70.5, 0.008, 1); v.glint.renderOrder = -28; R.add(v.glint);
+      renderer.initTexture(light); renderer.initTexture(mask);
+    }
     // 倒在地上的工字钢、水泥台、高台
     add(R, bx(1.3, 0.45, 2.7), MAT.rust, 9.65, 0.225, -0.15).rotation.y = 0.07;
     add(R, bx(1.36, 0.07, 2.76), MAT.rust2, 9.65, 0.45, -0.15).rotation.y = 0.07;
@@ -259,12 +314,16 @@ const CH1 = (() => {
     yield;
     // 探照灯场地两侧的两根近柱：和远处那一排同一个样子，站在光束扫不到的地方，把这一屏的画面收住
     pillar(62, -12, true); pillar(79.5, -12, true);
-    // 探照灯场地上的矮墙：一块块生锈的铁皮
-    for (const [a, b] of WATCH.walls) {
-      add(R, bx(b - a, WATCH.wallH, 0.14), MAT.sheet, (a + b) / 2, WATCH.wallH / 2, WATCH.wallZ);
-      add(R, bx(b - a + 0.1, 0.08, 0.2), MAT.rust2, (a + b) / 2, WATCH.wallH, WATCH.wallZ);
-      for (const x of [a + 0.08, (a + b) / 2, b - 0.08]) add(R, bx(0.12, WATCH.wallH + 0.25, 0.12), MAT.dark, x, WATCH.wallH / 2 + 0.1, WATCH.wallZ - 0.12);
-    }
+    // 探照灯场地上能躲的地方：一处处并排站着的配电柜，每只底下垫着一圈缩进去的深色底座
+    const cabM = lam(0x2c363b); cabM.userData.own = true;
+    WATCH.walls.forEach(([a, b], i) => {
+      let x = a;
+      for (const [k, h, d] of cabinets(i)) {
+        const w = (b - a) * k, z = CAB_Z - d / 2;
+        add(R, bx(w, h - 0.08, d), cabM, x + w / 2, 0.08 + (h - 0.08) / 2, z); add(R, bx(w - 0.08, 0.08, d - 0.08), MAT.dark, x + w / 2, 0.04, z);
+        x += w;
+      }
+    });
     // 探照灯机器：三条长腿撑着一个会转动的“头”
     const watcher = grp(R, WATCH.ex, 0, WATCH.ez);
     for (const [x, z] of [[-2.8, -1.6], [2.8, -1.6], [0, 2.4]]) {
@@ -412,6 +471,15 @@ const CH1 = (() => {
     v.door.sync(door);
     v.doorGlow.opacity = E.ext > 0.5 ? 0 : 0.96 * sstep(0.02, 0.8, door.open);
     const lit = E.ext < 0.5; v.bulbGlow.visible = lit; for (const c of v.cones) c.visible = lit;
+    // 水里的倒影跟着镜头走：把光的那张贴图挪到“灯关于地面的镜像和镜头的连线穿过地面”的那一点，长轴朝着镜头。
+    // 光束正扫向这一点时最亮，平时只剩淡淡的一道；颜色跟着光束（盯上人的时候发红）
+    {
+      const cp = camera.position, lx = W.ex, ly = W.ey, lz = W.ez + 0.95, k = cp.y / (cp.y + ly), mx = cp.x + k * (lx - cp.x), mz = cp.z + k * (lz - cp.z);
+      const th = Math.atan2(lx - cp.x, cp.z - lz), c = Math.cos(th), s = Math.sin(th), WS = 1.3227, LS = 13.747;      // 这道光有多宽、多长（米）
+      v.glint.material.map.matrix.set(33 * c / WS, -20 * s / WS, ((54 - mx) * c + (11 - mz) * s) / WS + 0.5,           // 从这块面上的位置换算到光的贴图上
+        -33 * s / LS, -20 * c / LS, (-(54 - mx) * s + (11 - mz) * c) / LS + 0.5, 0, 0, 1);
+      v.glint.visible = lit; v.glint.material.opacity = lerp(0.4, 1, sstep(5, 1.5, Math.abs(beam.target.position.x - mx))); v.glint.material.color.copy(beam.color);
+    }
     for (const b of v.beacons) b.material.opacity = 0.15 + 0.75 * pulse;
     v.ram.position.y = lerp(6.5, 4.78, LINE.ram);
     v.pressLamp.material.opacity = 0.95 * LINE.lamp; v.pressLens.material.color.setHex(LINE.lamp ? 0xffc070 : 0x3a2410);
@@ -430,6 +498,6 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { if (V) V.glint.material.alphaMap.dispose(); V = null; },
     respawn(c) { if (c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();

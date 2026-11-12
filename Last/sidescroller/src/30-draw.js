@@ -6,7 +6,8 @@ let ROOT = scene;                                   // 布景板当前挂到哪�
 
 // 世界范围 [x1,x2]×[y1,y2]，深度 z。draw(g) 里直接以“米”为单位、y 轴向上
 // o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
-//    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）
+//    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）/
+//    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
   const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined;
@@ -23,10 +24,11 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
     g.fillStyle = gr; g.fillRect(Math.min(a, a + b * w), y1, w, y2 - y1);
   }
   const tex = canvasTex(c);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
+  const mat = o.lit ? new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, opacity: o.opacity ?? 1 })
+    : new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   mat.userData.own = true;                          // 这一章被卸载时，连同贴图一起释放
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat); m.receiveShadow = !!o.lit;
   if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); } else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
   m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
