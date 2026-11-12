@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模型效果图</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  /* 横版原型装在这个窗口里，摆在画面下方看不见的地方：大小就是 1080p 的游戏画面 */
+  #game{position:fixed;left:0;top:1080px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1920" height="1080"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 把横版原型装进一个看不见的窗口，在里面摆好姿势、转好角度，再一格一格抄到这张图上。
+// 画面全部来自游戏本身的渲染（同一套灯光、雾和镜头），不是另画的示意图。
+// 要通过本地服务器打开（和原型同源才能读到它的画面）：
+//   http://127.0.0.1:8765/tools/model-sheet.html?skin=K&layout=model
+// 导出成图片：node Last/tools/shot.mjs "<上面的网址>" generated_images/xxx.png
+// 网址参数：skin 外形的字母（默认 K）；tint 小孩外套的第几种颜色；layout 版式 ——
+//   model 模型本身（转一圈 + 头部近看 + 动作）/ game 放进游戏里（实际镜头 + 换外套颜色）
+//   dev、close 调形用的多角度和大图 / scout 八章的整幅画面各一张
+const q = new URLSearchParams(location.search), SKIN = q.get('skin') || 'K', LAYOUT = q.get('layout') || 'model';
+const sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+let G = null;
+const hero = () => G.hero();
+
+// ---- 摆姿势 ----
+function stand(x, sec = 0.9) { G.tp(x); G.P.facing = 1; G.step(sec); }
+function toPhase(keys, target, warm = 1.1) {              // 按住方向键走 / 跑起来，停在步子的某一个相位上
+  G.hold(keys, warm);
+  for (let i = 0; i < 500; i++) {
+    if (Math.abs(((hero().A.ph - target) % 1 + 1.5) % 1 - 0.5) < 0.012) break;
+    G.hold(keys, 1 / 120, 1 / 120);
+  }
+}
+const POSE = {
+  stand: x => stand(x),
+  walkA: x => { stand(x - 1.6, 0.3); toPhase(['R', 'S'], 0.0); },      // 走：前脚刚落地
+  walkB: x => { stand(x - 1.6, 0.3); toPhase(['R', 'S'], 0.27); },     // 走：后脚正迈过来
+  runA: x => { stand(x - 3.4, 0.3); toPhase(['R'], 0.06); },           // 跑：落地
+  runB: x => { stand(x - 3.4, 0.3); toPhase(['R'], 0.45); },           // 跑：腾空
+  jump: x => { stand(x - 2.6, 0.3); G.hold(['R'], 0.8); G.hold(['R', 'J'], 0.2); },
+  fall: x => { stand(x - 2.6, 0.3); G.hold(['R'], 0.8); G.hold(['R', 'J'], 0.52); },
+  push: () => { const c = G.PUSHABLES.find(o => o.id === 'cart'); G.zone(1).reset(); G.tp(c.x1 - 0.5); G.step(0.3); G.hold(['R', 'E'], 1.25); },
+  climb: () => {                                                        // 跳起来扒住小车的边，停在翻上去的半路
+    const c = G.PUSHABLES.find(o => o.id === 'cart'); G.zone(1).reset(); G.tp(c.x1 - 1.0); G.step(0.3); G.hold(['R', 'J'], 0.2);
+    for (let i = 0; i < 90 && !(G.P.mode === 'mantle' && G.P.modeT / G.P.mantle.T > 0.42); i++) G.hold(['R'], 1 / 60);
+  },
+};
+
+// ---- 抄一格：把游戏画面的一块画到 (dx, dy, dw, dh) ----
+// v.d 给了：镜头摆到主角正侧面 d 米远、对准离地 yo 米的高度（v.yaw 把主角转过去看别的面）；
+// v.d 没给：就用游戏自己的镜头，按 v.px 的比例（1 = 1080p 上的原始大小）以主角为中心裁一块
+function grab(dx, dy, dw, dh, v = {}) {
+  const cam = G.camera, c = G.renderer.domElement, k = c.height / 1080, P = G.P;
+  if (v.yaw !== undefined) hero().root.rotation.y = v.yaw;
+  if (v.head !== undefined) hero().B.head.rotation.y = v.head;          // 站着时它会自己左右张望；拍定妆照时让头摆正
+  let sx, sy, sw, sh;
+  if (v.d) {
+    const xo = v.xo ?? 0, yo = v.yo ?? 0.6;
+    cam.position.set(P.x + xo, P.y + yo + v.d * 0.05, v.d); cam.lookAt(P.x + xo, P.y + yo, 0);
+    sh = c.height; sw = sh * dw / dh; sx = (c.width - sw) / 2; sy = 0;
+  } else {
+    cam.updateMatrixWorld(); const p = new G.THREE.Vector3(P.x + (v.xo ?? 0), P.y + (v.yo ?? 0.62), 0).project(cam), px = v.px ?? 1;
+    sw = dw / px * k; sh = dh / px * k; sx = (p.x * 0.5 + 0.5) * c.width - sw / 2; sy = (0.5 - p.y * 0.5) * c.height - sh / 2;
+    sx = Math.max(0, Math.min(c.width - sw, sx)); sy = Math.max(0, Math.min(c.height - sh, sy));
+  }
+  G.renderer.render(G.scene, cam);
+  ctx.drawImage(c, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+function label(text, x, y, o = {}) {
+  ctx.save();
+  ctx.font = `${o.weight ?? 500} ${o.size ?? 15}px ${FONT}`; ctx.fillStyle = o.color ?? '#c3cfce'; ctx.textAlign = o.align ?? 'center'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== false) { ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 7; }
+  ctx.fillText(text, x, y); ctx.restore();
+}
+function header(title, lines) {
+  ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, sheet.width, HEAD);
+  label(title, 70, 44, { align: 'left', size: 27, weight: 600, color: '#eef3f1', shadow: false });
+  lines.forEach((t, i) => label(t, 70, 67 + i * 19, { align: 'left', size: 13.5, weight: 400, color: '#8fa0a0', shadow: false }));
+}
+const HEAD = 96;
+const rule = (x, y, w, h) => { ctx.fillStyle = '#0b0f11'; ctx.fillRect(x, y, w, h); };
+
+// ---- 版式 ----
+const X_DARK = 6, X_PUSH = 0;
+const LAYOUTS = {
+  // 调形用：上排转一圈 + 两张头部特写，下排各种动作
+  dev() {
+    const W = 274, Hh = 540, body = { d: 2.9, yo: 0.62 }, top = [
+      ['正面', 'stand', { ...body, yaw: -Math.PI / 2 }], ['斜前', 'stand', { ...body, yaw: -Math.PI / 4 }], ['侧面', 'stand', { ...body, yaw: 0 }],
+      ['斜后', 'stand', { ...body, yaw: Math.PI / 4 }], ['背面', 'stand', { ...body, yaw: Math.PI / 2 }],
+      ['头 · 侧面', 'stand', { d: 1.25, yo: 1.0, yaw: 0 }], ['头 · 斜前', 'stand', { d: 1.25, yo: 1.0, yaw: -Math.PI / 3.2 }]];
+    const bot = [['走 1', 'walkA', body], ['走 2', 'walkB', body], ['跑 1', 'runA', body], ['跑 2', 'runB', body], ['起跳', 'jump', body], ['下落', 'fall', body], ['推', 'push', { ...body, xo: 0.25 }]];
+    [top, bot].forEach((row, r) => row.forEach(([name, pose, view], i) => {
+      POSE[pose](X_DARK); grab(i * W + 1, r * Hh, W - 2, Hh, view); label(name, i * W + W / 2, r * Hh + 24);
+    }));
+  },
+};
+
+// 给人看的第一张：模型本身。上排转一圈 + 头部近看，下排动作
+LAYOUTS.model = () => {
+  header('主角 · 3D 模型', ['照定稿草图做的：乱发、米白的连帽衫（帽子垂在脑后）、深色长裤、大靴子、手露在外面，不带灯，没有画五官。身高大约四个头。',
+    '整个身体是一张连续的表面，手肘和膝盖弯起来没有球、没有缝。每一格都是横版原型里的实时画面，不是另画的示意图。']);
+  const Hh = (sheet.height - HEAD) / 2, body = { d: 2.9, yo: 0.62, head: 0 }, PI = Math.PI;
+  POSE.stand(X_DARK);
+  [['正面', -PI / 2], ['斜前', -PI / 4], ['侧面', 0], ['斜后', PI / 4], ['背面', PI / 2]].forEach(([name, yaw], i) => { grab(i * 250, HEAD, 250, Hh, { ...body, yaw }); label(name, i * 250 + 125, HEAD + 26); });
+  [['头 · 侧面', 0], ['头 · 斜前', -PI / 3.2]].forEach(([name, yaw], i) => { grab(1250 + i * 335, HEAD, 335, Hh, { d: 1.25, yo: 1.045, yaw, head: 0 }); label(name, 1250 + i * 335 + 167, HEAD + 26); });
+  const W = sheet.width / 7;
+  [['走', 'walkA'], ['走', 'walkB'], ['跑', 'runA'], ['跑', 'runB'], ['起跳', 'jump'], ['攀爬', 'climb'], ['推', 'push']].forEach(([name, pose], i) => {
+    POSE[pose](X_DARK); grab(i * W, HEAD + Hh, W, Hh, { d: 2.9, yo: 0.62, xo: pose === 'push' || pose === 'climb' ? 0.25 : 0 }); label(name, i * W + W / 2, HEAD + Hh + 26);
+  });
+  for (let i = 1; i < 7; i++) rule(Math.round(i * W) - 1, HEAD + Hh, 2, Hh);
+  for (const x of [250, 500, 750, 1000, 1250, 1585]) rule(x - 1, HEAD, 2, Hh);
+  rule(0, HEAD + Hh - 1, sheet.width, 2);
+};
+
+// 给人看的第二张：放进游戏里。三条是实际镜头下的原始大小，最下面一排换外套的颜色
+LAYOUTS.game = () => {
+  header('主角 · 放进游戏里', ['上面三条是游戏实际的镜头、1080p 屏幕上的原始大小。最下面一排是连帽衫的四种颜色（定的是米白，进游戏按 C 还能轮换着看），左边四格在第一章的暗处，右边四格在第二章清晨的荒地上。',
+    '全身只有四样东西：肤色、深色的头发、米白的连帽衫、深色的长裤和靴子。']);
+  const SH = 250, scenes = [
+    ['第一章 · 工厂', () => { G.ch(1); stand(4.4, 0.3); toPhase(['R'], 0.45); }],
+    ['第四章 · 配给街', () => { G.ch(4); G.hold(['R'], 2.5); toPhase(['R', 'S'], 0.0, 0.7); }],
+    ['第七章 · 管理花园', () => { G.ch(7); G.hold(['R'], 3.5); toPhase(['R', 'S'], 0.27, 0.6); }]];
+  scenes.forEach(([name, go], i) => { go(); grab(0, HEAD + i * SH, sheet.width, SH, { yo: 0.72 }); label(name, 70, HEAD + i * SH + 28, { align: 'left' }); if (i) rule(0, HEAD + i * SH - 1, sheet.width, 2); });
+  const y = HEAD + 3 * SH, Hh = sheet.height - y, W = sheet.width / 8, tints = ['工装蓝', '嫩芽绿', '米白', '深灰'];
+  [() => { G.ch(1); stand(6.2, 0.3); toPhase(['R', 'S'], 0.27, 0.9); }, () => { G.ch(2); G.hold(['R'], 1.7); toPhase(['R', 'S'], 0.27, 0.8); }].forEach((go, j) => {
+    go();
+    tints.forEach((name, i) => { hero().B.tint(i); const x = (j * 4 + i) * W; grab(x, y, W, Hh, {}); label(name, x + W / 2, y + 24, { size: 13.5 }); rule(x - 1, y, 2, Hh); });
+  });
+  hero().B.tint(2); rule(0, y - 1, sheet.width, 2);
+};
+
+// 踩点用：各章实际的游戏画面，每格是整幅画面缩小
+LAYOUTS.scout = () => {
+  const spots = [[1, 0], [1, 3], [2, 2], [2, 9], [3, 3], [3, 9], [4, 3], [5, 3], [6, 3], [6, 9], [7, 3], [8, 3]], W = 480, Hh = 270;
+  spots.forEach(([n, sec], i) => {
+    G.ch(n); if (sec) G.hold(['R'], sec); else G.step(0.5);
+    const c = G.renderer.domElement, dx = (i % 4) * W, dy = Math.floor(i / 4) * Hh * 1.33;
+    G.renderer.render(G.scene, G.camera); ctx.drawImage(c, 0, 0, c.width, c.height, dx, dy, W, Hh);
+    label(`第 ${n} 章 · 往右跑 ${sec} 秒 · x=${G.P.x.toFixed(0)}`, dx + W / 2, dy + Hh + 20);
+    grab(dx, dy + Hh + 28, W, 60, { px: 0.35 });
+  });
+};
+
+// 调形用：四张大图，看接缝和细部
+LAYOUTS.close = () => {
+  const W = 480, Hh = 1080, cells = [['stand', { d: 2.75, yo: 0.62, yaw: -Math.PI / 5 }], ['stand', { d: 1.5, yo: 0.92, yaw: 0 }], ['runB', { d: 2.75, yo: 0.62, yaw: 0 }], ['stand', { d: 1.5, yo: 0.3, yaw: Math.PI / 5 }]];
+  cells.forEach(([pose, view], i) => { POSE[pose](X_DARK); grab(i * W, 0, W, Hh, view); });
+};
+
+function start() {
+  G = frame.contentWindow.__g; G.begin(); G.setSkin(SKIN); G.paused = true; G.step(0.5);
+  const tint = q.get('tint'); if (tint !== null && hero().B.tint) hero().B.tint(+tint);
+  ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, sheet.width, sheet.height);
+  (LAYOUTS[LAYOUT] || LAYOUTS.model)();
+  window.__sheetDone = true;
+}
+frame.addEventListener('load', function wait() {
+  const w = frame.contentWindow;
+  if (w.__ready && w.__g) { try { start(); } catch (e) { console.error('效果图没画完：' + (e && e.stack || e)); window.__sheetDone = true; } }
+  else setTimeout(wait, 100);
+});
+frame.src = '../sidescroller.html?sheet=' + Date.now();
+</script>
+</body>
+</html>

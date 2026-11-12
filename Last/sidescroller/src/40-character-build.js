@@ -6,6 +6,7 @@
 const SKINS = {
   R: { H: 1.24, robot: true },                                                                                // 07：现在的主角，见文件末尾
   O: { H: 1.24, robot: true },                                                                                // 旧版小机器人：只留着做对比
+  K: { H: 1.19, slouch: 0.045 },                                                                              // 小孩：蒙皮做的人形（乱发 + 连帽衫），见 41-character-kid.js。slouch：站着、走着时微微含胸低头
   A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
   B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
   C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
@@ -21,6 +22,7 @@ const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
   if (kind === 'O') return buildOldRobot();
+  if (kind === 'K') return buildKid();
   const S = SKINS[kind], u = S.H, hs = S.hairStyle ?? kind;
   const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
   const M = { skin: self(S.skin), hair: lam(S.hair), top: self(S.top), leg: self(S.leg), shoe: lam(S.shoe), metal: lam(0x2a2e33) };

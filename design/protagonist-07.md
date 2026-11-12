@@ -1,6 +1,6 @@
 # 主角 07 · 按 INSIDE 的方法重新设计
 
-状态：**提案**。已在横版原型 `Last/sidescroller.html` 里实现并设为默认主角；Cocos 战役（`assets/`）和模型查看器 `Last/keeper-3d.html`（仍是 V5）都还没有同步。
+状态：**提案**。已在横版原型 `Last/sidescroller.html` 里实现（按 0 切换；2026-11-12 起默认主角换成了 3D 试做的小孩，按 4，源码在 `Last/sidescroller/src/41-character-kid.js`）；Cocos 战役（`assets/`）和模型查看器 `Last/keeper-3d.html`（仍是 V5）都还没有同步。
 
 配图（对比、三视图、光线、动作四张）已于 2026-11-12 删除，需要时可从 git 历史（提交 f57056c）恢复。
 

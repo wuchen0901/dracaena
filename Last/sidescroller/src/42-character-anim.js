@@ -52,6 +52,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (mant) leanT = 0.3;
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
+    if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
@@ -111,7 +112,7 @@ function makeCharacter(kind, prev, o = {}) {
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
@@ -133,6 +134,6 @@ function makeCharacter(kind, prev, o = {}) {
       Lm.beam.intensity = Lm.I * out; Lm.fill.intensity = Lm.fillI * out;
     }
   }
-  function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
   return { kind, B, A, root, H: u, update, dispose };
 }

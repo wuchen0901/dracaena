@@ -62,7 +62,7 @@ const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', Space: 'J', ArrowUp: 'J', KeyW: 'J',
   KeyE: 'E', KeyK: 'E', ShiftLeft: 'S', ShiftRight: 'S', KeyR: 'RESET', KeyM: 'MUTE', KeyV: 'VIEW',
-  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C',
+  Digit0: 'SKIN_R', Digit9: 'SKIN_O', Digit1: 'A', Digit2: 'B', Digit3: 'C', Digit4: 'SKIN_K', KeyC: 'TINT', KeyX: 'LEGS',
   Escape: 'MENU', KeyP: 'MENU', Enter: 'OK', ArrowDown: 'DOWN', KeyS: 'DOWN' };
 const rawKeys = new Set();                        // 这一帧新按下的键（原始键码），菜单用
 let anyKey = false;

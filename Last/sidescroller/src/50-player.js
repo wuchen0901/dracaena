@@ -13,6 +13,8 @@ function setSkin(k) {
   document.querySelectorAll('#skins button').forEach(b => b.classList.toggle('on', b.dataset.k === hero.kind));
 }
 
+function rebuildHero() { const prev = hero; prev.dispose(); hero = makeCharacter(prev.kind, prev); fitHero(); }   // 同一个外形重新搭一遍（换了腿脚之类）
+
 function startMantle(s, side) {                   // 抓住方块 s 的边缘翻上去；side = 1 表示方块在右边
   const ex = side > 0 ? s.x1 : s.x2, h = s.y2 - P.y;
   P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, s, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };

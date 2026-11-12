@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>主角 · 拼好的样子（不带灯）</title>
+<style>html,body{margin:0;background:#050708}canvas{display:block}</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// 主角分部件设计 · 合成：乱发、米白连帽衫、长裤靴子、手露在外面，不带灯。正面 / 侧面 / 背面；
+// 身体先用 02 里的“甲 · 大外套”占位，下面两条是游戏镜头里的实际大小。还是不带灯。
+// 用浏览器直接打开就能看；导出 PNG 的命令见文件末尾。
+const W = 1920, H = 1080;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const layer = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const mul = (c, k) => [Math.min(255, c[0] * k), Math.min(255, c[1] * k), Math.min(255, c[2] * k)];
+let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+
+// ───────── 颜色：全身只有冷的深色。头最亮，衣服居中，腿最暗 ─────────
+const C = {
+  head: [86, 98, 102], coat: [38, 50, 55],
+  legN: [25, 31, 34], legF: [16, 20, 22],
+  bootN: [44, 54, 57], bootF: [28, 35, 37],
+  handN: [68, 80, 84], handF: [42, 51, 54],
+  neck: [14, 17, 19],
+};
+// 头上只用四种明度：外壳、深一号的零件、更深的边框、近乎黑的玻璃
+const HC = { shell: C.head, panel: [58, 68, 71], dark: [40, 49, 52], glass: [17, 21, 23] };
+const LINE = 'rgba(8,11,12,.5)', GLINT = 'rgba(176,196,202,.75)', GLINT_DIM = 'rgba(172,192,198,.36)';
+function tone(c, base, x0, x1) {                 // 左上方来的一点冷光：一个色块从左到右略微变暗
+  const gr = c.createLinearGradient(x0, 0, x1, 0);
+  gr.addColorStop(0, rgb(mul(base, 1.24))); gr.addColorStop(.55, rgb(base)); gr.addColorStop(1, rgb(mul(base, .8)));
+  return gr;
+}
+
+// ───────── 基本形状 ─────────
+function limb(c, p, w, style) {
+  c.beginPath(); c.moveTo(p[0][0], p[0][1]); c.lineTo(p[1][0], p[1][1]); c.lineTo(p[2][0], p[2][1]);
+  c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = style; c.stroke();
+}
+function cap(c, x1, y1, x2, y2, w, style) {
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineWidth = w; c.lineCap = 'round'; c.strokeStyle = style; c.stroke();
+}
+function dot(c, x, y, r, style) { c.beginPath(); c.arc(x, y, r, 0, 7); c.fillStyle = style; c.fill(); }
+function rr(c, x, y, w, h, r) {
+  c.beginPath(); c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath();
+}
+function boot(c, ax, ay, rot, fill) {
+  c.save(); c.translate(ax, ay); c.rotate(rot * Math.PI / 180);
+  c.beginPath(); c.moveTo(-3.4, -2.2); c.lineTo(2.4, -2.2); c.quadraticCurveTo(6.6, -1.7, 9.2, 1.1);
+  c.quadraticCurveTo(10.8, 3, 10.3, 4.6); c.lineTo(-3.9, 4.6); c.quadraticCurveTo(-4.9, 1.2, -3.4, -2.2); c.closePath();
+  c.fillStyle = fill; c.fill(); c.restore();
+}
+
+// ───────── 人的头：没有五官，只有轮廓、耳朵和头发（面朝右；脖子顶在 (2, -71)）─────────
+const SKIN = [182, 169, 156], SKIN_D = [150, 138, 127], HAIR = [30, 34, 36];
+const KNIT = [74, 88, 92], KNIT_CUFF = [104, 118, 122];      // 毛线帽
+const CAPC = [54, 65, 69], CAP_BRIM = [34, 42, 45];          // 鸭舌帽
+function poly(c, pts, style) {                   // 折线围成的一块，角上略微磨圆
+  c.beginPath(); pts.forEach((p, i) => c[i ? 'lineTo' : 'moveTo'](p[0], p[1])); c.closePath();
+  c.fillStyle = style; c.fill(); c.lineJoin = 'round'; c.lineWidth = 1; c.strokeStyle = style; c.stroke();
+}
+// 侧脸：额头、鼻尖、下巴的轮廓，加一只耳朵
+function faceSide(c) {
+  c.beginPath(); c.moveTo(10.2, -72);
+  c.bezierCurveTo(11.8, -72.6, 12.2, -75.6, 11.8, -77.2); c.lineTo(13.6, -79.6); c.quadraticCurveTo(12.6, -81.2, 12, -82.6);
+  c.bezierCurveTo(13.2, -88.5, 10.4, -95, 3, -95.2); c.bezierCurveTo(-5.4, -95.4, -10.2, -89.6, -9.6, -82.8);
+  c.bezierCurveTo(-9.2, -78.2, -6.4, -75.2, -3.4, -73.6); c.quadraticCurveTo(0, -71, 4.4, -70.8); c.quadraticCurveTo(8, -70.8, 10.2, -72); c.closePath();
+  c.fillStyle = rgb(SKIN); c.fill();
+  c.beginPath(); c.ellipse(.8, -81.4, 1.7, 2.6, .1, 0, 7); c.fillStyle = rgb(mul(SKIN, .88)); c.fill();
+  c.beginPath(); c.ellipse(9.5, -82.5, 1.7, 1.1, -.1, 0, 7); c.fillStyle = 'rgba(70,60,52,.2)'; c.fill();        // 眼窝的一点阴影，不画眼睛
+}
+// 正脸：一个上宽下窄的椭圆，两只耳朵，眼睛的位置只有一点阴影
+function faceFront(c) {
+  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(sx * 10.9, -82.2, 1.6, 2.7, 0, 0, 7); c.fillStyle = rgb(mul(SKIN, .88)); c.fill(); }
+  c.beginPath(); c.moveTo(0, -95.2); c.bezierCurveTo(7.6, -95.2, 11, -90, 10.8, -84); c.bezierCurveTo(10.6, -78.4, 6.4, -71.2, 0, -71.2);
+  c.bezierCurveTo(-6.4, -71.2, -10.6, -78.4, -10.8, -84); c.bezierCurveTo(-11, -90, -7.6, -95.2, 0, -95.2); c.closePath();
+  const gr = c.createLinearGradient(-10.8, 0, 10.8, 0);
+  gr.addColorStop(0, rgb(mul(SKIN, 1.08))); gr.addColorStop(.6, rgb(SKIN)); gr.addColorStop(1, rgb(mul(SKIN, .88)));
+  c.fillStyle = gr; c.fill();
+  c.save(); c.clip(); c.fillStyle = 'rgba(70,60,52,.2)';
+  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(sx * 4.3, -82.6, 2.5, 1.3, 0, 0, 7); c.fill(); }             // 眼窝的一点阴影，不画眼睛
+  c.beginPath(); c.ellipse(0, -78.4, 1.3, .7, 0, 0, 7); c.fillStyle = 'rgba(70,60,52,.22)'; c.fill(); c.restore();   // 鼻子底下的一点阴影
+}
+// 头：上一轮选定的 4 号 · 乱发
+function headSide(c) {
+  faceSide(c);
+  poly(c, [[11.4, -89.6], [13.6, -92.6], [11, -94], [10.6, -97.6], [7, -96.4], [4.6, -99.4], [1, -97.2], [-2.6, -99.4], [-5.6, -96.4], [-9.6, -97.2],
+    [-9.4, -92.8], [-12.8, -90.2], [-10.8, -86.2], [-11.6, -82], [-9.4, -77.8], [-4.6, -78.6], [-2.6, -84.6], [1.2, -85.6], [3.2, -82], [6, -88.4]], rgb(HAIR));
+}
+function headFront(c) {
+  faceFront(c);
+  poly(c, [[-11.4, -82.6], [-12.4, -87.6], [-13.6, -90.6], [-11.2, -92.4], [-11.4, -96.2], [-8, -95.6], [-6, -99], [-2.6, -96.8], [.8, -99.6], [3.8, -96.8],
+    [7.4, -98.6], [8.6, -95], [12.2, -95], [11.4, -91.4], [13.4, -88.6], [11.4, -82.6], [10.2, -84.8], [8.4, -89], [5.2, -87.6], [2.6, -90], [-.6, -87.8],
+    [-3.6, -90.2], [-6.6, -88], [-8.8, -89.4], [-10.2, -84.8]], rgb(HAIR));
+}
+
+// ───────── 六种身体（面朝右，脚底在 y=0，身高约 95 个单位）─────────
+const POSE = {
+  stand: {
+    hipY: -37, lean: 4,
+    nLeg: { h: 1.5, k: [2.8, 15.8], a: [.6, 32.4], rot: 0 },
+    fLeg: { h: -1.5, k: [-.8, 16.2], a: [-6.2, 32.4], rot: 0 },
+    nArm: [[-.8, -62], [-1.2, -49.5], [3.4, -38.8]],
+    fArm: [[1.5, -62], [1, -50], [4.5, -40]],
+  },
+  walk: {
+    hipY: -35.6, lean: 8,
+    nLeg: { h: 1.5, k: [8.3, 14.5], a: [12.3, 30.9], rot: -14 },
+    fLeg: { h: -1.5, k: [-3.5, 16], a: [-15, 27.2], rot: 28 },
+    nArm: [[-.8, -62], [-5.5, -50.5], [-8.8, -40.5]],
+    fArm: [[1.5, -62], [7, -51.5], [14, -45.5]],
+  },
+};
+const TOP = C.coat, SHIRT = [98, 110, 114], PANTS = C.legN, SHORTS = [30, 38, 42];
+// 侧面的躯干轮廓
+function coatPath(c) {                           // 大一号的短外套：后背微微弓起，下摆略张开
+  c.beginPath(); c.moveTo(-5.2, -67.2); c.lineTo(5.2, -67.2);
+  c.bezierCurveTo(9.2, -67, 10.6, -61, 10.8, -54); c.bezierCurveTo(11, -46, 12, -39, 12.4, -35);
+  c.quadraticCurveTo(12.6, -32.2, 9.8, -32.2); c.lineTo(-9.6, -31.8); c.quadraticCurveTo(-12.8, -31.8, -12.4, -35);
+  c.bezierCurveTo(-11.6, -44, -12.4, -56, -9.6, -63); c.quadraticCurveTo(-8.4, -67, -5.2, -67.2); c.closePath();
+}
+function slimPath(c) {                           // 贴身的上身：没有下摆
+  c.beginPath(); c.moveTo(-4.6, -67.2); c.lineTo(4.6, -67.2);
+  c.bezierCurveTo(8, -66.8, 8.8, -60, 8.4, -52); c.bezierCurveTo(8.1, -46, 7.6, -41, 7.4, -37.6);
+  c.quadraticCurveTo(7.2, -34.6, 4.6, -34.6); c.lineTo(-5, -34.4); c.quadraticCurveTo(-7.8, -34.4, -7.6, -37.6);
+  c.bezierCurveTo(-7.4, -45, -8.8, -56, -7.8, -62.6); c.quadraticCurveTo(-7, -67, -4.6, -67.2); c.closePath();
+}
+function ponchoPath(c) {                         // 雨披：从脖子一直罩到大腿
+  c.beginPath(); c.moveTo(-3.6, -68.6); c.lineTo(4.6, -68.6);
+  c.bezierCurveTo(8.6, -62, 12.4, -48, 13.6, -37.6); c.quadraticCurveTo(13.8, -35.2, 11.4, -35.2);
+  c.lineTo(-11.6, -33.6); c.quadraticCurveTo(-14.4, -33.4, -14.2, -36); c.bezierCurveTo(-13.6, -48, -10.8, -62, -3.6, -68.6); c.closePath();
+}
+// 正面的躯干轮廓：领口半宽 / 肩半宽 / 下摆半宽 / 下摆的高度
+function frontTorso(c, nW, shW, hemW, hemY) {
+  c.beginPath(); c.moveTo(-nW, -67.2); c.lineTo(nW, -67.2);
+  c.bezierCurveTo(shW, -67, shW + 1.2, -61, shW + 1.4, -55);
+  c.bezierCurveTo(shW + 1.8, -47, hemW - .4, hemY - 8, hemW, hemY - 2.8);
+  c.quadraticCurveTo(hemW + .2, hemY, hemW - 2.6, hemY); c.lineTo(-(hemW - 2.6), hemY);
+  c.quadraticCurveTo(-(hemW + .2), hemY, -hemW, hemY - 2.8);
+  c.bezierCurveTo(-(hemW - .4), hemY - 8, -(shW + 1.8), -47, -(shW + 1.4), -55);
+  c.bezierCurveTo(-(shW + 1.2), -61, -shW, -67, -nW, -67.2); c.closePath();
+}
+const seam = (c, x1, y1, x2, y2, w = .8) => { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineWidth = w; c.lineCap = 'butt'; c.strokeStyle = LINE; c.stroke(); };
+// top 上衣颜色 / sleeve 袖子颜色 / legs 裤子颜色 / shW 正面肩宽；side、front 画躯干；sideOver、frontOver 画压在领子上面的东西
+const BODY = {
+  coat: { top: TOP, sleeve: TOP, legs: PANTS, shW: 8.6,
+    side(c) { coatPath(c); c.fillStyle = tone(c, TOP, -12.6, 12.6); c.fill(); },
+    front(c) { frontTorso(c, 5.2, 8.6, 13.6, -32); c.fillStyle = tone(c, TOP, -14.6, 14.6); c.fill(); seam(c, 0, -65, 0, -32); } },
+  suit: { top: TOP, sleeve: TOP, legs: mul(TOP, .92), shW: 7.4,
+    side(c) { slimPath(c); c.fillStyle = tone(c, TOP, -8.8, 8.8); c.fill(); seam(c, -7.5, -41.4, 7.7, -41.6, 1.1); },
+    front(c) { frontTorso(c, 4.8, 7.4, 7, -34.6); c.fillStyle = tone(c, TOP, -8, 8); c.fill(); seam(c, -7.4, -41.5, 7.4, -41.5, 1.1); seam(c, 0, -65, 0, -42); } },
+  bib: { top: SHIRT, sleeve: SHIRT, legs: TOP, wideLegs: true, shW: 7.4,
+    side(c) {
+      slimPath(c); c.fillStyle = tone(c, SHIRT, -8.8, 8.8); c.fill();
+      c.save(); slimPath(c); c.clip();                                                             // 背带裤：胸前一块护胸，后面只到腰
+      c.beginPath(); c.moveTo(-10, -47.6); c.lineTo(1.4, -49.6); c.lineTo(2, -59); c.lineTo(10, -59); c.lineTo(10, -30); c.lineTo(-10, -30); c.closePath();
+      c.fillStyle = tone(c, TOP, -8.8, 8.8); c.fill(); c.restore();
+      cap(c, 3, -58.8, -3.6, -66.6, 1.8, rgb(mul(TOP, 1.05)));                                      // 背带
+    },
+    front(c) {
+      frontTorso(c, 4.8, 7.4, 7.4, -34.6); c.fillStyle = tone(c, SHIRT, -8, 8); c.fill();
+      c.save(); frontTorso(c, 4.8, 7.4, 7.4, -34.6); c.clip(); c.fillStyle = tone(c, TOP, -8, 8); c.fillRect(-10, -47.4, 20, 14); c.restore();
+      rr(c, -5.2, -58.8, 10.4, 12.4, 1.4); c.fillStyle = tone(c, TOP, -5.2, 5.2); c.fill();
+      for (const sx of [-1, 1]) cap(c, sx * 4.2, -58.6, sx * 6.2, -66.6, 1.8, rgb(mul(TOP, 1.05)));
+    } },
+  tee: { top: SHIRT, sleeve: SHIRT, legs: SHORTS, shortSleeve: true, shorts: true, shW: 7.6,
+    side(c) { slimPath(c); c.fillStyle = tone(c, SHIRT, -8.8, 8.8); c.fill(); },
+    front(c) {
+      rr(c, -7.8, -39, 15.6, 7, 2.2); c.fillStyle = rgb(SHORTS); c.fill();
+      frontTorso(c, 4.8, 7.6, 7.6, -36); c.fillStyle = tone(c, SHIRT, -8.4, 8.4); c.fill();
+    } },
+  poncho: { top: TOP, legs: PANTS, noArms: true, collar: false,
+    side(c) { ponchoPath(c); c.fillStyle = tone(c, TOP, -14.2, 13.8); c.fill(); },
+    sideOver(c) { rr(c, -4.4, -70, 10.6, 3.4, 1.6); c.fillStyle = rgb(mul(TOP, .78)); c.fill(); },
+    front(c) {
+      c.beginPath(); c.moveTo(-4.6, -68.4); c.lineTo(4.6, -68.4); c.bezierCurveTo(9, -62, 15.4, -46, 17.4, -37.4);
+      c.quadraticCurveTo(17.8, -34.8, 15, -34.6); c.quadraticCurveTo(0, -32.2, -15, -34.6); c.quadraticCurveTo(-17.8, -34.8, -17.4, -37.4);
+      c.bezierCurveTo(-15.4, -46, -9, -62, -4.6, -68.4); c.closePath(); c.fillStyle = tone(c, TOP, -17.4, 17.4); c.fill();
+    },
+    frontOver(c) { rr(c, -5.3, -70, 10.6, 3.4, 1.6); c.fillStyle = rgb(mul(TOP, .78)); c.fill(); } },
+  hoodie: { top: TOP, sleeve: TOP, legs: PANTS, shW: 8.4,
+    side(c) {
+      c.save(); c.translate(0, -67.2); c.scale(.92, .97); c.translate(0, 67.2); coatPath(c); c.restore();
+      c.fillStyle = tone(c, TOP, -11.6, 11.6); c.fill();
+      c.beginPath(); c.moveTo(-4.4, -69.6); c.quadraticCurveTo(-13.2, -71.8, -13.8, -64.4); c.quadraticCurveTo(-14, -58, -8.6, -57.4);   // 垂在脑后的帽子
+      c.lineTo(-5.2, -61.4); c.closePath(); c.fillStyle = rgb(mul(TOP, .86)); c.fill();
+    },
+    front(c) {
+      c.beginPath(); c.ellipse(0, -66.6, 10, 4.4, 0, 0, 7); c.fillStyle = rgb(mul(TOP, .86)); c.fill();                                 // 帽子从脖子两边露出来
+      frontTorso(c, 5.2, 8.4, 11.6, -33); c.fillStyle = tone(c, TOP, -12.6, 12.6); c.fill();
+      rr(c, -6, -45.6, 12, 7.8, 2.2); c.lineWidth = .8; c.strokeStyle = LINE; c.stroke();                                                // 肚子上的口袋
+    } },
+};
+const mid = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+// ───────── 手臂和腿脚：身体固定为 6 号连帽衫 ─────────
+const ROD_N = [92, 104, 108], ROD_F = [56, 66, 69], KNOB = [30, 37, 40];      // 裸露的金属杆；关节是深色的疙瘩
+const BAGGY = [34, 44, 48], PANTS2 = [31, 39, 43], SNEAK = [132, 144, 148];
+function plateFoot(c, ax, ay, rot, fill) {       // 机械腿底下的一块小脚板
+  c.save(); c.translate(ax, ay); c.rotate(rot * Math.PI / 180); rr(c, -3.8, 1.8, 12.6, 2.8, 1.1); c.fillStyle = fill; c.fill(); c.restore();
+}
+function sneaker(c, ax, ay, rot, k) {            // 浅色的球鞋，比靴子矮一截
+  c.save(); c.translate(ax, ay); c.rotate(rot * Math.PI / 180);
+  c.beginPath(); c.moveTo(-3, -1); c.lineTo(2, -1); c.quadraticCurveTo(5.6, -.6, 8, 1.8); c.quadraticCurveTo(9.4, 3.2, 8.9, 4.6);
+  c.lineTo(-3.4, 4.6); c.quadraticCurveTo(-4.2, 1.6, -3, -1); c.closePath(); c.fillStyle = rgb(mul(SNEAK, k)); c.fill();
+  rr(c, -3.6, 3.5, 12.6, 1.2, .5); c.fillStyle = rgb(mul([44, 52, 55], k)); c.fill(); c.restore();
+}
+// 侧面的一条腿。kind：pants 长裤靴子 / baggy 宽松裤 / shorts 短裤光腿 / rods 两条机械腿 / odd 一条机械腿 / rolled 卷裤脚球鞋
+function sideLeg(c, kind, pts, near, rot) {
+  const k = near ? 1 : .66, w = near ? 5.4 : 5, bootC = rgb(near ? C.bootN : C.bootF);
+  const stub = (col, wd) => limb(c, [pts[0], mid(pts[0], pts[1], .35), mid(pts[0], pts[1], .66)], wd, rgb(mul(col, k)));   // 只盖住大腿上半截
+  const rod = () => { limb(c, pts, near ? 2.8 : 2.6, rgb(near ? ROD_N : ROD_F)); dot(c, pts[1][0], pts[1][1], near ? 3.5 : 3.2, rgb(KNOB)); };
+  const B = () => boot(c, pts[2][0], pts[2][1], rot, bootC);
+  if (kind === 'pants') { limb(c, pts, w, rgb(mul(PANTS, near ? 1 : .64))); B(); }
+  else if (kind === 'baggy') { limb(c, pts, w + 2.6, rgb(mul(BAGGY, k))); B(); }
+  else if (kind === 'shorts') { limb(c, pts, w - 1.4, rgb(mul(SKIN, near ? 1 : .68))); stub(SHORTS, w + 2.2); B(); }
+  else if (kind === 'rods') { rod(); stub(SHORTS, w + 2.2); B(); }
+  else if (kind === 'odd') {
+    if (near) { rod(); dot(c, pts[2][0], pts[2][1], 2.5, rgb(KNOB)); stub(PANTS, w + .8); plateFoot(c, pts[2][0], pts[2][1], rot, rgb(ROD_N)); }
+    else { limb(c, pts, w, rgb(mul(PANTS, .64))); B(); }
+  } else {                                                                                         // rolled
+    const e = mid(pts[1], pts[2], .72);
+    limb(c, pts, w - 1.6, rgb(mul(SKIN, near ? 1 : .68)));
+    limb(c, [pts[0], pts[1], e], w + .4, rgb(mul(PANTS2, k))); dot(c, e[0], e[1], (w + 2.2) / 2, rgb(mul(PANTS2, 1.35 * k)));
+    sneaker(c, pts[2][0], pts[2][1], rot, k);
+  }
+}
+// 正面的两条腿。机械的那条是角色的右腿：侧面图里靠近镜头的那条，正面图里在画面左边
+function frontLegs(c, kind) {
+  for (const sx of [-1, 1]) {
+    const k = sx < 0 ? 1.1 : .86, hx = sx * 4.6, fx = sx * 5.6, skin = rgb(mul(SKIN, sx < 0 ? 1 : .86));
+    const B = (bw = 10.8, bh = 7.6) => { rr(c, fx - bw / 2, -bh, bw, bh, 3.2); c.fillStyle = rgb(mul(C.bootN, k)); c.fill(); };
+    const stub = (col, wd) => cap(c, hx, -36, sx * 5, -27, wd, rgb(mul(col, k)));
+    const rod = () => { cap(c, hx, -37, fx, -5.5, 2.8, rgb(mul(ROD_N, sx < 0 ? 1 : .82))); dot(c, sx * 5.1, -21, 3.4, rgb(KNOB)); };
+    if (kind === 'pants') { cap(c, hx, -37, fx, -5.5, 5.4, rgb(mul(PANTS, k))); B(); }
+    else if (kind === 'baggy') { cap(c, hx, -37, fx, -6.5, 8, rgb(mul(BAGGY, k))); B(); }
+    else if (kind === 'shorts') { cap(c, hx, -37, fx, -5.5, 4.2, skin); stub(SHORTS, 7.4); B(); }
+    else if (kind === 'rods') { rod(); stub(SHORTS, 7.4); B(); }
+    else if (kind === 'odd') {
+      if (sx < 0) { rod(); dot(c, fx, -5.2, 2.5, rgb(KNOB)); stub(PANTS, 6.2); rr(c, fx - 5.6, -2.8, 11.2, 2.8, 1.1); c.fillStyle = rgb(ROD_N); c.fill(); }
+      else { cap(c, hx, -37, fx, -5.5, 5.4, rgb(mul(PANTS, k))); B(); }
+    } else {
+      cap(c, hx, -37, fx, -5.5, 3.8, skin); cap(c, hx, -37, sx * 5.4, -12.6, 5.8, rgb(mul(PANTS2, k)));
+      rr(c, sx * 5.4 - 3.8, -13.8, 7.6, 2.6, 1); c.fillStyle = rgb(mul(PANTS2, 1.35 * k)); c.fill();
+      rr(c, fx - 5, -5.6, 10, 5.6, 2.6); c.fillStyle = rgb(mul(SNEAK, k)); c.fill();
+    }
+  }
+}
+// ───────── 定下来的四个部件：4 号乱发、6 号连帽衫、长裤靴子、手露在外面。只有连帽衫的颜色可以换 ─────────
+let TOPC = C.coat;
+function hoodSide(c) {
+  c.save(); c.translate(0, -67.2); c.scale(.92, .97); c.translate(0, 67.2); coatPath(c); c.restore();
+  c.fillStyle = tone(c, TOPC, -11.6, 11.6); c.fill();
+  c.beginPath(); c.moveTo(-4.4, -69.6); c.quadraticCurveTo(-13.2, -71.8, -13.8, -64.4); c.quadraticCurveTo(-14, -58, -8.6, -57.4);   // 垂在脑后的帽子
+  c.lineTo(-5.2, -61.4); c.closePath(); c.fillStyle = rgb(mul(TOPC, .86)); c.fill();
+}
+function hoodFront(c) {
+  c.beginPath(); c.ellipse(0, -66.6, 10, 4.4, 0, 0, 7); c.fillStyle = rgb(mul(TOPC, .86)); c.fill();                                 // 帽子从脖子两边露出来
+  frontTorso(c, 5.2, 8.4, 11.6, -33); c.fillStyle = tone(c, TOPC, -12.6, 12.6); c.fill();
+  rr(c, -6, -45.6, 12, 7.8, 2.2); c.lineWidth = .8; c.strokeStyle = 'rgba(8,11,12,.4)'; c.stroke();                                  // 肚子上的口袋
+}
+// ───────── 灯：画面里唯一的暖色。六种带法 ─────────
+TOPC = [196, 190, 176];                                                         // 连帽衫：上一轮选定的米白
+const METAL = [26, 32, 35];
+const HOLD = [[-.8, -62], [2.6, -51.5], [9.8, -45.2]];                          // 拎着 / 举着东西的那只手：小臂往前抬
+const HUG_N = [[-.8, -62], [2.2, -46.4], [15, -46.4]], HUG_F = [[1.5, -62], [6, -50.5], [16.4, -57]];   // 两只手抱在胸前
+function glowRect(c, x, y, w, h, r) {
+  const gr = c.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, Math.max(w, h) * .7);
+  gr.addColorStop(0, '#fffaf0'); gr.addColorStop(.45, '#ffe2a2'); gr.addColorStop(1, '#f6a546'); rr(c, x, y, w, h, r); c.fillStyle = gr; c.fill();
+}
+function glowDot(c, x, y, r) {
+  const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#fffaf0'); gr.addColorStop(.5, '#ffe2a2'); gr.addColorStop(1, '#f6a546'); dot(c, x, y, r, gr);
+}
+function lanternShape(c, x, y) {                 // 一只小提灯：(x, y) 是提梁顶上被手拎住的那一点
+  c.beginPath(); c.arc(x, y + 2.2, 2.2, Math.PI, 0); c.lineWidth = .7; c.strokeStyle = rgb(METAL); c.stroke();
+  rr(c, x - 3, y + 2, 6, 1.6, .6); c.fillStyle = rgb(METAL); c.fill();
+  glowRect(c, x - 2.5, y + 3.6, 5, 5.6, 1.2);
+  rr(c, x - 3.1, y + 9, 6.2, 1.5, .6); c.fillStyle = rgb(METAL); c.fill();
+}
+function jarShape(c) {                           // 一只亮着的罐子：盖子、框、玻璃（原点在罐子中间偏上）
+  c.fillStyle = rgb(METAL); rr(c, -6.2, -11.6, 12.4, 3.8, 1.2); c.fill(); rr(c, -5.6, -9, 11.2, 18, 2.2); c.fill();
+  glowRect(c, -4.5, -7.8, 9, 15.6, 1.6);
+}
+// 返回灯的位置（角色坐标）和要不要画一束往前的光
+function drawSide(c, poseName, lampKind) {
+  const P = POSE[poseName], hy = P.hipY, th = P.lean * Math.PI / 180;
+  const upper = fn => { c.save(); c.translate(0, hy); c.rotate(th); c.translate(0, 37); fn(); c.restore(); };
+  const toW = p => { const dx = p[0], dy = p[1] + 37; return [dx * Math.cos(th) - dy * Math.sin(th), hy + dx * Math.sin(th) + dy * Math.cos(th)]; };
+  const legPts = L => [[L.h, hy], [L.h + L.k[0], hy + L.k[1]], [L.h + L.a[0], hy + L.a[1]]];
+  const arm = (pts, w, near) => {
+    const col = near ? mul(TOPC, 1.06) : mul(TOPC, .62), skin = near ? SKIN : mul(SKIN, .68);
+    const dx = pts[2][0] - pts[1][0], dy = pts[2][1] - pts[1][1], d = Math.hypot(dx, dy) || 1;
+    const hand = [pts[2][0] + dx / d * 2.6, pts[2][1] + dy / d * 2.6];
+    dot(c, hand[0], hand[1], w * .5, rgb(skin));
+    limb(c, pts, w + 1.1, rgb(mul(col, .55))); limb(c, pts, w, rgb(col));
+    return hand;
+  };
+  const hold = lampKind === 'lantern' || lampKind === 'torch', hug = lampKind === 'jar';
+  const nArm = hold ? HOLD : hug ? HUG_N : P.nArm, fArm = hug ? HUG_F : P.fArm;
+  let lamp = null;
+  upper(() => arm(fArm, 5.4, false));
+  sideLeg(c, 'pants', legPts(P.fLeg), false, P.fLeg.rot); sideLeg(c, 'pants', legPts(P.nLeg), true, P.nLeg.rot);
+  upper(() => {
+    hoodSide(c);
+    cap(c, 1, -66, 2, -71, 4.6, rgb(SKIN_D));
+    rr(c, -5.4, -70, 12.6, 4.8, 1.8); c.fillStyle = tone(c, mul(TOPC, .8), -5.4, 7.2); c.fill();
+    headSide(c);
+    if (lampKind === 'head') {                                                                     // 头灯：一圈带子，额头上一只小灯
+      cap(c, 12.6, -88.9, -9.8, -86.4, 1.7, rgb([78, 88, 92]));
+      rr(c, 12.4, -90.6, 2.8, 3.6, .8); c.fillStyle = rgb(METAL); c.fill(); glowDot(c, 15.5, -88.8, 1.4);
+      lamp = { pos: [15.6, -88.8], beam: .5 };
+    }
+    if (lampKind === 'chest') {                                                                    // 挂在脖子上，贴着胸口
+      c.beginPath(); c.moveTo(5.2, -66.6); c.lineTo(9.8, -57.6); c.lineWidth = .6; c.lineCap = 'round'; c.strokeStyle = rgb(METAL); c.stroke();
+      rr(c, 7.6, -57.8, 4.8, 6.4, 1.2); c.fillStyle = rgb(METAL); c.fill(); glowRect(c, 8.3, -56.8, 3.4, 4.4, .8);
+      lamp = { pos: [10, -54.6] };
+    }
+    if (hug) { c.save(); c.translate(11.4, -52.5); c.rotate(-6 * Math.PI / 180); jarShape(c); c.restore(); lamp = { pos: [11.4, -52.5] }; }
+    const hand = arm(nArm, 6, true);
+    if (lampKind === 'lantern') { lanternShape(c, hand[0] + .2, hand[1] + .4); lamp = { pos: [hand[0] + .2, hand[1] + 6.8] }; }
+    if (lampKind === 'torch') {                                                                    // 手电筒：横着握在手里
+      c.fillStyle = rgb(METAL); rr(c, hand[0] - 1.8, hand[1] - 1.4, 6.8, 2.7, 1); c.fill(); rr(c, hand[0] + 4.6, hand[1] - 2.2, 2.8, 4.3, .8); c.fill();
+      glowDot(c, hand[0] + 7.5, hand[1] - .1, 1.5); dot(c, hand[0], hand[1], 2.5, rgb(SKIN));
+      lamp = { pos: [hand[0] + 7.7, hand[1] - .1], beam: .1 };
+    }
+    if (lampKind === 'belt') { lanternShape(c, 4.6, -33.8); lamp = { pos: [4.6, -27.4] }; }           // 挂在衣摆下面
+  });
+  if (lamp) lamp.pos = toW(lamp.pos);
+  return lamp;
+}
+function drawFront(c, lampKind) {
+  let lamp = null;
+  frontLegs(c, 'pants');
+  hoodFront(c);
+  cap(c, 0, -66, 0, -71, 4.6, rgb(SKIN_D));
+  rr(c, -6.3, -70, 12.6, 4.8, 1.8); c.fillStyle = tone(c, mul(TOPC, .8), -6.3, 6.3); c.fill();
+  if (lampKind === 'chest') {
+    c.lineWidth = .6; c.lineCap = 'round'; c.strokeStyle = rgb(METAL);
+    for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(sx * 3.8, -66.4); c.lineTo(0, -57.8); c.stroke(); }
+    rr(c, -2.6, -58, 5.2, 6.4, 1.2); c.fillStyle = rgb(METAL); c.fill(); glowRect(c, -1.8, -57, 3.6, 4.4, .8);
+    lamp = { pos: [0, -54.8] };
+  }
+  if (lampKind === 'jar') { c.save(); c.translate(0, -52.8); jarShape(c); c.restore(); lamp = { pos: [0, -52.8] }; }
+  for (const sx of [-1, 1]) {
+    let pts = [[sx * 9.8, -62], [sx * 11.6, -50.5], [sx * 12, -40]];
+    if (lampKind === 'jar') pts = [[sx * 9.8, -62], [sx * 11.8, -51], [sx * 4.8, -47.4]];
+    else if (sx < 0 && lampKind === 'lantern') pts = [[-9.8, -62], [-12.6, -51], [-13.4, -41.8]];
+    else if (sx < 0 && lampKind === 'torch') pts = [[-9.8, -62], [-12.6, -52.4], [-8.8, -47]];
+    const col = mul(TOPC, sx < 0 ? 1.06 : .9), dx = pts[2][0] - pts[1][0], dy = pts[2][1] - pts[1][1], d = Math.hypot(dx, dy) || 1;
+    const hand = [pts[2][0] + dx / d * 2.8, pts[2][1] + dy / d * 2.8];
+    dot(c, hand[0], hand[1], 3, rgb(mul(SKIN, sx < 0 ? 1 : .86)));
+    limb(c, pts, 7.1, rgb(mul(col, .55))); limb(c, pts, 6, rgb(col));
+    if (sx < 0 && lampKind === 'lantern') { lanternShape(c, hand[0] - .2, hand[1] + .4); lamp = { pos: [hand[0] - .2, hand[1] + 6.8] }; }
+    if (sx < 0 && lampKind === 'torch') { dot(c, hand[0] + .6, hand[1] + .4, 2.9, rgb(METAL)); glowDot(c, hand[0] + .6, hand[1] + .4, 1.9); lamp = { pos: [hand[0] + .6, hand[1] + .4] }; }
+  }
+  headFront(c);
+  if (lampKind === 'head') {
+    rr(c, -11.4, -90.4, 22.8, 1.9, .9); c.fillStyle = rgb([78, 88, 92]); c.fill();
+    rr(c, -2.1, -91.4, 4.2, 3.8, 1); c.fillStyle = rgb(METAL); c.fill(); glowDot(c, 0, -89.5, 1.5);
+    lamp = { pos: [0, -89.5] };
+  }
+  if (lampKind === 'belt') { lanternShape(c, -10.6, -33.8); lamp = { pos: [-10.6, -27.4] }; }
+  return lamp;
+}
+
+// 冷色环境光（上亮下暗）+ 左上方的冷色轮廓光
+function shade(L, y, s, rim) {
+  const lc = L.getContext('2d'); lc.setTransform(1, 0, 0, 1, 0, 0);
+  const S = layer(), sc = S.getContext('2d');
+  const gr = sc.createLinearGradient(0, y - 115 * s, 0, y);
+  gr.addColorStop(0, '#ffffff'); gr.addColorStop(.55, '#d5dcde'); gr.addColorStop(1, '#8f999d');
+  sc.fillStyle = gr; sc.fillRect(0, 0, W, H); sc.globalCompositeOperation = 'destination-in'; sc.drawImage(L, 0, 0);
+  lc.globalCompositeOperation = 'multiply'; lc.drawImage(S, 0, 0);
+  const k = Math.max(1.2, s * .65), R = layer(), rc = R.getContext('2d');
+  rc.drawImage(L, 0, 0); rc.globalCompositeOperation = 'destination-out'; rc.drawImage(L, k, k * .9);
+  rc.globalCompositeOperation = 'source-in'; rc.fillStyle = 'rgb(150,188,202)'; rc.fillRect(0, 0, W, H);
+  lc.globalCompositeOperation = 'screen'; lc.globalAlpha = rim; lc.drawImage(R, 0, 0);
+  lc.globalAlpha = 1; lc.globalCompositeOperation = 'source-over';
+}
+const DARK = { rim: .55, refl: true, shadow: 'rgba(0,0,0,.55)', warm: 1 };
+const DAY = { rim: .16, refl: false, shadow: 'rgba(22,28,30,.34)', lift: 'rgba(120,134,136,.16)', warm: .38 };
+// 灯光：地上的一摊光、灯周围的光晕、往前的一束光
+function pool(c, cx, cy, rx, ry, a) {
+  c.save(); c.globalCompositeOperation = 'lighter'; c.translate(cx, cy); c.scale(1, ry / rx);
+  const gr = c.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gr.addColorStop(0, `rgba(255,160,80,${a})`); gr.addColorStop(.5, `rgba(255,140,60,${a * .4})`); gr.addColorStop(1, 'rgba(255,130,50,0)');
+  c.fillStyle = gr; c.beginPath(); c.arc(0, 0, rx, 0, 7); c.fill(); c.restore();
+}
+function bloom(c, lx, ly, r, a) {
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const gr = c.createRadialGradient(lx, ly, 0, lx, ly, r);
+  gr.addColorStop(0, `rgba(255,190,110,${a})`); gr.addColorStop(.25, `rgba(255,150,70,${a * .42})`); gr.addColorStop(1, 'rgba(255,120,40,0)');
+  c.fillStyle = gr; c.fillRect(lx - r, ly - r, 2 * r, 2 * r); c.restore();
+}
+function beamCone(c, lx, ly, ang, len, a) {
+  c.save(); c.globalCompositeOperation = 'lighter'; c.filter = 'blur(2px)'; c.translate(lx, ly); c.rotate(ang);
+  const gr = c.createLinearGradient(0, 0, len, 0); gr.addColorStop(0, `rgba(255,190,110,${a})`); gr.addColorStop(1, 'rgba(255,150,70,0)');
+  c.fillStyle = gr; c.beginPath(); c.moveTo(0, -len * .03); c.lineTo(len, -len * .3); c.lineTo(len, len * .3); c.lineTo(0, len * .03); c.closePath(); c.fill(); c.restore();
+}
+// 整个人放进画面。draw 返回灯的位置时，再加上灯光：身上离灯近的地方变暖变亮，地上一摊光，灯周围一圈光晕
+function figure(draw, x, y, s, env, wide = true) {
+  const L = layer(), lc = L.getContext('2d');
+  lc.translate(x, y); lc.scale(s, s); const lamp = draw(lc);
+  shade(L, y, s, env.rim);
+  if (env.lift) { lc.globalCompositeOperation = 'source-atop'; lc.fillStyle = env.lift; lc.fillRect(0, 0, W, H); lc.globalCompositeOperation = 'source-over'; }
+  const wk = env.warm; let lx = 0, ly = 0;
+  if (lamp) {
+    lx = x + lamp.pos[0] * s; ly = y + lamp.pos[1] * s;
+    const T = layer(), tc = T.getContext('2d'), R = 44 * s, gr = tc.createRadialGradient(lx, ly, 0, lx, ly, R), bk = lamp.beam ? .4 : 1;
+    gr.addColorStop(0, `rgba(255,196,128,${.7 * wk * bk})`); gr.addColorStop(.45, `rgba(255,170,96,${.34 * wk * bk})`); gr.addColorStop(1, 'rgba(255,150,70,0)');
+    tc.fillStyle = gr; tc.fillRect(lx - R, ly - R, 2 * R, 2 * R);
+    tc.globalCompositeOperation = 'destination-in'; tc.drawImage(L, 0, 0);
+    lc.globalCompositeOperation = 'overlay'; lc.drawImage(T, 0, 0);
+    lc.globalCompositeOperation = 'lighter'; lc.globalAlpha = .12; lc.drawImage(T, 0, 0);
+    lc.globalAlpha = 1; lc.globalCompositeOperation = 'source-over';
+    pool(g, lx + (lamp.beam ? 16 * s : 0), y + 1.5 * s, 58 * s, 9 * s, .42 * wk);
+    if (env.refl) pool(g, lx, y + 13 * s, 8 * s, 15 * s, .12 * wk);
+    if (lamp.beam) beamCone(g, lx, ly, lamp.beam, 30 * s, .22 * wk);
+  }
+  if (env.refl) {
+    const RL = layer(), r2 = RL.getContext('2d');
+    r2.translate(0, 2 * y + 1); r2.scale(1, -1); r2.drawImage(L, 0, 0); r2.setTransform(1, 0, 0, 1, 0, 0);
+    r2.globalCompositeOperation = 'destination-in';
+    const fg = r2.createLinearGradient(0, y, 0, y + 30 * s); fg.addColorStop(0, 'rgba(0,0,0,.36)'); fg.addColorStop(1, 'rgba(0,0,0,0)');
+    r2.fillStyle = fg; r2.fillRect(0, 0, W, H);
+    g.save(); g.filter = `blur(${Math.max(.6, s * .55)}px)`; g.drawImage(RL, 0, 0); g.restore();
+  }
+  g.save(); g.filter = `blur(${1.6 * s}px)`; g.fillStyle = env.shadow;
+  g.beginPath(); g.ellipse(x, y + 1.2 * s, (wide ? 22 : 14) * s, 2 * s, 0, 0, 7); g.fill(); g.restore();
+  g.drawImage(L, 0, 0);
+  if (lamp) { bloom(g, lx, ly, 52 * s, .34 * wk); bloom(g, lx, ly, 12 * s, .5 * wk); }
+}
+// 只看头和肩膀：胸口以下渐渐淡掉
+function bust(draw, x, yFeet, s) {
+  const L = layer(), lc = L.getContext('2d');
+  lc.translate(x, yFeet); lc.scale(s, s); draw(lc);
+  shade(L, yFeet, s, .55);
+  lc.globalCompositeOperation = 'destination-in';
+  const gr = lc.createLinearGradient(0, yFeet - 60 * s, 0, yFeet - 49 * s);
+  gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  lc.fillStyle = gr; lc.fillRect(0, 0, W, H); lc.globalCompositeOperation = 'source-over';
+  g.drawImage(L, 0, 0);
+}
+
+// ───────── 场景一：一排高窗的旧厂房（暗处）─────────
+function hall(c, o) {
+  const t = (o.wallY - o.top) / (o.bottom - o.top), wh = o.wallY - o.top;
+  let gr = c.createLinearGradient(0, o.top, 0, o.bottom);
+  gr.addColorStop(0, '#05080a'); gr.addColorStop(t * .6, '#0f181c'); gr.addColorStop(t, '#233439');
+  gr.addColorStop(Math.min(1, t + .002), '#1a282d'); gr.addColorStop(1, '#07090b');
+  c.fillStyle = gr; c.fillRect(0, o.top, W, o.bottom - o.top);
+  c.save(); c.filter = `blur(${o.blur * 2.2}px)`; c.fillStyle = `rgba(125,162,172,${o.fog ?? .2})`;
+  c.beginPath(); c.ellipse(W / 2, o.wallY - wh * .06, W * .56, wh * .3, 0, 0, 7); c.fill(); c.restore();
+  for (let x = o.bayW / 2; x < W; x += o.bayW) {
+    c.save(); c.filter = `blur(${o.blur}px)`; c.fillStyle = 'rgba(140,178,190,.125)';
+    c.fillRect(x - o.winHalf, o.winTop, o.winHalf * 2, o.winBot - o.winTop); c.restore();
+    if (!o.pillarW) continue;
+    const drift = o.bayW * .3, fy = o.wallY + (o.bottom - o.wallY) * .55;
+    c.save(); c.filter = `blur(${o.blur * 1.3}px)`; c.fillStyle = 'rgba(140,178,190,.032)';
+    c.beginPath(); c.moveTo(x - o.winHalf, o.winTop); c.lineTo(x + o.winHalf, o.winTop);
+    c.lineTo(x + o.winHalf - drift, fy); c.lineTo(x - o.winHalf - drift, fy); c.closePath(); c.fill(); c.restore();
+    c.save(); c.filter = `blur(${Math.max(.5, o.blur * .1)}px)`; c.fillStyle = 'rgba(5,9,11,.5)';
+    const mw = o.pillarW * .085;
+    for (const dx of [-o.winHalf / 3, o.winHalf / 3]) c.fillRect(x + dx - mw / 2, o.winTop - 10, mw, o.winBot - o.winTop + 20);
+    for (const f of [.34, .68]) c.fillRect(x - o.winHalf - 6, o.winTop + (o.winBot - o.winTop) * f, o.winHalf * 2 + 12, mw * .9);
+    c.restore();
+  }
+  gr = c.createLinearGradient(0, o.wallY, 0, o.wallY + (o.bottom - o.wallY) * .45);
+  gr.addColorStop(0, 'rgba(130,168,178,.11)'); gr.addColorStop(1, 'rgba(130,168,178,0)');
+  c.fillStyle = gr; c.fillRect(0, o.wallY, W, o.bottom - o.wallY);
+  if (!o.pillarW) return;
+  c.save(); c.filter = `blur(${Math.max(.5, o.blur * .06)}px)`;
+  for (let x = 0; x <= W; x += o.bayW) {
+    const pw = o.pillarW, base = o.wallY + (o.bottom - o.wallY) * .13;
+    gr = c.createLinearGradient(x - pw / 2, 0, x + pw / 2, 0);
+    gr.addColorStop(0, '#0b1114'); gr.addColorStop(.35, '#0f171a'); gr.addColorStop(1, '#080c0e');
+    c.fillStyle = gr; c.fillRect(x - pw / 2, o.top, pw, base - o.top);
+    c.fillStyle = '#0a0f12'; c.fillRect(x - pw * .66, base - pw * .2, pw * 1.32, pw * .24);
+  }
+  c.restore();
+  c.save(); c.strokeStyle = '#04070a'; c.lineCap = 'round';
+  for (let x = 0; x < W; x += o.bayW) {
+    c.lineWidth = o.pillarW * .045; c.beginPath(); c.moveTo(x, o.top + wh * .06); c.quadraticCurveTo(x + o.bayW * .5, o.top + wh * .25, x + o.bayW, o.top + wh * .07); c.stroke();
+    c.lineWidth = o.pillarW * .03; c.beginPath(); c.moveTo(x, o.top + wh * .03); c.quadraticCurveTo(x + o.bayW * .45, o.top + wh * .15, x + o.bayW, o.top + wh * .035); c.stroke();
+  }
+  c.restore();
+}
+// ───────── 场景二：白天的旧城，灰白的薄霾（亮处）─────────
+function outdoors(c, o) {
+  const t = (o.wallY - o.top) / (o.bottom - o.top);
+  const gr = c.createLinearGradient(0, o.top, 0, o.bottom);
+  gr.addColorStop(0, '#8b9da6'); gr.addColorStop(t * .75, '#b9c3c3'); gr.addColorStop(t, '#ccd1cc');
+  gr.addColorStop(Math.min(1, t + .002), '#9aa19d'); gr.addColorStop(1, '#6c7370');
+  c.fillStyle = gr; c.fillRect(0, o.top, W, o.bottom - o.top);
+  c.save(); c.filter = 'blur(3px)';
+  let x = -40;
+  while (x < W) {
+    const w = 70 + rnd() * 150, h = (o.wallY - o.top) * (.22 + rnd() * .5);
+    c.fillStyle = `rgba(112,128,134,${.22 + rnd() * .2})`; c.fillRect(x, o.wallY - h, w, h); x += w + rnd() * 70;
+  }
+  c.restore();
+  c.fillStyle = 'rgba(92,102,104,.42)'; c.fillRect(0, o.wallY - 12, W, 12);
+}
+function lowFog(c, y, h, a) {
+  c.save(); c.globalCompositeOperation = 'screen'; c.filter = `blur(${h * .5}px)`;
+  for (let i = 0; i < 7; i++) {
+    c.fillStyle = `rgba(120,155,165,${a * (.6 + rnd() * .6)})`;
+    c.beginPath(); c.ellipse(rnd() * W, y + (rnd() - .5) * h * .5, 260 + rnd() * 320, h * (.35 + rnd() * .3), 0, 0, 7); c.fill();
+  }
+  c.restore();
+}
+function vignette(c, x, y, w, h, a) {
+  c.save(); c.translate(x + w / 2, y + h / 2); c.scale(1, h / w * 1.25);
+  const gr = c.createRadialGradient(0, 0, w * .26, 0, 0, w * .62);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${a})`);
+  c.fillStyle = gr; c.fillRect(-w, -w, 2 * w, 2 * w); c.restore();
+}
+
+// ───────── 背面 ─────────
+function drawBack(c) {
+  for (const sx of [-1, 1]) {
+    const k = sx < 0 ? 1.1 : .86;
+    cap(c, sx * 4.6, -37, sx * 5.6, -5.5, 5.4, rgb(mul(PANTS, k)));
+    rr(c, sx * 5.6 - 4.6, -7.6, 9.2, 7.6, 2.6); c.fillStyle = rgb(mul(C.bootN, k)); c.fill();                    // 从后面看，靴子只露出脚跟
+  }
+  frontTorso(c, 5.2, 8.4, 11.6, -33); c.fillStyle = tone(c, TOPC, -12.6, 12.6); c.fill();
+  cap(c, 0, -66, 0, -71, 4.6, rgb(SKIN_D));
+  rr(c, -6.3, -70, 12.6, 4.8, 1.8); c.fillStyle = tone(c, mul(TOPC, .8), -6.3, 6.3); c.fill();
+  c.beginPath(); c.moveTo(-8.2, -69.6); c.bezierCurveTo(-9.6, -62, -5.6, -55.4, 0, -55.2);                        // 垂在背上的帽子
+  c.bezierCurveTo(5.6, -55.4, 9.6, -62, 8.2, -69.6); c.quadraticCurveTo(0, -72.6, -8.2, -69.6); c.closePath();
+  c.fillStyle = tone(c, mul(TOPC, .88), -8.2, 8.2); c.fill();
+  c.beginPath(); c.moveTo(0, -68.8); c.lineTo(0, -57.6); c.lineWidth = .7; c.lineCap = 'round'; c.strokeStyle = 'rgba(8,11,12,.28)'; c.stroke();
+  for (const sx of [-1, 1]) {
+    const pts = [[sx * 9.8, -62], [sx * 11.6, -50.5], [sx * 12, -40]], col = mul(TOPC, sx < 0 ? 1.06 : .9);
+    dot(c, pts[2][0], pts[2][1] + 2.8, 3, rgb(mul(SKIN, sx < 0 ? 1 : .86)));
+    limb(c, pts, 7.1, rgb(mul(col, .55))); limb(c, pts, 6, rgb(col));
+  }
+  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(sx * 10.9, -82.2, 1.6, 2.7, 0, 0, 7); c.fillStyle = rgb(mul(SKIN, .88)); c.fill(); }
+  c.beginPath(); c.moveTo(0, -95.2); c.bezierCurveTo(7.6, -95.2, 11, -90, 10.8, -84); c.bezierCurveTo(10.6, -78.4, 6.4, -71.2, 0, -71.2);
+  c.bezierCurveTo(-6.4, -71.2, -10.6, -78.4, -10.8, -84); c.bezierCurveTo(-11, -90, -7.6, -95.2, 0, -95.2); c.closePath();
+  c.fillStyle = rgb(mul(SKIN, .94)); c.fill();
+  poly(c, [[-11.4, -82.6], [-13.4, -88.6], [-11.4, -91.4], [-12.2, -95], [-8.6, -95], [-7.4, -98.6], [-3.8, -96.8], [-.8, -99.6], [2.6, -96.8], [6, -99], [8, -95.6],
+    [11.4, -96.2], [11.2, -92.4], [13.6, -90.6], [12.4, -87.6], [11.4, -82.6], [11.6, -80.4], [9.6, -77.6], [7, -78.8], [4.4, -76], [1.4, -77.8], [-1.6, -75.6],
+    [-4.6, -77.6], [-7.4, -76.2], [-9.8, -78], [-11.6, -80.4]], rgb(HAIR));                                       // 头发从后面一直盖到后颈
+}
+
+// ───────── 画面：左边三视图，右边是游戏里的实际大小和选定的部件 ─────────
+g.fillStyle = '#050708'; g.fillRect(0, 0, W, H);
+const LW = 1280, FEET = 940, S1 = 6.4, VX = [250, 640, 1030];
+g.save(); g.beginPath(); g.rect(0, 0, LW, H); g.clip();
+hall(g, { top: 0, wallY: 820, bottom: H, bayW: 640, pillarW: 0, winTop: 150, winBot: 770, winHalf: 300, blur: 38, fog: .2 });
+// 比例线：给建模用
+const GUIDE = [[-95.2, '头顶'], [-71, '下巴'], [-66, '肩'], [-33, '衣摆'], [-21.2, '膝盖'], [0, '脚底']];
+g.font = `400 12px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+for (const [u, name] of GUIDE) {
+  const yy = Math.round(FEET + u * S1) + .5;
+  g.fillStyle = 'rgba(205,218,220,.1)'; g.fillRect(112, yy, LW - 150, 1);
+  g.fillStyle = 'rgba(205,218,220,.5)'; g.fillText(name, 70, yy);
+}
+g.textBaseline = 'alphabetic';
+figure(c => drawFront(c, null), VX[0], FEET, S1, DARK, false);
+figure(c => drawSide(c, 'stand', null), VX[1], FEET, S1, DARK, false);
+figure(c => drawBack(c), VX[2], FEET, S1, DARK, false);
+lowFog(g, 972, 70, .04);
+vignette(g, 0, 0, LW, H, .36);
+g.restore();
+
+// 右边：游戏镜头里的实际大小
+g.fillStyle = '#06090b'; g.fillRect(LW, 0, W - LW, H);
+g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(LW, 0, 1, H);
+const PX = LW + 40, PW = W - LW - 80;
+function scene(y0, h, day) {
+  const wallY = y0 + h - 76, feet = y0 + h - 38, env = day ? DAY : DARK;
+  g.save(); g.beginPath(); g.rect(PX, y0, PW, h); g.clip();
+  if (day) outdoors(g, { top: y0, wallY, bottom: y0 + h });
+  else hall(g, { top: y0, wallY, bottom: y0 + h, bayW: 640, pillarW: 40, winTop: y0 + 22, winBot: wallY - 34, winHalf: 235, blur: 10 });
+  figure(c => drawSide(c, 'walk', null), PX + PW * .22, feet, 1.55, env);
+  figure(c => drawSide(c, 'stand', null), PX + PW * .52, feet, 1.55, env, false);
+  figure(c => drawSide(c, 'walk', null), PX + PW * .82, feet, .78, env);
+  if (!day) lowFog(g, feet + 6, 30, .05);
+  vignette(g, PX, y0, PW, h, day ? .14 : .4);
+  g.restore();
+  g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.strokeRect(PX + .5, y0 + .5, PW - 1, h - 1);
+}
+scene(150, 250, false);
+scene(424, 250, true);
+
+// 文字
+g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+g.fillStyle = 'rgba(228,236,236,.92)'; g.font = `600 26px ${FONT}`;
+g.fillText('主角 · 拼好的样子（不带灯）', 70, 60);
+g.fillStyle = 'rgba(205,218,220,.5)'; g.font = `400 15px ${FONT}`;
+g.fillText('按你一步步选的部件拼起来。三张是给建模用的三视图，横线是比例，身高大约四个头。', 70, 90);
+g.textAlign = 'center'; g.fillStyle = 'rgba(205,218,220,.6)'; g.font = `400 15px ${FONT}`;
+['正面', '侧面', '背面'].forEach((t, i) => g.fillText(t, VX[i], 1000));
+g.textAlign = 'left';
+g.fillStyle = 'rgba(232,238,238,.94)'; g.font = `600 18px ${FONT}`; g.fillText('游戏镜头里的实际大小', PX, 122);
+g.fillStyle = 'rgba(205,218,220,.5)'; g.font = `400 13px ${FONT}`;
+g.fillText('左、中：电脑上（约 150 像素高）　右：手机上看起来（约 75 像素高）', PX, 694);
+g.fillStyle = 'rgba(232,238,238,.94)'; g.font = `600 18px ${FONT}`; g.fillText('选定的部件', PX, 746);
+const PARTS = [['头', '4 号 · 乱发，不画五官'], ['身体', '6 号 · 连帽衫，帽子垂在脑后'], ['腿脚', '长裤，大靴子'], ['手臂', '手露在外面'], ['颜色', '米白的连帽衫，其余都是深色'], ['灯', '不带']];
+PARTS.forEach(([k, v], i) => {
+  const yy = 780 + i * 29;
+  g.fillStyle = 'rgba(205,218,220,.5)'; g.font = `400 15px ${FONT}`; g.fillText(k, PX, yy);
+  g.fillStyle = 'rgba(228,236,236,.9)'; g.fillText(v, PX + 64, yy);
+});
+const hex = c2 => '#' + c2.map(v => Math.round(v).toString(16).padStart(2, '0')).join('').toUpperCase();
+const SW = [['头发', HAIR], ['皮肤', SKIN], ['连帽衫', TOPC], ['裤子', PANTS], ['靴子', C.bootN]];
+SW.forEach(([name, col], i) => {
+  const xx = PX + i * 116, yy = 968;
+  rr(g, xx, yy, 40, 40, 6); g.fillStyle = rgb(col); g.fill(); g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = 1; g.stroke();
+  g.fillStyle = 'rgba(228,236,236,.86)'; g.font = `400 13px ${FONT}`; g.fillText(name, xx + 50, yy + 17);
+  g.fillStyle = 'rgba(205,218,220,.5)'; g.font = `400 11px ${FONT}`; g.fillText(hex(col), xx + 50, yy + 34);
+});
+
+// 胶片颗粒
+const N = document.createElement('canvas'); N.width = N.height = 256;
+const nc = N.getContext('2d'), id = nc.createImageData(256, 256);
+for (let i = 0; i < id.data.length; i += 4) { const v = rnd() * 255 | 0; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; }
+nc.putImageData(id, 0, 0);
+g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = .06; g.fillStyle = g.createPattern(N, 'repeat'); g.fillRect(0, 0, W, H); g.restore();
+
+// 导出：
+// "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+//   --window-size=1920,1080 --screenshot=concept-inside-style-10.png concept-inside-style-10.html
+</script></body></html>

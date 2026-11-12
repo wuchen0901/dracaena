@@ -27,7 +27,9 @@ function sim(dt) {
   if (menuOpen) { menuInput(); pressed.clear(); rawKeys.clear(); anyKey = false; return; }
   if (state === 'title' && anyKey) begin();
   for (const k of ['A', 'B', 'C']) if (pressed.has(k)) setSkin(k);
-  if (pressed.has('SKIN_R')) setSkin('R'); if (pressed.has('SKIN_O')) setSkin('O');
+  if (pressed.has('SKIN_R')) setSkin('R'); if (pressed.has('SKIN_O')) setSkin('O'); if (pressed.has('SKIN_K')) setSkin('K');
+  if (pressed.has('TINT') && hero.B.tint) hero.B.tint();                 // 小孩：换一块连帽衫的颜色看看
+  if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
   if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
@@ -59,7 +61,7 @@ function sim(dt) {
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
 const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, cam, keys, pressed, paused: false, setSkin, begin, respawn,
-  closeUp(on = !closeUp) { closeUp = on; }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
+  closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
   step(sec, dt = 1 / 60) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) sim(dt); renderer.render(scene, camera); DBG.redraw = true; },
@@ -80,7 +82,7 @@ document.querySelectorAll('#skins button').forEach(b => b.addEventListener('clic
 CAMKEYS.sort((a, b) => a[0] - b[0]); CPS.sort((a, b) => a.x - b.x);
 buildGround();
 CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;
-setSkin('R'); loadGame();
+setSkin('K'); loadGame();                               // 现在默认是小孩（3D 试做）；按 0 换回 07
 { const n = +new URLSearchParams(location.search).get('ch'); if (n >= 1 && n <= CHAPTERS.length) STORY.ch = n; }   // 地址后面加 ?ch=5 直接从第五章开始
 { const c = CHAPTERS[STORY.ch - 1], intro = c.intro; c.intro = null; startChapter(STORY.ch, { quiet: true }); c.intro = intro; state = 'title'; }
 $('go').textContent = STORY.ch > 1 ? `按任意键继续 · 第${CN[STORY.ch - 1]}章 ${CHAPTERS[STORY.ch - 1].name}` : '按任意键开始';
