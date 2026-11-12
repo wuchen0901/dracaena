@@ -1420,16 +1420,19 @@ function makeCharacter(kind, prev, o = {}) {
       const traveler = B.traveler;
       // Convert the mesh's side-view swing axis into each bone parent's local space.
       const worldAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(traveler.model.getWorldQuaternion(new THREE.Quaternion()));
-      const poseBone = (name, angle) => {
+      const up = new THREE.Vector3(0, 1, 0);
+      const poseBone = (name, angle, turn = 0) => {
         const entry = traveler.bones.get(name);
         if (!entry) return;
         const parentQ = entry.node.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
         const axis = worldAxis.clone().applyQuaternion(parentQ).normalize();
         entry.node.quaternion.copy(entry.rest).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, -angle));
+        if (turn) entry.node.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(up.clone().applyQuaternion(parentQ).normalize(), turn));   // 左右转：绕竖直方向
         entry.node.updateWorldMatrix(false, true);
       };
       poseBone('Spine', spine.rotation.z * .35);
-      poseBone('Head', head.rotation.z);
+      poseBone('neck', 0, head.rotation.y * .35);                 // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的
+      poseBone('Head', head.rotation.z, head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
         poseBone(side + 'UpLeg', legs[i].hip.rotation.z);
