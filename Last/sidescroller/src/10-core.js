@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 
 // ============================================================
 //  基础：渲染器 / 场景 / 相机 / 小工具 / 输入

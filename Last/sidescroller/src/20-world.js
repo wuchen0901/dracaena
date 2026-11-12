@@ -27,6 +27,9 @@ function groundY(x) {
   return a[1] + (b[1] - a[1]) * clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
 }
 const groundSlope = x => (groundY(x + 0.15) - groundY(x - 0.15)) / 0.3;
+// 地面往远处铺到哪里：平时一直铺到看不见的地方；登记过的一段 [x1, x2] 只铺到 z 为止 —— 后面是低下去的谷地，由布景板来画
+const GROUND_BACK = [];
+function groundBack(x1, x2, z) { GROUND_BACK.push([x1, x2, z]); }
 const GROUND = [];                                   // 地面颜色的关键点 [x, 颜色]，中间线性过渡
 function ground(x, hex) { GROUND.push([x, new THREE.Color(hex)]); }
 function groundColor(x, out) {

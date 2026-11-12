@@ -22,8 +22,8 @@ function buildGround() {
   }
   pts.push(TERRAIN[TERRAIN.length - 1]);
   for (let i = 1; i < pts.length; i++) {
-    const [ax, ay] = pts[i - 1], [bxx, by] = pts[i];
-    pos.push(ax, ay, Z1, bxx, by, Z1, bxx, by, Z0, ax, ay, Z1, bxx, by, Z0, ax, ay, Z0);
+    const [ax, ay] = pts[i - 1], [bxx, by] = pts[i], mid = (ax + bxx) / 2, cut = GROUND_BACK.find(c => mid >= c[0] && mid <= c[1]), zb = cut ? cut[2] : Z0;
+    pos.push(ax, ay, Z1, bxx, by, Z1, bxx, by, zb, ax, ay, Z1, bxx, by, zb, ax, ay, zb);
     groundColor(ax, ca); groundColor(bxx, cb);
     for (const c of [ca, cb, cb, ca, cb, ca]) col.push(c.r, c.g, c.b);
   }

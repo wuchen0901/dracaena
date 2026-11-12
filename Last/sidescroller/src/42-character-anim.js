@@ -43,7 +43,9 @@ function makeCharacter(kind, prev, o = {}) {
     if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
     let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
+    const hipStand = hipY;
     if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
+    const sitDrop = hipY - hipStand;                                          // 坐下时重心降了多少（主角的模型不挂在骨盆上，要自己跟着降）
     pelvis.position.set(0, hipY, 0);
 
     // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
@@ -59,7 +61,7 @@ function makeCharacter(kind, prev, o = {}) {
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
     chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
     if (B.traveler?.group) {
-      B.traveler.group.position.y = B.traveler.baseY + bob;
+      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop;
       B.traveler.group.rotation.z = -A.lean;
     }
 
