@@ -21,6 +21,8 @@
 // step=2 换成第二步：光和颜色固定用第一步定下来的那一版，各版比的是画面里摆什么（SETS）；parts=pillars,line 可以临时加一版组合
 // 注意：第一步（3 逆光）和第二步（第 8 格：柱子、行车梁、窗光、前景链条）的结果已经在 2026-11-12 搭进了游戏的第一章。
 //   generated_images/scene-ch1-01*、scene-ch1-02* 是在那之前导出的；现在再用 step=1 / step=2 导出，底图已经变了，结果会和当时不一样。
+//   第三步（矮墙换成一排铁柜、地面加污渍和积水）也在同一天搭进去了；step=3 的各版现在是叠在这些上面画的。
+//   step=3&layout=shade&only=0 核对游戏里现有的遮挡物：它们的影子和“躲没躲好”的判定对不对得上。
 //   要看游戏现在的样子，用 raw=1（原样的游戏画面）：layout=full 是这一屏，layout=scout&xs=2,14,30 是沿路的几屏；probe=1 报出镜头位置
 // 网址参数：layout —— grid 各版排在一起（每格是整幅画面缩小一半）/ full 一版的整幅画面（look=第几版，从 0 数）/
 //   crops 每一版在主角附近的原始大小；only=0,1,4 只排其中几版；fx=0 不加暗角、颗粒和上下黑边；
@@ -135,7 +137,11 @@ function overlays() {
 }
 function render(L, fx = FX) {
   if (RAW) { /* 原样的游戏画面，什么都不改 */ }
-  else if (STEP === 2) { applyLook(PICK); clearSet(); SET = new G.THREE.Group(); G.scene.add(SET); for (const p of L.parts) PARTS[p](); }   // 第二步：光色不变，换布景
+  else if (STEP >= 2) {                                           // 第二、三步：往场景里临时摆东西（第二步还要先换上第一步定的光色；第三步的底图就是游戏现在的样子）
+    if (STEP === 2) applyLook(PICK);
+    UNDO.splice(0).forEach(f => f()); clearSet(); SET = new G.THREE.Group(); G.scene.add(SET);
+    for (const p of L.parts) { const back = PARTS[p](); if (back) UNDO.push(back); }       // 有的候选要先藏起游戏里原有的东西，返回一个放回去的函数
+  }
   else applyLook(L);
   G.renderer.render(G.scene, G.camera); sctx.drawImage(G.renderer.domElement, 0, 0, FW, FH); if (fx) overlays();
 }
@@ -195,7 +201,7 @@ const TRY = q.get('json') ? [].concat(JSON.parse(q.get('json'), (k, v) => typeof
 // ================= 第二步：画面里摆什么、前后分几层 =================
 // 光和颜色固定用第一步定下来的「3 逆光」（颜色还是原来的冷青灰）。每一版往同一屏里临时摆一样东西，
 // 都是粗模：方块，或者画在板子上的剪影，只为了看大的形状和位置。游戏本身没有改，定下来以后再照着搭进第一章的代码
-const STEP = num('step', 1), PICK = ALL[2];
+const STEP = num('step', 1), PICK = ALL[2], UNDO = [];
 let SET = null;                                                   // 这一版临时摆进场景里的东西
 function clearSet() {
   if (!SET) return;
@@ -220,10 +226,14 @@ function board(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   if (o.blur) g.filter = `blur(${o.blur}px)`;
   if (o.floor) g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s); else g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
   draw(g);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  // lit：受场景里的灯光和影子影响（地上的油漆、污渍要跟着明暗走）；wet：再加上水面的反光
+  const mat = o.wet ? new THREE.MeshPhongMaterial({ map: tex, transparent: true, depthWrite: false, opacity: o.opacity ?? 1, specular: o.wet.specular, shininess: o.wet.shininess })
+    : o.lit ? new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, opacity: o.opacity ?? 1 })
+    : new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
+  if (o.lit || o.wet) m.receiveShadow = true;
   if (o.floor) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); }   // 平铺在地上：这时 y1、y2 是 z 的范围，画布上方是远处
   else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
   m.renderOrder = o.order ?? Math.round(z * 4); SET.add(m); return m;
@@ -360,12 +370,148 @@ const SETS = [
   { name: '前景的链条', note: '离镜头最近的一层：垂下来的链条、吊钩和缆线，略微虚焦', parts: ['fore'] },
   { name: '几样放在一起', note: '2 + 3 + 5 + 7 合起来的样子', parts: ['pillars', 'crane', 'shafts', 'fore'] },
 ];
-if (q.get('parts')) SETS.push({ name: q.get('parts'), note: '', parts: q.get('parts').split(',') });   // 试组合用：parts=pillars,line
-const SRC = STEP === 2 ? SETS : ALL;
-const LOOKS = STEP !== 2 && TRY ? TRY : q.get('only') ? q.get('only').split(',').map(i => SRC[+i < 0 ? SRC.length + +i : +i]) : SRC;
+// ================= 第三步：细节 —— 矮墙和地面 =================
+// 底图就是游戏现在的样子（逆光和第二步的布景都已经搭进去了）。每一版只换一样：2 到 4 换矮墙，5 到 8 换地面。
+// 矮墙是玩法的一部分（躲在它的影子里）：换的只是样子 —— 位置和宽度不变，高度不低于原来的 1.65 米，影子才和游戏的判定对得上
+const WALLS = () => G.zone(1).WATCH.walls;
+function hideWalls() {                                            // 把游戏里原来的矮墙（铁皮、顶上的横条、三根桩）藏起来；返回一个把它们放回来的函数
+  const hidden = [];
+  for (const o of G.zone(1).root.children) if (o.isMesh && o.position.y < 2.2 && o.position.z < -0.8 && o.position.z > -1.1 && WALLS().some(([a, b]) => o.position.x > a - 0.2 && o.position.x < b + 0.2)) { o.visible = false; hidden.push(o); }
+  return () => hidden.forEach(o => { o.visible = true; });
+}
+const rng = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };   // 固定种子的随机数：每次导出都一样
+Object.assign(PARTS, {
+  // 矮墙 · 混凝土墩：厚实的一整块，底下宽出一圈底座，顶上收一级。厚了，顶面才接得住背后照过来的光
+  wallBlock() {
+    const back = hideWalls(), m = lamb(CONC);
+    for (const [a, b] of WALLS()) {
+      const c = (a + b) / 2, w = b - a;
+      block(w + 0.12, 0.2, 0.74, c, 0, -0.95, m); block(w, 1.32, 0.56, c, 0.2, -0.95, m); block(w - 0.14, 0.13, 0.4, c, 1.52, -0.95, m);
+    }
+    return back;
+  },
+  // 矮墙 · 一排铁柜：三只高矮、深浅不一的配电柜并排站着，顶上是错落的一条线
+  wallCabinets() {
+    const back = hideWalls(), m = lamb(0x2c363b), foot = lamb(IRON);
+    WALLS().forEach(([a, b], i) => {
+      const w = b - a, parts = [[0.36, 1.76, 0.5], [0.27, 1.65, 0.42], [0.37, 1.86, 0.54]]; if (i % 2) parts.reverse();
+      let x = a;
+      for (const [k, h, d] of parts) {
+        const cw = w * k; block(cw, h - 0.08, d, x + cw / 2, 0.08, -0.9 - d / 2 + 0.2, m); block(cw - 0.08, 0.08, d - 0.08, x + cw / 2, 0, -0.9 - d / 2 + 0.2, foot); x += cw;
+      }
+    });
+    return back;
+  },
+  // 矮墙 · 断墙：一道砌块墙被拆剩下的几截，上面残留着几层没拆干净的砌块，一头高一头低；断口露着钢筋，脚边掉着两块
+  wallRuin() {
+    const back = hideWalls(), m = lamb(0x2f393c), bar = lamb(0x3a2c25);
+    WALLS().forEach(([a, b], i) => {
+      const w = b - a, c = (a + b) / 2, dir = i % 2 ? -1 : 1, hi = 0.36 * w;                    // hi：还剩着几层砌块的那一头有多宽
+      block(w, 1.65, 0.3, c, 0, -0.92, m);
+      for (let j = 0; j < 4; j++) { const cw = hi + (3 - j) * 0.2; block(cw, 0.2, 0.3, c + dir * (w - cw) / 2, 1.65 + j * 0.2, -0.92, m); }   // 断口一层退半块，斜着退上去
+      block(0.4, 0.2, 0.3, c - dir * (w / 2 - 0.2), 1.65, -0.92, m);                             // 另一头孤零零剩下的一块，和断口之间缺着一块
+      const r1 = block(0.022, 0.4, 0.022, c + dir * (w / 2 - hi * 0.45), 2.45, -0.92, bar); r1.rotation.z = -dir * 0.16;
+      const r2 = block(0.022, 0.3, 0.022, c - dir * (w / 2 - 0.55), 1.65, -0.9, bar); r2.rotation.z = dir * 0.55;
+      const f1 = block(0.4, 0.19, 0.28, c - dir * (w / 2 + 0.42), 0, -0.72, m); f1.rotation.y = 0.5 * dir;
+      const f2 = block(0.38, 0.19, 0.26, c - dir * (w / 2 + 0.2), 0, -1.25, m); f2.rotation.y = -0.3;
+    });
+    return back;
+  },
+  // 地面 · 水泥板和污渍：一块块水泥板深浅略有不同，上面有油渍、水渍、几块补过的地方和拖出来的长痕
+  floorSlabs() {
+    board(53.5, 86.5, -26, 12, 0, 40, g => {
+      const rn = rng(7), xs = [53.5, 59, 64.5, 70, 75.5, 81, 86.5], zs = [-26, -19.5, -12, -4.5, 3.2, 12];
+      for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+        g.fillStyle = rn() < 0.55 ? `rgba(0,0,0,${(0.08 + 0.3 * rn()).toFixed(3)})` : `rgba(150,172,178,${(0.03 + 0.08 * rn()).toFixed(3)})`;
+        g.fillRect(xs[i], zs[j], xs[i + 1] - xs[i], zs[j + 1] - zs[j]);
+      }
+      const blot = (x, z, r, sx, a) => {                                                 // 一团污渍：中间一大片是实的，只有边上一圈晕开
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, r); gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.78, `rgba(0,0,0,${a * 0.9})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.save(); g.translate(x, z); g.scale(sx, 1); g.fillStyle = gr; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore();
+      };
+      for (let i = 0; i < 30; i++) { const x = 55 + rn() * 30, z = -9 + rn() * 17, r = 0.2 + rn() * 0.7, a = 0.1 + 0.13 * rn(); for (let k = 0; k < 3; k++) blot(x + (rn() - 0.5) * r * 2, z + (rn() - 0.5) * r, r * (0.5 + 0.6 * rn()), 1 + rn() * 1.6, a); }   // 油渍、水渍：每一处由几团叠成，形状才不是一个圆
+      for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${(0.2 + 0.35 * rn()).toFixed(2)})`; g.fillRect(55 + rn() * 30, -9 + rn() * 17, 0.03 + rn() * 0.09, 0.03 + rn() * 0.06); }   // 零星的黑点
+      for (const [a, b] of WALLS()) blot((a + b) / 2, -0.75, 0.7, 1.9, 0.3);                                                             // 矮墙脚下积着的黑
+      for (const [x, z, w, d] of [[61.2, 1.0, 1.7, 1.1], [72.3, -2.6, 2.3, 1.3], [78.6, 5.2, 1.5, 1.8]]) { g.fillStyle = 'rgba(160,180,186,.11)'; g.fillRect(x, z, w, d); }   // 补过的几块
+      g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineCap = 'round';
+      for (let i = 0; i < 9; i++) { const x = 56 + rn() * 24, z = -3 + rn() * 7; g.lineWidth = 0.04 + rn() * 0.07; g.beginPath(); g.moveTo(x, z); g.quadraticCurveTo(x + 2 + rn() * 2, z + (rn() - 0.5) * 0.6, x + 4 + rn() * 5, z + (rn() - 0.5) * 0.9); g.stroke(); }   // 拖痕
+    }, { floor: 0.006, lit: true, order: -30 });
+  },
+  // 地面 · 划线：沿着走的这条路，地上漆着两道磨花了的白线，每块矮墙的两端各有一道短横线
+  floorLines() {
+    board(54, 87, -1.4, 1.4, 0, 64, g => {
+      const rn = rng(11);
+      g.fillStyle = 'rgba(200,212,210,.7)';
+      for (const z of [-0.56, 0.9]) g.fillRect(54, z - 0.05, 33, 0.1);
+      for (const [a, b] of WALLS()) for (const x of [a, b]) g.fillRect(x - 0.05, -0.56, 0.1, 0.5);
+      g.globalCompositeOperation = 'destination-out';                                    // 磨损：随机擦掉一些
+      for (let i = 0; i < 2600; i++) { g.globalAlpha = 0.25 + 0.75 * rn(); g.fillRect(54 + rn() * 33, -1.3 + rn() * 2.6, 0.04 + rn() * 0.4, 0.015 + rn() * 0.05); }
+      for (let i = 0; i < 14; i++) { g.globalAlpha = 0.9; g.fillRect(54 + rn() * 33, -1.3 + rn() * 2.6, 0.5 + rn() * 1.6, 0.3); }
+    }, { floor: 0.007, lit: true, order: -29 });
+  },
+  // 地面 · 轨道：两条嵌在地里的钢轨和一排枕木贯穿场地，主角走在两条轨之间（和前面推车那一段是同一种轨道）
+  floorRails() {
+    const rail = lamb(0x39444a), top = lamb(0x9aacb2), tie = lamb(IRON);
+    for (const z of [-0.42, 0.42]) { block(33, 0.07, 0.07, 70.5, 0, z, rail); block(33, 0.012, 0.034, 70.5, 0.07, z, top); }   // 轨顶磨得发亮，照到光时是两道细亮线
+    for (let x = 54.4; x < 87; x += 0.8) block(0.16, 0.03, 1.25, x, 0, 0, tie);
+  },
+  // 地面 · 积水：地上一摊摊浅水，水面比干的地方暗，探照灯在水里有一道朝着镜头拉长的倒影。
+  // 倒影落在哪里是算出来的（灯关于地面的镜像和镜头的连线穿过地面的那一点），搭进游戏时要每一帧跟着镜头挪；
+  // 没有用材质自带的高光：这台灯太亮，贴着地面看过去高光会白成平平的一大片
+  floorWet() {
+    const C = G.camera.position, L = [71, 3.7, -19.05], t = C.y / (C.y + L[1]), mx = C.x + t * (L[0] - C.x), mz = C.z + t * (L[2] - C.z);
+    const ax = C.x - L[0], az = C.z - L[2], rn = rng(23), pools = [];
+    for (let i = 0; i < 60; i++) { const x = 55 + rn() * 31, z = -7 + rn() * 16, r = 0.6 + rn() * 1.6; for (let k = 0; k < 4; k++) pools.push([x + (rn() - 0.5) * r * 2.4, z + (rn() - 0.5) * r * 0.9, r * (0.5 + rn()), r * (0.25 + 0.35 * rn())]); }
+    const water = g => { g.beginPath(); for (const [x, z, rx, rz] of pools) { g.moveTo(x + rx, z); g.ellipse(x, z, rx, rz, 0, 0, 6.2832); } g.fill(); };
+    board(54, 87, -9, 11, 0, 26, g => { g.fillStyle = '#04070a'; water(g); }, { floor: 0.006, lit: true, opacity: 0.45, blur: 2, order: -30 });   // 水面
+    board(54, 87, -9, 11, 0, 26, g => {                                                                                                // 倒影：只留在有水的地方
+      g.save(); g.translate(mx, mz); g.rotate(Math.atan2(-ax, az)); g.scale(1, 11);
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, 0.62); gr.addColorStop(0, 'rgba(215,232,238,.8)'); gr.addColorStop(0.35, 'rgba(215,232,238,.42)'); gr.addColorStop(1, 'rgba(215,232,238,0)');
+      g.fillStyle = gr; g.fillRect(-0.62, -0.62, 1.24, 1.24); g.restore();
+      g.globalCompositeOperation = 'destination-in'; g.fillStyle = '#000'; water(g);
+    }, { floor: 0.008, additive: true, fog: false, blur: 2, order: -28 });
+  },
+});
+const SET3 = [
+  { name: '现在的样子', note: '矮墙是一块铁皮加三根桩；地面只有几道伸缩缝', parts: [], dy: 30 },
+  { name: '矮墙 · 混凝土墩', note: '厚实的一整块，带底座，顶上收一级', parts: ['wallBlock'], dy: -40 },
+  { name: '矮墙 · 一排铁柜', note: '三只高矮不一的配电柜并排站着', parts: ['wallCabinets'], dy: -40 },
+  { name: '矮墙 · 断墙', note: '拆剩下的几截砌块墙，一头高一头低，露着钢筋', parts: ['wallRuin'], dy: -40 },
+  { name: '地面 · 水泥板和污渍', note: '水泥板深浅不一，有油渍、补丁和拖痕', parts: ['floorSlabs'], dy: 110 },
+  { name: '地面 · 划线', note: '沿路两道磨花了的白线，矮墙两端各一道短横线', parts: ['floorLines'], dy: 110 },
+  { name: '地面 · 轨道', note: '两条钢轨和一排枕木贯穿场地，主角走在轨道中间', parts: ['floorRails'], dy: 110 },
+  { name: '地面 · 积水', note: '一摊摊浅水，把探照灯反射成一道亮光', parts: ['floorWet'], dy: 110 },
+];
+if (q.get('parts')) (STEP === 3 ? SET3 : SETS).push({ name: q.get('parts'), note: '', parts: q.get('parts').split(','), dy: 30 });   // 试组合用：parts=wallBlock,floorLines
+const SRC = STEP === 3 ? SET3 : STEP === 2 ? SETS : ALL;
+const LOOKS = STEP === 1 && TRY ? TRY : q.get('only') ? q.get('only').split(',').map(i => SRC[+i < 0 ? SRC.length + +i : +i]) : SRC;
 
 const LAYOUTS = {
   full() { size(FW, FH); drawFull(LOOKS[num('look', 0)], 0, 0, FW, FH); },
+  // 核对影子（配 step=3&only=0,1,2,3）：每一版矮墙，把主角摆到游戏判定为“躲好了”的范围的两端和中间，再摆到两块矮墙之间的空地上，
+  // 每次都把光束对准他，量他上身最亮的地方有多亮（0 到 255）。躲好了的位置不该被照亮；空地上应该很亮。结果打在控制台里
+  shade() {
+    // 不看画面，直接算：从探照灯的灯口往主角身上的几个点（左右两侧，从脚到头顶）连线，看有没有被这一版的矮墙挡住。
+    // 沿着场地每隔 2 厘米摆一次主角，和游戏的判定（inShadow）比：判定“躲好了”的地方必须整个人都被挡住
+    const THREE = G.THREE, W = G.zone(1).WATCH, lamp = new THREE.Vector3(W.ex, W.ey, W.ez + 0.95), ray = new THREE.Raycaster();
+    const logic = x => W.shadows.some(([a, b]) => x > a + 0.22 && x < b - 0.22);            // 和 60-ch1-factory.js 里的 inShadow 是同一个式子
+    const original = G.zone(1).root.children.filter(o => o.isMesh && o.position.y < 2.2 && o.position.z < -0.8 && o.position.z > -1.1 && W.walls.some(([a, b]) => o.position.x > a - 0.2 && o.position.x < b + 0.2));
+    size(FW, HEAD + 60 + LOOKS.length * 44);
+    header('影子核对', ['从探照灯的灯口往主角身上连线（左右两侧各五个高度，从脚到头顶 1.24 米），看有没有被矮墙挡住；沿着场地每隔 2 厘米摆一次，和游戏的判定比。',
+      '“判定躲好了、却有地方被照到”必须是 0。“整个人在影子里、判定却算暴露”是影子比判定宽出来的那一点，只要和现在的矮墙差不多就行。']);
+    LOOKS.forEach((L, i) => {
+      render(L, false); G.scene.updateMatrixWorld(true);
+      const walls = L.parts.some(p => p.startsWith('wall')) ? SET.children : original;
+      const blocked = (x, y) => { const to = new THREE.Vector3(x, y, 0), d = to.clone().sub(lamp), len = d.length(); ray.set(lamp, d.normalize()); ray.far = len - 0.01; return ray.intersectObjects(walls, false).length > 0; };
+      let bad = 0, wider = 0, hiddenLogic = 0;
+      for (let x = 58; x <= 83; x += 0.02) {
+        const pts = [-0.17, 0.17].flatMap(dx => [0.05, 0.4, 0.8, 1.1, 1.24].map(y => blocked(x + dx, y))), all = pts.every(Boolean);
+        if (logic(x)) { hiddenLogic++; if (!all) bad++; } else if (all) wider++;
+      }
+      const text = `${i + 1}  ${L.name}：判定躲好了的范围共 ${(hiddenLogic * 0.02).toFixed(2)} 米；其中有地方被照到的 ${(bad * 0.02).toFixed(2)} 米；整个人在影子里、判定却算暴露的 ${(wider * 0.02).toFixed(2)} 米`;
+      console.log('影子核对 ' + text); label(text, 70, HEAD + 40 + i * 44, { size: 17, color: bad ? '#ff9a7a' : '#d6e0de', shadow: false });
+    });
+  },
   // 沿路看一遍：xs=2,14,30 这几个位置各截一张原样的游戏画面（要配 raw=1），每格是整幅画面缩小一半。检查改动有没有弄坏别处用
   scout() {
     const xs = (q.get('xs') || '2,14,30,44,53,62,71,80,92,101').split(',').map(Number), cols = 2, rows = Math.ceil(xs.length / cols), cw = FW / cols, ch = FH / cols;
@@ -384,7 +530,9 @@ const LAYOUTS = {
   grid() {
     const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = FH / cols;
     size(FW, HEAD + rows * ch);
-    if (STEP === 2) header('标杆画面 · 第二步：画面里摆什么', ['同一屏游戏画面（第一章，躲探照灯），光和颜色用第一步定下来的“3 逆光”。每格多摆一样东西，可以挑几样合在一起，比如“2 + 5 + 7”。',
+    if (STEP === 3) header('标杆画面 · 第三步：细节 —— 矮墙和地面', ['同一屏游戏画面，底图是游戏现在的样子。2 到 4 换的是矮墙，5 到 8 换的是地面。矮墙挑一个，地面可以挑一个或几个，比如“2 + 6”。',
+      '矮墙只换样子：位置、宽度不变，高度不低于原来，影子和游戏里“躲没躲好”的判定对得上。都是粗模，游戏本身还没有改。下一张图是主角附近的原始大小。']);
+    else if (STEP === 2) header('标杆画面 · 第二步：画面里摆什么', ['同一屏游戏画面（第一章，躲探照灯），光和颜色用第一步定下来的“3 逆光”。每格多摆一样东西，可以挑几样合在一起，比如“2 + 5 + 7”。',
       '摆进去的都是粗模（方块，或者画出来的剪影），只看大的形状和位置，细节以后再做。都躲开了探照灯扫过的范围，不影响玩法。游戏本身还没有改。']);
     else header('标杆画面 · 第一步：整体的光和颜色', ['同一屏游戏画面（第一章，躲探照灯），每格是整幅画面缩小一半。1 到 4 比的是明暗：光从哪里来、四周有多黑；5 到 8 比的是颜色。可以各挑一个，比如“3 + 5”。',
       '全是游戏里的实时画面，各版之间只改了雾、环境光、探照灯和后墙的数值。每一版都先去掉了原来横在地面中间的那道黑带（前景的废料），探照灯的光晕换成了更柔和的。']);
@@ -400,13 +548,14 @@ const LAYOUTS = {
     for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
   },
   crops() {
-    const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = 330;
+    const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = STEP === 3 ? 400 : 330;
     size(FW, HEAD + rows * ch);
-    header('标杆画面 · 第一步：原始大小', ['上一张图里的各版，在主角附近按 1080p 屏幕上的原始大小各截一块（没有缩小）。']);
+    header(`标杆画面 · 第${'一二三'[STEP - 1]}步：原始大小`, [STEP === 3 ? '上一张图里的各版，按 1080p 屏幕上的原始大小各截一块（没有缩小）。矮墙的几格截在主角和矮墙这一带，地面的几格往下挪了一些，多看一点地面。'
+      : '上一张图里的各版，在主角附近按 1080p 屏幕上的原始大小各截一块（没有缩小）。']);
     const [hx, hy] = heroPx();
     LOOKS.forEach((L, i) => {
       const x = (i % cols) * cw, y = HEAD + Math.floor(i / cols) * ch;
-      drawCrop(L, x, y, cw, ch, hx + 250, hy - 40);
+      drawCrop(L, x, y, cw, ch, hx + 250, hy + (L.dy ?? -40));                 // dy：这一格往上还是往下截一点
       label(`${i + 1}  ${L.name}`, x + 26, y + 34, { size: 16, weight: 600, color: '#f1f5f4' });
     });
     ctx.fillStyle = '#0b0f11';
@@ -419,7 +568,7 @@ function start() {
   G = frame.contentWindow.__g; G.begin(); G.paused = true; G.step(0.3);
   setShot();
   if (q.get('probe')) console.log('镜头 ' + JSON.stringify(G.camera.position.toArray().map(v => +v.toFixed(3))) + ' 视角 ' + G.camera.fov + ' 主角 x ' + G.P.x.toFixed(2));   // probe=1：报出这一屏的镜头位置
-  if (!RAW) { H = handles(); BASE = snapshot(); H.halo.material.map = softGlow(); H.halo.material.needsUpdate = true; }
+  if (!RAW && STEP < 3) { H = handles(); BASE = snapshot(); H.halo.material.map = softGlow(); H.halo.material.needsUpdate = true; }
   (LAYOUTS[LAYOUT] || LAYOUTS.grid)();
   window.__sheetDone = true;
 }
