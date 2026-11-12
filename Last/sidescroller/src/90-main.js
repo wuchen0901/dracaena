@@ -80,7 +80,7 @@ document.querySelectorAll('#skins button').forEach(b => b.addEventListener('clic
 CAMKEYS.sort((a, b) => a[0] - b[0]); CPS.sort((a, b) => a.x - b.x);
 buildGround();
 CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;
-setSkin('K'); loadGame();                               // 主角只有小孩这一个外形
+setSkin('R'); loadGame();                               // 主角使用 models/hero.glb（3K 面的少年）
 { const n = +new URLSearchParams(location.search).get('ch'); if (n >= 1 && n <= CHAPTERS.length) STORY.ch = n; }   // 地址后面加 ?ch=5 直接从第五章开始
 { const c = CHAPTERS[STORY.ch - 1], intro = c.intro; c.intro = null; startChapter(STORY.ch, { quiet: true }); c.intro = intro; state = 'title'; }
 $('go').textContent = STORY.ch > 1 ? `按任意键继续 · 第${CN[STORY.ch - 1]}章 ${CHAPTERS[STORY.ch - 1].name}` : '按任意键开始';

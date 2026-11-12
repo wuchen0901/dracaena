@@ -15,6 +15,71 @@ const SKINS = {
 };
 const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
+let travelerSource = null, travelerLoading = false;
+const travelerWaiters = [];
+function loadTravelerModel(done) {
+  if (travelerSource) { done(travelerSource); return; }
+  travelerWaiters.push(done);
+  if (travelerLoading) return;
+  travelerLoading = true;
+  const url = new URL('models/hero.glb', import.meta.url).href;
+  new GLTFLoader().load(url, gltf => {
+    travelerSource = gltf.scene;
+    for (const callback of travelerWaiters.splice(0)) callback(travelerSource);
+  }, undefined, error => {
+    console.warn('models/hero.glb could not be loaded; keeping the built-in robot as fallback.', error);
+    travelerLoading = false;
+    travelerWaiters.length = 0;
+  });
+}
+
+// Tune this playable instance while preserving the imported asset and its skin weights.
+function refineTravelerAppearance(model) {
+  model.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    mesh.geometry = mesh.geometry.clone();
+    mesh.userData.travelerOwned = true;
+    const geometry = mesh.geometry, positions = geometry.attributes.position;
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox, height = box.max.y - box.min.y;
+    const footCenters = [-1, 1].map(side => {
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i), y = positions.getY(i);
+        if (x * side <= 0 || y > box.min.y + height * .055) continue;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, positions.getZ(i)); maxZ = Math.max(maxZ, positions.getZ(i));
+      }
+      return Number.isFinite(minX) ? [(minX + maxX) / 2, (minZ + maxZ) / 2] : [0, 0];
+    });
+    const readability = new Float32Array(positions.count);
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i), y = positions.getY(i), z = positions.getZ(i), h = (y - box.min.y) / height;
+      const foot = 1 - sstep(.045, .085, h), center = footCenters[x < 0 ? 0 : 1];
+      positions.setXYZ(i, lerp(x, center[0] + (x - center[0]) * .85, foot),
+        box.min.y + (y - box.min.y) * (1 - .08 * foot), lerp(z, center[1] + (z - center[1]) * .82, foot));
+      const head = sstep(.80, .88, h);
+      const shoulders = sstep(.63, .72, h) * (1 - sstep(.80, .88, h));
+      readability[i] = Math.max(head, shoulders * (.5 + .3 * (1 - sstep(-.02, .06, z))));
+    }
+    positions.needsUpdate = true;
+    geometry.setAttribute('characterReadability', new THREE.BufferAttribute(readability, 1));
+    geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
+    const tuneMaterial = original => {
+      const material = original.clone();
+      material.onBeforeCompile = shader => {
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nvarying float vCharacterReadability;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;')
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;');
+      };
+      material.customProgramCacheKey = () => 'traveler-readability-v1';
+      return material;
+    };
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tuneMaterial) : tuneMaterial(mesh.material);
+  });
+}
+
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
   if (kind === 'K') return buildKid();
@@ -223,5 +288,26 @@ function buildRobot07(o = {}) {
     slab(foot, U([[-.051, -.05], [.106, -.05], [.106, -.037], [-.051, -.037]]), .005 * u, .084 * u, M.sole, .008 * u);
     return { hip, knee, foot };
   });
-  return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp };
+  const traveler = { group: null, baseY: 0, model: null, bones: new Map() };
+  if (!npc) loadTravelerModel(source => {
+    const model = cloneSkeleton(source);
+    refineTravelerAppearance(model);
+    model.updateMatrixWorld(true);
+    model.traverse(node => { if (node.isSkinnedMesh) { node.skeleton.update(); node.frustumCulled = false; } });
+    const bounds = new THREE.Box3().setFromObject(model, true), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
+    const scale = u / Math.max(size.y, 1e-4);
+    model.scale.multiplyScalar(scale);
+    model.rotation.y = Math.PI / 2;                           // GLB faces +Z; the side-scroller faces +X
+    const rotatedCenter = center.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+    model.position.set(-rotatedCenter.x * scale, -bounds.min.y * scale, -rotatedCenter.z * scale);
+    for (const child of root.children) child.visible = false; // Keep the articulated robot as a load fallback
+    const group = grp(root); group.add(model);
+    traveler.group = group;
+    traveler.model = model;
+    model.traverse(node => {
+      if (node.isBone) traveler.bones.set(node.name, { node, rest: node.quaternion.clone() });
+      if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; node.userData.travelerShared = !node.userData.travelerOwned; }
+    });
+  });
+  return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp, traveler };
 }

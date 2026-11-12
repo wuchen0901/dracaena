@@ -58,6 +58,10 @@ function makeCharacter(kind, prev, o = {}) {
     spine.rotation.z = -A.lean;
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
     chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
+    if (B.traveler?.group) {
+      B.traveler.group.position.y = B.traveler.baseY + bob;
+      B.traveler.group.rotation.z = -A.lean;
+    }
 
     // 腿：先算出脚踝的目标位置，再用 IK 解出大腿和膝盖的角度
     const slope = clamp(s.slope * dir, -0.6, 0.6), rise = sstep(-2.5, 3.5, s.vy), lift = lerp(0.055, 0.2, A.run) * u;
@@ -133,7 +137,30 @@ function makeCharacter(kind, prev, o = {}) {
       Lm.aura.material.opacity = Lm.auraOp * sstep(0.2, 1, out); Lm.aura.position.z = Math.cos(A.yaw) * 0.14 * u;
       Lm.beam.intensity = Lm.I * out; Lm.fill.intensity = Lm.fillI * out;
     }
+    if (B.traveler?.model) {
+      const traveler = B.traveler;
+      // Convert the mesh's side-view swing axis into each bone parent's local space.
+      const worldAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(traveler.model.getWorldQuaternion(new THREE.Quaternion()));
+      const poseBone = (name, angle) => {
+        const entry = traveler.bones.get(name);
+        if (!entry) return;
+        const parentQ = entry.node.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+        const axis = worldAxis.clone().applyQuaternion(parentQ).normalize();
+        entry.node.quaternion.copy(entry.rest).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, -angle));
+        entry.node.updateWorldMatrix(false, true);
+      };
+      poseBone('Spine', spine.rotation.z * .35);
+      poseBone('Head', head.rotation.z);
+      for (let i = 0; i < 2; i++) {
+        const side = i ? 'Right' : 'Left';
+        poseBone(side + 'UpLeg', legs[i].hip.rotation.z);
+        poseBone(side + 'Leg', legs[i].knee.rotation.z);
+        poseBone(side + 'Foot', legs[i].foot.rotation.z);
+        poseBone(side + 'Arm', arms[i].sh.rotation.z);
+        poseBone(side + 'ForeArm', arms[i].el.rotation.z);
+      }
+    }
   }
-  function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
+  function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry && !o.userData.travelerShared) o.geometry.dispose(); if (o.userData.travelerOwned) { for (const material of (Array.isArray(o.material) ? o.material : [o.material])) material.dispose(); } if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
   return { kind, B, A, root, H: u, update, dispose };
 }
