@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第八章 · 画面对比图</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  /* 横版原型装在这个窗口里，摆在图的下方看不见的地方：大小就是 1080p 的游戏画面 */
+  #game{position:fixed;left:0;top:1080px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1920" height="1080"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 第八章（生态中枢）的画面图：把横版原型装进一个看不见的窗口，摆到这一章的各个位置和状态，再把整幅画面抄到这张图上。
+// 画面全部来自游戏本身的渲染，不是另画的示意图。改了这一章以后用它沿路看一遍，两个结局也能直接摆出来。
+// 要通过本地服务器打开（和原型同源才能读到它的画面）：http://127.0.0.1:8765/tools/ch8-sheet.html?layout=scout
+// 导出：node Last/tools/shot.mjs "<网址>" generated_images/xxx.png 1920 <高>
+// 网址参数：
+//   layout —— scout 沿着这一章走一遍，每格是整幅画面缩小（shots=sw,core,dusk 只排其中几屏，cols=3 一行几格，title=图的标题）/
+//             full 一屏的整幅画面（shot=core）
+//             perf 量一量画一帧要多久（shots=core,top 量哪几屏），结果报在控制台里
+//   fx=0 不加暗角、颗粒和上下黑边；probe=1 在控制台报出每一屏的镜头位置；game=另一份拼好的页面（和 sidescroller.html 放在一起），用来和改动之前比
+// 每一屏的名字见下面的 SHOTS。
+// generated_images/scene-ch8-01-hub.png 和 scene-ch8-02-ending.png 是定方向时导出的对比图（当时游戏里留着几套可以切换的方案）；
+// 定下来的是“人造太阳 + 倒影地面”和“余晖”，别的方案已经从游戏里拿掉，那两张图不能再照原样导出
+const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'scout';
+const num = (k, d) => q.get(k) === null ? d : +q.get(k);
+const sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+const FW = 1920, FH = 1080, FX = q.get('fx') !== '0';
+let G = null, Z = null;
+const X = 772, EX = X + 96, SOCK_L = X + 80.65, SOCK_R = X + 90.4;       // 和 67-ch8-hub.js 里的数值一致
+
+// ---- 摆状态 ----
+const put = (o, x) => { o.x = x; o.v = 0; o.x1 = x - o.w / 2; o.x2 = x + o.w / 2; };
+function fresh() { G.ch(8); }                                           // 这一章刚进来的样子：三扇门都关着
+function opened() { fresh(); Z.retry(); }                               // 三段线路都解开了，站在核心门口
+function at(x, sec = 1.2) { G.tp(x); G.P.facing = 1; G.step(sec); }
+function choose(c) {                                                    // 把最后一块电池推进左边（1 修复）或右边（2 旁路）的插座
+  opened(); at(c === 1 ? SOCK_L + 1.2 : SOCK_R - 1.2, 0.3); put(Z.batt, c === 1 ? SOCK_L : SOCK_R); G.step(0.2);
+}
+function walkTo(x, max = 90) { for (let t = 0; t < max && G.P.x < x; t += 0.25) G.hold(['R'], 0.25); }
+function sitDown(sec) {                                                // 旁路结局：走到坡顶坐下，再过 sec 秒
+  choose(2); G.step(6.5); at(X + 125.2, 0.3); for (let i = 0; i < 400 && !Z.END.sit; i++) G.hold(['R'], 0.05);
+  G.step(sec - Z.END.t2);
+}
+
+// ---- 这一章的每一屏 ----
+const SHOTS = {
+  entry: ['走进中枢', () => { fresh(); G.step(1.0); }],
+  sw: ['一 · 开关', () => { fresh(); at(X + 13); }],
+  d1: ['一 · 被监控锁着的门', () => { fresh(); at(X + 18.4); }],
+  pads2: ['二 · 导电桥和三块触点', () => { fresh(); at(X + 31); }],
+  d2: ['二 · 卡死的门和花槽', () => { fresh(); at(X + 41.2); }],
+  pads3: ['三 · 两只导电桥', () => { fresh(); at(X + 54.6); }],
+  d3: ['三 · 通往核心的门', () => { fresh(); at(X + 67); }],
+  core: ['核心 · 最后一块电池', () => { opened(); at(X + 84.6); }],
+  dock: ['核心 · 维修座', () => { opened(); at(X + 80.4); }],
+  panel: ['核心 · 区域配电盘', () => { opened(); at(X + 89.6); }],
+  repair: ['修复 · 走进维修座', () => { choose(1); G.step(5.2); }],
+  bypass: ['旁路 · 配电盘亮起来', () => { choose(2); G.step(3.2); }],
+  gate: ['旁路 · 门开了', () => { choose(2); G.step(6.5); at(EX - 2.6, 0.6); }],
+  dusk: ['走出中枢', () => { choose(2); G.step(6.5); at(EX + 3.4, 0.8); }],
+  slope: ['缓坡', () => { choose(2); G.step(6.5); at(X + 108, 0.8); }],
+  top: ['坡顶', () => { choose(2); G.step(6.5); at(X + 121, 0.8); }],
+  sit: ['微光 · 坐下', () => { sitDown(5); }],
+  ember: ['微光 · 余晖里灯亮齐了', () => { sitDown(14); }],
+  glimmer: ['微光 · 结局字幕出来的时候', () => { sitDown(18.5); }],
+  starry: ['微光 · 余晖褪成了星河', () => { sitDown(36); }],
+  leave: ['修复 · 带着小猫离开', () => { choose(1); G.step(9.5); at(X + 121.5, 0.3); walkTo(X + 133, 40); G.step(4); }],
+};
+const ORDER = ['entry', 'sw', 'd1', 'pads2', 'd2', 'pads3', 'd3', 'core', 'bypass', 'dusk', 'slope', 'top', 'ember', 'starry', 'leave'];
+
+// ---- 抄画面：先在一张整幅大小的画布上备好，再缩到图上 ----
+const stage = document.createElement('canvas'); stage.width = FW; stage.height = FH; const sctx = stage.getContext('2d');
+let GRAIN = null;
+// 游戏页面上盖着的那几层：暗角、颗粒、上下黑边（它们是网页元素，抄画面时抄不到，在这里照样补上）
+function overlays() {
+  const c = sctx;
+  c.save(); c.translate(FW * 0.5, FH * 0.46); c.scale(FW * 0.5 * Math.SQRT2, FH * 0.54 * Math.SQRT2);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.44, 'rgba(0,0,0,0)'); g.addColorStop(0.78, 'rgba(0,0,0,.3)'); g.addColorStop(1, 'rgba(0,0,0,.7)');
+  c.fillStyle = g; c.fillRect(-2, -2, 4, 4); c.restore();
+  if (!GRAIN) {
+    GRAIN = document.createElement('canvas'); GRAIN.width = GRAIN.height = 256;
+    const gg = GRAIN.getContext('2d'), im = gg.createImageData(256, 256); let s = 12345;
+    for (let i = 0; i < im.data.length; i += 4) { s = (s * 16807) % 2147483647; const n = s / 2147483647 * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = n; im.data[i + 3] = 255; }
+    gg.putImageData(im, 0, 0);
+  }
+  c.save(); c.globalAlpha = 0.075; c.globalCompositeOperation = 'overlay'; c.fillStyle = c.createPattern(GRAIN, 'repeat'); c.fillRect(0, 0, FW, FH); c.restore();
+  c.fillStyle = '#040607'; c.fillRect(0, 0, FW, FH * 0.06); c.fillRect(0, FH * 0.94, FW, FH * 0.06);
+}
+function render() { G.renderer.render(G.scene, G.camera); sctx.drawImage(G.renderer.domElement, 0, 0, FW, FH); if (FX) overlays(); }
+function drawFull(dx, dy, dw, dh) { render(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(stage, 0, 0, FW, FH, dx, dy, dw, dh); }
+function label(text, x, y, o = {}) {
+  ctx.save();
+  ctx.font = `${o.weight ?? 500} ${o.size ?? 15}px ${FONT}`; ctx.fillStyle = o.color ?? '#c3cfce'; ctx.textAlign = o.align ?? 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== false) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 8; }
+  ctx.fillText(text, x, y); ctx.restore();
+}
+const HEAD = 96;
+function header(title, lines) {
+  ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, sheet.width, HEAD);
+  label(title, 70, 44, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+  lines.forEach((t, i) => label(t, 70, 67 + i * 19, { size: 13.5, weight: 400, color: '#8fa0a0', shadow: false }));
+}
+function size(w, h) { sheet.width = w; sheet.height = h; frame.style.top = h + 'px'; ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, w, h); }
+function probe(name) { if (q.get('probe')) console.log(name + ' 镜头 ' + JSON.stringify(G.camera.position.toArray().map(v => +v.toFixed(2))) + ' 主角 x ' + G.P.x.toFixed(2) + ' (X+' + (G.P.x - X).toFixed(1) + ')'); }
+
+const LAYOUTS = {
+  // 量一量画一帧要多久：每一屏连着推进 120 帧，每帧读回一个像素，逼着显卡把这一帧真的画完
+  perf() {
+    size(FW, 200); const gl = G.renderer.getContext(), px = new Uint8Array(4), res = [];
+    for (const k of (q.get('shots') || 'pads2,core,top').split(',')) {
+      SHOTS[k][1](); for (let i = 0; i < 20; i++) G.step(1 / 60);
+      const t0 = performance.now(); for (let i = 0; i < 120; i++) { G.step(1 / 60); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+      res.push(`${k} ${((performance.now() - t0) / 120).toFixed(2)} 毫秒/帧`);
+    }
+    console.log('画一帧：' + res.join('，') + `（画布 ${G.renderer.domElement.width}×${G.renderer.domElement.height}）`); label(res.join('　'), 40, 110, { size: 22, shadow: false });
+  },
+  full() { const k = q.get('shot') || 'core'; size(FW, FH); SHOTS[k][1](); probe(k); drawFull(0, 0, FW, FH); },
+  scout() {
+    const list = (q.get('shots') || ORDER.join(',')).split(','), cols = num('cols', 2), rows = Math.ceil(list.length / cols), cw = FW / cols, ch = cw * FH / FW;
+    size(FW, HEAD + rows * ch);
+    header(q.get('title') || '第八章 · 生态中枢', ['游戏里原样的画面，沿着这一章从头走到两个结局。每格是 1080p 整幅画面缩小以后的样子。']);
+    list.forEach((k, i) => {
+      SHOTS[k][1](); probe(k);
+      const cx = (i % cols) * cw, cy = HEAD + Math.floor(i / cols) * ch;
+      drawFull(cx, cy, cw, ch);
+      label(`${i + 1}`, cx + 24, cy + ch * 0.06 + 40, { size: 30, weight: 600, color: '#f1f5f4' });
+      label(SHOTS[k][0], cx + 56, cy + ch * 0.06 + 34, { size: 16, weight: 600, color: '#f1f5f4' });
+    });
+    ctx.fillStyle = '#0b0f11';
+    for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
+    for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
+};
+
+// ---- 装游戏 ----
+function load() {
+  return new Promise(done => {
+    const t0 = performance.now();
+    frame.onload = function wait() {
+      const w = frame.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+      const modelIn = hero && (hero.kind !== 'R' || hero.B.traveler?.model);                 // 主角的模型是另外加载的：等它到了再画，最多等 20 秒
+      if (hero && !modelIn && performance.now() - t0 > 20000) console.warn('主角模型没有加载出来，画面里是顶替的机器人');
+      if (hero && (modelIn || performance.now() - t0 > 20000)) { G = w.__g; G.begin(); G.paused = true; G.step(0.3); Z = G.zone(8); done(); }
+      else setTimeout(wait, 100);
+    };
+    frame.src = '../' + (q.get('game') || 'sidescroller.html') + '?sheet=' + Date.now();
+  });
+}
+
+(async () => {
+  try { await load(); (LAYOUTS[LAYOUT] || LAYOUTS.scout)(); } catch (e) { console.error('没画完：' + (e && e.stack || e)); }
+  window.__sheetDone = true;
+})();
+</script>
+</body>
+</html>
