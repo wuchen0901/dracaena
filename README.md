@@ -8,9 +8,11 @@ The normal preview now uses a real perspective camera at a 10-degree elevation, 
 
 Use `?view=2d` to compare the original rendering, `?view=demo` for the initial depth experiment, or `?preview=city` (and other named sections) to inspect a section without writing saves. Architecture and validation boundaries: [2.5D migration](design/depth-preview.md).
 
+On 2026-11-12 the detailed robot model and the three robot sprite sheets were deleted. The campaign robot is now the built-in procedural actor from `assets/scripts/Actors3D.ts`; `?view=2d` and `?view=demo` still open but no longer draw a robot.
+
 ## Earlier 2D image layers
 
-The scene no longer uses a single flattened landscape. `assets/resources/layers/` contains separate PNGs for sky, distant forest, main tree, left tree, ground/cliff, cloud, bird, and foreground foliage. The character uses a transparent 32-frame sprite sheet in `assets/resources/character/actions-smooth.png` (the previous `actions.png` is retained); the original reference remains in `assets/resources/reference/character.png`.
+The scene no longer uses a single flattened landscape. `assets/resources/layers/` contains separate PNGs for sky, distant forest, main tree, left tree, ground/cliff, cloud, bird, and foreground foliage. The character used a transparent 32-frame sprite sheet (`actions-smooth.png`, earlier `actions.png`) made from a reference image; those three files were deleted on 2026-11-12 because nothing loads them any more.
 
 `PuzzleController.ts` creates one node per element at runtime. The two clouds and two birds reuse their respective image assets but have independent positions and motion. Far forest, trees, ground, and foreground use different parallax factors. Clouds drift; birds fly and gently change silhouette scale. The sky stays fixed. The game frame clips layers cleanly.
 
@@ -26,7 +28,7 @@ In the earlier 2D comparison renderer, the sprite sheet has four rows of eight p
 
 The built-in imagegen tool reconstructed separate layers from the provided screenshot; obscured areas were inferred, so the result is not pixel-identical. Transparency is preserved for compositing. Prompts are recorded in `design/layer-prompts.md`.
 
-The prior flat controller is archived in `design/FlatPictureController.ts.txt`, with its original image assets retained in `assets/resources/reference/`. The earlier procedural room is archived in `design/GreenhouseController.ts.txt`.
+The prior flat controller is archived in `design/FlatPictureController.ts.txt`, with its background image retained in `assets/resources/reference/` (the character reference image was deleted on 2026-11-12). The earlier procedural room is archived in `design/GreenhouseController.ts.txt`.
 
 Runtime-created nodes appear in the running preview. They are not serialized editable layer nodes in the editor's Scene view; layout and speeds are currently defined in `PuzzleController.ts`.
 
@@ -61,7 +63,7 @@ A provisional puzzle follows the patrol: hold **E** plus left/right to push or p
 
 Placement and dimensions live in `assets/scripts/PushBoxSegment.ts`; the drawing and collision use that shared geometry. Named autosaves retain partial box placement and completion. Load **监狱围墙 · 旧木箱** to try the puzzle from its approach. See `design/push-box-puzzle.md` for relocation, save behavior and validation boundaries.
 
-Dedicated push/pull animation uses `assets/resources/character/robot-push-pull.png`. While gripping, the robot faces the crate, braces both hands for pushing and steps backward for pulling. Animation timing and contact anchors are documented in `design/push-pull-animation.md`.
+Dedicated push/pull animation used `assets/resources/character/robot-push-pull.png` (deleted on 2026-11-12). While gripping, the robot faces the crate, braces both hands for pushing and steps backward for pulling. Animation timing and contact anchors are documented in `design/push-pull-animation.md`.
 
 The raised canal bank now descends back to the opening forest floor before the patrol. The prison wall is a local obstacle and the outside landing returns to that same floor; elevation does not accumulate across the route. Vertical camera bounds preserve headroom during jumps and high-platform loads.
 

@@ -1,3 +1,5 @@
+> 2026-11-12: the detailed model `assets/resources/models/last-light-robot-detailed.glb` and the robot sprite sheets (`robot-actions.png`, `robot-cover.png`, `robot-push-pull.png`) were deleted at the user's request. The campaign now shows the built-in procedural robot from `assets/scripts/Actors3D.ts`, and the legacy 2D view draws no robot. The files can be restored from git history.
+
 # Dedicated pushing and pulling
 
 Asset: `assets/resources/character/robot-push-pull.png`, 1774 x 887 RGBA, generated with the built-in imagegen tool using `robot-actions.png` as the identity/style reference. Four columns and two rows: four pushing steps with palms braced forward, then four backward pulling steps with hands gripping forward and torso leaning back. Previous robot atlases remain unchanged.

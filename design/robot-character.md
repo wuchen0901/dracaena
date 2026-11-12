@@ -1,6 +1,8 @@
+> 2026-11-12: the detailed model `assets/resources/models/last-light-robot-detailed.glb` and the robot sprite sheets (`robot-actions.png`, `robot-cover.png`, `robot-push-pull.png`) were deleted at the user's request. The campaign now shows the built-in procedural robot from `assets/scripts/Actors3D.ts`, and the legacy 2D view draws no robot. The files can be restored from git history.
+
 # Old maintenance robot
 
-The campaign protagonist uses `assets/resources/models/last-light-robot-detailed.glb`, based on the detailed robot model in the project root. The imported model has a 13-joint glTF skeleton with rigid per-part skin weights. `Robot3D` drives its head, torso, arms and legs from the existing movement state; the procedural low-poly actor remains as the fallback while the model loads and for distant robot characters.
+The campaign protagonist uses `assets/resources/models/last-light-robot-detailed.glb`, based on a detailed robot model that used to sit in the project root (that copy was deleted on 2026-11-12; the imported file under `assets/` is the only one left). The imported model has a 13-joint glTF skeleton with rigid per-part skin weights. `Robot3D` drives its head, torso, arms and legs from the existing movement state; the procedural low-poly actor remains as the fallback while the model loads and for distant robot characters.
 
 The earlier 2D character atlas `assets/resources/character/robot-actions.png` is retained for the legacy sprite preview. It uses eight columns and four rows: idle, walk, run, jump/landing. The prior human atlases are preserved.
 

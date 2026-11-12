@@ -1,3 +1,5 @@
+> 2026-11-12: the sprite sheets described here (`actions.png`, `actions-smooth.png`) and the reference image `assets/resources/reference/character.png` were deleted because no script loads them any more. They can be restored from git history.
+
 # Current robot idle correction
 
 The robot now holds the first idle atlas cell instead of cycling eight inconsistently aligned silhouettes. Breathing is a 3.6-second vertical scale cycle from 1.000 to 1.006 around the existing foot anchor; horizontal scale, position and facing stay fixed. Walking, running, jumping, cover and push/pull retain their own animations and use normal scale. Pause stops animation time.

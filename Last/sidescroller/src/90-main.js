@@ -26,8 +26,6 @@ function sim(dt) {
   if (rawKeys.has('Escape') || rawKeys.has('KeyP')) toggleMenu();
   if (menuOpen) { menuInput(); pressed.clear(); rawKeys.clear(); anyKey = false; return; }
   if (state === 'title' && anyKey) begin();
-  for (const k of ['A', 'B', 'C']) if (pressed.has(k)) setSkin(k);
-  if (pressed.has('SKIN_R')) setSkin('R'); if (pressed.has('SKIN_O')) setSkin('O'); if (pressed.has('SKIN_K')) setSkin('K');
   if (pressed.has('TINT') && hero.B.tint) hero.B.tint();                 // 小孩：换一块连帽衫的颜色看看
   if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
@@ -82,7 +80,7 @@ document.querySelectorAll('#skins button').forEach(b => b.addEventListener('clic
 CAMKEYS.sort((a, b) => a[0] - b[0]); CPS.sort((a, b) => a.x - b.x);
 buildGround();
 CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;
-setSkin('K'); loadGame();                               // 现在默认是小孩（3D 试做）；按 0 换回 07
+setSkin('K'); loadGame();                               // 主角只有小孩这一个外形
 { const n = +new URLSearchParams(location.search).get('ch'); if (n >= 1 && n <= CHAPTERS.length) STORY.ch = n; }   // 地址后面加 ?ch=5 直接从第五章开始
 { const c = CHAPTERS[STORY.ch - 1], intro = c.intro; c.intro = null; startChapter(STORY.ch, { quiet: true }); c.intro = intro; state = 'title'; }
 $('go').textContent = STORY.ch > 1 ? `按任意键继续 · 第${CN[STORY.ch - 1]}章 ${CHAPTERS[STORY.ch - 1].name}` : '按任意键开始';

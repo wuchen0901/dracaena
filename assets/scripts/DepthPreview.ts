@@ -48,7 +48,7 @@ export class DepthPreview extends Component {
     this.lamp = this.box('Police beacon', 0, 1.82, 0, .7, .16, .4, [192, 66, 48], this.car);
     this.actorMaterial = this.textureMaterial(); this.actor = this.billboard('Robot on fixed Z lane', this.actorMaterial, 2.9);
     this.dogMaterial = this.textureMaterial(); this.dog = this.billboard('Dog approaching through depth', this.dogMaterial, 2.5);
-    resources.load('character/robot-actions/texture', Texture2D, (error, texture) => { if (!error && this.isValid) this.actorMaterial.setProperty('mainTexture', texture); });
+    this.actor.active = false;   // its sprite sheet was deleted on 2026-11-12; the lane, dog and camera still work
     resources.load('dog/chase-bark/texture', Texture2D, (error, texture) => { if (!error && this.isValid) this.dogMaterial.setProperty('mainTexture', texture); });
     this.text(`2.5D · ${CAMERA_ELEVATION}° 俯角 · 玩家固定 Z 轴`, 300, 22);
     this.text('A / D 左右移动    SPACE 跳跃    SHIFT 奔跑    E 狗从远处接近    R 重置', -300, 18);

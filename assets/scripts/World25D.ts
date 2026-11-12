@@ -196,7 +196,7 @@ export class World25D {
         this.camera.node.setRotationFromEuler(-CAMERA_ELEVATION, 0, 0);
         this.opaque = this.vertexMaterial(false);
         this.translucent = this.vertexMaterial(true);
-        this.robot = new Robot3D(this.root, this.kit, 'Maintenance robot', true);
+        this.robot = new Robot3D(this.root, this.kit, 'Maintenance robot');
         this.dogModel = new Animal3D(this.root, this.kit);
         this.catModel = new Animal3D(this.root, this.kit, true);
         const light = new Node('Soft directional actor lighting');

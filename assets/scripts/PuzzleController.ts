@@ -165,7 +165,7 @@ export class PuzzleController extends Component {
     this.actor = this.child('Character', 102, 102, 0, 0, this.sceneRoot);
     this.actorSprite = this.actor.addComponent(Sprite); this.actorSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.riverFrontArt = this.child('Ferry bow over the seated rider', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
-    if (!this.useWorld25) { this.loadCharacterPoses(); this.loadCoverPoses(); this.loadPushPullPoses(); }
+    // The robot sprite sheets were deleted on 2026-11-12, so the legacy 2D view draws no robot: poses, coverPoses and pushPullPoses stay empty.
     this.water = this.child('Transparent canal water', 1280, 590, 0, 0, this.sceneRoot).addComponent(Graphics);
     this.leverPrompt = this.text('', 0, 0, 16, 260); this.leverPrompt.node.setParent(this.sceneRoot);
     this.dismantleSign = this.text('07 · 同批次', 0, 0, 22, 320); this.dismantleSign.node.setParent(this.sceneRoot); this.dismantleSign.node.active = false;
@@ -357,71 +357,6 @@ export class PuzzleController extends Component {
       if (!this.pending && !this.failed) this.status.string = '';
     }); return n;
   }
-  private loadCharacterPoses() {
-    this.pending++;
-    resources.load('character/robot-actions/texture', Texture2D, (error, texture) => {
-      this.pending--;
-      if (!this.isValid) return;
-      if (error) { this.failed = true; this.status.string = 'Could not load character actions'; console.error(error); return; }
-      const w = texture.width / CHARACTER_COLUMNS, h = texture.height / CHARACTER_ROWS;
-      for (let row = 0; row < CHARACTER_ROWS; row++) for (let column = 0; column < CHARACTER_COLUMNS; column++) {
-        const pose = new SpriteFrame(); pose.texture = texture;
-        const left = Math.round(column * w), top = Math.round(row * h);
-        const width = Math.round((column + 1) * w) - left, height = Math.round((row + 1) * h) - top;
-        pose.rect = new Rect(left, top, width, height);
-        pose.originalSize = new Size(width, height);
-        this.poses.push(pose);
-      }
-      for (const x of [-2250, -2150, -1850]) {
-        const robot = this.child('Deactivated robot', 102, 102, x, CHANNEL.near, this.sceneRoot);
-        robot.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[0]);
-        const sprite = robot.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        sprite.spriteFrame = this.poses[0]; sprite.color = new Color(47, 58, 57);
-        robot.setSiblingIndex(this.actor.getSiblingIndex()); this.dormantRobots.push(robot);
-      }
-      for (let i = 0; i < 5; i++) {
-        const runner = this.child('Escaping robot copy ' + (i + 1), 82, 82, 0, FACTORY_PANIC_LAYOUT.beltY, this.sceneRoot);
-        runner.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[16]);
-        const sprite = runner.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        sprite.spriteFrame = this.poses[16]; sprite.color = new Color(178, 168, 142, 230);
-        runner.setScale(.78, .78, 1); runner.setSiblingIndex(this.actor.getSiblingIndex());
-        const mark = this.child('Batch mark', 14, 10, 8, 14, runner).addComponent(Graphics);
-        mark.fillColor = new Color(207, 64, 44, 245); mark.rect(-6, -4, 12, 8); mark.fill();
-        mark.fillColor = new Color(42, 48, 43, 245); mark.rect(0, 0, 5, 4); mark.fill();
-        this.factoryRunners.push(runner);
-      }
-      for (let i = 0; i < 5; i++) {
-        const runner = this.child('Batch line robot ' + (i + 1), 82, 82, 0, BATCH_REVEAL_LAYOUT.beltY, this.sceneRoot);
-        runner.getComponent(UITransform)!.setAnchorPoint(.5, CHARACTER_FOOT_ANCHORS[16]);
-        const sprite = runner.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        sprite.spriteFrame = this.poses[16]; sprite.color = new Color(178, 168, 142, 230);
-        runner.setScale(.78, .78, 1); runner.setSiblingIndex(this.actor.getSiblingIndex());
-        const mark = this.child('Batch mark', 14, 10, 8, 14, runner).addComponent(Graphics);
-        mark.fillColor = new Color(207, 64, 44, 245); mark.rect(-6, -4, 12, 8); mark.fill();
-        mark.fillColor = new Color(42, 48, 43, 245); mark.rect(0, 0, 5, 4); mark.fill();
-        this.batchRunners.push(runner);
-      }
-      this.actor.getComponent(UITransform)!.setContentSize(102, 102);
-      this.actor.getComponent(UITransform)!.setAnchorPoint(.5, .06);
-      this.animateCharacter(0); this.place();
-    });
-  }
-  private loadCoverPoses() {
-    this.pending++;
-    resources.load('character/robot-cover/texture', Texture2D, (error, texture) => {
-      this.pending--;
-      if (!this.isValid) return;
-      if (error) { this.failed = true; this.status.string = 'Could not load cover animation'; console.error(error); return; }
-      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
-        const left = Math.round(col * texture.width / 4), top = Math.round(row * texture.height / 2);
-        const width = Math.round((col + 1) * texture.width / 4) - left;
-        const height = Math.round((row + 1) * texture.height / 2) - top;
-        const pose = new SpriteFrame(); pose.texture = texture;
-        pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
-        this.coverPoses.push(pose);
-      }
-    });
-  }
   private loadDogPoses() {
     this.pending++;
     resources.load('dog/chase-bark/texture', Texture2D, (error, texture) => {
@@ -449,22 +384,6 @@ export class PuzzleController extends Component {
         const pose = new SpriteFrame(); pose.texture = texture;
         pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
         this.catPoses.push(pose);
-      }
-    });
-  }
-  private loadPushPullPoses() {
-    this.pending++;
-    resources.load('character/robot-push-pull/texture', Texture2D, (error, texture) => {
-      this.pending--;
-      if (!this.isValid) return;
-      if (error) { this.failed = true; this.status.string = 'Could not load push/pull animation'; console.error(error); return; }
-      for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
-        const left = Math.round(col * texture.width / 4), top = Math.round(row * texture.height / 2);
-        const width = Math.round((col + 1) * texture.width / 4) - left;
-        const height = Math.round((row + 1) * texture.height / 2) - top;
-        const pose = new SpriteFrame(); pose.texture = texture;
-        pose.rect = new Rect(left, top, width, height); pose.originalSize = new Size(width, height);
-        this.pushPullPoses.push(pose);
       }
     });
   }

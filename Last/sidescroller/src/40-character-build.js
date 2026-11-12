@@ -4,12 +4,8 @@
 //  角色的局部坐标：面朝 +x，y 向上；所有关节只在侧视平面内转动
 // ============================================================
 const SKINS = {
-  R: { H: 1.24, robot: true },                                                                                // 07：现在的主角，见文件末尾
-  O: { H: 1.24, robot: true },                                                                                // 旧版小机器人：只留着做对比
+  R: { H: 1.24, robot: true },                                                                                // 07 型机器人：第一、三章里同型号的机器人（灯灭着）用它，不再是可选的主角
   K: { H: 1.19, slouch: 0.045 },                                                                              // 小孩：蒙皮做的人形（乱发 + 连帽衫），见 41-character-kid.js。slouch：站着、走着时微微含胸低头
-  A: { H: 1.12, skin: 0xe4c5ae, hair: 0x2b2523, top: 0xd98d88, leg: 0x23262a, shoe: 0xb7a996, coat: true },   // 小拾荒者：玫瑰粉连帽外套
-  B: { H: 1.24, skin: 0xe4c5ae, hair: 0x3b2c24, top: 0xece6da, leg: 0xb8552a, shoe: 0x1b1b1f, bib: true },    // 学徒：白短袖 + 锈橙背带裤
-  C: { H: 1.40, skin: 0xddbaa1, hair: 0x231e1d, top: 0xe5decb, leg: 0x596042, shoe: 0x1b1b1f, mech: true },   // 机械臂：马尾 + 右臂机械臂
   // ---- 路上遇到的人（都是大人：头按比例缩小；颜色压得很灰，不和 07 的灯抢）----
   W: { H: 1.62, skin: 0xcdb09a, hair: 0x2a2624, top: 0x77858a, leg: 0x3d4a52, shoe: 0x1b1b1f, bib: true, hairStyle: 'B', headK: .72, band: 0x7fbf7a },   // 登记劳工：手臂上一圈绿色标记
   E: { H: 1.46, skin: 0xcbb2a0, hair: 0xb9b6ae, top: 0x6f6a60, leg: 0x3a3833, shoe: 0x2a2622, coat: true, hairStyle: 'A', headK: .76, cane: true },      // 被拒绝配给的老人：拄杖
@@ -21,7 +17,6 @@ const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
-  if (kind === 'O') return buildOldRobot();
   if (kind === 'K') return buildKid();
   const S = SKINS[kind], u = S.H, hs = S.hairStyle ?? kind;
   const self = c => lam(c, { emissive: c, emissiveIntensity: 0.2 });
@@ -96,32 +91,6 @@ function buildBody(kind, o = {}) {
   if (S.band) for (const A of arms) add(A.sh, cy(0.035 * u, 0.035 * u, 0.032 * u, 10), lam(S.band, { emissive: S.band, emissiveIntensity: 0.35 }), 0, -0.085 * u, 0);
   if (S.cane) add(root, cy(0.012 * u, 0.012 * u, 0.62 * u, 6), M.metal, 0.27 * u, 0.31 * u, 0.1 * u);              // 拐杖立在身前，手搭在上面（见 caneHand）
   return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
-}
-
-// 旧版小机器人（方脑袋 + 细杆四肢）。只为了在同一个场景里和 07 对比，确定不要了可以整段删掉
-function buildOldRobot() {
- const S=SKINS.O,u=S.H;
- const D={thigh:.25*u,shin:.25*u,uarm:.158*u,farm:.158*u,ankle:.04*u,hipY:.548*u,hipZ:.05*u,shY:.235*u,shZ:.085*u};
- const root=new THREE.Group(),pelvis=grp(root,0,D.hipY,0),spine=grp(pelvis),chest=grp(spine,0,D.shY,0),head=grp(chest,.015*u,.035*u,0);
- const shell=lam(0xcac5b5,{emissive:0xcac5b5,emissiveIntensity:.12}),joint=lam(0x414746);
- const round=(p,w,h,d,x,y,z,m=shell)=>add(p,new THREE.CapsuleGeometry(1,1,4,12),m,x,y,z).scale.set(w/2,h/3,d/2);
- // Rounded rectangular shells made from beveled extruded outlines.
- function plate(p,w,h,d,r,x,y,z,m=shell){
-  const shape=new THREE.Shape();shape.moveTo(-w/2+r,-h/2);shape.lineTo(w/2-r,-h/2);shape.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r);shape.lineTo(w/2,h/2-r);shape.quadraticCurveTo(w/2,h/2,w/2-r,h/2);shape.lineTo(-w/2+r,h/2);shape.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r);shape.lineTo(-w/2,-h/2+r);shape.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2);
-  const geo=new THREE.ExtrudeGeometry(shape,{depth:d-2*r,bevelEnabled:true,bevelThickness:r,bevelSize:r*.35,bevelSegments:3,steps:1,curveSegments:5});geo.translate(0,0,-(d-2*r)/2);return add(p,geo,m,x,y,z);
- }
- plate(spine,.12*u,.19*u,.15*u,.015*u,0,.12*u,0);
- round(pelvis,.12*u,.06*u,.12*u,0,0,0,joint);
- add(chest,cy(.021*u,.021*u,.07*u,10),joint,0,.02*u,0);
- plate(head,.195*u,.175*u,.245*u,.025*u,0,.105*u,0);
- for(const sign of [-1,1])add(head,sph((sign>0?.013:.010)*u),joint,.104*u,.085*u,sign*.059*u).scale.set(.35,1,1);
- const lamp=new THREE.MeshBasicMaterial({color:0xe5bd79});add(spine,sph(.012*u),lamp,.067*u,.15*u,.026*u).scale.set(.4,1,1);
- function segment(p,len,r){add(p,sph(r*1.15),joint);add(p,cy(r*.8,r*.8,len*.78,10),shell,0,-len/2,0);}
- const arms=[0,1].map(i=>{const sh=grp(chest,0,-.012*u,(i?-1:1)*D.shZ);segment(sh,D.uarm,.021*u);const el=grp(sh,0,-D.uarm,0);segment(el,D.farm,.02*u);round(el,.049*u,.058*u,.046*u,0,-D.farm,0);
-  // A single thumb keeps the mitten silhouette legible at gameplay scale.
-  round(el,.024*u,.032*u,.026*u,.025*u,-D.farm+.012*u,0);return {sh,el};});
- const legs=[0,1].map(i=>{const hip=grp(pelvis,0,-.005*u,(i?-1:1)*D.hipZ);segment(hip,D.thigh,.023*u);const knee=grp(hip,0,-D.thigh,0);segment(knee,D.shin,.021*u);const foot=grp(knee,0,-D.shin,0);round(foot,.125*u,.048*u,.079*u,.03*u,-D.ankle+.024*u,0);return {hip,knee,foot};});
- return {S,u,D,root,pelvis,spine,chest,head,tail:null,arms,legs};
 }
 
 

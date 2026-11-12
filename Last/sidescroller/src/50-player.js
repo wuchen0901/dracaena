@@ -3,7 +3,7 @@
 //  玩家控制：移动 / 跳跃 / 攀爬 / 推拉 / 操作机关 / 回到存档点
 // ============================================================
 const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
-let hero = makeCharacter('B'), state = 'title', T = 0, ctl = true, autoDir = 0;
+let hero = makeCharacter('K'), state = 'title', T = 0, ctl = true, autoDir = 0;
 const sfx = {};                                   // 音效函数在后面的音频部分填进来
 const fx = (name, ...a) => { if (sfx[name]) sfx[name](...a); };
 function fitHero() { P.H = hero.H; P.hh = hero.H * 0.9; }
