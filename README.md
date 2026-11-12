@@ -33,6 +33,6 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 - `Last/sidescroller/build.sh`：把 `src/` 拼成 `Last/sidescroller.html`。改完源码后运行 `bash Last/sidescroller/build.sh`。
 - `Last/sidescroller.html`：拼好的成品，浏览器打开的就是它。
 - `Last/models/hero.glb`：主角模型。
-- `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。
+- `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`look-sheet.html` 是场景画面的对比图页面（同一屏换几套光色或布景，也能沿路截一遍游戏原样的画面），`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。
 - `design/`：故事、关卡和角色的设计文档与设定图。较早的文档写的是已删除的 Cocos 版本，里面提到的 `assets/`、`preview/` 路径和音效生成脚本都已经不存在。
 - `generated_images/`：导出的效果图。

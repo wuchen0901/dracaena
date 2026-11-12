@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>标杆画面</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  /* 横版原型装在这个窗口里，摆在图的下方看不见的地方：大小就是 1080p 的游戏画面 */
+  #game{position:fixed;left:0;top:1080px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1920" height="1080"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 标杆画面：同一屏游戏画面（第一章 · 躲探照灯），换几套整体的光和颜色，排在一起比较。
+// 画面全部来自游戏本身的渲染，每一版只改了数值（雾、环境光、主光、探照灯、窗光的颜色和强弱），没有另画。
+// 要通过本地服务器打开：http://127.0.0.1:8765/tools/look-sheet.html?layout=grid
+// 导出：node Last/tools/shot.mjs "<网址>" generated_images/xxx.png 1920 <高>
+// step=2 换成第二步：光和颜色固定用第一步定下来的那一版，各版比的是画面里摆什么（SETS）；parts=pillars,line 可以临时加一版组合
+// 注意：第一步（3 逆光）和第二步（第 8 格：柱子、行车梁、窗光、前景链条）的结果已经在 2026-11-12 搭进了游戏的第一章。
+//   generated_images/scene-ch1-01*、scene-ch1-02* 是在那之前导出的；现在再用 step=1 / step=2 导出，底图已经变了，结果会和当时不一样。
+//   要看游戏现在的样子，用 raw=1（原样的游戏画面）：layout=full 是这一屏，layout=scout&xs=2,14,30 是沿路的几屏；probe=1 报出镜头位置
+// 网址参数：layout —— grid 各版排在一起（每格是整幅画面缩小一半）/ full 一版的整幅画面（look=第几版，从 0 数）/
+//   crops 每一版在主角附近的原始大小；only=0,1,4 只排其中几版；fx=0 不加暗角、颗粒和上下黑边；
+//   x 主角站在哪里；beam 探照灯照向哪里；pose 主角的姿势（stand / walk）；fore=1 把前景那层废料放回来
+const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'grid';
+const num = (k, d) => q.get(k) === null ? d : +q.get(k);
+const sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+const FW = 1920, FH = 1080, FX = q.get('fx') !== '0', RAW = q.get('raw') === '1';   // raw=1：原样的游戏画面，不换光色、不摆东西、不动光晕
+let G = null, H = null, BASE = null;
+
+// ---- 这一屏：主角站在第二块矮墙的影子里，光束落在他右手边 ----
+const SHOT = { x: num('x', 67.25), beam: num('beam', 69.9), pose: q.get('pose') || 'stand', settle: 1.6 };
+function setShot() {
+  G.ch(1);
+  const W = G.zone(1).WATCH, t1 = Math.asin((SHOT.beam - W.cx) / W.amp);
+  if (SHOT.pose === 'walk') {                                     // 慢慢走到位，停在后脚正迈过来的那一下
+    G.tp(SHOT.x - 1.0); W.t = t1 - (SHOT.settle + 1.4) * W.w; G.step(SHOT.settle);
+    G.hold(['R', 'S'], 0.9);
+    for (let i = 0; i < 400; i++) { if (Math.abs(((G.hero().A.ph - 0.27) % 1 + 1.5) % 1 - 0.5) < 0.012) break; G.hold(['R', 'S'], 1 / 120, 1 / 120); }
+  } else { G.tp(SHOT.x); W.t = t1 - SHOT.settle * W.w; G.step(SHOT.settle); }
+  W.t = t1; G.step(1 / 600, 1 / 600);                             // 把光束摆到要的位置上
+}
+
+// ---- 找到场景里那几样可以调的东西 ----
+function handles() {
+  const h = { spots: [], points: [], layers: {}, cones: [], lambert: new Set() };
+  for (const o of G.scene.children) {
+    if (o.isHemisphereLight) h.hemi = o;
+    else if (o.isDirectionalLight) { if (o.castShadow) h.key = o; else h.rim = o; }
+    else if (o.isSpotLight) { if (o.castShadow) h.beam = o; else h.spots.push(o); }
+    else if (o.isPointLight) h.points.push(o);
+    else if (o.isPoints && o.material.size < 0.1) h.dust = o;
+    else if (o.isMesh && o.material.vertexColors && o.material.isMeshLambertMaterial) h.ground = o;
+  }
+  // 第一章的布景板，按深度认：-32 后墙和高窗 / -30 窗光 / -16 拱廊 / -8 中景 / -3.2 立柱 / 6 前景 / -2.2 天窗的光束
+  const NAME = { '-32': 'wall', '-30': 'winGlow', '-16': 'arcade', '-8': 'mid', '-3.2': 'cols', '6': 'fore', '-2.2': 'shafts' };
+  const root = G.zone(1).root;
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    if (m.isMeshBasicMaterial && m.map && m.userData.own && NAME[String(o.position.z)]) h.layers[NAME[String(o.position.z)]] = o;
+    else if (m.isMeshBasicMaterial && o.geometry.type === 'ConeGeometry') h.cones.push(o);
+    else if (m.isMeshBasicMaterial && o.geometry.type === 'CircleGeometry') h.eye = o;       // 探照灯的“眼睛”
+    else if (m.isMeshLambertMaterial) h.lambert.add(m);
+  });
+  root.traverse(o => { if (o.isSprite && o.parent === h.eye.parent) h.halo = o; });           // 眼睛外面那一大圈光晕
+  return h;
+}
+// 光晕换一张衰减更柔和的贴图：原来那张的边缘是一条看得出来的圆
+function softGlow() {
+  const c = frame.contentDocument.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'), im = g.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    const r = Math.hypot(x - 127.5, y - 127.5) / 127.5, a = r >= 1 ? 0 : 0.62 * Math.pow(1 - r, 2.6) + 0.5 * Math.exp(-r * r * 46), i = (y * 256 + x) * 4;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.min(255, a * 255);
+  }
+  g.putImageData(im, 0, 0);
+  const t = new G.THREE.CanvasTexture(c); t.colorSpace = G.THREE.SRGBColorSpace; return t;
+}
+const snapC = c => c.getHex();
+function snapshot() {                                             // 记下原来的数值，换下一版之前先还原
+  const s = { fog: snapC(G.scene.fog.color), bg: snapC(G.scene.background), fogD: G.scene.fog.density,
+    hemiS: snapC(H.hemi.color), hemiG: snapC(H.hemi.groundColor), hemiI: H.hemi.intensity,
+    keyC: snapC(H.key.color), keyI: H.key.intensity, rimC: snapC(H.rim.color), rimI: H.rim.intensity,
+    beamC: snapC(H.beam.color), beamI: H.beam.intensity,
+    dustC: snapC(H.dust.material.color), dustO: H.dust.material.opacity, ground: snapC(H.ground.material.color),
+    spots: H.spots.map(l => [snapC(l.color), l.intensity]), points: H.points.map(l => [snapC(l.color), l.intensity]),
+    layers: {}, cones: H.cones.map(c => [snapC(c.material.color), c.material.opacity]), lambert: [...H.lambert].map(m => [m, snapC(m.color)]),
+    eyeC: snapC(H.eye.material.color), haloC: snapC(H.halo.material.color), haloO: H.halo.material.opacity, haloS: H.halo.scale.x };
+  for (const k in H.layers) s.layers[k] = [snapC(H.layers[k].material.color), H.layers[k].material.opacity];
+  return s;
+}
+function applyLook(L) {
+  const B = BASE, S = G.scene, v = k => L[k] ?? B[k], C = hex => new G.THREE.Color(hex);
+  S.fog.color.setHex(v('fog')); S.background.setHex(L.bg ?? L.fog ?? B.bg); S.fog.density = v('fogD');
+  H.hemi.color.setHex(v('hemiS')); H.hemi.groundColor.setHex(v('hemiG')); H.hemi.intensity = v('hemiI');
+  H.key.color.setHex(v('keyC')); H.key.intensity = v('keyI'); H.rim.color.setHex(v('rimC')); H.rim.intensity = v('rimI');
+  H.beam.color.setHex(v('beamC')); H.beam.intensity = v('beamI');
+  H.dust.material.color.setHex(v('dustC')); H.dust.material.opacity = v('dustO'); if (Array.isArray(L.ground)) H.ground.material.color.setRGB(...L.ground); else H.ground.material.color.setHex(v('ground'));   // 地面：十六进制颜色，或者直接给三个乘数
+  H.spots.forEach((l, i) => { l.color.setHex(L.spotC ?? B.spots[i][0]); l.intensity = B.spots[i][1] * (L.spotK ?? 1); });
+  H.points.forEach((l, i) => { l.color.setHex(B.points[i][0]); l.intensity = B.points[i][1] * (L.pointK ?? 1); });
+  for (const k in H.layers) {                                     // 布景板：tint 乘在贴图上的颜色，k 再乘一个亮度，op 不透明度
+    const m = H.layers[k].material, o = (L.layers || {})[k] || {};
+    m.color.setHex(o.tint ?? B.layers[k][0]); if (o.k) m.color.multiplyScalar(o.k); m.opacity = o.op ?? B.layers[k][1];
+    H.layers[k].visible = o.show ?? (SHOT_FIX[k] ?? true);
+  }
+  H.cones.forEach((c, i) => { c.material.color.setHex(L.coneC ?? L.beamC ?? B.cones[i][0]); c.material.opacity = B.cones[i][1] * (L.coneK ?? 1); });
+  H.eye.material.color.setHex(L.eyeC ?? L.beamC ?? B.eyeC);
+  H.halo.material.color.setHex(L.haloC ?? L.beamC ?? B.haloC); H.halo.material.opacity = B.haloO * (L.haloK ?? 1); H.halo.scale.setScalar(B.haloS * 1.45 * (L.haloS ?? 1));
+  for (const [m, hex] of B.lambert) { m.color.setHex(hex); if (L.matTint) m.color.multiply(C(L.matTint)); if (L.matK) m.color.multiplyScalar(L.matK); }
+}
+
+// ---- 抄画面：先在一张整幅大小的画布上备好，再缩到图上 ----
+const stage = document.createElement('canvas'); stage.width = FW; stage.height = FH; const sctx = stage.getContext('2d');
+let GRAIN = null;
+// 游戏页面上盖着的那几层：暗角、颗粒、上下黑边（它们是网页元素，抄画面时抄不到，在这里照样补上）
+function overlays() {
+  const c = sctx;
+  c.save(); c.translate(FW * 0.5, FH * 0.46); c.scale(FW * 0.5 * Math.SQRT2, FH * 0.54 * Math.SQRT2);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.44, 'rgba(0,0,0,0)'); g.addColorStop(0.78, 'rgba(0,0,0,.3)'); g.addColorStop(1, 'rgba(0,0,0,.7)');
+  c.fillStyle = g; c.fillRect(-2, -2, 4, 4); c.restore();
+  if (!GRAIN) {
+    GRAIN = document.createElement('canvas'); GRAIN.width = GRAIN.height = 256;
+    const gg = GRAIN.getContext('2d'), im = gg.createImageData(256, 256); let s = 12345;
+    for (let i = 0; i < im.data.length; i += 4) { s = (s * 16807) % 2147483647; const n = s / 2147483647 * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = n; im.data[i + 3] = 255; }
+    gg.putImageData(im, 0, 0);
+  }
+  c.save(); c.globalAlpha = 0.075; c.globalCompositeOperation = 'overlay'; c.fillStyle = c.createPattern(GRAIN, 'repeat'); c.fillRect(0, 0, FW, FH); c.restore();
+  c.fillStyle = '#040607'; c.fillRect(0, 0, FW, FH * 0.06); c.fillRect(0, FH * 0.94, FW, FH * 0.06);
+}
+function render(L, fx = FX) {
+  if (RAW) { /* 原样的游戏画面，什么都不改 */ }
+  else if (STEP === 2) { applyLook(PICK); clearSet(); SET = new G.THREE.Group(); G.scene.add(SET); for (const p of L.parts) PARTS[p](); }   // 第二步：光色不变，换布景
+  else applyLook(L);
+  G.renderer.render(G.scene, G.camera); sctx.drawImage(G.renderer.domElement, 0, 0, FW, FH); if (fx) overlays();
+}
+function drawFull(L, dx, dy, dw, dh) {                            // 整幅画面，缩到 dw × dh
+  render(L); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(stage, 0, 0, FW, FH, dx, dy, dw, dh);
+}
+function drawCrop(L, dx, dy, dw, dh, cx, cy) {                     // 原始大小的一块，中心在整幅画面的 (cx, cy)
+  render(L); const sx = Math.max(0, Math.min(FW - dw, cx - dw / 2)), sy = Math.max(0, Math.min(FH - dh, cy - dh / 2));
+  ctx.drawImage(stage, sx, sy, dw, dh, dx, dy, dw, dh);
+}
+function heroPx() { const p = new G.THREE.Vector3(G.P.x, G.P.y + 0.62, 0).project(G.camera); return [(p.x * 0.5 + 0.5) * FW, (0.5 - p.y * 0.5) * FH]; }
+function label(text, x, y, o = {}) {
+  ctx.save();
+  ctx.font = `${o.weight ?? 500} ${o.size ?? 15}px ${FONT}`; ctx.fillStyle = o.color ?? '#c3cfce'; ctx.textAlign = o.align ?? 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== false) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 8; }
+  ctx.fillText(text, x, y); ctx.restore();
+}
+const HEAD = 96;
+function header(title, lines) {
+  ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, sheet.width, HEAD);
+  label(title, 70, 44, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+  lines.forEach((t, i) => label(t, 70, 67 + i * 19, { size: 13.5, weight: 400, color: '#8fa0a0', shadow: false }));
+}
+function size(w, h) { sheet.width = w; sheet.height = h; frame.style.top = h + 'px'; ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, w, h); }
+
+// 这一屏里先去掉的东西（每一版都一样）：前景那层黑色的废料，在这个镜头里成了横在地面中间的一道黑带
+const SHOT_FIX = q.get('fore') === '1' ? {} : { fore: false };
+
+// ---- 各版的数值。没写的项沿用游戏现在的数值 ----
+const ALL = [
+  // —— 1 到 4 比的是明暗：光从哪里来，四周有多黑（颜色都是现在的冷青灰）——
+  { name: '现在的样子', note: '四周都看得见一点，明暗比较平均' },
+  { name: '更黑', note: '四周压到接近全黑，只剩探照灯和它照亮的那一块地',
+    fog: 0x0a0f11, fogD: 0.028, hemiS: 0x6f8890, hemiG: 0x0a0d0e, hemiI: 0.22, keyI: 0.16, rimI: 0.4, beamI: 46, dustO: 0.3,
+    layers: { winGlow: { op: 0.5 } }, coneK: 1.2 },
+  { name: '逆光', note: '后墙和高窗亮起来，前面的东西都成了剪影',
+    fog: 0x26353c, fogD: 0.026, hemiI: 0.45, keyI: 0.5, rimI: 1.1, layers: { wall: { k: 30 } } },
+  { name: '灰雾', note: '整个厂房泡在灰白的雾里，颜色几乎抽掉',
+    fog: 0x545b5e, fogD: 0.032, hemiS: 0xb9bfc0, hemiG: 0x2a2c2d, hemiI: 0.7, keyC: 0xdfe3e4, keyI: 0.45, rimC: 0xd0d4d5, rimI: 0.9, beamC: 0xf4f6f6, beamI: 34,
+    dustC: 0xe2e6e6, dustO: 0.35, ground: 0xfff0e8, layers: { wall: { tint: 0xd8dcdc }, winGlow: { tint: 0xd9dede, op: 0.9 } }, coneC: 0xf0f3f3 },
+  // —— 5 到 8 比的是颜色（明暗和“现在的样子”一样）——
+  { name: '冷蓝', note: '像月光下的夜，蓝得更明确',
+    fog: 0x14263f, fogD: 0.026, hemiS: 0x7fa6d8, hemiG: 0x0d1626, hemiI: 0.6, keyC: 0xb8d4ff, keyI: 0.8, rimC: 0x86b4ee, rimI: 0.75, beamC: 0xe6f0ff, dustC: 0xbcd6ff,
+    ground: 0xc8d8ff, layers: { wall: { tint: 0x9fc4ff }, winGlow: { tint: 0x8fb8ff }, arcade: { tint: 0x9bb8e8 }, mid: { tint: 0x9bb8e8 } } },
+  { name: '墨绿', note: '发霉的旧厂房，带一点病态的绿',
+    fog: 0x1c3329, fogD: 0.026, hemiS: 0x93b89f, hemiG: 0x111a14, hemiI: 0.6, keyC: 0xd2ecd4, keyI: 0.8, rimC: 0x9fd0ae, rimI: 0.7, beamC: 0xeaf6e6, dustC: 0xcfe8d0,
+    ground: 0xd0f0d8, layers: { wall: { tint: 0xa8e0b8 }, winGlow: { tint: 0x98d8a8 } } },
+  { name: '锈红', note: '整个厂房都是暖的，像炉火映着烟尘',
+    fog: 0x2b1810, fogD: 0.027, hemiS: 0xb07a58, hemiG: 0x160d08, hemiI: 0.5, keyC: 0xffc890, keyI: 0.55, rimC: 0xff8a40, rimI: 1.0, beamC: 0xffe8c8, dustC: 0xffc890,
+    ground: [1.5, 0.82, 0.6], layers: { wall: { tint: 0xff9a50, k: 40 }, winGlow: { tint: 0xff7a30 }, arcade: { tint: 0xd8a888 }, mid: { tint: 0xd8a888 } } },
+  { name: '冷暖对比', note: '厂房是冷的，只有尽头的墙和高窗映着暖光',
+    fog: 0x1b2a33, fogD: 0.026, layers: { wall: { tint: 0xff6a20, k: 160 }, winGlow: { tint: 0xff8a40 } } },
+];
+// 试数值用：json=[{...}, {...}] 直接从网址给出几版（颜色写成 "0x1b2a33" 这样的字符串），不用改这个文件
+const TRY = q.get('json') ? [].concat(JSON.parse(q.get('json'), (k, v) => typeof v === 'string' && /^0x[0-9a-f]+$/i.test(v) ? parseInt(v, 16) : v)) : null;
+
+// ================= 第二步：画面里摆什么、前后分几层 =================
+// 光和颜色固定用第一步定下来的「3 逆光」（颜色还是原来的冷青灰）。每一版往同一屏里临时摆一样东西，
+// 都是粗模：方块，或者画在板子上的剪影，只为了看大的形状和位置。游戏本身没有改，定下来以后再照着搭进第一章的代码
+const STEP = num('step', 1), PICK = ALL[2];
+let SET = null;                                                   // 这一版临时摆进场景里的东西
+function clearSet() {
+  if (!SET) return;
+  G.scene.remove(SET);
+  SET.traverse(o => {                                             // 借来的机器人和游戏共用模型，模型不能释放；给它们另配的深色材质是自己的
+    if (o.geometry && !o.userData.borrowed) o.geometry.dispose();
+    if (o.material && (!o.userData.borrowed || o.userData.ownMat)) { if (o.material.map && !o.userData.borrowed) o.material.map.dispose(); o.material.dispose(); }
+  });
+  SET = null;
+}
+const INK = '#0a1012', CONC = 0x2a3336, IRON = 0x12181a;          // 远处剪影的墨色、混凝土、深色铁件：都取自游戏里现成的颜色
+const lamb = hex => new G.THREE.MeshLambertMaterial({ color: hex });
+function block(w, h, d, x, y, z, m, parent = SET) {               // 实心方块：x、z 是中心，y 是底面
+  const o = new G.THREE.Mesh(new G.THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o;
+}
+// 剪影板：和游戏里的布景板同一个做法 —— 画在画布上（单位是米，y 向上），贴到深度 z 的一块平面上
+function board(x1, x2, y1, y2, z, ppm, draw, o = {}) {
+  const THREE = G.THREE, c = frame.contentDocument.createElement('canvas');
+  const k = Math.min(1, 4096 / ((x2 - x1) * ppm), 4096 / ((y2 - y1) * ppm)), s = ppm * k;
+  c.width = Math.round((x2 - x1) * s); c.height = Math.round((y2 - y1) * s);
+  const g = c.getContext('2d');
+  if (o.blur) g.filter = `blur(${o.blur}px)`;
+  if (o.floor) g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s); else g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);
+  draw(g);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: o.fog !== false, opacity: o.opacity ?? 1 });
+  if (o.additive) mat.blending = THREE.AdditiveBlending;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat);
+  if (o.floor) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); }   // 平铺在地上：这时 y1、y2 是 z 的范围，画布上方是远处
+  else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+  m.renderOrder = o.order ?? Math.round(z * 4); SET.add(m); return m;
+}
+// 画笔（坐标都是米）
+const ink = (g, c) => { g.fillStyle = c; g.strokeStyle = c; g.lineCap = 'round'; g.lineJoin = 'round'; };
+const rect = (g, x, y, w, h) => g.fillRect(x, y, w, h);
+function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.closePath(); g.fill(); }
+function path(g, pts, lw) { g.lineWidth = lw; g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.stroke(); }
+function sag(g, x1, y1, x2, y2, drop, lw) { g.lineWidth = lw; g.beginPath(); g.moveTo(x1, y1); g.quadraticCurveTo((x1 + x2) / 2, (y1 + y2) / 2 - 2 * drop, x2, y2); g.stroke(); }
+function oval(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, 6.2832); g.fill(); }
+function truss(g, x1, x2, y, h, lw) {                              // 桁架：上下两道弦杆，中间一串斜撑
+  rect(g, x1, y, x2 - x1, lw * 1.7); rect(g, x1, y + h - lw * 1.7, x2 - x1, lw * 1.7);
+  const n = Math.max(2, Math.round((x2 - x1) / h)), pts = [];
+  for (let i = 0; i <= n; i++) pts.push([x1 + (x2 - x1) * i / n, y + (i % 2 ? h : 0)]);
+  path(g, pts, lw);
+}
+function hull(pts) {                                              // 一堆点的外轮廓
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const q of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+
+// 探照灯的眼睛在 (71, 3.7, -19)，光束在玩法平面上扫过 x = 60.4 … 81.6。这个三角形里不能立高的东西，
+// 不然会挡出游戏里并不算数的影子。所以高的东西要么在探照灯后面（z < -20），要么靠两侧
+const PARTS = {
+  // 两排混凝土大柱子：远处一排（探照灯后面，隔一跨一根），近处两根（光束扫不到的两侧）。
+  // 厂房里常见的阶形柱：下半截粗，到了托行车梁的肩部收窄，上半截细；底下一块柱脚
+  pillars() {
+    const m = lamb(CONC);
+    const col = (x, z) => { block(1.5, 8.6, 1.5, x, -1, z, m); block(1.95, 0.5, 1.95, x, 7.6, z, m); block(1.0, 40, 1.0, x, 8.1, z, m); block(2.1, 1.1, 2.1, x, 0, z, m); };
+    for (let x = 41.5; x <= 101; x += 8.5) col(x, -26);              // 从这一屏的镜头看过去，中间两根正好一左一右夹着探照灯，两边的两根躲在近处的柱子后面
+    col(62, -12); col(79.5, -12);
+  },
+  // 行车梁：一道桁架横在高处；下面是小车、链条和吊钩，正好垂在一扇高窗前面
+  crane() {
+    board(30, 110, 3, 11.5, -25, 48, g => {
+      ink(g, INK);
+      truss(g, 30, 110, 8.15, 1.25, 0.11); rect(g, 30, 9.4, 80, 0.14);                 // 梁底正好落在柱子的肩部上
+      rect(g, 61.25, 7.45, 2.4, 0.72); rect(g, 60.95, 8.02, 3.0, 0.2);                 // 小车
+      for (const x of [61.6, 63.3]) oval(g, x, 8.22, 0.2, 0.2);
+      path(g, [[62.3, 7.45], [62.3, 6.5]], 0.06); path(g, [[62.6, 7.45], [62.6, 6.5]], 0.06);   // 两股链条
+      rect(g, 62.08, 5.75, 0.74, 0.8); oval(g, 62.45, 5.75, 0.37, 0.2);               // 吊钩的滑轮组
+      g.lineWidth = 0.13; g.beginPath(); g.moveTo(62.45, 5.6); g.lineTo(62.45, 5.25); g.arc(62.2, 5.25, 0.25, 0, Math.PI, true); g.stroke();   // 钩子
+    });
+  },
+  // 探照灯后面两侧停掉的大设备：左边一大一小两只储罐带一段走道，右边一只架在钢架上的料仓
+  tanks() {
+    board(48, 92, -1, 14, -24, 44, g => {
+      ink(g, INK);
+      const tank = (x, w, y0, y1, ry) => { rect(g, x, y0, w, y1 - y0); oval(g, x + w / 2, y1, w / 2, ry); };
+      tank(54.4, 3.1, 1.0, 8.1, 0.75); for (const x of [54.6, 55.8, 57.04]) rect(g, x, 0, 0.26, 1.1);
+      rect(g, 54.3, 4.5, 3.3, 0.2); rect(g, 55.74, 8.6, 0.42, 6);                     // 罐身中间的一道箍，罐顶往上的管子
+      tank(58.6, 2.0, 0.7, 5.3, 0.5); for (const x of [58.75, 60.23]) rect(g, x, 0, 0.22, 0.8);
+      path(g, [[57.4, 6.6], [59.6, 6.6], [59.6, 5.7]], 0.3);                           // 两只罐子之间的管子
+      rect(g, 60.6, 4.3, 3.0, 0.14); for (let x = 60.7; x <= 63.55; x += 0.93) rect(g, x, 4.3, 0.06, 1.05); rect(g, 60.6, 5.3, 3.0, 0.06);   // 走道和栏杆
+      for (const x of [60.8, 63.4]) rect(g, x, 0, 0.14, 4.3);
+      path(g, [[63.6, 4.37], [66.0, 0.05]], 0.2); path(g, [[63.6, 5.33], [66.0, 1.0]], 0.06);   // 楼梯
+      const sx = 80.4, sw = 3.2;                                                      // 料仓
+      rect(g, sx, 3.6, sw, 5.6); oval(g, sx + sw / 2, 9.2, sw / 2, 0.5);
+      poly(g, [[sx, 3.6], [sx + sw, 3.6], [sx + sw / 2 + 0.35, 2.1], [sx + sw / 2 - 0.35, 2.1]]);
+      for (const x of [sx + 0.05, sx + sw - 0.27]) rect(g, x, 0, 0.22, 3.8);
+      rect(g, sx - 0.1, 3.5, sw + 0.2, 0.22); path(g, [[sx + 0.16, 0.1], [sx + sw - 0.16, 3.4]], 0.09); path(g, [[sx + sw - 0.16, 0.1], [sx + 0.16, 3.4]], 0.09);
+      rect(g, sx + sw / 2 - 0.3, 9.5, 0.6, 5);                                        // 仓顶的风管
+      rect(g, 84.6, 0, 1.5, 2.3); rect(g, 84.75, 2.3, 0.5, 0.35);                     // 配电柜
+    });
+  },
+  // 高窗照进来的光：朝着镜头、斜着向下穿过雾，落在探照灯后面的地上。光柱画在后墙前面的一块板上，地上的光斑平铺在地面
+  shafts() {
+    const C = G.camera.position, zb = -27, d = [-0.16, -0.83, 0.53], wins = [];
+    for (let x = -84; x < 104; x += 8.5) if (x > 56 && x < 100) wins.push(x);                    // 最左边那扇的光会落在远处的坡道上，不画
+    const onBoard = (x, y, z) => { const k = (zb - C.z) / (z - C.z); return [C.x + (x - C.x) * k, C.y + (y - C.y) * k]; };
+    const land = (x, y) => { const t = y / -d[1]; return [x + d[0] * t, -32 + d[2] * t]; };      // 从窗上 (x, y) 出发的光落在地上的 (x, z)
+    board(30, 110, -1, 14, zb, 14, g => {
+      for (const xw of wins) {
+        const pts = [];
+        for (const [x, y] of [[xw, 5], [xw + 1.7, 5], [xw, 28], [xw + 1.7, 28]]) { pts.push(onBoard(x, y, -32)); const [fx, fz] = land(x, y); pts.push(onBoard(fx, 0, fz)); }
+        const top = onBoard(xw, 5, -32)[1], gr = g.createLinearGradient(0, top + 1.5, 0, -0.6);
+        gr.addColorStop(0, 'rgba(190,222,230,.22)'); gr.addColorStop(0.55, 'rgba(190,222,230,.1)'); gr.addColorStop(1, 'rgba(190,222,230,.02)');
+        g.fillStyle = gr; poly(g, hull(pts));
+      }
+    }, { additive: true, fog: false, blur: 5 });
+    board(30, 110, -31, -11, 0, 14, g => {                        // 地上的光斑：靠墙的一头亮，朝镜头这一头淡下去
+      const gr = g.createLinearGradient(0, -29, 0, -13); gr.addColorStop(0, 'rgba(190,222,230,.15)'); gr.addColorStop(1, 'rgba(190,222,230,.03)');
+      g.fillStyle = gr;
+      for (const xw of wins) { const a = land(xw, 5), b = land(xw + 1.7, 5), c = land(xw + 1.7, 28), e = land(xw, 28); poly(g, [a, b, c, e]); }
+    }, { additive: true, fog: false, blur: 6, floor: 0.03 });
+  },
+  // 回收线：同一批次的机器人钩着背上的吊环，挂在探照灯后面高处的吊轨上，一台台往右边的压机送
+  line() {
+    const THREE = G.THREE, m = lamb(IRON), z = -22, railY = 8.1, hookY = 7.05;
+    block(90, 0.16, 0.2, 70, railY, z, m);
+    for (let x = 43.5; x < 112; x += 8.5) block(0.1, 12, 0.1, x, railY + 0.16, z, m);          // 吊轨的吊杆
+    let src = null;                                               // 借游戏里输送带上那几台机器人（断电垂头的姿势）来复制
+    G.zone(1).root.traverse(o => { if (!src && o.isGroup && o.visible && o.parent === G.zone(1).root && Math.abs(o.position.z + 5.2) < 0.05 && Math.abs(o.position.y - 3.95) < 0.3 && o.children.length) src = o; });
+    let ring = null;
+    if (src) { src.updateWorldMatrix(true, true); src.traverse(o => { if (o.isMesh && o.geometry.type === 'TorusGeometry') ring = src.worldToLocal(o.getWorldPosition(new THREE.Vector3())); }); }
+    if (!src || !ring) console.warn('没找到可以借的机器人，吊轨上只挂了钩子');
+    const dark = new Map();
+    for (let x = 55.1; x < 88; x += 3.4) {
+      block(0.46, 0.2, 0.3, x, railY - 0.2, z, m); block(0.05, railY - 0.2 - hookY, 0.05, x, hookY, z, m);   // 小车和吊杆
+      if (!src || !ring) continue;
+      const hold = new THREE.Group(); hold.position.set(x, hookY, z); hold.rotation.z = -0.4; SET.add(hold);   // 钩着吊环，身子往前栽
+      const bot = src.clone(true); bot.position.copy(ring).multiplyScalar(-1); hold.add(bot);
+      bot.traverse(o => {                                         // 换成更深的材质：隔着这么远，它们要靠剪影才看得见
+        o.userData.borrowed = true;
+        if (!o.isMesh || !o.material.isMeshLambertMaterial) return;
+        if (!dark.has(o.material)) { const d = o.material.clone(); d.color.multiplyScalar(0.3); d.emissiveIntensity = 0; dark.set(o.material, d); }
+        o.material = dark.get(o.material); o.userData.ownMat = true;
+      });
+    }
+  },
+  // 前景：离镜头最近的一层，全黑、略微虚焦。垂下来的链条和缆线只占画面上半，不挡主角
+  fore() {
+    board(62, 77, -1.2, 6.4, 8, 60, g => {
+      ink(g, '#05080a');
+      const chain = (x, y) => { g.setLineDash([0.075, 0.05]); path(g, [[x, 6.4], [x, y]], 0.05); g.setLineDash([]); };
+      chain(72.55, 3.75); rect(g, 72.38, 3.32, 0.34, 0.44); oval(g, 72.55, 3.32, 0.17, 0.1);                    // 右边：一只带滑轮的吊钩
+      g.lineWidth = 0.065; g.beginPath(); g.moveTo(72.55, 3.25); g.lineTo(72.55, 3.1); g.arc(72.43, 3.1, 0.12, 0, Math.PI, true); g.stroke();
+      chain(65.2, 4.25); g.lineWidth = 0.05; g.beginPath(); g.arc(65.2, 4.13, 0.12, 0, 6.2832); g.stroke();     // 左边：短一些，只挂着一只环
+      chain(73.9, 4.9);
+      sag(g, 61.5, 5.75, 68.6, 6.5, 0.55, 0.05); sag(g, 70.2, 6.5, 77.5, 5.5, 0.75, 0.05); sag(g, 66.5, 6.5, 74.5, 6.5, 0.45, 0.035);
+    }, { fog: false, blur: 2.4, order: 4000 });
+  },
+};
+const SETS = [
+  { name: '现在的布景', note: '只有后墙、高窗、矮墙和探照灯，上半幅是空的', parts: [] },
+  { name: '两排大柱子', note: '远处一排，近处两根，把大厅撑出纵深', parts: ['pillars'] },
+  { name: '行车梁和吊钩', note: '一道桁架横在高处，吊钩垂在窗前', parts: ['crane'] },
+  { name: '远处的罐子和料仓', note: '探照灯后面的两侧，立着停掉的大设备', parts: ['tanks'] },
+  { name: '窗外照进来的光', note: '高窗的光斜着穿过雾，落在远处的地上', parts: ['shafts'] },
+  { name: '吊着的机器人', note: '同一批次的机器人挂在高处的吊轨上，等着送去压机', parts: ['line'] },
+  { name: '前景的链条', note: '离镜头最近的一层：垂下来的链条、吊钩和缆线，略微虚焦', parts: ['fore'] },
+  { name: '几样放在一起', note: '2 + 3 + 5 + 7 合起来的样子', parts: ['pillars', 'crane', 'shafts', 'fore'] },
+];
+if (q.get('parts')) SETS.push({ name: q.get('parts'), note: '', parts: q.get('parts').split(',') });   // 试组合用：parts=pillars,line
+const SRC = STEP === 2 ? SETS : ALL;
+const LOOKS = STEP !== 2 && TRY ? TRY : q.get('only') ? q.get('only').split(',').map(i => SRC[+i < 0 ? SRC.length + +i : +i]) : SRC;
+
+const LAYOUTS = {
+  full() { size(FW, FH); drawFull(LOOKS[num('look', 0)], 0, 0, FW, FH); },
+  // 沿路看一遍：xs=2,14,30 这几个位置各截一张原样的游戏画面（要配 raw=1），每格是整幅画面缩小一半。检查改动有没有弄坏别处用
+  scout() {
+    const xs = (q.get('xs') || '2,14,30,44,53,62,71,80,92,101').split(',').map(Number), cols = 2, rows = Math.ceil(xs.length / cols), cw = FW / cols, ch = FH / cols;
+    size(FW, HEAD + rows * ch);
+    header(q.get('title') || '沿路的画面', ['游戏里原样的画面，主角依次站在这几个位置（数字是世界坐标 x）。']);
+    xs.forEach((x, i) => {
+      G.tp(x); G.step(num('settle', 1.2));
+      const cx = (i % cols) * cw, cy = HEAD + Math.floor(i / cols) * ch;
+      drawFull(null, cx, cy, cw, ch);
+      label(`x = ${x}`, cx + 26, cy + 68, { size: 17, weight: 600, color: '#f1f5f4' });
+    });
+    ctx.fillStyle = '#0b0f11';
+    for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
+    for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
+  grid() {
+    const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = FH / cols;
+    size(FW, HEAD + rows * ch);
+    if (STEP === 2) header('标杆画面 · 第二步：画面里摆什么', ['同一屏游戏画面（第一章，躲探照灯），光和颜色用第一步定下来的“3 逆光”。每格多摆一样东西，可以挑几样合在一起，比如“2 + 5 + 7”。',
+      '摆进去的都是粗模（方块，或者画出来的剪影），只看大的形状和位置，细节以后再做。都躲开了探照灯扫过的范围，不影响玩法。游戏本身还没有改。']);
+    else header('标杆画面 · 第一步：整体的光和颜色', ['同一屏游戏画面（第一章，躲探照灯），每格是整幅画面缩小一半。1 到 4 比的是明暗：光从哪里来、四周有多黑；5 到 8 比的是颜色。可以各挑一个，比如“3 + 5”。',
+      '全是游戏里的实时画面，各版之间只改了雾、环境光、探照灯和后墙的数值。每一版都先去掉了原来横在地面中间的那道黑带（前景的废料），探照灯的光晕换成了更柔和的。']);
+    LOOKS.forEach((L, i) => {
+      const x = (i % cols) * cw, y = HEAD + Math.floor(i / cols) * ch;
+      drawFull(L, x, y, cw, ch);
+      label(`${i + 1}`, x + 26, y + 78, { size: 34, weight: 600, color: '#f1f5f4' });
+      label(L.name, x + 58, y + 68, { size: 17, weight: 600, color: '#f1f5f4' });
+      label(L.note, x + 58, y + 88, { size: 12.5, weight: 400, color: '#b4c0bf' });
+    });
+    ctx.fillStyle = '#0b0f11';
+    for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
+    for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
+  crops() {
+    const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = 330;
+    size(FW, HEAD + rows * ch);
+    header('标杆画面 · 第一步：原始大小', ['上一张图里的各版，在主角附近按 1080p 屏幕上的原始大小各截一块（没有缩小）。']);
+    const [hx, hy] = heroPx();
+    LOOKS.forEach((L, i) => {
+      const x = (i % cols) * cw, y = HEAD + Math.floor(i / cols) * ch;
+      drawCrop(L, x, y, cw, ch, hx + 250, hy - 40);
+      label(`${i + 1}  ${L.name}`, x + 26, y + 34, { size: 16, weight: 600, color: '#f1f5f4' });
+    });
+    ctx.fillStyle = '#0b0f11';
+    for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
+    for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
+};
+
+function start() {
+  G = frame.contentWindow.__g; G.begin(); G.paused = true; G.step(0.3);
+  setShot();
+  if (q.get('probe')) console.log('镜头 ' + JSON.stringify(G.camera.position.toArray().map(v => +v.toFixed(3))) + ' 视角 ' + G.camera.fov + ' 主角 x ' + G.P.x.toFixed(2));   // probe=1：报出这一屏的镜头位置
+  if (!RAW) { H = handles(); BASE = snapshot(); H.halo.material.map = softGlow(); H.halo.material.needsUpdate = true; }
+  (LAYOUTS[LAYOUT] || LAYOUTS.grid)();
+  window.__sheetDone = true;
+}
+// 主角的模型（models/hero.glb）是另外加载的：等它到了再画，不然画进去的是加载期间顶替的机器人。最多等 20 秒
+const T0 = performance.now();
+frame.addEventListener('load', function wait() {
+  const w = frame.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+  const modelIn = hero && (hero.kind !== 'R' || hero.B.traveler?.model);
+  if (hero && !modelIn && performance.now() - T0 > 20000) console.warn('主角模型没有加载出来，画面里是顶替的机器人');
+  if (hero && (modelIn || performance.now() - T0 > 20000)) { try { start(); } catch (e) { console.error('没画完：' + (e && e.stack || e)); window.__sheetDone = true; } }
+  else setTimeout(wait, 100);
+});
+frame.src = '../sidescroller.html?sheet=' + Date.now();
+</script>
+</body>
+</html>
