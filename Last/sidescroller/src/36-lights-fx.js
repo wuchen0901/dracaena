@@ -58,11 +58,12 @@ function assignLights(cx) {                              // 越远越暗，暗�
 
 // ---- 环境：沿着 x 的一串关键点，镜头走到哪里就取哪里的插值。没写的项沿用上一个关键点 ----
 // fog 雾色 / fogD 雾的浓度 / hemi* 环境光 / key* 主光 / rim* 轮廓光 / dust* 尘埃 / wind 风 / ext 室外程度（0..1，管声音和门口的光）
-// sky 六个颜色：从天顶到地平线再到地平线以下 / sun* 太阳的位置、颜色、强度 / stars 星星 / cloud 云 / birds 鸟叫 / flies 萤火虫
+// sky 六个颜色：从天顶到地平线再到地平线以下 / sun* 太阳的位置、颜色、强度 / stars 星星 / cloud 云 / birds 鸟叫 / flies 萤火虫 /
+// vig 画面四角的暗角有多重（1 = 平常；明亮的章节放轻一些）
 const ENV0 = { fog: 0x25343a, fogD: 0.026, hemiS: 0x9fb6bd, hemiG: 0x1c2224, hemiI: 0.6, keyC: 0xd4e6ec, keyI: 0.85, keyDir: [0.22, 1, 0.32], rimC: 0xa9cdd8, rimI: 0.7,
   dustC: 0xcfe2e6, dustO: 0.5, wind: 0.04, ext: 0, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 0,
-  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0 };
-const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies'];
+  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0, vig: 1 };
+const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies', 'vig'];
 const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['sunC', 'cloudC'];
 const ENVKEYS = [];
 function env(x, o = {}) {
@@ -76,6 +77,7 @@ function env(x, o = {}) {
 const E = { sky: [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0]), sunC: [0, 0, 0], cloudC: [0, 0, 0], keyDir: V3(0, 1, 0), ext: 0 };
 for (const f of ENV_COL) E[f] = new THREE.Color();
 let envMod = null;                                       // 结局用：在插值结果上再改一道（比如让天慢慢黑下来）
+let vigNow = 1;                                          // 暗角那一层网页元素现在的不透明度
 function applyEnv(x) {
   let i = 1; while (i < ENVKEYS.length - 1 && x > ENVKEYS[i].x) i++;
   const a = ENVKEYS[i - 1], b = ENVKEYS[i], t = clamp((x - a.x) / (b.x - a.x), 0, 1);
@@ -90,6 +92,7 @@ function applyEnv(x) {
   key.color.copy(E.keyC); key.intensity = E.keyI; keyDir.copy(E.keyDir);
   rim.color.copy(E.rimC); rim.intensity = E.rimI;
   dustMat.color.copy(E.dustC); dustMat.opacity = E.dustO;
+  if (Math.abs(E.vig - vigNow) > 0.002) $('vig').style.opacity = vigNow = E.vig;
 }
 
 // ---- 天空：一块永远铺满屏幕、画在最底下的面。颜色只跟视线的仰角有关，所以走多远都不会“走出”天空 ----

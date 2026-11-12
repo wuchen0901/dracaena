@@ -36,18 +36,18 @@ const CH6 = (() => {
   let V = null;
   function* build(R) {
     const v = {};
-    backdrop(X - 60, X7 + 60, -6, 80, -150, 6, g => {     // 远景：城市渐渐退到后面，右边开始是山
+    backdrop(X - 60, X7 - 6, -6, 80, -150, 6, g => {      // 远景：城市渐渐退到后面，右边开始是山（到花园之前淡出，接上第七章的远山）
       setInk(g, vgrad(g, 66, 0, '#b3b9b9', '#8e9496'));
       for (let x = X - 58; x < X + 96; x += rr(5, 10)) building(g, x, -6, rr(5, 12), rr(14, 60) * (1 - 0.7 * sstep(X + 50, X + 96, x)), { holes: 0.38, gx: 2.6, gy: 3.6, win: 1.1, winH: 1.5, base: 8 });
       setInk(g, vgrad(g, 40, 0, '#a9b3a2', '#8a9584')); ridge(g, X + 60, X7 + 60, -6, x => (10 + 9 * Math.sin(x / 31) + 4 * Math.sin(x / 11 + 2) + rr(-0.5, 0.5)) * sstep(X + 60, X + 100, x), 1.5);
     }, { fog: false, order: -2000, fadeL: 44, fadeR: 44 });
     yield;
-    backdrop(X - 10, X7 + 20, -4, 44, -44, 13, g => {     // 中景：居民楼，越往右越矮、越破，楼顶长出了树
+    backdrop(X - 10, X7 + 1, -4, 44, -44, 13, g => {      // 中景：居民楼，越往右越矮、越破，楼顶长出了树（画到花园的墙为止）
       setInk(g, '#6f7678');
       for (let x = X - 8; x < X7 + 10; x += rr(9, 15)) { const w = rr(8, 13), h = rr(14, 36) * (1 - 0.6 * sstep(X + 60, X7, x)); building(g, x, -4, w, h, { holes: 0.5, gx: 2.4, gy: 3.3 }); if (x > X + 55 && rnd() < 0.7) { setInk(g, '#667066'); tree(g, x + w * rr(0.3, 0.7), h - 4.2, rr(4, 8), 'round'); setInk(g, '#6f7678'); } }
     }, { fadeL: 8, fadeR: 12 });
     yield;
-    backdrop(X - 6, X7 + 8, -3, 30, -9, 20, g => {        // 近处的一排住宅：阳台、晾衣绳、水箱
+    backdrop(X - 6, X7 + 1, -3, 30, -9, 20, g => {        // 近处的一排住宅：阳台、晾衣绳、水箱
       setInk(g, '#3d4244');
       let x = X - 5;
       while (x < X + 78) {
@@ -65,7 +65,7 @@ const CH6 = (() => {
     v.wins = backdrop(X + 8, X + 44, 5, 22, -8.9, 9, g => { // 水来了以后亮起来的窗
       for (let i = 0; i < 22; i++) { const x = rr(X + 9, X + 43), y = rr(7, 20); g.fillStyle = `rgba(215,232,240,${rr(0.4, 0.8)})`; box(g, x, y, 0.9, 1.2); }
     }, { additive: true, fog: false, blur: 2, order: -30, opacity: 0 });
-    backdrop(X - 4, X7 + 6, -3, 10, 6, 22, g => {         // 前景：越往右草越多
+    backdrop(X - 4, X7 + 1, -3, 10, 6, 22, g => {         // 前景：越往右草越多
       setInk(g, '#040607');
       const top = [[X - 4, -5]];
       for (let x = X - 4; x <= X7 + 6; x += rr(0.5, 1.5)) { const k = sstep(X + 60, X + 100, x), h = rr(0.15, 0.5) + 0.2 * k; top.push([x, h]); if (rnd() < 0.12 + 0.5 * k) top.push([x + 0.05, h + rr(0.3, 1.0)], [x + 0.14, h]); }
