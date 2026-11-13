@@ -50,7 +50,7 @@ function caveTile() {                                    // 一小块能平铺�
   for (let i = 0; i < 260; i++) { const x = rr(0, 256), y = rr(0, 256), r = rr(1.5, 6), v = rnd() < 0.5 ? rr(50, 100) | 0 : rr(200, 255) | 0; g.fillStyle = `rgba(${v},${v},${v},${rr(0.3, 0.6)})`; g.beginPath(); g.ellipse(x, y, r * 1.3, r, rr(0, 3), 0, 6.283); g.fill(); }
   g.strokeStyle = 'rgba(40,40,40,.45)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = rr(0, 256), y = rr(0, 256); g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += rr(-14, 14); y += rr(4, 16); g.lineTo(x, y); } g.stroke(); }
   _seed = s0;
-  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return CAVE_TILE = t;
+  const t = sharedTex(canvasTex(c)); t.wrapS = t.wrapT = THREE.RepeatWrapping; return CAVE_TILE = t;
 }
 function caveSurface(R, pts, f, x1, x2, col, down) {
   const xs = []; for (const p of pts) if (p[0] > x1 && p[0] < x2) xs.push(p[0]);
@@ -184,7 +184,7 @@ function beamTex() {
   if (BEAM_TEX) return BEAM_TEX;
   const [c, g] = mkCanvas(64, 256), im = g.createImageData(64, 256);
   for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) { const u = (x + 0.5) / 64 * 2 - 1, v = y / 255, a = Math.exp(-u * u * 3.2) * (1 - v) * (0.75 + 0.25 * (1 - v)), i = (y * 64 + x) * 4; im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.round(255 * a); }
-  g.putImageData(im, 0, 0); return BEAM_TEX = canvasTex(c);
+  g.putImageData(im, 0, 0); return BEAM_TEX = sharedTex(canvasTex(c));
 }
 // top / bot: [中心 x, y, 宽]；v1：贴图用到多下面（1 = 一直淡到没有，0.6 = 到底还剩四成亮）
 function lightBeam(R, top, bot, col, a, z, v1 = 1, order = 60) {

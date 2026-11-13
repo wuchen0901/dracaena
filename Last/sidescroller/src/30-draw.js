@@ -147,5 +147,5 @@ function iconTex(kind) {                                 // 白色线条图标�
   else if (kind === 'cross') { g.lineWidth = 14; g.beginPath(); g.moveTo(-32, -32); g.lineTo(32, 32); g.moveTo(32, -32); g.lineTo(-32, 32); g.stroke(); }
   else if (kind === 'tick') { g.lineWidth = 14; g.beginPath(); g.moveTo(-36, 2); g.lineTo(-10, 30); g.lineTo(38, -30); g.stroke(); }
   else if (kind === 'bot') { g.beginPath(); g.arc(0, -22, 20, Math.PI, 0); g.lineTo(20, -8); g.lineTo(-20, -8); g.closePath(); g.stroke(); g.strokeRect(-17, 2, 34, 34); g.beginPath(); g.moveTo(-9, 36); g.lineTo(-9, 50); g.moveTo(9, 36); g.lineTo(9, 50); g.stroke(); }
-  return _icons[kind] = canvasTex(c);
+  return _icons[kind] = sharedTex(canvasTex(c));
 }

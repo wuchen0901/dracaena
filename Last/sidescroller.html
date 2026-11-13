@@ -576,7 +576,7 @@ function iconTex(kind) {                                 // 白色线条图标�
   else if (kind === 'cross') { g.lineWidth = 14; g.beginPath(); g.moveTo(-32, -32); g.lineTo(32, 32); g.moveTo(32, -32); g.lineTo(-32, 32); g.stroke(); }
   else if (kind === 'tick') { g.lineWidth = 14; g.beginPath(); g.moveTo(-36, 2); g.lineTo(-10, 30); g.lineTo(38, -30); g.stroke(); }
   else if (kind === 'bot') { g.beginPath(); g.arc(0, -22, 20, Math.PI, 0); g.lineTo(20, -8); g.lineTo(-20, -8); g.closePath(); g.stroke(); g.strokeRect(-17, 2, 34, 34); g.beginPath(); g.moveTo(-9, 36); g.lineTo(-9, 50); g.moveTo(9, 36); g.lineTo(9, 50); g.stroke(); }
-  return _icons[kind] = canvasTex(c);
+  return _icons[kind] = sharedTex(canvasTex(c));
 }
 
 // ============================================================
@@ -634,9 +634,10 @@ function dragMarks(parent, x1, x2, y = 0, z = 0, half = 0.42) {
     }
   });
 }
-// 一块面朝镜头的小牌子 / 图标（不受光照，自己发亮）
+// 一块面朝镜头的小牌子 / 图标（不受光照，自己发亮）。卸载这一章时连同 textTex() 写的字一起释放（图标是几章共用的，不释放）
 function plate(parent, tex, w, h, x, y, z, color = 0xffffff, o = {}) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color, fog: o.fog ?? false, opacity: o.opacity ?? 1 }));
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color, fog: o.fog ?? false, opacity: o.opacity ?? 1 }); mat.userData.own = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   m.position.set(x, y, z); m.renderOrder = o.order ?? 30; parent.add(m); return m;
 }
 // 沿着几个点弯过去的一根管子 / 缆线
@@ -889,14 +890,24 @@ function updateDust(dt, t, camX, camY, wind) {
 //  分区加载：每一章的布景只在走近时才搭建，走远了就释放
 //  （整条路一次全搭出来，光是布景板的贴图就要占掉几百兆显存）
 // ============================================================
+// 卸载一章：几何体全部释放；材质只释放标了 userData.own 的（这一章自己建的），连同它身上的每一张贴图 ——
+// 不只是 map，还有 alphaMap 这类，以及自己写的着色器 uniforms 里的贴图（比如水洼的形状图）。
+// 好几章共用、只画一次的贴图（图标、图集）用 sharedTex() 标出来，卸载哪一章都不释放它
 function disposeTree(root) {
   root.traverse(o => {
     if (o.geometry) o.geometry.dispose();
     if (o.isInstancedMesh) o.dispose();                  // 实例的位置、颜色是另外几块缓冲区
-    const m = o.material; if (m && m.userData && m.userData.own) { if (m.map) m.map.dispose(); m.dispose(); }
+    const m = o.material; if (m && m.userData && m.userData.own) { for (const t of texturesOf(m)) if (!t.userData.shared) t.dispose(); m.dispose(); }
   });
   if (root.parent) root.parent.remove(root);
 }
+function texturesOf(m) {
+  const out = [];
+  for (const k in m) if (m[k] && m[k].isTexture) out.push(m[k]);
+  if (m.uniforms) for (const k in m.uniforms) { const v = m.uniforms[k].value; if (v && v.isTexture) out.push(v); }
+  return out;
+}
+function sharedTex(t) { t.userData.shared = true; return t; }
 function zoneStep(z) {                                   // 搭建过程是一个生成器：每帧只推进一小步，走路时不会卡
   const s0 = _seed, t0 = performance.now(); _seed = z._seed; ROOT = z.root;
   let r; try { r = z.gen.next(); } finally { z._seed = _seed; _seed = s0; ROOT = scene; }
@@ -1130,7 +1141,7 @@ function stencil07() {                                  // 头盔侧面喷的出
   g.globalCompositeOperation = 'destination-out';
   g.fillStyle = '#000'; g.fillRect(0, 62, 192, 7);                                                     // 喷漆模板中间那道“桥”
   for (let i = 0; i < 320; i++) { g.globalAlpha = 0.25 + 0.7 * rn(); g.fillRect(rn() * 192, rn() * 128, 1 + rn() * 5, 1 + rn() * 2.5); }   // 磨掉的漆
-  return _stencil07 = canvasTex(c);
+  return _stencil07 = sharedTex(canvasTex(c));
 }
 
 function buildRobot07(o = {}) {
@@ -2508,7 +2519,7 @@ function caveTile() {                                    // 一小块能平铺�
   for (let i = 0; i < 260; i++) { const x = rr(0, 256), y = rr(0, 256), r = rr(1.5, 6), v = rnd() < 0.5 ? rr(50, 100) | 0 : rr(200, 255) | 0; g.fillStyle = `rgba(${v},${v},${v},${rr(0.3, 0.6)})`; g.beginPath(); g.ellipse(x, y, r * 1.3, r, rr(0, 3), 0, 6.283); g.fill(); }
   g.strokeStyle = 'rgba(40,40,40,.45)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = rr(0, 256), y = rr(0, 256); g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += rr(-14, 14); y += rr(4, 16); g.lineTo(x, y); } g.stroke(); }
   _seed = s0;
-  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return CAVE_TILE = t;
+  const t = sharedTex(canvasTex(c)); t.wrapS = t.wrapT = THREE.RepeatWrapping; return CAVE_TILE = t;
 }
 function caveSurface(R, pts, f, x1, x2, col, down) {
   const xs = []; for (const p of pts) if (p[0] > x1 && p[0] < x2) xs.push(p[0]);
@@ -2642,7 +2653,7 @@ function beamTex() {
   if (BEAM_TEX) return BEAM_TEX;
   const [c, g] = mkCanvas(64, 256), im = g.createImageData(64, 256);
   for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) { const u = (x + 0.5) / 64 * 2 - 1, v = y / 255, a = Math.exp(-u * u * 3.2) * (1 - v) * (0.75 + 0.25 * (1 - v)), i = (y * 64 + x) * 4; im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.round(255 * a); }
-  g.putImageData(im, 0, 0); return BEAM_TEX = canvasTex(c);
+  g.putImageData(im, 0, 0); return BEAM_TEX = sharedTex(canvasTex(c));
 }
 // top / bot: [中心 x, y, 宽]；v1：贴图用到多下面（1 = 一直淡到没有，0.6 = 到底还剩四成亮）
 function lightBeam(R, top, bot, col, a, z, v1 = 1, order = 60) {
@@ -4960,7 +4971,7 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { if (V) V.glint.material.alphaMap.dispose(); V = null; },
+  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();
 
@@ -5415,7 +5426,7 @@ const CH2 = (() => {
     const leaf = (g, x, y, s, a, col) => { g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = col; g.beginPath(); g.moveTo(-s, 0); g.quadraticCurveTo(0, -s * 0.5, s, 0); g.quadraticCurveTo(0, s * 0.5, -s, 0); g.fill(); g.restore(); };
     const LEAFC = ['rgba(120,86,40,.95)', 'rgba(142,102,48,.92)', 'rgba(96,68,34,.95)', 'rgba(150,118,60,.9)', 'rgba(78,56,28,.95)'];
     const own = m => { m.userData.own = true; return m; };
-    v.gz = GZ; v.extraTex = [];
+    v.gz = GZ;
 
     // 闸门 · 漏水：闸板的几道缝里往外喷细水，逆光下发亮，落进渠里溅起白沫。
     // 水柱的形状画在一张透明度贴图上，上面再贴一层一直往下滚的明暗，看起来水在流；闸板一升起来就停了
@@ -5436,7 +5447,7 @@ const CH2 = (() => {
         for (let i = 0; i < 9; i++) { g.globalAlpha = 0.25 + 0.4 * rn(); oval(g, x + lean + (rn() - 0.5) * 0.3 * k, ey + 0.03 + rn() * 0.16 * k, 0.012 + 0.012 * rn(), 0.012 + 0.02 * rn()); }   // 溅起来的水珠
         g.globalAlpha = 1; setInk(g, '#fff');
       } });
-      const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace; v.extraTex.push(mask);             // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
+      const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace;                                    // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
       const [fc, fg] = mkCanvas(32, 128); fg.fillStyle = '#dcdcdc'; fg.fillRect(0, 0, 32, 128);              // 水流：大体是亮的，夹着一道道更亮的和暗一些的，一直往下滚
       { const rf = seeded(53); for (let i = 0; i < 36; i++) { fg.fillStyle = rf() < 0.6 ? '#fff' : '#6a6a6a'; fg.fillRect(rf() * 32, rf() * 128, 2 + rf() * 4, 6 + rf() * 20); } }
       v.flowTex = canvasTex(fc); v.flowTex.colorSpace = THREE.NoColorSpace; v.flowTex.wrapS = v.flowTex.wrapT = THREE.RepeatWrapping; v.flowTex.repeat.set(12, 3);
@@ -5715,7 +5726,8 @@ const CH2 = (() => {
   }
   function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); if (V) V.life.reset(); }
   function solve() { Object.assign(W, { open: true, t: 7, k: 1, level: HIGH, lamp: 1, flown: 99, bank: 1 }); placeTimber(); }
-  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.extraTex ?? []) t.dispose(); V = null; }, W, timber, view: () => V });
+  // 卸载：乌鸦的三张姿势是轮流换到材质上的，卸载时材质上只挂着其中一张（跟着材质一起释放），另外两张要在这里释放
+  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.crowTexs) t.dispose(); V = null; }, W, timber, view: () => V });
 })();
 
 // ============================================================
@@ -7879,7 +7891,7 @@ const AIR_TEX = (() => {
   tile(13, () => blurDraw(g, 1.2, t => { path([[0, -0.1], [-0.72, -0.42], [-0.62, 0.32], [0, 0.18], [0.62, 0.32], [0.72, -0.42]], true, t); t.fill(); ell(0, 0, 0.1, 0.36, 0, t); }));
   tile(14, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.84, 0.32); g.quadraticCurveTo(-0.4, -0.12, 0, 0.04); g.quadraticCurveTo(0.4, -0.12, 0.84, 0.32); g.stroke(); ell(0, 0.06, 0.2, 0.12); });
   tile(15, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.82, -0.5); g.quadraticCurveTo(-0.36, -0.06, 0, 0.12); g.quadraticCurveTo(0.36, -0.06, 0.82, -0.5); g.stroke(); ell(0, 0.12, 0.2, 0.12); });
-  const t = canvasTex(c); t.anisotropy = 1; return t;
+  const t = sharedTex(canvasTex(c)); t.anisotropy = 1; return t;
 })();
 
 // ---- 画这些点的着色器 ----

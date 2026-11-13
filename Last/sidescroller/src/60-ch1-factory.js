@@ -497,6 +497,6 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { if (V) V.glint.material.alphaMap.dispose(); V = null; },
+  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();

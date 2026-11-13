@@ -43,7 +43,7 @@ const AIR_TEX = (() => {
   tile(13, () => blurDraw(g, 1.2, t => { path([[0, -0.1], [-0.72, -0.42], [-0.62, 0.32], [0, 0.18], [0.62, 0.32], [0.72, -0.42]], true, t); t.fill(); ell(0, 0, 0.1, 0.36, 0, t); }));
   tile(14, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.84, 0.32); g.quadraticCurveTo(-0.4, -0.12, 0, 0.04); g.quadraticCurveTo(0.4, -0.12, 0.84, 0.32); g.stroke(); ell(0, 0.06, 0.2, 0.12); });
   tile(15, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.82, -0.5); g.quadraticCurveTo(-0.36, -0.06, 0, 0.12); g.quadraticCurveTo(0.36, -0.06, 0.82, -0.5); g.stroke(); ell(0, 0.12, 0.2, 0.12); });
-  const t = canvasTex(c); t.anisotropy = 1; return t;
+  const t = sharedTex(canvasTex(c)); t.anisotropy = 1; return t;
 })();
 
 // ---- 画这些点的着色器 ----
