@@ -19,7 +19,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const quit = code => { try { proc.kill('SIGKILL'); } catch (e) { /* 已经退出了 */ } try { rmSync(profile, { recursive: true, force: true }); } catch (e) { /* 留着也无妨 */ } process.exit(code); };
 
 let page = null;
-for (let i = 0; i < 100 && !page; i++) {
+for (let i = 0; i < 400 && !page; i++) {                   // 机器很忙时 Chrome 起来得慢：最多等 60 秒
   await sleep(150);
   try { page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page'); } catch (e) { /* Chrome 还没起来 */ }
 }
