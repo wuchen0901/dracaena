@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>手机检测 · 铁锈与微光</title>
+<!--
+  在手机上打开这一页（服务器要对局域网开放，见 .claude/launch.json 里的 last-prototype-lan）：
+  1. 先查这台设备的浏览器：游戏里柔边用的阴影做法能不能用、浏览器自带的画布 filter 模糊有没有（iPhone 上没有，游戏已经不靠它）、有没有 WebGL2、屏幕和像素比；
+  2. 再把游戏放进整页的 iframe，用 __g.ch() 依次切到几章，每章先等一会儿再量几秒帧率；
+  3. 结果显示在屏幕上，同时发一个 GET /__report?... 给服务器。python http.server 会回 404，
+     但整行地址会记进服务器日志，在电脑上读日志就能拿到结果。
+  地址后面可以加 ?ch=1,2,7,8&secs=5 改要量的章节和每章秒数。
+-->
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#06090a;color:#e6ebea;
+    font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+  iframe{position:fixed;inset:0;width:100%;height:100%;border:0}
+  #panel{position:fixed;left:10px;top:10px;max-width:calc(100% - 20px);box-sizing:border-box;padding:8px 12px;border-radius:9px;
+    background:rgba(4,6,7,.8);font-size:13px;line-height:1.65;white-space:pre-wrap;pointer-events:none}
+  #panel.done{font-size:15px;background:rgba(4,6,7,.92)}
+</style>
+</head>
+<body>
+<iframe id="f"></iframe>
+<div id="panel">正在检测…</div>
+<script>
+const q = new URLSearchParams(location.search);
+const CH = (q.get('ch') || '1,2,7,8').split(',').map(Number).filter(n => n >= 1 && n <= 8);
+const SECS = Math.max(2, +q.get('secs') || 5), WARM = 1.5;
+const panel = document.getElementById('panel'), f = document.getElementById('f');
+const say = t => { panel.textContent = t; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// 画布模糊：先看有没有这个属性，再真的画一下——白方块左边 3 像素外，有模糊才会亮
+function blurCheck() {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d'), prop = 'filter' in g;
+  g.fillStyle = '#000'; g.fillRect(0, 0, 32, 32);
+  if (prop) g.filter = 'blur(4px)';
+  g.fillStyle = '#fff'; g.fillRect(12, 12, 8, 8);
+  return { prop, works: g.getImageData(9, 16, 1, 1).data[0] > 10 };
+}
+// 游戏现在的柔边（10-core.js 的 blurDraw）：笔画挪到画布外面，只让 shadowBlur 的影子落回原处。同样看白方块左边 3 像素外亮不亮
+function shadowCheck() {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 32, 32);
+  g.shadowColor = '#fff'; g.shadowBlur = 8; g.shadowOffsetX = -1000; g.setTransform(1, 0, 0, 1, 1000, 0);
+  g.fillStyle = '#fff'; g.fillRect(12, 12, 8, 8);
+  return g.getImageData(9, 16, 1, 1).data[0] > 10;
+}
+
+// 在游戏的窗口里量帧率：平均帧数，和 95% 的帧都在多少毫秒以内（越大越卡）
+function measure(win, secs) {
+  return new Promise(res => {
+    const ts = [];
+    const tick = t => { ts.push(t); if (t - ts[0] < secs * 1000) win.requestAnimationFrame(tick); else done(); };
+    const done = () => {
+      const d = []; for (let i = 1; i < ts.length; i++) d.push(ts[i] - ts[i - 1]);
+      d.sort((a, b) => a - b);
+      res({ fps: Math.round((ts.length - 1) / ((ts[ts.length - 1] - ts[0]) / 1000)), p95: Math.round(d[Math.floor(d.length * 0.95)] || 0) });
+    };
+    win.requestAnimationFrame(tick);
+  });
+}
+
+async function run() {
+  const blur = blurCheck(), shadow = shadowCheck(), gl2 = !!document.createElement('canvas').getContext('webgl2');
+  const info = { blurProp: +blur.prop, blurWorks: +blur.works, shadowBlur: +shadow, webgl2: +gl2, dpr: devicePixelRatio,
+    screen: screen.width + 'x' + screen.height, view: innerWidth + 'x' + innerHeight };
+  say('正在加载游戏…');
+  const t0 = performance.now();
+  f.src = '../sidescroller.html?ch=' + CH[0] + '&t=' + Date.now();          // 带上时间：手机上不会拿缓存里的旧版本
+  let win = null;
+  while (performance.now() - t0 < 40000) { await wait(200); win = f.contentWindow; if (win && win.__ready && win.__g) break; win = null; }
+  if (!win) { report({ ...info, error: 'load-timeout' }); say('游戏 40 秒内没加载完，结果已发回电脑'); return; }
+  info.load = ((performance.now() - t0) / 1000).toFixed(1);
+  const cv = f.contentDocument.getElementById('c'); info.canvas = cv.width + 'x' + cv.height;
+  const rows = [];
+  for (const [i, n] of CH.entries()) {
+    say(`第 ${n} 章 · 正在测量（${i + 1}/${CH.length}）\n期间可以点一下屏幕，别让手机锁屏`);
+    const tb = performance.now(); win.__g.ch(n); const build = ((performance.now() - tb) / 1000).toFixed(1);
+    await wait(WARM * 1000);
+    const m = await measure(win, SECS);
+    info['c' + n] = `${m.fps},${m.p95},${build}`;
+    rows.push(`第 ${n} 章：每秒 ${m.fps} 帧，95% 的帧在 ${m.p95} 毫秒内，切换用了 ${build} 秒`);
+  }
+  report(info);
+  panel.classList.add('done');
+  say(['检测完成，结果已发回电脑，可以关掉这一页了', '',
+    `游戏里的柔边（阴影做法）：${shadow ? '能用' : '不能用'}`, `浏览器自带的画布模糊（ctx.filter，游戏已经不用了）：${blur.works ? '能用' : '不能用'}`, `WebGL2：${gl2 ? '支持' : '不支持'}`,
+    `屏幕 ${info.screen}，像素比 ${info.dpr}，游戏画布 ${info.canvas}`, `游戏加载：${info.load} 秒`, '', ...rows].join('\n'));
+}
+
+function report(info) { new Image().src = '/__report?' + new URLSearchParams({ ...info, ua: navigator.userAgent }); }
+
+run().catch(e => { report({ error: String(e).slice(0, 200) }); say('检测出错：' + e); });
+</script>
+</body>
+</html>
