@@ -224,7 +224,7 @@ function plants(parent, list) {
   });
   geo.setAttribute('aCell', new THREE.InstancedBufferAttribute(cells, 4));
   mesh.instanceMatrix.needsUpdate = true; if (n) { mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); }
-  mesh.receiveShadow = true; mesh.onBeforeRender = () => { PLANT_U.uT.value = T; };
+  mesh.receiveShadow = true; mesh.onBeforeRender = () => { PLANT_U.uT.value = T; PLANT_U.uSway.value = 0.035 * (0.7 + 0.46 * GUST.v); };   // 阵风来了摆得大一些（和风吹树叶的声音一起）
   parent.add(mesh); return mesh;
 }
 
@@ -371,7 +371,7 @@ function groundLife(parent, seed = 1) {
       L.t += dt; for (const it of L.items) it.step(dt);
       // 主角的脚落在什么上面：踩进水洼起一圈水纹、溅几滴水
       const ph = hero.A.ph, foot = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
-      if (foot && state !== 'title') { const fz = Math.floor(ph * 2) % 2 ? 0.07 : -0.07, fxp = P.x + P.facing * 0.1, p = L.pool(fxp, fz); if (p && Math.abs(P.y - p.y) < 0.1) { p.ripple(fxp, fz, 0.8); L.splash(fxp, p.y, fz + 0.05, 0.7); fx('wade'); } }
+      if (foot && state !== 'title') { const fz = Math.floor(ph * 2) % 2 ? 0.07 : -0.07, fxp = P.x + P.facing * 0.1, p = L.pool(fxp, fz); if (p && Math.abs(P.y - p.y) < 0.1) { p.ripple(fxp, fz, 0.8); L.splash(fxp, p.y, fz + 0.05, 0.7); fx('puddle'); } }
     } };
   // 溅起来的几滴水
   const drops = []; for (let i = 0; i < 12; i++) { const sp = glow(parent, 0xe6f2ea, 0.045, 0); sp.visible = false; sp.renderOrder = 31; drops.push({ sp, t: 9, v: V3() }); }

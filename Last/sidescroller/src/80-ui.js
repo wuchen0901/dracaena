@@ -38,7 +38,7 @@ function startChapter(n, o = {}) {
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
   STORY.done = n - 1; STORY.ch = n; saveGame();
   for (const z of ZONES) { if (z.n < n) z.solve(); else z.reset(); }
-  placePlayer(c.start); P.cp = cpAt(c.start + 0.01);
+  placePlayer(c.start); P.cp = cpAt(c.start + 0.01); resetPant();
   Object.assign(P, { moved: n > 1, jumped: n > 1, pushed: n > 1, used: n > 1 });
   if (STORY.cat) catPlace(c.start - 0.9, floorY(c.start - 0.9, P.y + 0.1)); else if (n > 3) CAT.state = 'none';
   ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null;

@@ -14,6 +14,7 @@ const CH9 = (() => {
   const X = X9;
   const C = chapter({ n: 9, x0: X + 0.5, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
     intro() { CAT.state = 'none'; } });                    // 小猫不进山洞（它怕水）
+  C.ground = 'rock';                                                               // 脚步声：湿的岩石
   const A = (pts) => pts.map(([x, y]) => [X + x, y]);
   // ---- 地面（脚下的岩石、潭底）----
   terrain(...A([[-30, 0], [9.5, 0], [9.9, -0.6], [10.3, -2.4], [11.2, -3.1], [16, -3.3], [21.5, -3.1], [22.6, -2.2], [23.1, -0.7], [23.35, 0.3], [30, 0.3], [34, 0.2],
@@ -105,9 +106,11 @@ const CH9 = (() => {
       pts: [[296.5, -2.4, 1.5, 0x5aa890, 3.2, 9], [312, 3, 0, 0xb8cccc, 3, 16]] },
   ];
   // 环境：每一段一组，段与段之间几米里慢慢换过去
-  const ENVC = { dustO: 0, wind: 0, ext: 0, sky: [0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1, rimC: 0x9fb6bd };
+  const ENVC = { dustO: 0, wind: 0, ext: 0, sky: [0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1, rimC: 0x9fb6bd,
+    aWind: 0, aLeaf: 0, aBug: 0, aCity: 0, aHum: 0, aRoom: 0.7, roomF: 120, aDrip: 1, aFlow: 0.5, aFar: 0.8, rvCave: 1, rvHall: 0, rvOut: 0 };   // 声音：山洞的低鸣，到处滴水（带回声），暗河在远处流，偶尔滚下几颗石子
   for (const S of SEC) { env(X + S.x1 + (S.x1 > 0 ? 2 : 0), { ...ENVC, ...S.env }); env(X + Math.min(S.x2 - 2, 304), {}); }
-  env(X + 316, { fog: 0x6a7c7a, hemiS: 0xc8d6d4, hemiG: 0x2a3433, hemiI: 0.85, keyI: 0.45 });   // 洞口外面亮起来
+  env(X + 316, { fog: 0x6a7c7a, hemiS: 0xc8d6d4, hemiG: 0x2a3433, hemiI: 0.85, keyI: 0.45,
+    rvCave: 0.35, rvOut: 0.7, aRoom: 0.2, aWind: 0.35, aDrip: 0.2, aFlow: 0.3, birds: 0.35, aLeaf: 0.3, leafDry: 0.3 });   // 洞口：外面的风和鸟   // 洞口外面亮起来
   // 照主角的灯（各段登记好，离镜头近的几盏才真的亮）；另有一盏跟着主角走的补光，颜色跟着段落换
   for (const S of SEC) for (const [x, y, z, c, i, d] of S.pts || []) pointLight({ p: [X + x, y, z], c, i, d });
   const skyL = SEC.filter(S => S.sky).map(S => spotLight({ p: [X + S.sky.x, 9, 0.5], t: [X + S.sky.x - 0.4, -3.5, 0], c: 0xd8eef0, i: 6, d: 16, a: 0.32, pen: 0.8 }));

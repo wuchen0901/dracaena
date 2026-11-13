@@ -8,11 +8,12 @@
 const CH2 = (() => {
   const X = X2, CX0 = X + 104, CX1 = CX0 + 5.2, BED = -3.6, LOW = -3.25, HIGH = -0.42;      // 水渠的两岸、渠底、低水位、高水位
   const C = chapter({ n: 2, x0: X + 0.6, start: X + 3.5, name: '林地水闸', sub: '恢复水道' });
+  C.ground = 'dirt';                                                               // 脚步声：坡上是土路，林子里是土上一层落叶（forest），路上两片湿泥（见 FAR_SIDE 后面）
   terrain([X + 2.1, 0.0875], [X + 6, 0.25], [X + 14, 1.0], [X + 20, 1.3], [X + 26, 2.6], [X + 32, 3.0], [X + 46, 3.0], [X + 54, 2.2], [X + 64, 0.9], [X + 76, 0.2], [X + 82, 0],
     [CX0, 0], [CX0 + 0.01, BED], [CX1 - 0.01, BED], [CX1, 0], [X3, 0]);
   ground(X + 0.1, 0x574839); ground(X + 60, 0x574839); ground(X + 84, 0x33341e); ground(X3 - 8, 0x3c381d);      // 林子里的地：枯草的暗褐色
   solid({ id: 'bankL', x1: CX0 - 0.6, x2: CX0, y1: BED, y2: 0 }); solid({ id: 'bankR', x1: CX1, x2: CX1 + 0.6, y1: BED, y2: 0 });
-  const TL = 3.7, timber = solid({ id: 'timber', x: CX0 + 1.95, w: TL, x1: 0, x2: 0, y1: 0, y2: 0, plat: true });
+  const TL = 3.7, timber = solid({ id: 'timber', x: CX0 + 1.95, w: TL, x1: 0, x2: 0, y1: 0, y2: 0, plat: true, snd: 'wood' });
   const W = { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 };      // flown：闸上那几只鸟飞走多久了（0 = 还停着）；bank：主角最后站在哪边岸上（-1 左岸，1 右岸）
   const LEVER_X = CX0 - 4.2;
   function placeTimber() {                               // 木梁：水位低时卡在石槽里；水涨起来就浮着，慢慢漂向对岸
@@ -32,10 +33,12 @@ const CH2 = (() => {
   // 室外的清晨：上冷下暖的天，低垂的太阳。
   // 往林子里走：光从林子后面透过来（逆光），远处是一片发白的亮雾；近处的环境光压暗，只留枝叶间漏下来的几束暖光；颜色是枯褐 —— 灰褐的树，干黄的草
   const DAWN = { fog: 0xc9a47c, fogD: 0.0052, hemiS: 0xffe6c4, hemiG: 0x4a4038, hemiI: 0.95, keyC: 0xffc48a, keyI: 2.3, keyDir: [0.74, 0.34, -0.5], rimI: 0.25,
-    dustC: 0xffe2b8, dustO: 0.38, wind: -0.9, ext: 1, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 1, cloud: 1, cloudC: 0xffe1be };
+    dustC: 0xffe2b8, dustO: 0.38, wind: -0.9, ext: 1, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 1, cloud: 1, cloudC: 0xffe1be,
+    aRoom: 0, aHum: 0, aDrip: 0, rvHall: 0, rvOut: 1, aWind: 0.75, aLeaf: 0.15, leafDry: 0.85, aFar: 0.5, birds: 0.45 };   // 声音：坡上的晨风，零星几只鸟
   env(X + 2.1, DAWN); env(X + 50, {});
   env(X + 80, { fog: 0xd9d2c0, fogD: 0.016, hemiS: 0xd8d0c0, hemiG: 0x2a2620, hemiI: 0.42, keyC: 0xf6ead6, keyI: 1.2, keyDir: [-0.15, 0.45, -0.85], rimI: 1.0, dustC: 0xe8e0d0, dustO: 0.5, wind: -0.25,
-    sky: [0x9c9a90, 0xc8c3b2, 0xe6e0cc, 0xf2ecd8, 0xf5efdb, 0xa39a86], sunX: 0.05, sunY: 0.13, sunP: 1, sunC: 0xfff6e0, cloud: 0.5, cloudC: 0xf2f0dc, birds: 1 });
+    sky: [0x9c9a90, 0xc8c3b2, 0xe6e0cc, 0xf2ecd8, 0xf5efdb, 0xa39a86], sunX: 0.05, sunY: 0.13, sunP: 1, sunC: 0xfff6e0, cloud: 0.5, cloudC: 0xf2f0dc, birds: 1,
+    aWind: 0.45, aLeaf: 0.9, aBug: 0.12, aFar: 0.7 });                                 // 声音：林子里风吹枯叶，鸟多起来，远处啄木鸟、乌鸦、断枝
   env(X3 - 12, {});
 
   hint(() => !W.open && Math.abs(P.x - LEVER_X) < 1.7, '按 <b>E</b> 扳动闸杆');
@@ -182,6 +185,9 @@ const CH2 = (() => {
       mkLizard(g, life, perch.p.x, perch.p.y, perch.p.z + 0.004, { yaw: 0.6, normal: perch.n, path: [[233.75, 0.03, -1.0], [234.3, 0.012, -2.0], [234.6, 0.012, -3.1], [234.8, 0.012, -4.0]], path2: [[232.5, 0.03, -1.05], [231.9, 0.012, -2.1], [231.5, 0.012, -3.3]] });
       mkBugs(g, life, 237.4, -0.72, 6, { s: 2.2 });
     } };
+  // 脚步声：林子里（从林子边到这一章的尽头）是土上一层落叶；路上那两片湿泥（上面 mud 里的大椭圆在 z = 0 处的那一段）是泥
+  surface(X + 61, X3 + 1, 'forest');
+  for (const S of [NEAR_SIDE, FAR_SIDE]) for (const [x, z, rx, rz] of S.mud) if (Math.abs(z) < rz) { const w = rx * Math.sqrt(1 - (z / rz) ** 2); surface(x - w, x + w, 'mud'); }
   function* groundDetails(R, v, layers) {
     v.gd = {}; v.life = groundLife(R, 2);
     for (const k of GD_KINDS) { const g = new THREE.Group(); g.name = k; R.add(g); v.gd[k] = g; }

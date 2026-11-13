@@ -87,6 +87,15 @@ function camKey(x) {
   const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
+// 脚下是什么（脚步声用，见 52-audio.js）：每一章一个默认的（章节对象上的 ground），这里登记例外的几段 [x1, x2, 种类]，种类也可以是 x => 种类。
+// 后登记的盖住先登记的。站在方块上时看方块自己的 snd（没写就是 wood）。种类：concrete 水泥 / metal 铁板 / wood 木头 / dirt 土路 / forest 林子里的地 /
+// leaves 干落叶 / grass 草地 / gravel 碎石 / sand 沙土 / mud 湿泥 / rock 湿岩石 / puddle 水洼 / wade 蹚水
+const SURFS = [];
+function surface(x1, x2, kind) { SURFS.push([x1, x2, kind]); }
+function surfaceAt(x) {
+  for (let i = SURFS.length - 1; i >= 0; i--) { const s = SURFS[i]; if (x >= s[0] && x < s[1]) return typeof s[2] === 'function' ? s[2](x) : s[2]; }
+  return chapterAt(x).ground ?? 'concrete';
+}
 // 一个章节的画面和逻辑：{ n, vis: [x1, x2] 画面占的范围, build*(R) 搭建, update(dt) 每帧, reset() 回到初始, solve() 当作已经通过 }
 function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z); return z; }
 

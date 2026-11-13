@@ -44,9 +44,10 @@ function sim(dt) {
   stepPits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
+  GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
-    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose,
+    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -60,7 +61,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
@@ -68,7 +69,21 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, 
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
-  zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on) };
+  zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
+  // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
+  sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),
+  audio: () => ({ AC, MX, master, loops, jobs: JOBS.length, banks: Object.keys(BANKS).length, surface: surfaceUnder() }),
+  // 量一量声音（听不到的时候用）：meter(秒) → 总输出 out 和三路 amb / fol / sfx 各自的 RMS 和峰值（dBFS）。250 赫兹以下不算：小喇叭放不出来的低音不计
+  meter(sec = 2) {
+    if (!AC) return Promise.resolve(null);
+    if (!DBG._an) { DBG._an = {}; for (const [k, n] of [['out', master], ['amb', MX.bus.amb], ['fol', MX.bus.fol], ['sfx', MX.bus.sfx]]) { const f = AC.createBiquadFilter(), a = AC.createAnalyser(); f.type = 'highpass'; f.frequency.value = 250; a.fftSize = 2048; n.connect(f).connect(a); DBG._an[k] = a; } }
+    const acc = {}, buf = new Float32Array(2048), t0 = performance.now(); for (const k in DBG._an) acc[k] = [0, 0, 0];
+    return new Promise(res => { const tick = () => {
+      for (const k in DBG._an) { DBG._an[k].getFloatTimeDomainData(buf); const A = acc[k]; for (const v of buf) { A[0] += v * v; A[2] = Math.max(A[2], Math.abs(v)); } A[1] += buf.length; }
+      if (performance.now() - t0 < sec * 1000) requestAnimationFrame(tick);
+      else { const o = {}; for (const k in acc) { const [ss, n, pk] = acc[k]; o[k] = [+(10 * Math.log10(ss / n + 1e-18)).toFixed(1), +(20 * Math.log10(pk + 1e-9)).toFixed(1)]; } res(o); } };
+      requestAnimationFrame(tick); });
+  } };
 
 let lastT = performance.now(), frameN = 0;
 function frame(now) {

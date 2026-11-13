@@ -82,7 +82,7 @@ airZone(2, [X2, X3 + 4], [X2 + 0.7, X3 + 2], function* (R, sys) {
 // 残墙顶上停着两只乌鸦，翻上墙头就飞；墙外枯树上也有几只；废料场上空几只乌鸦在慢慢盘旋
 airZone(3, [X3 - 6, X4 + 6], [X3 - 4, X4 + 1], function* (R, sys) {
   const where = () => sstep(X3 + 16, X3 + 34, camera.position.x) * (1 - sstep(X4 - 16, X4 - 3, camera.position.x));   // 风沙从林子外面开始，进旧城以前停下
-  const gust = () => where() * clamp(0.55 + 0.25 * Math.sin(T * 0.37) + 0.2 * Math.sin(T * 1.13 + 1) + 0.7 * Math.pow(Math.max(0, Math.sin(T * 0.19)), 8), 0, 1.5);
+  const gust = () => where() * gustAt(T);                                  // 和风声、树叶声同一阵风（36-lights-fx.js 的 gustAt）
   const wind = { wind: -3.8, gust };
   sys.push(airSand(R, { n: 520, ...wind }));
   sys.push(sandSheet(R, X3 + 10, X3 + 56.3, -8, 9, wind), sandSheet(R, X3 + 58.9, X4, -8, 9, wind)); yield;

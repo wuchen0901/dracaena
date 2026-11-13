@@ -8,14 +8,16 @@
 const CH3 = (() => {
   const X = X3, WALL = X + 44, PIT0 = X + 56.5, PIT1 = X + 58.7;
   const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '围墙与废料场', sub: '越过围墙' });
+  C.ground = 'sand';                                                               // 脚步声：墙外的废料场是沙土；林子边是落叶，围墙里的场子是碎石；墙、残墙是水泥，货箱是铁的，旧箱子是木头的
   terrain([PIT0, 0], [PIT0 + 0.01, -3.6], [PIT1 - 0.01, -3.6], [PIT1, 0], [X4, 0]);
   ground(X + 10, 0x3c381d); ground(X + 30, 0x675d4b); ground(X + 70, 0x6a604e); ground(X4 - 6, 0x5a5750);      // 头一个：林子的地一直铺到这里，和第二章末尾是同一个颜色
-  solid({ id: 'pwall', x1: WALL, x2: WALL + 1.3, y1: 0, y2: 3.3 });
-  const A = solid({ id: 'ruinA', x1: WALL + 1.3, x2: WALL + 4.6, y1: 0, y2: 2.3 });
-  const B = solid({ id: 'ruinB', x1: WALL + 6.2, x2: WALL + 8.9, y1: 0, y2: 1.9 });
-  const Cb = solid({ id: 'cargo', x1: X + 54.7, x2: PIT0, y1: 0, y2: 1.2 });
+  solid({ id: 'pwall', x1: WALL, x2: WALL + 1.3, y1: 0, y2: 3.3, snd: 'concrete' });
+  const A = solid({ id: 'ruinA', x1: WALL + 1.3, x2: WALL + 4.6, y1: 0, y2: 2.3, snd: 'concrete' });
+  const B = solid({ id: 'ruinB', x1: WALL + 6.2, x2: WALL + 8.9, y1: 0, y2: 1.9, snd: 'concrete' });
+  const Cb = solid({ id: 'cargo', x1: X + 54.7, x2: PIT0, y1: 0, y2: 1.2, snd: 'metal' });
   solid({ id: 'pitL', x1: PIT0 - 0.6, x2: PIT0, y1: -3.6, y2: 0 }); solid({ id: 'pitR', x1: PIT1, x2: PIT1 + 0.6, y1: -3.6, y2: 0 });
-  const crate = pushable({ id: 'crate3', x: X + 31, w: 1.2, h: 1.0, min: X + 27.5, max: WALL - 0.6 });
+  const crate = pushable({ id: 'crate3', x: X + 31, w: 1.2, h: 1.0, min: X + 27.5, max: WALL - 0.6, snd: 'wood' });
+  surface(X - 1, X + 16, 'forest'); surface(X + 16, WALL, 'gravel');
   const CATX = B.x2 - 0.75, DOG0 = B.x1 - 0.75, DMIN = A.x2 + 0.35, DMAX = Cb.x1 - 0.4;
   const DOG = { x: DOG0, vx: 0, facing: 1, mode: 'bark', bite: 0, z: 0 };
   const S = { safe: false };                             // safe：已经带着小猫过了断桥
@@ -29,7 +31,8 @@ const CH3 = (() => {
   // 出了林子是工业荒漠的边缘：上午的薄霾，光更亮更白
   env(X + 6, {});
   env(X + 30, { fog: 0xbcae97, fogD: 0.0075, hemiS: 0xf3ebd9, hemiG: 0x4f483c, hemiI: 1.0, keyC: 0xfff0d8, keyI: 1.9, keyDir: [0.55, 0.62, -0.3], rimI: 0.25, dustC: 0xf2e4c8, dustO: 0.4, wind: -0.7,
-    sky: [0x6f8791, 0x9aa9a6, 0xc4c2ae, 0xddd3b6, 0xe8dcbc, 0xb5a88c], sunX: 0.12, sunY: 0.3, sunP: 0.45, cloud: 0.7, cloudC: 0xf6f0e0, birds: 0 });
+    sky: [0x6f8791, 0x9aa9a6, 0xc4c2ae, 0xddd3b6, 0xe8dcbc, 0xb5a88c], sunX: 0.12, sunY: 0.3, sunP: 0.45, cloud: 0.7, cloudC: 0xf6f0e0, birds: 0,
+    aWind: 1, aWhis: 1, aLeaf: 0.12, leafDry: 1, aBug: 0, aFar: 0.9 });                 // 声音：一阵阵的大风，风从铁皮缝里钻过去的哨声，远处乌鸦、铁皮哐哐响
   env(X4 - 20, {});
 
   hint(() => !STORY.cat && crate.x < WALL - 1 && P.x > WALL - 2.6 && P.x < WALL && P.y < 0.5, '墙太高了 —— 墙脚的拖痕通向一只旧箱子');

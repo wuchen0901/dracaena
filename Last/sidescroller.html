@@ -294,6 +294,15 @@ function camKey(x) {
   const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
+// 脚下是什么（脚步声用，见 52-audio.js）：每一章一个默认的（章节对象上的 ground），这里登记例外的几段 [x1, x2, 种类]，种类也可以是 x => 种类。
+// 后登记的盖住先登记的。站在方块上时看方块自己的 snd（没写就是 wood）。种类：concrete 水泥 / metal 铁板 / wood 木头 / dirt 土路 / forest 林子里的地 /
+// leaves 干落叶 / grass 草地 / gravel 碎石 / sand 沙土 / mud 湿泥 / rock 湿岩石 / puddle 水洼 / wade 蹚水
+const SURFS = [];
+function surface(x1, x2, kind) { SURFS.push([x1, x2, kind]); }
+function surfaceAt(x) {
+  for (let i = SURFS.length - 1; i >= 0; i--) { const s = SURFS[i]; if (x >= s[0] && x < s[1]) return typeof s[2] === 'function' ? s[2](x) : s[2]; }
+  return chapterAt(x).ground ?? 'concrete';
+}
 // 一个章节的画面和逻辑：{ n, vis: [x1, x2] 画面占的范围, build*(R) 搭建, update(dt) 每帧, reset() 回到初始, solve() 当作已经通过 }
 function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z); return z; }
 
@@ -675,10 +684,15 @@ function assignLights(cx) {                              // 越远越暗，暗�
 // fog 雾色 / fogD 雾的浓度 / hemi* 环境光 / key* 主光 / rim* 轮廓光 / dust* 尘埃 / wind 风 / ext 室外程度（0..1，管声音和门口的光）
 // sky 六个颜色：从天顶到地平线再到地平线以下 / sun* 太阳的位置、颜色、强度 / stars 星星 / cloud 云 / birds 鸟叫 / flies 萤火虫 /
 // vig 画面四角的暗角有多重（1 = 平常；明亮的章节放轻一些）
+// 声音（52-audio.js）：aWind 风 / aWhis 风从铁皮缝里钻过的哨声 / aLeaf 风吹树叶，leafDry 1 是枯叶、0 是嫩叶 / aBug 蟋蟀 / aDrip 滴水 / aFlow 流水、暗河 /
+// aRoom 室内的低鸣，roomF 有多低 / aHum 电流的嗡嗡 / aCity 城市的远声 / aFar 远处偶尔一下的声音（每一章是什么见 52-audio.js 的 FAR）/
+// rvOut / rvHall / rvCave 混响用哪种空间：室外 / 大厂房 / 山洞
 const ENV0 = { fog: 0x25343a, fogD: 0.026, hemiS: 0x9fb6bd, hemiG: 0x1c2224, hemiI: 0.6, keyC: 0xd4e6ec, keyI: 0.85, keyDir: [0.22, 1, 0.32], rimC: 0xa9cdd8, rimI: 0.7,
   dustC: 0xcfe2e6, dustO: 0.5, wind: 0.04, ext: 0, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 0,
-  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0, vig: 1 };
-const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies', 'vig'];
+  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0, vig: 1,
+  aWind: 0, aWhis: 0, aLeaf: 0, leafDry: 0.7, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0, roomF: 210, aHum: 0, aCity: 0, aFar: 0, rvOut: 0, rvHall: 0, rvCave: 0 };
+const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies', 'vig',
+  'aWind', 'aWhis', 'aLeaf', 'leafDry', 'aBug', 'aDrip', 'aFlow', 'aRoom', 'roomF', 'aHum', 'aCity', 'aFar', 'rvOut', 'rvHall', 'rvCave'];
 const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['sunC', 'cloudC'];
 const ENVKEYS = [];
 function env(x, o = {}) {
@@ -691,6 +705,9 @@ function env(x, o = {}) {
 }
 const E = { sky: [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0]), sunC: [0, 0, 0], cloudC: [0, 0, 0], keyDir: V3(0, 1, 0), ext: 0 };
 for (const f of ENV_COL) E[f] = new THREE.Color();
+// 阵风：这一刻的风有多大（0..1.5）。风声、树叶的沙沙声、草的摆动、第三章贴着地刮过去的风沙都跟着它，一阵来了一起来
+const gustAt = t => clamp(0.55 + 0.25 * Math.sin(t * 0.37) + 0.2 * Math.sin(t * 1.13 + 1) + 0.7 * Math.pow(Math.max(0, Math.sin(t * 0.19)), 8), 0, 1.5);
+const GUST = { v: gustAt(0) };
 let envMod = null;                                       // 结局用：在插值结果上再改一道（比如让天慢慢黑下来）
 let vigNow = 1;                                          // 暗角那一层网页元素现在的不透明度
 function applyEnv(x) {
@@ -1364,9 +1381,11 @@ function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
   return bendFwd ? [base + a1, -(Math.PI - c)] : [base - a1, Math.PI - c];    // 膝盖向前弯，手肘向后弯
 }
 
+const KNEE = [[0, 0], [0, 0]];                                              // 这一帧两个膝盖在角色坐标里的位置
+const _bv = [0, 1, 2, 3, 4].map(() => new THREE.Vector3()), wrapA = a => a - Math.round(a / 6.2832) * 6.2832;
 const hash1 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 0..1 的固定“随机”数
 
-const NOPOSE = {};
+const NOPOSE = {}, NOBR = { chest: 0.45, ex: 0, bend: 0 };
 // o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
 function makeCharacter(kind, prev, o = {}) {
   const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
@@ -1374,6 +1393,7 @@ function makeCharacter(kind, prev, o = {}) {
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
   A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
   A.swim ??= 0; A.pitch ??= 0;                                              // 游泳：在水里的程度、身子放平了多少（0 竖着，π/2 平躺）
+  A.bend ??= 0;                                                             // 累坏了弯腰、两手撑着膝盖的程度
   (o.parent ?? scene).add(root);
 
   function update(dt, s) {
@@ -1392,6 +1412,13 @@ function makeCharacter(kind, prev, o = {}) {
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
     A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
     if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
+    // 喘气（53-breath.js）：br.chest 肺里有多满，br.ex 有多累，br.bend 要不要弯下腰撑着膝盖。
+    // heave：一呼一吸 —— 吸气时上身挺起来、头抬一点，呼气时塌下去；越累起伏越大，走着跑着的时候小一些
+    const br = s.br || NOBR, still = (1 - A.mv) * (1 - A.air) * (1 - A.grip) * (1 - A.swim) * (1 - A.tuck) * (q.sit ? 0 : 1);
+    const wantBend = br.bend * still;
+    A.bend = damp(A.bend, wantBend, wantBend > A.bend ? 2.4 : 9, dt);       // 慢慢弯下去，一动就直起来
+    const heave = (br.chest - 0.45) * lerp(0.25, 1, br.ex) * (1 - 0.6 * A.mv) * (1 - A.swim) * (1 - A.air);
+    const bl = A.bend * (0.85 - 0.08 * heave), hv = 0.075 * heave;           // bl 弯腰的角度（呼气时再低一点）/ hv 上身随呼吸挺起多少
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
     const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u;
@@ -1400,7 +1427,8 @@ function makeCharacter(kind, prev, o = {}) {
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
     if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
-    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover;
+    const breathY = -0.045 * u * A.bend + 0.006 * u * heave;                // 弯腰撑着大腿时膝盖弯一些、重心低下来；吸气时整个人微微往上一提
+    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY;
     const hipStand = hipY;
     if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
     const sitDrop = hipY - hipStand;                                          // 坐下时重心降了多少（主角的模型不挂在骨盆上，要自己跟着降）
@@ -1414,13 +1442,13 @@ function makeCharacter(kind, prev, o = {}) {
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
+    leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
     leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
-    spine.rotation.z = -A.lean;
-    spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
+    spine.rotation.z = -(A.lean + bl) + hv;
     chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
     if (B.traveler?.group) {
-      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop;
+      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY;
       B.traveler.group.rotation.z = -A.lean;
     }
 
@@ -1446,10 +1474,11 @@ function makeCharacter(kind, prev, o = {}) {
       if (sit) { tx = lerp(tx, (i ? 0.19 : 0.26) * u * (q.sitLeg ?? 1), sit); ty = lerp(ty, D.ankle, sit); pitch = lerp(pitch, 0, sit); }   // 坐着：两只脚搁在身前的地上
       const L = legs[i], [th, kn] = ik2(0, hipY - 0.005 * u, tx, ty, D.thigh, D.shin, true);
       L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) + pitch;
+      KNEE[i][0] = Math.sin(th) * D.thigh; KNEE[i][1] = hipY - 0.005 * u - Math.cos(th) * D.thigh;      // 膝盖在哪（弯腰撑膝盖时手放这里）
     }
 
     // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
-    const shX = Math.sin(A.lean) * D.shY, shY = hipY + Math.cos(A.lean) * D.shY - 0.012 * u;
+    const LB = A.lean + bl, shX = Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;
     const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
     const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
     for (let i = 0; i < 2; i++) {
@@ -1461,6 +1490,11 @@ function makeCharacter(kind, prev, o = {}) {
         const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir, s.hand.y - s.y + (i ? 0 : 0.012 * u), D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.grip); b = lerp(b, fa, A.grip);
       } else a += A.lean * 0.5;
+      if (A.bend > 0.01) {                                                   // 两手撑在大腿上、膝盖上面一点（主角的模型手臂比骨架短，按模型的长度来算）
+        const glb = !!B.traveler?.model, [ua, fa] = ik2(shX, shY, KNEE[i][0] + 0.03 * u, KNEE[i][1] + 0.09 * u, glb ? 0.135 * u : D.uarm, glb ? 0.135 * u : D.farm + 0.02 * u, false);
+        a = lerp(a, ua + LB, A.bend); b = lerp(b, fa, A.bend);
+      }
+      a -= 0.6 * hv * (1 - A.bend);                                          // 吸气时手臂跟着肩膀微微往后
       if (A.cover > 0.01) {                                                  // 两只手一上一下拢在灯前面
         const [ua, fa] = ik2(shX, shY, lampX + (i ? 0.03 : 0.042) * u, lampY + (i ? -0.03 : 0.01) * u, D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.cover); b = lerp(b, fa, A.cover);
@@ -1477,7 +1511,8 @@ function makeCharacter(kind, prev, o = {}) {
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
+    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0)
+      + 0.72 * bl + 0.9 * hv);                                              // 弯着腰也抬着头看前面一点；吸气时头微微一抬
     // ---- 游泳：在水下身子放平，蛙泳 —— 两手往前伸直、往两边划回胸前，两腿收起来再往后一蹬，然后滑一下；
     //      浮在水面上身子竖起来，两手在身前一前一后地拨水，两腿像蹬自行车一样踩水；在水下停着不动就斜着身子慢慢划 ----
     if (A.swim > 0.002) {
@@ -1540,16 +1575,38 @@ function makeCharacter(kind, prev, o = {}) {
         if (turn) entry.node.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(up.clone().applyQuaternion(parentQ).normalize(), turn));   // 左右转：绕竖直方向
         entry.node.updateWorldMatrix(false, true);
       };
-      poseBone('Spine', spine.rotation.z * .35);
+      // 弯腰：一半多在胯上（骨盆往前倾，两条大腿反着转回来，腿不跟着歪），剩下的分给三节脊椎；呼吸的起伏在胸口那两节
+      const bh = bl * .55; poseBone('Hips', -bh);
+      poseBone('Spine02', -bl * .2); poseBone('Spine01', -bl * .15 + hv * .5);
+      poseBone('Spine', -A.lean * .35 - bl * .1 + hv * .5);
       poseBone('neck', head.rotation.z * .35 * A.swim, head.rotation.y * .35);   // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的（游泳时抬头也分给脖子三成）
       poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
-        poseBone(side + 'UpLeg', legs[i].hip.rotation.z);
+        poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);
         poseBone(side + 'Leg', legs[i].knee.rotation.z);
         poseBone(side + 'Foot', legs[i].foot.rotation.z);
         poseBone(side + 'Arm', arms[i].sh.rotation.z);
         poseBone(side + 'ForeArm', arms[i].el.rotation.z);
+      }
+      if (A.bend > 0.01) {
+        // 累坏了弯着腰：模型是在自己的几节脊椎上弯的（比骨架的骨盆高），手臂也比骨架短，所以这里直接按模型的骨头摆 ——
+        // 先让脚别离地：膝盖一弯，脚尖比站直时高出多少，整个人就往下放多少
+        const B2 = n => traveler.bones.get(n)?.node, X = v => (v.x - s.x) * dir, Y = v => v.y - s.y;
+        let lift = Infinity; for (const n of ['LeftToeBase', 'RightToeBase']) { const b = B2(n); if (b) lift = Math.min(lift, Y(b.getWorldPosition(_bv[0]))); }
+        if (lift < Infinity && lift > 0.035 * u) { traveler.group.position.y -= (lift - 0.035 * u) * A.bend; traveler.group.updateMatrixWorld(true); }
+        // 再让两只手撑在大腿上（膝盖往上三成的地方）：先把手臂放回模型自己的姿势，量出上臂、前臂原来朝哪、多长，再用两节的反向运动学算该转多少
+        for (let i = 0; i < 2; i++) {
+          const side = i ? 'Right' : 'Left', arm = B2(side + 'Arm'), fore = B2(side + 'ForeArm'), hand = B2(side + 'Hand'), knee = B2(side + 'Leg'), hip = B2(side + 'UpLeg');
+          if (!arm || !fore || !hand || !knee || !hip) continue;
+          poseBone(side + 'Arm', 0); poseBone(side + 'ForeArm', 0);
+          const S = arm.getWorldPosition(_bv[0]), El = fore.getWorldPosition(_bv[1]), H = hand.getWorldPosition(_bv[2]), K = knee.getWorldPosition(_bv[3]), Hp = hip.getWorldPosition(_bv[4]);
+          const ux = X(El) - X(S), uy = Y(El) - Y(S), fx = X(H) - X(El), fy = Y(H) - Y(El);
+          const r1 = Math.atan2(ux, -uy), r2 = Math.atan2(fx, -fy);           // 上臂、前臂现在朝哪（从竖直往下量，往前为正）
+          const [w1, w2] = ik2(X(S), Y(S), lerp(X(K), X(Hp), 0.3) + 0.035 * u, lerp(Y(K), Y(Hp), 0.3) + 0.05 * u, Math.hypot(ux, uy), Math.hypot(fx, fy), false);   // 腕子在大腿前上方一点：手掌正好搭在腿上
+          const al = wrapA(w1 - r1), be = wrapA(w1 + w2 - (r2 + al));
+          poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
+        }
       }
     }
   }
@@ -1907,7 +1964,7 @@ function plants(parent, list) {
   });
   geo.setAttribute('aCell', new THREE.InstancedBufferAttribute(cells, 4));
   mesh.instanceMatrix.needsUpdate = true; if (n) { mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); }
-  mesh.receiveShadow = true; mesh.onBeforeRender = () => { PLANT_U.uT.value = T; };
+  mesh.receiveShadow = true; mesh.onBeforeRender = () => { PLANT_U.uT.value = T; PLANT_U.uSway.value = 0.035 * (0.7 + 0.46 * GUST.v); };   // 阵风来了摆得大一些（和风吹树叶的声音一起）
   parent.add(mesh); return mesh;
 }
 
@@ -2054,7 +2111,7 @@ function groundLife(parent, seed = 1) {
       L.t += dt; for (const it of L.items) it.step(dt);
       // 主角的脚落在什么上面：踩进水洼起一圈水纹、溅几滴水
       const ph = hero.A.ph, foot = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
-      if (foot && state !== 'title') { const fz = Math.floor(ph * 2) % 2 ? 0.07 : -0.07, fxp = P.x + P.facing * 0.1, p = L.pool(fxp, fz); if (p && Math.abs(P.y - p.y) < 0.1) { p.ripple(fxp, fz, 0.8); L.splash(fxp, p.y, fz + 0.05, 0.7); fx('wade'); } }
+      if (foot && state !== 'title') { const fz = Math.floor(ph * 2) % 2 ? 0.07 : -0.07, fxp = P.x + P.facing * 0.1, p = L.pool(fxp, fz); if (p && Math.abs(P.y - p.y) < 0.1) { p.ripple(fxp, fz, 0.8); L.splash(fxp, p.y, fz + 0.05, 0.7); fx('puddle'); } }
     } };
   // 溅起来的几滴水
   const drops = []; for (let i = 0; i < 12; i++) { const sp = glow(parent, 0xe6f2ea, 0.045, 0); sp.visible = false; sp.renderOrder = 31; drops.push({ sp, t: 9, v: V3() }); }
@@ -2617,7 +2674,7 @@ function enterSwim(w) {
   const vy = P.vy;
   Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55 });
   P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
-  fx(vy < -4 ? 'splash' : 'plop', 1); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+  fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
 }
 // 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
 function climbOut(w, side, cx) {
@@ -2672,79 +2729,717 @@ function stepBreath() {
   const k = P.mode === 'swim' ? sstep(0.6, 1, 1 - P.air / SWIM.breath) : 0;
   if (Math.abs(k - breathDark) > 0.01 || (k === 0 && breathDark > 0)) { breathDark = k; $('fade').style.opacity = (0.75 * k).toFixed(3); }
 }
+// ============================================================
+//  声音的配方：所有声音都是现算出来的波形，不加载任何音频文件
+//  这里只有纯计算，不碰游戏状态：游戏（52-audio.js）打开声音时用它算好一批放进缓冲区；node 里的检查脚本也直接用这一份。
+//  每个配方 (sr 采样率, r 随机数, o 参数) → Float32Array（单声道）。最后的 mixer() 是 WebAudio 的那一部分：总线、混响、怎么放一个声音
+// ============================================================
+const SY = (() => {
+  const TAU = Math.PI * 2, mix = (a, b, t) => a + (b - a) * t, cl = (x, a, b) => Math.min(b, Math.max(a, x));
+  function rng(seed) { let s = seed | 0 || 7; return () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const U = (r, a, b) => a + (b - a) * r();
+  const buf = (sr, sec) => new Float32Array(Math.max(1, Math.ceil(sr * sec)));
 
+  // ---- 滤波：双二阶（RBJ 的公式）。lp 低通 / hp 高通 / bp 带通（峰值 0 dB）/ pk 峰值均衡 ----
+  function BQ(sr, type, f, q = 0.707, db = 0) {
+    let b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    const F = {
+      set(f, qq = q) {
+        const w = TAU * cl(f, 10, sr * 0.46) / sr, c = Math.cos(w), al = Math.sin(w) / (2 * qq), A = Math.pow(10, db / 40);
+        let B0, B1, B2, A0 = 1 + al, A1 = -2 * c, A2 = 1 - al;
+        if (type === 'lp') { B1 = 1 - c; B0 = B2 = B1 / 2; }
+        else if (type === 'hp') { B1 = -(1 + c); B0 = B2 = (1 + c) / 2; }
+        else if (type === 'bp') { B0 = al; B1 = 0; B2 = -al; }
+        else { B0 = 1 + al * A; B1 = A1; B2 = 1 - al * A; A0 = 1 + al / A; A2 = 1 - al / A; }
+        b0 = B0 / A0; b1 = B1 / A0; b2 = B2 / A0; a1 = A1 / A0; a2 = A2 / A0; return F;
+      },
+      run(x) { const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y; return y; },
+    };
+    return F.set(f, q);
+  }
+  // ---- 噪声：白 / 粉红（低处多一些，听着软）/ 褐（更低更闷）；wander：慢慢游走的随机数（-1..1），大约每 1/f 秒换一个方向 ----
+  const whiteGen = r => () => r() * 2 - 1;
+  function pinkGen(r) { let b0 = 0, b1 = 0, b2 = 0; return () => { const w = r() * 2 - 1; b0 = 0.99765 * b0 + w * 0.099046; b1 = 0.963 * b1 + w * 0.2965164; b2 = 0.57 * b2 + w * 1.0526913; return (b0 + b1 + b2 + w * 0.1848) * 0.22; }; }
+  function brownGen(r) { let b = 0; return () => (b = (b + 0.02 * (r() * 2 - 1)) / 1.02) * 3.5; }
+  function wander(sr, r, f) { let a = U(r, -1, 1), b = U(r, -1, 1), t = r(); const d = f / sr; return () => { if ((t += d) >= 1) { t -= 1; a = b; b = U(r, -1, 1); } return a + (b - a) * (1 - Math.cos(Math.PI * t)) / 2; }; }
+  const bsaw = (ph, n) => { let s = 0; for (let k = 1; k <= n; k++) s += Math.sin(TAU * k * ph) / k; return s * 0.6; };   // 不混叠的锯齿波（前 n 个谐波）
+
+  // ---- 往一段波形里叠东西 ----
+  // 一段噪声：t 开始（秒）/ a 音量 / att 起音 / dec 衰减（指数的时间常数）/ len 最长多久 / hp、lp 高通、低通 / bp [频率, Q] 带通 / sweep [起, 止, 用多久] 带通滑过去 / pink 粉红噪声
+  function noise(out, sr, r, o) {
+    const i0 = Math.round((o.t ?? 0) * sr); if (i0 >= out.length) return;
+    const att = Math.max(1, (o.att ?? 0.0004) * sr), dec = (o.dec ?? 0.03) * sr, n = Math.min(out.length - i0, Math.ceil((o.len ?? (o.att ?? 0) + (o.dec ?? 0.03) * 7) * sr));
+    const gen = o.pink ? pinkGen(r) : whiteGen(r), hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), sw = o.sweep, a = o.a ?? 1;
+    for (let i = 0; i < n; i++) {
+      if (sw && (i & 15) === 0) bp.set(sw[0] * Math.pow(sw[1] / sw[0], Math.min(1, i / (sw[2] * sr))), o.bp[1]);
+      let x = gen(); if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x);
+      out[i0 + i] += a * x * (i < att ? i / att : Math.exp(-(i - att) / dec));
+    }
+  }
+  // 一声正弦：f0 → f1（指数地滑）/ len / a / att / dec / h2 二次谐波
+  function sine(out, sr, o) {
+    const i0 = Math.round((o.t ?? 0) * sr); if (i0 >= out.length) return;
+    const n = Math.min(out.length - i0, Math.ceil(o.len * sr)), att = Math.max(1, (o.att ?? 0.002) * sr), dec = (o.dec ?? o.len / 4) * sr, a = o.a ?? 1, h2 = o.h2 ?? 0, k = Math.pow((o.f1 ?? o.f0) / o.f0, 1 / n);
+    let ph = 0, f = o.f0;
+    for (let i = 0; i < n; i++) { ph += TAU * f / sr; f *= k; out[i0 + i] += a * (i < att ? i / att : Math.exp(-(i - att) / dec)) * (Math.sin(ph) + h2 * Math.sin(2 * ph)); }
+  }
+  // 敲在一块东西上：这块东西自己的几个“音”一起响、各自衰减。modes: [[频率, 衰减的时间常数, 音量], ...]
+  function modes(out, sr, o) {
+    const i0 = Math.round((o.t ?? 0) * sr); if (i0 >= out.length) return;
+    for (const [f, tau, amp] of o.modes) {
+      const n = Math.min(out.length - i0, Math.ceil(tau * 6 * sr)), w = TAU * Math.min(f, sr * 0.45) / sr, c = Math.cos(w), s = Math.sin(w), d = Math.exp(-1 / (tau * sr));
+      let re = 1, im = 0, g = (o.a ?? 1) * amp;
+      for (let i = 0; i < n; i++) { const nr = re * c - im * s; im = re * s + im * c; re = nr; out[i0 + i] += g * im; g *= d; }
+    }
+  }
+  const jit = (r, M, k) => M.map(([f, t, a]) => [f * (1 + k * (r() * 2 - 1)), t, a]);      // 同一种东西，每一块的音高略有不同
+  // 一阵细碎的声音：n 颗很短的噪声颗粒散在 t0..t1 之间（shape(u) 决定前密后疏，u 从 0 到 1），整串再过一遍滤波
+  function grains(out, sr, r, o) {
+    const i0 = Math.round(o.t0 * sr), span = Math.max(1, (o.t1 - o.t0) * sr), tmp = new Float32Array(Math.ceil(span + 0.012 * sr)), gen = whiteGen(r), p = o.pow ?? 2;
+    for (let k = 0; k < o.n; k++) {
+      let u; do u = r(); while (o.shape && r() > o.shape(u));
+      const j = Math.floor(u * span), a = Math.pow(r(), p), dec = U(r, o.dec[0], o.dec[1]) * sr, m = Math.min(tmp.length - j, Math.ceil(dec * 5));
+      for (let i = 0; i < m; i++) tmp[j + i] += a * gen() * Math.exp(-i / dec);
+    }
+    const hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), a = o.a ?? 1;
+    for (let i = 0; i < tmp.length && i0 + i < out.length; i++) { let x = tmp[i]; if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i0 + i] += a * x; }
+  }
+  // 一串小石子相碰：每一颗是一声很短的、有音高的“嗒”
+  function ticks(out, sr, r, o) {
+    for (let k = 0; k < o.n; k++) {
+      let u; do u = r(); while (o.shape && r() > o.shape(u));
+      const f = o.f[0] * Math.pow(o.f[1] / o.f[0], r()), d = U(r, o.dec[0], o.dec[1]);
+      modes(out, sr, { t: o.t0 + u * (o.t1 - o.t0), a: (o.a ?? 1) * Math.pow(r(), o.pow ?? 2), modes: [[f, d, 1], [f * U(r, 1.9, 2.7), d * 0.6, 0.4]] });
+    }
+  }
+  // 一个小水泡：一声往上滑的“咕”（越小的泡越高、越短）
+  function bubble(out, sr, o) {
+    const i0 = Math.round(o.t * sr); if (i0 >= out.length) return;
+    const tau = o.tau, n = Math.min(out.length - i0, Math.ceil(tau * 5 * sr)), rise = o.rise ?? 1.6, a = o.a ?? 1, at = 0.0006 * sr;
+    let re = 1, im = 0, c = 1, s = 0, g = a;
+    const d = Math.exp(-1 / (tau * sr));
+    for (let i = 0; i < n; i++) {
+      if ((i & 7) === 0) { const w = TAU * o.f * (1 + (rise - 1) * Math.min(1, i / sr / (tau * 2.5))) / sr; c = Math.cos(w); s = Math.sin(w); }
+      const nr = re * c - im * s; im = re * s + im * c; re = nr; out[i0 + i] += g * (i < at ? i / at : 1) * im; g *= d;
+    }
+  }
+  // 鸟叫、虫叫的一个音：频率按 f(u) 走（u 从 0 到 1），两头圆滑
+  function note(out, sr, o) {
+    const i0 = Math.round(o.t * sr); if (i0 >= out.length) return;
+    const n = Math.min(out.length - i0, Math.ceil(o.len * sr)), att = o.att ?? 0.2, rel = o.rel ?? 0.35, a = o.a ?? 1, h2 = o.h2 ?? 0.12;
+    let ph = 0;
+    for (let i = 0; i < n; i++) { const u = i / n; ph += TAU * o.f(u) / sr; const e = Math.sin(Math.PI / 2 * cl(Math.min(u / att, (1 - u) / rel), 0, 1)) ** 2; out[i0 + i] += a * e * (Math.sin(ph) + h2 * Math.sin(2 * ph + 0.5)); }
+  }
+
+  // ---- 收尾 ----
+  function peak(x) { let m = 0; for (let i = 0; i < x.length; i++) m = Math.max(m, Math.abs(x[i])); return m; }
+  function rms(x) { let s = 0; for (let i = 0; i < x.length; i++) s += x[i] * x[i]; return Math.sqrt(s / x.length); }
+  function gain(x, k) { for (let i = 0; i < x.length; i++) x[i] *= k; return x; }
+  const normPeak = (x, p = 0.9) => gain(x, p / Math.max(peak(x), 1e-9));
+  const normRms = (x, v) => gain(x, v / Math.max(rms(x), 1e-9));
+  function fadeOut(x, sr, sec = 0.01) { const n = Math.min(x.length, Math.ceil(sec * sr)); for (let i = 0; i < n; i++) x[x.length - 1 - i] *= i / n; return x; }
+  function dcBlock(x, sr, f = 20) { const k = Math.exp(-TAU * f / sr); let px = 0, py = 0; for (let i = 0; i < x.length; i++) { const y = x[i] - px + k * py; px = x[i]; py = y; x[i] = y; } return x; }
+  // 首尾接好：最后 sec 秒叠到开头上（等功率交叉淡化）再截掉，循环播放时听不出接缝
+  function loopable(x, sr, sec) { const L = Math.ceil(sec * sr), n = x.length - L, y = new Float32Array(n); for (let i = 0; i < n; i++) y[i] = i < L ? x[i] * Math.sqrt(i / L) + x[n + i] * Math.sqrt(1 - i / L) : x[i]; return y; }
+  const trim = (x, sr, sec) => fadeOut(x.slice(0, Math.min(x.length, Math.ceil(sec * sr))), sr, 0.02);
+  const done = (x, sr, p = 0.9) => normPeak(fadeOut(dcBlock(x, sr, 25), sr, 0.02), p);      // 一次性的声音：去直流、末尾淡出、峰值归一（多响由放的时候决定）
+
+  // ============================================================
+  //  脚步
+  //  一步 = 脚跟落地 + 脚掌落地（走路时隔得开，跑起来几乎连在一起）+ 鞋底蹭了一下地 + 这种地面自己的声音。
+  //  主角是个穿靴子的瘦小孩子：分量不重，鞋底是硬的。o: { run 0..1 跑, soft 0..1 蹑着脚, land 0..1 从高处落下（两只脚一起，重）}
+  // ============================================================
+  const METAL = [[310, 0.12, 0.18], [745, 0.09, 0.18], [1290, 0.07, 0.15], [1960, 0.06, 0.16], [2830, 0.045, 0.12], [4100, 0.03, 0.08]];
+  const WOOD = [[220, 0.04, 0.35], [460, 0.03, 0.3], [720, 0.022, 0.22], [1150, 0.016, 0.15], [1800, 0.01, 0.1]];
+  // 落地的分量：一下闷的（鞋底拍在地上）+ 一点很低的“咚”。低音只放一点点：笔记本和手机的喇叭放不出 150 赫兹以下，脚步声得靠中高频认出来
+  const thud = (out, sr, r, s, t, k, f = 90, lp = 900) => {
+    noise(out, sr, r, { t, a: 0.55 * k, lp, hp: 160, att: 0.0012, dec: 0.011, len: 0.07 });
+    sine(out, sr, { t, f0: f * 1.3, f1: f * 0.85, len: 0.07, a: 0.06 * k * Math.min(s.heavy, 1.6), att: 0.0015, dec: 0.016 });
+  };
+  const slap = (out, sr, r, s, t, k, f = 1700) => noise(out, sr, r, { t, a: 0.32 * k * s.bright, bp: [f, 0.9], att: 0.0006, dec: 0.006, len: 0.035 });   // 硬鞋底“啪”的那一下
+  const SURF = {
+    concrete(out, sr, r, s) {                                     // 水泥地：脆的“嗒”，地上有点砂
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) { noise(out, sr, r, { t, a: 0.55 * k * s.bright, hp: 1400, lp: 9000, dec: 0.0025, len: 0.02 }); slap(out, sr, r, s, t, k); thud(out, sr, r, s, t, k, 95, 1100); }
+      noise(out, sr, r, { t: 0.004, a: 0.07 * (1 + s.run), bp: [2600, 0.8], att: 0.012, dec: 0.03, len: 0.12 });
+      grains(out, sr, r, { t0: 0, t1: s.gap + 0.05, n: 5 + (r() * 6 | 0), a: 0.14, dec: [0.0002, 0.0006], hp: 3500 });
+    },
+    metal(out, sr, r, s) {                                        // 铁板：磕上去“当”的一点余音，松了的地方跟着哐啷一下
+      const M = jit(r, METAL, 0.03);
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) { noise(out, sr, r, { t, a: 0.45 * k * s.bright, hp: 1800, lp: 10000, dec: 0.0018, len: 0.015 }); slap(out, sr, r, s, t, k * 0.8, 2300); thud(out, sr, r, s, t, k * 0.7, 115, 1300); modes(out, sr, { t, a: 0.55 * k, modes: M }); }
+      for (let i = 0, n = r() * 3 | 0; i < n; i++) modes(out, sr, { t: s.gap + U(r, 0.012, 0.05), a: U(r, 0.08, 0.2), modes: M.map(([f, t, a]) => [f * 1.37, t * 0.4, a]) });
+    },
+    wood(out, sr, r, s) {                                         // 木头：空空的“咚”
+      const M = jit(r, WOOD, 0.05);
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) { noise(out, sr, r, { t, a: 0.3 * k * s.bright, hp: 900, lp: 6000, dec: 0.003, len: 0.02 }); slap(out, sr, r, s, t, k, 1300); modes(out, sr, { t, a: 0.6 * k, modes: M }); thud(out, sr, r, s, t, k * 0.6, 105, 800); }
+      noise(out, sr, r, { t: 0.01, a: 0.04, bp: [1800, 0.9], att: 0.01, dec: 0.03, len: 0.1 });
+    },
+    dirt(out, sr, r, s) {                                         // 土路：软的“噗”，土里几颗小石子
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) { thud(out, sr, r, s, t, k, 82, 700); slap(out, sr, r, s, t, k * 0.55, 1200); }
+      grains(out, sr, r, { t0: 0, t1: s.gap + 0.06, n: 8 + (r() * 10 | 0), a: 0.16, dec: [0.0003, 0.0012], bp: [3000, 0.6] });
+      noise(out, sr, r, { t: 0.01, a: 0.09, bp: [1300, 0.6], att: 0.015, dec: 0.04, len: 0.14 });
+    },
+    leaves(out, sr, r, s) {                                       // 干落叶：踩上去一片片碎开，叶子落回去还沙沙两下
+      SURF.dirt(out, sr, r, { ...s, heavy: s.heavy * 0.7 });
+      const n = Math.round(U(r, 50, 90) * (1 + 0.5 * s.run + s.land));
+      grains(out, sr, r, { t0: 0, t1: s.gap + U(r, 0.08, 0.16), n, a: 0.35, pow: 2.2, dec: [0.0002, 0.0009], hp: 1800, lp: 9000, shape: u => Math.exp(-u * 2.2) });
+      noise(out, sr, r, { t: 0.02, a: 0.05, bp: [4200, 0.7], att: 0.02, dec: 0.06, len: 0.25 });
+    },
+    forest(out, sr, r, s) {                                       // 林子里的土路：土上一层不厚的落叶，踩上去碎几片
+      SURF.dirt(out, sr, r, s);
+      grains(out, sr, r, { t0: 0, t1: s.gap + U(r, 0.06, 0.12), n: Math.round(U(r, 18, 35) * (1 + 0.5 * s.run + s.land)), a: 0.24, pow: 2.2, dec: [0.0002, 0.0008], hp: 1800, lp: 9000, shape: u => Math.exp(-u * 2.5) });
+    },
+    grass(out, sr, r, s) {                                        // 草地：草叶擦过鞋面的“唰”，底下是软土
+      for (const [t, k] of [[0, 1], [s.gap, s.toe * 0.8]]) { thud(out, sr, r, s, t, k * 0.8, 78, 600); slap(out, sr, r, s, t, k * 0.25, 1100); }
+      noise(out, sr, r, { t: 0, a: 0.24 * (1 + 0.4 * s.run), hp: 2000, lp: 9000, bp: [3900, 0.6], att: 0.025, dec: 0.05, len: 0.25 });
+      grains(out, sr, r, { t0: 0.005, t1: s.gap + 0.08, n: 14 + (r() * 10 | 0), a: 0.12, dec: [0.0003, 0.001], bp: [2600, 0.7] });
+    },
+    gravel(out, sr, r, s) {                                       // 碎石：一颗颗石子互相磕、滚开
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) { thud(out, sr, r, s, t, k * 0.8, 88, 700); slap(out, sr, r, s, t, k * 0.3, 1400); }
+      const n = Math.round(U(r, 35, 60) * (1 + 0.6 * s.run + s.land));
+      ticks(out, sr, r, { t0: 0, t1: s.gap + U(r, 0.07, 0.13), n, a: 0.3, f: [1100, 4800], dec: [0.0008, 0.0025], shape: u => Math.exp(-u * 2) });
+      grains(out, sr, r, { t0: 0, t1: s.gap + 0.1, n: Math.round(n * 0.6), a: 0.12, dec: [0.0005, 0.002], bp: [1400, 0.6] });
+    },
+    sand(out, sr, r, s) {                                         // 沙土：被踩实的“嚓”，很细
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) thud(out, sr, r, s, t, k * 0.8, 75, 600);
+      noise(out, sr, r, { t: 0, a: 0.24, hp: 900, lp: 3200, att: 0.01, dec: 0.045, len: 0.2 });
+      grains(out, sr, r, { t0: 0, t1: s.gap + 0.08, n: 70, a: 0.05, dec: [0.0001, 0.0004], hp: 2500, lp: 7000 });
+    },
+    mud(out, sr, r, s) {                                          // 湿泥：“咕叽”一下，泥里冒几个小泡，抬脚时“啵”的一点吸力
+      for (const [t, k] of [[0, 1], [s.gap, s.toe * 0.7]]) {
+        thud(out, sr, r, s, t, k * 0.8, 72, 600);
+        noise(out, sr, r, { t: t + 0.004, a: 0.45 * k, bp: [900, 2.5], sweep: [900, 320, 0.09], att: 0.006, dec: 0.04, len: 0.16 });
+      }
+      for (let i = 0, n = 2 + (r() * 4 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0.02, 0.12), f: U(r, 500, 1300), a: U(r, 0.05, 0.12), tau: U(r, 0.006, 0.014) });
+      noise(out, sr, r, { t: s.gap + U(r, 0.12, 0.18), a: 0.14, bp: [320, 3], sweep: [320, 900, 0.07], att: 0.02, dec: 0.03, len: 0.12 });
+    },
+    rock(out, sr, r, s) {                                         // 山洞里湿的岩石：硬的“嗒”，贴着石头一点水声
+      for (const [t, k] of [[0, 1], [s.gap, s.toe]]) {
+        noise(out, sr, r, { t, a: 0.5 * k * s.bright, hp: 1700, lp: 9000, dec: 0.002, len: 0.015 });
+        noise(out, sr, r, { t, a: 0.3 * k, bp: [1100, 1.2], dec: 0.008, len: 0.05 });
+        slap(out, sr, r, s, t, k * 0.7, 1900); thud(out, sr, r, s, t, k * 0.7, 105, 900);
+        noise(out, sr, r, { t: t + 0.002, a: 0.12 * k, bp: [1700, 1.2], att: 0.002, dec: 0.02, len: 0.08 });
+      }
+      grains(out, sr, r, { t0: 0, t1: 0.05, n: 3 + (r() * 4 | 0), a: 0.1, dec: [0.0002, 0.0006], hp: 3000 });
+    },
+    puddle(out, sr, r, s) {                                       // 水洼：水被踩开，一串小水泡，溅起来的水珠落回来
+      SURF.dirt(out, sr, r, { ...s, heavy: s.heavy * 0.6, bright: s.bright * 0.5 });
+      noise(out, sr, r, { t: 0, a: 0.4, bp: [1700, 0.8], att: 0.002, dec: 0.05, len: 0.25 });
+      noise(out, sr, r, { t: s.gap, a: 0.22, bp: [2400, 0.8], att: 0.002, dec: 0.04, len: 0.2 });
+      for (let i = 0, n = 4 + (r() * 5 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0, 0.12), f: U(r, 450, 1600), a: U(r, 0.06, 0.16), tau: U(r, 0.008, 0.025), rise: U(r, 1.3, 2.2) });
+      for (let i = 0, n = 6 + (r() * 8 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0.08, 0.32), f: U(r, 2000, 4500), a: U(r, 0.015, 0.05), tau: U(r, 0.003, 0.008), rise: 1.4 });
+    },
+    wade(out, sr, r, s) {                                         // 蹚水（水到小腿）：腿推开水的“哗”，水的分量，很多水泡
+      noise(out, sr, r, { t: 0, a: 0.45, bp: [900, 0.7], att: 0.012, dec: 0.08, len: 0.4 });
+      noise(out, sr, r, { t: 0.02, a: 0.3, bp: [2200, 0.7], att: 0.006, dec: 0.06, len: 0.32 });
+      noise(out, sr, r, { t: 0, a: 0.3, lp: 350, att: 0.03, dec: 0.08, len: 0.32 });
+      for (let i = 0, n = 8 + (r() * 8 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0, 0.25), f: U(r, 300, 1300), a: U(r, 0.06, 0.18), tau: U(r, 0.01, 0.03), rise: U(r, 1.3, 2) });
+      for (let i = 0, n = 8 + (r() * 8 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0.12, 0.42), f: U(r, 1800, 4200), a: U(r, 0.015, 0.05), tau: U(r, 0.003, 0.008), rise: 1.4 });
+    },
+  };
+  function step(sr, r, kind, o = {}) {
+    const run = o.run ?? 0, land = o.land ?? 0, soft = o.soft ?? 0, out = buf(sr, 0.5 + 0.25 * land);
+    const s = { run, land, soft,
+      gap: land ? U(r, 0.01, 0.028) : mix(U(r, 0.07, 0.1), U(r, 0.022, 0.04), run),        // 脚跟到脚掌隔多久
+      toe: land ? U(r, 0.75, 0.95) : mix(0.62, 0.38, run) * U(r, 0.8, 1.15),                // 脚掌那一下有多重
+      heavy: (1 + 0.45 * run + 1.3 * land) * (1 - 0.5 * soft),                               // 落地的分量
+      bright: (1 + 0.25 * run + 0.2 * land) * (1 - 0.55 * soft) };                           // 磕地那一下有多脆
+    (SURF[kind] ?? SURF.concrete)(out, sr, r, s);
+    if (land) noise(out, sr, r, { t: 0.012, a: 0.1 * land, bp: [1300, 0.6], att: 0.012, dec: 0.05, len: 0.25 });   // 衣服跟着一抖
+    return done(out, sr);
+  }
+
+  // ============================================================
+  //  呼吸
+  //  气声：噪声经过口腔的几个共振峰（小孩的，比大人高）；吸气窄一些、嘶嘶声多，呼气张着嘴像“哈”。
+  //  o: { dir 'in' | 'out', len 秒, k 0..1 用力（累）的程度, voice 0..1 带多少嗓音, nose 0..1 闭着嘴用鼻子, att / rel 起、落各占多少, f0 嗓音的音高 }
+  // ============================================================
+  function breath(sr, r, o) {
+    const len = o.len, k = o.k ?? 0.5, inh = o.dir === 'in', out = buf(sr, len + 0.02), N = Math.floor(len * sr);
+    const F = inh ? [[1000, 2.2, 0.55], [1850, 3, 0.75], [3200, 3.5, 1], [4700, 3, 0.75]] : [[860, 2, 1], [1560, 2.8, 0.8], [2950, 3.5, 0.55], [4400, 3, 0.3]];
+    const sh = U(r, 0.94, 1.06), fs = F.map(([f, q]) => BQ(sr, 'bp', f * sh, q)), nl = BQ(sr, 'lp', inh ? 1700 : 1100, 0.9), nb = BQ(sr, 'bp', inh ? 3600 : 2800, 1.2), hp = BQ(sr, 'hp', 160, 0.7);
+    const pink = pinkGen(r), white = whiteGen(r), flut = wander(sr, r, 28), slow = wander(sr, r, 3.2), vib = wander(sr, r, 6);
+    const att = o.att ?? (inh ? mix(0.42, 0.3, k) : mix(0.16, 0.1, k)), rel = o.rel ?? (inh ? 0.22 : mix(0.62, 0.5, k));
+    const swp = inh ? 1.07 : 0.96, voice = o.voice ?? 0, nose = o.nose ?? 0, f0b = (o.f0 ?? (inh ? 430 : 300)) * U(r, 0.95, 1.05);
+    let gph = 0, gPrev = 0;
+    for (let i = 0; i < N; i++) {
+      const u = i / N;
+      const e = (u < att ? Math.sin(Math.PI / 2 * u / att) ** 2 : u > 1 - rel ? Math.sin(Math.PI / 2 * (1 - u) / rel) ** 2 : 1) * (1 + 0.2 * flut() + 0.08 * slow());   // 一口气的形状，气流本身是抖的
+      if ((i & 31) === 0) for (let j = 0; j < 4; j++) fs[j].set(F[j][0] * sh * mix(1, swp, u), F[j][1]);
+      let src = 0.65 * pink() + 0.35 * white();
+      if (voice > 0) {                                            // 嗓音：声门一开一合的脉冲（用它的变化量当激励），只在一口气的中段；带嗓音时气声也跟着一开一合
+        const f0 = f0b * (1 + (inh ? 0.12 : -0.08) * u) * (1 + 0.025 * vib());
+        gph += f0 / sr; if (gph >= 1) gph -= 1;
+        const g = gph < 0.4 ? 0.5 - 0.5 * Math.cos(Math.PI * gph / 0.4) : gph < 0.56 ? Math.cos(Math.PI / 2 * (gph - 0.4) / 0.16) : 0;
+        const v = (g - gPrev) * (sr / f0) * 0.12, ve = voice * Math.sin(Math.PI * u) ** 2 * (0.5 + 0.5 * k); gPrev = g;
+        src = src * (1 - 0.5 * ve * (1 - g)) + v * ve * 2.2;
+      }
+      let y = 0; for (let j = 0; j < 4; j++) y += F[j][2] * fs[j].run(src);
+      if (nose > 0) y = mix(y, 1.6 * nl.run(src) + 0.5 * nb.run(white()) * (inh ? 1 : 0.6), nose);   // 鼻息：低处闷闷的一团 + 鼻孔里一点嘶嘶声
+      out[i] = hp.run(y) * e;
+    }
+    return normPeak(fadeOut(out, sr, 0.01), 0.9);
+  }
+
+  // ============================================================
+  //  环境的底子（循环用）：风吹树叶、流水、蟋蟀、喷灌头
+  // ============================================================
+  // 风吹树叶：沙沙的一层 + 叶子互相碰的细碎声；一阵一阵。dry 0 = 嫩叶（软，“唰唰”），1 = 枯叶（脆，“沙啦啦”）
+  function rustle(sr, r, o = {}) {
+    const len = o.len ?? 7, dry = o.dry ?? 0.5, out = buf(sr, len + 0.6), white = whiteGen(r), m1 = wander(sr, r, 0.7), m2 = wander(sr, r, 3), m3 = wander(sr, r, 11);
+    const hp = BQ(sr, 'hp', 700, 0.6), lp = BQ(sr, 'lp', mix(4200, 7500, dry), 0.6), cr = [BQ(sr, 'bp', 2300, 1.2), BQ(sr, 'bp', 4100, 1.4), BQ(sr, 'bp', 6800, 1.5)];
+    const dens = mix(160, 900, dry) / sr, g = [0, 0, 0], gd = [0, 0, 0];
+    for (let i = 0; i < out.length; i++) {
+      const a = cl(0.55 + 0.35 * m1() + 0.12 * m2() + 0.06 * m3(), 0.05, 1.2);
+      let x = lp.run(hp.run(white())) * a * a * mix(1.0, 0.55, dry);
+      for (let j = 0; j < 3; j++) {
+        if (r() < dens * a * a * (j === 2 ? 0.6 : 1)) { g[j] = Math.pow(r(), 2.5) * (j ? 0.8 : 1); gd[j] = Math.exp(-1 / (sr * U(r, 0.0002, 0.0012))); }
+        x += cr[j].run(white() * g[j]) * mix(0.6, 1.4, dry); g[j] *= gd[j]; if (g[j] < 1e-6) g[j] = 0;
+      }
+      out[i] = x;
+    }
+    const y = normRms(loopable(out, sr, 0.6), 0.18); for (let i = 0; i < y.length; i++) y[i] = 0.5 * Math.tanh(y[i] / 0.5);
+    return normRms(y, 0.18);
+  }
+  // 流水：很多个小水泡（每个“咕”一声往上滑）+ 一层哗哗的底子。lo / hi 水泡的音高范围，rate 每秒多少个
+  function babble(sr, r, o = {}) {
+    const len = o.len ?? 7, out = buf(sr, len + 0.5), rate = o.rate ?? 260, lo = o.lo ?? 350, hi = o.hi ?? 2600, white = whiteGen(r), bp = BQ(sr, 'bp', 700, 0.6), lp = BQ(sr, 'lp', 380, 0.7), m = wander(sr, r, 2);
+    for (let i = 0; i < out.length; i++) { const w = white(); out[i] = (0.35 * bp.run(w) + 0.5 * lp.run(w)) * (0.8 + 0.2 * m()); }
+    for (let t = 0; t < len + 0.4; t += -Math.log(1 - r() * 0.999) / rate) {
+      const f = lo * Math.pow(hi / lo, Math.pow(r(), 1.6));
+      bubble(out, sr, { t, f, a: U(r, 0.2, 1) * Math.pow(lo / f, 0.3) * 0.5, tau: cl(0.9 / f, 0.002, 0.02) * U(r, 0.7, 1.4), rise: U(r, 1.2, 1.9) });
+    }
+    return normRms(loopable(out, sr, 0.5), 0.15);
+  }
+  // 一片蟋蟀：每一只隔一会儿“唧唧唧”一串（每串三五下），音高、快慢、远近各不相同
+  function crickets(sr, r, o = {}) {
+    const len = o.len ?? 9, out = buf(sr, len + 0.6), n = o.n ?? 7;
+    for (let c = 0; c < n; c++) {
+      const f = U(r, 3900, 5300), per = U(r, 0.45, 1.2), pulses = 3 + (r() * 3 | 0), pr = U(r, 28, 46), pl = U(r, 0.009, 0.016), a = U(r, 0.25, 1) ** 2;
+      for (let t = U(r, 0, per); t < len + 0.5; t += per * U(r, 0.92, 1.08)) {
+        if (r() < 0.12) continue;                                 // 偶尔歇一下
+        for (let p = 0; p < pulses; p++) note(out, sr, { t: t + p / pr, len: pl, a: a * (p ? 1 : 0.7), h2: 0.05, att: 0.3, rel: 0.4, f: () => f });
+      }
+    }
+    return normRms(loopable(out, sr, 0.5), 0.12);
+  }
+  // 喷灌头：一直“嘶——”地喷，转着的那一种还一下下“嚓嚓嚓”
+  function sprinkler(sr, r) {
+    const len = 6, out = buf(sr, len + 0.4), white = whiteGen(r), hp = BQ(sr, 'hp', 2500, 0.7), bp = BQ(sr, 'bp', 6000, 0.5), w = wander(sr, r, 1.5);
+    for (let i = 0; i < out.length; i++) out[i] = 0.5 * bp.run(hp.run(white())) * (0.8 + 0.2 * w());
+    for (let t = 0.05; t < len + 0.3; t += 1 / U(r, 6.5, 7.5)) noise(out, sr, r, { t, a: 0.6, hp: 2000, bp: [4500, 1], att: 0.002, dec: 0.012, len: 0.05 });
+    return normRms(loopable(out, sr, 0.4), 0.1);
+  }
+
+  // ============================================================
+  //  鸟、虫
+  // ============================================================
+  function songbird(sr, r, o = {}) {                              // 一只小鸟叫一句（四种叫法）
+    const type = o.type ?? (r() * 4 | 0), out = buf(sr, 2.4);
+    let t = 0.02;
+    if (type === 0) {                                             // 一串颤音：同一个短音很快地重复
+      const n = 7 + (r() * 9 | 0), f0 = U(r, 4200, 5800), d = U(r, 0.045, 0.065), drop = U(r, 0.25, 0.4);
+      for (let i = 0; i < n; i++, t += d) note(out, sr, { t, len: d * 0.7, a: Math.sin(Math.PI * (i + 1) / (n + 1)) ** 0.5, f: u => f0 * (1 - drop * u) });
+    } else if (type === 1) {                                      // 两个音一组，重复几遍（“嘀—啾”）
+      const n = 2 + (r() * 3 | 0), fa = U(r, 3600, 4600), fb = fa * U(r, 0.68, 0.8);
+      for (let i = 0; i < n; i++) { note(out, sr, { t, len: 0.09, f: u => fa * (1 + 0.04 * u) }); note(out, sr, { t: t + 0.13, len: 0.11, f: u => fb * (1 - 0.1 * u) }); t += U(r, 0.3, 0.36); }
+    } else if (type === 2) {                                      // 几声往上挑的短叫
+      for (let i = 0, n = 2 + (r() * 4 | 0); i < n; i++) { const f = U(r, 2800, 4200), k = U(r, 1.2, 1.45); note(out, sr, { t, len: U(r, 0.05, 0.08), f: u => f * (1 + (k - 1) * u) }); t += U(r, 0.09, 0.2); }
+    } else {                                                      // 一句婉转的：高低起伏，有的音带一点颤
+      for (let i = 0, n = 4 + (r() * 5 | 0); i < n; i++) {
+        const f = U(r, 2600, 5200), g = U(r, 0.75, 1.3), v = r() < 0.4 ? U(r, 25, 45) : 0, len = U(r, 0.06, 0.16);
+        note(out, sr, { t, len, f: u => f * (1 + (g - 1) * u) * (1 + (v ? 0.06 * Math.sin(TAU * v * u * len) : 0)) }); t += len + U(r, 0.02, 0.07);
+      }
+    }
+    return done(trim(out, sr, t + 0.1), sr);
+  }
+  function coo(sr, r, o = {}) {                                   // 斑鸠“咕—咕咕—咕”（低、软，带一点气）；pigeon：鸽子，更低，喉咙里打着滚
+    const pg = !!o.pigeon, out = buf(sr, 2.2), f0 = pg ? U(r, 340, 400) : U(r, 480, 560), white = whiteGen(r), lp = BQ(sr, 'lp', 900, 0.7);
+    const pat = pg ? [[0, 0.5], [0.62, 0.35]] : [[0, 0.32], [0.45, 0.55], [1.12, 0.36]];
+    for (const [t, len] of pat) {
+      note(out, sr, { t, len, a: 0.8, h2: 0.28, att: 0.3, rel: 0.45, f: u => f0 * (1.02 - 0.06 * u) * (pg ? 1 + 0.03 * Math.sin(TAU * 26 * u * len) : 1) });
+      const i0 = Math.round(t * sr), n = Math.round(len * sr); for (let i = 0; i < n; i++) out[i0 + i] += 0.05 * lp.run(white()) * Math.sin(Math.PI * i / n);
+    }
+    return done(trim(out, sr, pg ? 1.1 : 1.6), sr);
+  }
+  function crow(sr, r) {                                          // 乌鸦“呱——”：粗哑。很多谐波 + 一点噪声，过两三个共振峰；音高先往上再往下
+    const n = 1 + (r() * 3 | 0), out = buf(sr, n * 0.7 + 0.3), white = whiteGen(r);
+    const fA = BQ(sr, 'bp', 1250 * U(r, 0.9, 1.1), 3), fB = BQ(sr, 'bp', 2500 * U(r, 0.9, 1.1), 4), fC = BQ(sr, 'bp', 700, 2);
+    let t = 0.02;
+    for (let c = 0; c < n; c++) {
+      const len = U(r, 0.26, 0.36), f0 = U(r, 480, 600), i0 = Math.round(t * sr), N = Math.round(len * sr); let ph = 0;
+      for (let i = 0; i < N; i++) {
+        const u = i / N, f = f0 * (u < 0.25 ? 1 + u : 1.25 - 0.4 * (u - 0.25) / 0.75); ph += f / sr; ph -= Math.floor(ph);
+        const src = (bsaw(ph, 12) * 0.8 + 0.45 * white()) * (1 + 0.5 * Math.sin(TAU * 70 * i / sr)), e = Math.min(1, u / 0.08) * Math.pow(1 - u, 0.7);
+        out[i0 + i] += e * (fA.run(src) + 0.6 * fB.run(src) + 0.5 * fC.run(src));
+      }
+      t += len + U(r, 0.22, 0.34);
+    }
+    return done(trim(out, sr, t), sr);
+  }
+  function woodpecker(sr, r) {                                    // 啄木鸟：一阵很快的“笃笃笃”，越来越弱
+    const n = 12 + (r() * 10 | 0), rate = U(r, 15, 19), out = buf(sr, n / rate * 1.3 + 0.2), M = jit(r, [[1150, 0.006, 1], [2350, 0.004, 0.55], [3700, 0.0025, 0.3]], 0.05);
+    for (let i = 0; i < n; i++) { const t = 0.01 + i / rate * (1 + 0.012 * i), a = (1 - 0.7 * i / n) * U(r, 0.85, 1); modes(out, sr, { t, a, modes: M }); noise(out, sr, r, { t, a: 0.25 * a, hp: 2500, dec: 0.0008, len: 0.006 }); }
+    return done(out, sr);
+  }
+  function bee(sr, r) {                                           // 一只蜜蜂嗡嗡地飞过去：音高微微抖，过来的时候高一点、走的时候低一点
+    const len = U(r, 1.4, 2.2), out = buf(sr, len), f0 = U(r, 200, 240), w = wander(sr, r, 5), lp = BQ(sr, 'lp', 2200, 0.7); let ph = 0;
+    for (let i = 0, N = out.length; i < N; i++) {
+      const u = i / N; ph += f0 * (1 + 0.035 * (0.5 - u)) * (1 + 0.025 * w()) / sr; ph -= Math.floor(ph);
+      out[i] = lp.run(bsaw(ph, 10)) * Math.sin(Math.PI * u) ** 2 * (1 + 0.15 * Math.sin(TAU * 18 * i / sr));
+    }
+    return done(out, sr);
+  }
+  function owl(sr, r) {                                           // 猫头鹰“呼——，呼呼”
+    const out = buf(sr, 2), f0 = U(r, 360, 400), white = whiteGen(r), lp = BQ(sr, 'lp', 700, 0.7);
+    for (const [t, len, k] of [[0, 0.5, 1], [0.85, 0.22, 0.85], [1.15, 0.4, 0.9]]) {
+      note(out, sr, { t, len, a: k * 0.7, h2: 0.08, att: 0.25, rel: 0.5, f: u => f0 * (1 + 0.04 * Math.sin(Math.PI * u)) });
+      const i0 = Math.round(t * sr), n = Math.round(len * sr); for (let i = 0; i < n; i++) out[i0 + i] += 0.06 * k * lp.run(white()) * Math.sin(Math.PI * i / n);
+    }
+    return done(out, sr);
+  }
+
+  // ============================================================
+  //  远处的、偶尔一下的声音（每一章一组，见 52-audio.js 的 FAR）
+  // ============================================================
+  function clank(sr, r) {                                         // 远处一声铁器相撞：低的几个音拖得长
+    const out = buf(sr, 1.6), M = jit(r, [[170, 0.45, 0.5], [415, 0.32, 0.4], [860, 0.22, 0.28], [1390, 0.15, 0.18], [2210, 0.1, 0.1], [3300, 0.06, 0.05]], 0.08);
+    noise(out, sr, r, { t: 0, a: 0.5, lp: 3000, dec: 0.006, len: 0.04 }); modes(out, sr, { t: 0, a: 0.8, modes: M });
+    if (r() < 0.5) modes(out, sr, { t: U(r, 0.12, 0.3), a: U(r, 0.2, 0.4), modes: M });
+    return done(out, sr);
+  }
+  function chain(sr, r) {                                         // 铁链晃了一下：几声细碎的“叮铃”
+    const out = buf(sr, 1.0);
+    for (let t = 0.01, i = 0, n = 6 + (r() * 6 | 0); i < n; i++, t += U(r, 0.03, 0.12)) modes(out, sr, { t, a: U(r, 0.3, 1), modes: jit(r, [[1900, 0.03, 1], [3100, 0.02, 0.6], [4600, 0.012, 0.3]], 0.1) });
+    return done(out, sr);
+  }
+  function steam(sr, r) {                                         // 管子泄了一口气：“嗤——”
+    const out = buf(sr, 1.4);
+    noise(out, sr, r, { t: 0, a: 1, hp: 1200, bp: [3500, 0.5], att: 0.06, dec: 0.35, len: 1.3 }); noise(out, sr, r, { t: 0, a: 0.4, lp: 400, att: 0.05, dec: 0.3, len: 1.2 });
+    return done(out, sr);
+  }
+  function creak(sr, r) {                                         // “吱——”：一下下很密的摩擦（快慢在变），每一下敲响铁皮 / 木头的几个音
+    const len = U(r, 0.7, 1.4), out = buf(sr, len + 0.15), M = jit(r, [[340, 0.02, 1], [790, 0.014, 0.6], [1420, 0.01, 0.35], [2300, 0.007, 0.2]], 0.1), p1 = r(), p2 = r();
+    for (let t = 0; t < len;) { const u = t / len; modes(out, sr, { t, a: 0.3 * Math.sin(Math.PI * u) ** 0.7 * U(r, 0.7, 1), modes: M }); t += 1 / (38 + 18 * Math.sin(TAU * (0.6 * u + p1)) + 9 * Math.sin(TAU * (2.1 * u + p2))); }
+    return done(out, sr);
+  }
+  function rattle(sr, r) {                                        // 风刮得铁皮哐哐响：几下很快的磕碰
+    const out = buf(sr, 1.3), M = jit(r, [[520, 0.06, 0.6], [1280, 0.04, 0.45], [2450, 0.025, 0.3], [3900, 0.015, 0.15]], 0.06);
+    for (let t = 0.01, i = 0, n = 3 + (r() * 8 | 0); i < n; i++, t += U(r, 0.03, 0.11)) { modes(out, sr, { t, a: U(r, 0.3, 1), modes: M }); noise(out, sr, r, { t, a: 0.3, hp: 1500, dec: 0.002, len: 0.01 }); }
+    return done(out, sr);
+  }
+  function twig(sr, r) {                                          // 一根枯枝“咔”地断了
+    const out = buf(sr, 0.3), M = [[U(r, 1500, 2200), 0.01, 1], [U(r, 2900, 3800), 0.006, 0.6]];
+    noise(out, sr, r, { t: 0, a: 0.6, hp: 1400, dec: 0.003, len: 0.02 }); modes(out, sr, { t: 0, a: 0.5, modes: M });
+    noise(out, sr, r, { t: U(r, 0.025, 0.05), a: 0.25, hp: 1800, dec: 0.002, len: 0.015 });
+    return done(out, sr);
+  }
+  function chime(sr, r) {                                         // 广播前的提示音“叮——咚——”
+    const out = buf(sr, 3);
+    for (const [t, f] of [[0, 659.3], [0.55, 523.3]]) { sine(out, sr, { t, f0: f, len: 2.2, a: 0.5, att: 0.006, dec: 0.6, h2: 0.25 }); sine(out, sr, { t, f0: f * 3.01, len: 0.8, a: 0.08, att: 0.004, dec: 0.15 }); }
+    return done(out, sr);
+  }
+  function shutter(sr, r) {                                       // 远处一扇卷帘门拉下来：一长串很密的铁皮磕碰，最后“哐”一下
+    const len = U(r, 0.9, 1.5), out = buf(sr, len + 0.9), M = jit(r, [[380, 0.03, 0.5], [920, 0.025, 0.4], [1700, 0.02, 0.3], [2900, 0.012, 0.15]], 0.05);
+    for (let t = 0; t < len; t += U(r, 0.018, 0.032)) modes(out, sr, { t, a: 0.15 * U(r, 0.5, 1), modes: M });
+    modes(out, sr, { t: len, a: 0.8, modes: jit(r, [[140, 0.25, 0.6], [330, 0.18, 0.4], [700, 0.12, 0.25]], 0.05) });
+    return done(out, sr);
+  }
+  function knock(sr, r) {                                         // 管子里“咚”的一声（水锤）
+    const out = buf(sr, 0.9), M = jit(r, [[190, 0.14, 0.7], [480, 0.09, 0.4], [930, 0.05, 0.2], [1600, 0.03, 0.1]], 0.06);
+    noise(out, sr, r, { t: 0, a: 0.3, lp: 1500, dec: 0.006, len: 0.03 }); modes(out, sr, { t: 0, a: 0.8, modes: M });
+    if (r() < 0.6) modes(out, sr, { t: U(r, 0.12, 0.2), a: 0.35, modes: M });
+    return done(out, sr);
+  }
+  function zap(sr, r) {                                           // 电线打火：一串很碎的噼啪 + 一下 100 赫兹的嗡
+    const out = buf(sr, 0.7);
+    grains(out, sr, r, { t0: 0, t1: U(r, 0.15, 0.35), n: 25 + (r() * 30 | 0), a: 0.8, dec: [0.0001, 0.0005], hp: 2000, pow: 1.5 });
+    for (let i = 0, n = Math.round(0.3 * sr); i < n; i++) out[i] += 0.12 * bsaw(100 * i / sr, 20) * Math.exp(-i / (0.08 * sr));
+    return done(out, sr);
+  }
+  function relay(sr, r) {                                         // 继电器“咔哒”
+    const out = buf(sr, 0.2);
+    for (const [t, a] of [[0, 1], [U(r, 0.04, 0.07), 0.5]]) { noise(out, sr, r, { t, a: 0.6 * a, hp: 2500, dec: 0.0008, len: 0.005 }); modes(out, sr, { t, a: 0.3 * a, modes: [[U(r, 2200, 2800), 0.006, 1], [U(r, 4800, 5600), 0.003, 0.5]] }); }
+    return done(out, sr);
+  }
+  function hum2(sr, r) {                                          // 远处一台机器转起来又停下：低低的“嗡——”
+    const len = U(r, 1.6, 2.6), out = buf(sr, len), f = U(r, 70, 110); let ph = 0;
+    for (let i = 0, N = out.length; i < N; i++) { const u = i / N; ph += f * (0.9 + 0.2 * Math.sin(Math.PI * u)) / sr; ph -= Math.floor(ph); out[i] = bsaw(ph, 8) * Math.sin(Math.PI * u) ** 2; }
+    return done(out, sr);
+  }
+  function pebbles(sr, r) {                                       // 几颗小石子从岩壁上滚下来：一下下弹跳，越来越快、越来越轻
+    const out = buf(sr, 1.4); let t = 0.01, gap = U(r, 0.16, 0.24), a = 1;
+    for (let i = 0, n = 4 + (r() * 5 | 0); i < n; i++) { ticks(out, sr, r, { t0: t, t1: t + 0.01, n: 1 + (r() * 2 | 0), a, f: [1400, 3800], dec: [0.003, 0.008], pow: 0.5 }); t += gap; gap *= U(r, 0.6, 0.8); a *= U(r, 0.6, 0.85); }
+    return done(out, sr);
+  }
+  function rumble(sr, r) {                                        // 很远很深的一阵隆隆
+    const len = U(r, 2, 3.2), out = buf(sr, len), b = brownGen(r), lp = BQ(sr, 'lp', 110, 0.7), lp2 = BQ(sr, 'lp', 110, 0.7);
+    for (let i = 0, N = out.length; i < N; i++) out[i] = lp2.run(lp.run(b())) * Math.sin(Math.PI * i / N) ** 1.5;
+    return done(out, sr);
+  }
+  function plop(sr, r) {                                          // 有什么掉进了水里
+    const out = buf(sr, 0.5);
+    bubble(out, sr, { t: 0.002, f: U(r, 350, 700), a: 0.7, tau: U(r, 0.03, 0.06), rise: 1.8 }); noise(out, sr, r, { t: 0, a: 0.25, bp: [1100, 0.8], dec: 0.04, len: 0.2 });
+    for (let i = 0; i < 4; i++) bubble(out, sr, { t: U(r, 0.06, 0.25), f: U(r, 1500, 3500), a: 0.08, tau: 0.006, rise: 1.4 });
+    return done(out, sr);
+  }
+  function gurgle(sr, r) {                                        // 管子里的水“咕噜咕噜”
+    const out = buf(sr, 1.0);
+    for (let i = 0, n = 12 + (r() * 12 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0, 0.7), f: U(r, 180, 600), a: U(r, 0.2, 0.6), tau: U(r, 0.02, 0.05), rise: U(r, 1.3, 1.9) });
+    return done(out, sr);
+  }
+  function drip(sr, r, o = {}) {                                  // 一滴水落进水里：“叮”的一下往上滑
+    const out = buf(sr, 0.25), f = U(r, 1100, 2800) * (o.k ?? 1);
+    noise(out, sr, r, { t: 0, a: 0.15, hp: 3000, dec: 0.0006, len: 0.004 }); bubble(out, sr, { t: 0.001, f, a: 0.7, tau: U(r, 0.012, 0.03), rise: U(r, 1.5, 2.3) });
+    return done(out, sr);
+  }
+
+  // ============================================================
+  //  水里
+  // ============================================================
+  function stroke(sr, r, o = {}) {                                // 划一下水：在水面上“哗”，在水下闷闷的“呼”
+    const out = buf(sr, 0.6);
+    if (o.under) { noise(out, sr, r, { t: 0, a: 0.6, lp: 500, att: 0.08, dec: 0.12, len: 0.5, pink: true }); for (let i = 0; i < 3; i++) bubble(out, sr, { t: U(r, 0.05, 0.3), f: U(r, 200, 500), a: 0.2, tau: 0.03, rise: 1.4 }); }
+    else {
+      noise(out, sr, r, { t: 0, a: 0.4, bp: [1100, 0.7], att: 0.05, dec: 0.1, len: 0.5 }); noise(out, sr, r, { t: 0.05, a: 0.25, bp: [2600, 0.8], att: 0.03, dec: 0.08, len: 0.4 });
+      for (let i = 0, n = 3 + (r() * 4 | 0); i < n; i++) bubble(out, sr, { t: U(r, 0.02, 0.25), f: U(r, 500, 1500), a: U(r, 0.05, 0.12), tau: U(r, 0.008, 0.02), rise: 1.6 });
+      for (let i = 0; i < 5; i++) bubble(out, sr, { t: U(r, 0.1, 0.45), f: U(r, 2000, 4200), a: 0.03, tau: 0.004, rise: 1.4 });
+    }
+    return done(out, sr);
+  }
+  function blub(sr, r) {                                          // 嘴边冒出一个气泡（在水下听到的）
+    const out = buf(sr, 0.15); bubble(out, sr, { t: 0.002, f: U(r, 250, 600), a: 0.8, tau: U(r, 0.015, 0.03), rise: 1.5 }); return done(out, sr);
+  }
+  function heart(sr, r) {                                         // 心跳“咚—咚”
+    const out = buf(sr, 0.5); sine(out, sr, { t: 0, f0: 62, f1: 44, len: 0.14, a: 1, att: 0.004, dec: 0.04 }); sine(out, sr, { t: 0.24, f0: 55, f1: 40, len: 0.12, a: 0.65, att: 0.004, dec: 0.035 }); return done(out, sr);
+  }
+  function splash(sr, r, o = {}) {                                // 掉进水里：一大把水花，水下翻起一团气泡
+    const k = o.k ?? 1, out = buf(sr, 1.0);
+    noise(out, sr, r, { t: 0, a: 0.6, bp: [900, 0.7], att: 0.003, dec: 0.12 * k, len: 0.7 }); noise(out, sr, r, { t: 0.01, a: 0.4, bp: [2500, 0.8], att: 0.003, dec: 0.08, len: 0.5 });
+    noise(out, sr, r, { t: 0, a: 0.4, lp: 300, att: 0.004, dec: 0.06, len: 0.3 });
+    for (let i = 0, n = Math.round(8 + 12 * k); i < n; i++) bubble(out, sr, { t: U(r, 0.01, 0.35), f: U(r, 300, 1600), a: U(r, 0.06, 0.2), tau: U(r, 0.01, 0.035), rise: U(r, 1.3, 2.1) });
+    for (let i = 0, n = Math.round(8 + 10 * k); i < n; i++) bubble(out, sr, { t: U(r, 0.15, 0.7), f: U(r, 1800, 4500), a: U(r, 0.02, 0.06), tau: U(r, 0.003, 0.008), rise: 1.4 });
+    return done(out, sr);
+  }
+
+  // ============================================================
+  //  混响：一段脉冲响应（左右两路互不相关的噪声，指数衰减，越往后越闷）+ 几下早期反射
+  //  len 长度 / t60 衰减到 -60 dB 用多久 / f0 → f1 一开始和最后的低通 / pre 预延迟 / er 早期反射 [[时间, 音量], ...]
+  // ============================================================
+  const SPACE = {
+    out: { len: 0.9, t60: 0.6, f0: 7000, f1: 2500, pre: 0.008, er: [[0.011, 0.35], [0.023, 0.2], [0.041, 0.12]] },                              // 室外：几乎只有地面和近处东西的一点反射
+    hall: { len: 3.0, t60: 2.4, f0: 5500, f1: 900, pre: 0.025, er: [[0.031, 0.4], [0.047, 0.3], [0.071, 0.25], [0.097, 0.2], [0.13, 0.14]] },      // 大厂房、中枢：又高又空
+    cave: { len: 3.8, t60: 3.2, f0: 4000, f1: 700, pre: 0.04, er: [[0.052, 0.5], [0.11, 0.35], [0.19, 0.28], [0.29, 0.2], [0.42, 0.12]] },        // 山洞：更暗、更长，能听出一下下的回声
+  };
+  function ir(sr, kind) {
+    const S = SPACE[kind], r = rng(kind.length * 7919 + 13), N = Math.ceil(S.len * sr), out = [new Float32Array(N), new Float32Array(N)];
+    for (const ch of out) {
+      let y = 0;
+      for (let i = Math.round(S.pre * sr); i < N; i++) {
+        const t = i / sr, k = 1 - Math.exp(-TAU * S.f0 * Math.pow(S.f1 / S.f0, Math.min(1, t / S.t60)) / sr);
+        y += k * ((r() * 2 - 1) - y); ch[i] = y * Math.pow(10, -3 * t / S.t60) * Math.min(1, (t - S.pre) / 0.004);
+      }
+      for (const [t, a] of S.er) { const j = Math.round(t * U(r, 0.92, 1.08) * sr); for (let d = 0; d < 40 && j + d < N; d++) ch[j + d] += a * (r() * 2 - 1) * Math.exp(-d / 8); }
+    }
+    let e = 0; for (const ch of out) for (let i = 0; i < N; i++) e += ch[i] * ch[i];
+    const g = 1 / Math.sqrt(e / 2); for (const ch of out) for (let i = 0; i < N; i++) ch[i] *= g;
+    return out;
+  }
+
+  // ============================================================
+  //  调音台（WebAudio）：三路总线（amb 环境 / fol 主角自己 / sfx 别的东西）→ 水下的低通 → 压缩 → 总音量；
+  //  一个混响的入口，后面并着三种空间，各自一个音量（由环境关键帧决定走到哪里是哪种空间）
+  // ============================================================
+  function mixer(AC, dest) {
+    const sr = AC.sampleRate, comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 3.5; comp.attack.value = 0.004; comp.release.value = 0.2;
+    const trim = AC.createGain(); trim.gain.value = 0.5; comp.connect(trim).connect(dest);   // 压缩器自己会把声音整体抬高 6 分贝左右，这里压回去：总的响度和原来差不多
+    const uw = AC.createBiquadFilter(); uw.type = 'lowpass'; uw.frequency.value = 18000; uw.Q.value = 0.6; uw.connect(comp);
+    const mk = () => { const g = AC.createGain(); g.connect(uw); return g; };
+    const bus = { amb: mk(), fol: mk(), sfx: mk() }, send = AC.createGain(), rv = {};
+    const toBuf = (x, n = 1) => { const b = AC.createBuffer(n, (n > 1 ? x[0] : x).length, sr); for (let c = 0; c < n; c++) b.getChannelData(c).set(n > 1 ? x[c] : x); return b; };
+    for (const k in SPACE) { const cv = AC.createConvolver(), g = AC.createGain(); cv.normalize = false; cv.buffer = toBuf(ir(sr, k), 2); g.gain.value = 0; send.connect(g).connect(cv).connect(uw); rv[k] = g; }
+    // 放一个声音：gain 音量 / rate 快慢（也就是音高）/ pan 左右 / lp 再过一道低通（远处的声音闷一些）/ wet 送多少去混响 / bus 走哪一路 / delay 晚多久
+    function play(b, o = {}) {
+      const s = AC.createBufferSource(), g = AC.createGain(); s.buffer = b; s.playbackRate.value = o.rate ?? 1; g.gain.value = o.gain ?? 1;
+      let n = s.connect(g);
+      if (o.lp) { const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; n = n.connect(f); }
+      if (o.pan && AC.createStereoPanner) { const p = AC.createStereoPanner(); p.pan.value = cl(o.pan, -1, 1); n = n.connect(p); }
+      n.connect(bus[o.bus ?? 'sfx']);
+      if (o.wet) { const w = AC.createGain(); w.gain.value = o.wet; n.connect(w).connect(send); }
+      s.start(AC.currentTime + (o.delay ?? 0)); return { s, g };
+    }
+    return { comp, uw, bus, send, rv, toBuf, play };
+  }
+
+  return { rng, BQ, wander, noise, sine, modes, grains, ticks, bubble, note, peak, rms, normPeak, normRms, loopable, step, SURF, breath, rustle, babble, crickets, sprinkler,
+    songbird, coo, crow, woodpecker, bee, owl, clank, chain, steam, creak, rattle, twig, chime, shutter, knock, zap, relay, hum2, pebbles, rumble, plop, gurgle, drip,
+    stroke, blub, heart, splash, SPACE, ir, mixer };
+})();
 // ============================================================
-//  声音：全部用 WebAudio 现场合成，不加载任何音频文件
+//  声音：全部现场合成（配方在 51-sound-synth.js），不加载任何音频文件
+//  分三路：amb 环境（每一章的底子和远处的声音）/ fol 主角自己（脚步、呼吸、划水）/ sfx 机关和别的东西。
+//  三路都送进混响。混响有三种空间：室外 out / 大厂房 hall / 山洞 cave，用多少由环境关键帧（36-lights-fx.js 的 env）里的 rvOut / rvHall / rvCave 决定；
+//  每一章的底子也写在环境关键帧里：aWind 风、aWhis 风哨、aLeaf 树叶（leafDry 枯 / 嫩）、birds 鸟、aBug 蟋蟀、aDrip 滴水、aFlow 流水、
+//  aRoom 室内的低鸣（roomF 多低）、aHum 电流声、aCity 城市的远声、aFar 远处偶尔一下的声音有多勤（是什么见下面的 FAR）。
+//  章节之间跟着画面一起过渡。脚下是什么地面见 20-world.js 的 surface()
 // ============================================================
-let AC = null, master = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
+let AC = null, master = null, MX = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
-const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0 };
+const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0 };
+// voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
+const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1 } };
+const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
+const SR = () => AC.sampleRate, seed = () => SY.rng(Math.random() * 2147483647 | 0);
+const R2 = (a, b) => a + (b - a) * Math.random();   // 声音用的随机数：不动关卡那一套固定种子
+
+// ---- 一组一组算好的声音：第一次要用的时候先算一个马上放，剩下的排队，每一帧抽几毫秒慢慢算 ----
+const RECIPE = {}, BANKS = {}, JOBS = [];
+const rec = (n, fn) => ({ n, fn });
+Object.assign(RECIPE, {
+  bird: rec(10, r => SY.songbird(SR(), r)), dove: rec(3, r => SY.coo(SR(), r)), pigeon: rec(3, r => SY.coo(SR(), r, { pigeon: true })), crow: rec(4, r => SY.crow(SR(), r)),
+  woodpecker: rec(3, r => SY.woodpecker(SR(), r)), bee: rec(3, r => SY.bee(SR(), r)), owl: rec(2, r => SY.owl(SR(), r)),
+  clank: rec(4, r => SY.clank(SR(), r)), chain: rec(3, r => SY.chain(SR(), r)), steam: rec(2, r => SY.steam(SR(), r)), creak: rec(4, r => SY.creak(SR(), r)), rattle: rec(4, r => SY.rattle(SR(), r)),
+  twig: rec(3, r => SY.twig(SR(), r)), chime: rec(1, r => SY.chime(SR(), r)), shutter: rec(2, r => SY.shutter(SR(), r)), knock: rec(4, r => SY.knock(SR(), r)), zap: rec(3, r => SY.zap(SR(), r)),
+  relay: rec(4, r => SY.relay(SR(), r)), hum2: rec(2, r => SY.hum2(SR(), r)), pebbles: rec(3, r => SY.pebbles(SR(), r)), rumble: rec(2, r => SY.rumble(SR(), r)), plop: rec(3, r => SY.plop(SR(), r)),
+  gurgle: rec(3, r => SY.gurgle(SR(), r)), drip: rec(8, r => SY.drip(SR(), r)),
+  stroke: rec(4, r => SY.stroke(SR(), r)), strokeU: rec(4, r => SY.stroke(SR(), r, { under: true })), blub: rec(5, r => SY.blub(SR(), r)), heart: rec(1, r => SY.heart(SR(), r)),
+  splash: rec(3, r => SY.splash(SR(), r)), slip: rec(3, r => SY.splash(SR(), r, { k: 0.35 })),
+});
+for (const k of Object.keys(SY.SURF)) {                 // 脚步：每种地面 × 走 / 跑 / 蹑着脚 / 落地
+  RECIPE[`st:${k}:w`] = rec(6, r => SY.step(SR(), r, k, { run: 0 })); RECIPE[`st:${k}:r`] = rec(6, r => SY.step(SR(), r, k, { run: 1 }));
+  RECIPE[`st:${k}:s`] = rec(4, r => SY.step(SR(), r, k, { soft: 1 })); RECIPE[`st:${k}:l`] = rec(4, r => SY.step(SR(), r, k, { land: 1 }));
+}
+function sbuf(name) {
+  let b = BANKS[name];
+  if (!b) {
+    const R = RECIPE[name]; if (!R || !AC) return null;
+    b = BANKS[name] = { list: [MX.toBuf(R.fn(seed()))], last: -1 };
+    if (R.n > 1) JOBS.push(() => { b.list.push(MX.toBuf(R.fn(seed()))); return b.list.length < R.n; });
+  }
+  let i = Math.floor(Math.random() * b.list.length); if (b.list.length > 2 && i === b.last) i = (i + 1) % b.list.length;
+  b.last = i; return b.list[i];
+}
+function pumpJobs(ms = 4) { const t0 = performance.now(); while (JOBS.length && performance.now() - t0 < ms) if (!JOBS[0]()) JOBS.shift(); }
+// 放一组里的一个：o 同 SY.mixer 的 play（gain / rate / pan / lp / wet / bus / delay）
+function snd(name, o = {}) { if (!AC || muted) return null; const b = sbuf(name); return b ? MX.play(b, o) : null; }
+
 function initAudio() {
   if (muted) return;                                // 静音的时候不建立 WebAudio，第一次打开声音时再建
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   master = AC.createGain(); master.gain.value = 0.6; master.connect(AC.destination);
+  MX = SY.mixer(AC, master);
   noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const loopNoise = (type, freq, q) => {            // 一直循环的滤波噪声，音量由游戏状态控制
+  const out = (g, bus, wet) => { g.connect(MX.bus[bus]); if (wet) { const w = AC.createGain(); w.gain.value = wet; g.connect(w).connect(MX.send); } };
+  const loopNoise = (type, freq, q, bus = 'sfx', wet = 0) => {      // 一直循环的滤波噪声，音量由游戏状态控制
     const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
     src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q; g.gain.value = 0;
-    src.connect(f).connect(g).connect(master); src.start(); return { f, g };
+    src.connect(f).connect(g); out(g, bus, wet); src.start(0, Math.random() * 1.9); return { f, g };
   };
-  const loopOsc = (type, freq, lp) => {
+  const loopOsc = (type, freq, lp, bus = 'sfx', wet = 0) => {
     const o = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain();
     o.type = type; o.frequency.value = freq; f.type = 'lowpass'; f.frequency.value = lp; g.gain.value = 0;
-    o.connect(f).connect(g).connect(master); o.start(); return { o, f, g };
+    o.connect(f).connect(g); out(g, bus, wet); o.start(); return { o, f, g };
   };
-  loops.room = loopNoise('lowpass', 210, 0.4);      // 厂房里的低沉底噪
-  loops.wind = loopNoise('bandpass', 420, 0.7);     // 室外的风
-  loops.cart = loopNoise('bandpass', 95, 1.4);      // 推东西的滚动声
-  loops.door = loopNoise('lowpass', 120, 1.0);      // 闸门升起的轰隆声
-  loops.belt = loopNoise('bandpass', 170, 0.9);     // 输送带
-  loops.water = loopNoise('bandpass', 1300, 0.5);   // 水流
-  loops.sweep = loopNoise('bandpass', 2600, 1.2);   // 清洁机器人的刷子
-  loops.hum = loopOsc('sawtooth', 52, 240);         // 探照灯 / 监控的嗡鸣
-  loops.pump = loopOsc('triangle', 46, 180);        // 水泵
-  loops.buzz = loopOsc('square', 100, 520);         // 通电的线路
-  loops.drone = loopOsc('sine', 41, 400);
+  // 一段算好的底子（风吹树叶、流水、蟋蟀、喷灌头）循环着放：先把音量建好（0），第一次要它响的时候才去算（见 setGain），算好了再接上。
+  // pans：同一段错开几处起点、摆到左右，听着宽
+  const loopTex = (make, o = {}) => {
+    const g = AC.createGain(); g.gain.value = 0; let f = null, head = g, queued = false;
+    if (o.lp) { f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; f.connect(g); head = f; }
+    out(g, o.bus ?? 'amb', o.wet ?? 0);
+    const start = () => { if (queued) return; queued = true; JOBS.push(() => {
+      const b = MX.toBuf(make(seed()));
+      (o.pans ?? [0]).forEach((p, i) => { const s = AC.createBufferSource(); s.buffer = b; s.loop = true; let n = s; if (p && AC.createStereoPanner) { const pn = AC.createStereoPanner(); pn.pan.value = p; n = s.connect(pn); } n.connect(head); s.start(0, (0.13 + i * 0.47) % 1 * b.duration); });
+      return false;
+    }); };
+    return { g, f, start };
+  };
+  // ---- 机关和别的东西（各章节通过 AUD 控制）----
+  loops.cart = loopNoise('bandpass', 95, 1.4, 'sfx', 0.3);     // 推东西的滚动声
+  loops.door = loopNoise('lowpass', 120, 1.0, 'sfx', 0.5);     // 闸门升起的轰隆声
+  loops.belt = loopNoise('bandpass', 170, 0.9, 'sfx', 0.5);    // 输送带
+  loops.water = loopNoise('bandpass', 1300, 0.5, 'sfx', 0.3);  // 水流（哗哗的那一层；咕噜咕噜的那一层在 flow 里）
+  loops.sweep = loopNoise('bandpass', 2600, 1.2, 'sfx', 0.3);  // 清洁机器人的刷子
+  loops.hum = loopOsc('sawtooth', 52, 240, 'sfx', 0.4);        // 探照灯 / 监控的嗡鸣
+  loops.pump = loopOsc('triangle', 46, 180, 'sfx', 0.3);       // 水泵
+  loops.buzz = loopOsc('square', 100, 520, 'sfx', 0.3);        // 通电的线路
+  // ---- 环境的底子 ----
+  loops.room = loopNoise('lowpass', 210, 0.4, 'amb');          // 室内的低鸣（工厂、中枢、山洞）
+  loops.drone = loopOsc('sine', 41, 400, 'amb');
+  loops.mains = loopOsc('sawtooth', 50, 170, 'amb');           // 电流的嗡嗡
+  loops.wind = loopNoise('bandpass', 420, 0.8, 'amb');         // 风：中间那一层“呼——”，阵风来了声音变高
+  loops.windLo = loopNoise('lowpass', 160, 0.7, 'amb');        // 风：低的那一层，阵风来了才有
+  loops.whistle = loopNoise('bandpass', 880, 14, 'amb');       // 风从铁皮缝里钻过去的哨声（废料场）
+  loops.city = loopNoise('lowpass', 150, 0.7, 'amb');          // 城市的远声：很低的一层隆隆
+  loops.uw = loopNoise('lowpass', 260, 0.7, 'amb');            // 水下：耳朵里闷闷的一层
+  loops.leafD = loopTex(r => SY.rustle(SR(), r, { dry: 1 }), { pans: [-0.55, 0.55] });   // 风吹枯叶
+  loops.leafG = loopTex(r => SY.rustle(SR(), r, { dry: 0 }), { pans: [-0.55, 0.55] });   // 风吹嫩叶
+  loops.flow = loopTex(r => SY.babble(SR(), r), { pans: [-0.3, 0.3], lp: 3000 });         // 流水 / 暗河
+  loops.bugs = loopTex(r => SY.crickets(SR(), r), { pans: [-0.6, 0.6] });                  // 蟋蟀
+  loops.spray = loopTex(r => SY.sprinkler(SR(), r), { wet: 0.2 });                         // 喷灌头
 }
-const setGain = (l, v, k = 0.08) => { if (AC && loops[l]) loops[l].g.gain.setTargetAtTime(v, AC.currentTime, k); };
+const setGain = (l, v, k = 0.08) => { const L = AC && loops[l]; if (!L) return; L.g.gain.setTargetAtTime(v, AC.currentTime, k); if (L.start && v > 0.0005) L.start(); };
+const setFreq = (l, v, k = 0.3) => { if (AC && loops[l]) (loops[l].f ?? loops[l].o).frequency.setTargetAtTime(v, AC.currentTime, k); };
 function setMuted(m) {                              // M 键：打开 / 关掉声音；总音量淡入淡出一下，不会“咔”的一声
   muted = m; initAudio();
   if (master) master.gain.setTargetAtTime(m ? 0 : 0.6, AC.currentTime, 0.05);
 }
 
-function hit(freq, q, vol, dur, type = 'bandpass', delay = 0) { // 一下短促的噪声：脚步、落地、碰撞
+// 一下短促的噪声（机关、碰撞）和一声音调：走 sfx 那一路，送一点去混响
+function hit(freq, q, vol, dur, type = 'bandpass', delay = 0) {
   if (!AC || muted || vol <= 0) return;
-  const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), t = AC.currentTime + delay;
-  src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), w = AC.createGain(), t = AC.currentTime + delay;
+  src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q; w.gain.value = 0.5;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-  src.connect(f).connect(g).connect(master); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.02);
+  src.connect(f).connect(g).connect(MX.bus.sfx); g.connect(w).connect(MX.send); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.02);
 }
 function tone(f0, f1, vol, dur, type = 'sine', delay = 0) {
   if (!AC || muted || vol <= 0) return;
-  const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + delay;
-  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const o = AC.createOscillator(), g = AC.createGain(), w = AC.createGain(), t = AC.currentTime + delay;
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); w.gain.value = 0.5;
   g.gain.setValueAtTime(0.0008, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(MX.bus.sfx); g.connect(w).connect(MX.send); o.start(t); o.stop(t + dur + 0.02);
 }
-const R2 = (a, b) => a + (b - a) * Math.random();   // 声音用的随机数：不动关卡那一套固定种子
+
+// ---- 脚步：脚下是什么就是什么声音 ----
+let wetStep = -9;                                   // 这一步踩进了水洼（46-ground.js 的 groundLife 发现的），记下时间
+function surfaceUnder() {
+  if (T - wetStep < 0.1) return 'puddle';
+  const w = waterAt(P.x); if (w && P.y < w.y - 0.06) return 'wade';
+  if (P.y > groundY(P.x) + 0.03) for (const s of SOLIDS) if (!s.off && P.x + 0.13 > s.x1 && P.x - 0.13 < s.x2 && Math.abs(P.y - s.y2) < 0.06) return s.snd ?? chapterAt(P.x).box ?? 'wood';
+  return surfaceAt(P.x);
+}
+function footstep() {
+  const run = Math.abs(P.vx) > 2.2, quiet = !run && (keys.has('S') || P.mode === 'push');
+  snd(`st:${surfaceUnder()}:${run ? 'r' : quiet ? 's' : 'w'}`, { bus: 'fol', gain: (run ? 0.5 : quiet ? 0.3 : 0.38) * R2(0.82, 1.08) * SND.vol.step, rate: R2(0.95, 1.05), wet: 0.35 });
+}
+
+// ---- 呼吸：一口气现算（长短正好对上动作），见 53-breath.js ----
+const VOICE = { A: { voice: 0, nose: 0.25, vol: 1 }, B: { voice: 0.4, nose: 0, vol: 1 }, C: { voice: 0, nose: 0.75, vol: 0.7 } };
+// dir 'in' | 'out'，len 秒，k 0..1 累的程度；o 可以改 att / rel / f0 / voice（再乘上这一种声音的嗓音多少）/ gain
+function breathSound(dir, len, k, o = {}) {
+  if (!AC || muted || len < 0.06) return;
+  const V = VOICE[SND.voice] ?? VOICE.A;
+  const x = SY.breath(SR(), seed(), { dir, len, k, ...o, voice: (o.voice ?? sstep(0.45, 0.95, k)) * V.voice + (o.voiceAll ?? 0), nose: V.nose * (1 - sstep(0.3, 0.75, k)) });
+  MX.play(MX.toBuf(x), { bus: 'fol', gain: (o.gain ?? lerp(0.05, 0.26, Math.pow(k, 1.4))) * V.vol * SND.vol.breath, rate: R2(0.97, 1.03), wet: 0.25 });
+}
+
 Object.assign(sfx, {
-  step: (out, soft) => hit(out ? R2(900, 1500) : R2(520, 820), 1.1, soft ? 0.035 : 0.075, out ? 0.09 : 0.065),
-  jump: () => hit(760, 0.9, 0.05, 0.07),
-  grab: () => hit(420, 1.2, 0.09, 0.09),
-  land: v => { hit(170, 0.7, clamp(v * 0.045, 0.08, 0.4), 0.2, 'lowpass'); tone(85, 48, clamp(v * 0.02, 0.03, 0.16), 0.16); },
+  jump: () => snd(`st:${surfaceUnder()}:s`, { bus: 'fol', gain: 0.2 * SND.vol.step, rate: 1.12, wet: 0.2 }),          // 起跳：脚底一蹬
+  grab: () => { hit(420, 1.2, 0.07, 0.09); hit(1300, 0.6, 0.04, 0.2); },                                                    // 手扒住边缘，衣服一擦
+  land: v => snd(`st:${surfaceUnder()}:l`, { bus: 'fol', gain: lerp(0.22, 0.8, clamp((v - 3) / 9, 0, 1)) * SND.vol.step, rate: R2(0.95, 1.03), wet: 0.4 }),
   lever: () => { hit(1400, 2, 0.16, 0.05); tone(190, 70, 0.2, 0.22, 'square', 0.04); },
   doorStop: () => { hit(110, 0.6, 0.5, 0.5, 'lowpass'); tone(60, 34, 0.25, 0.5); },
   alarm: () => { for (let i = 0; i < 3; i++) tone(620, 330, 0.11, 0.26, 'sawtooth', i * 0.3); },
   alarmFar: v => { for (let i = 0; i < 3; i++) tone(620, 330, 0.05 * v, 0.26, 'sawtooth', i * 0.3); },      // 工厂的警报：固定的三声
   tick3: v => { for (let i = 0; i < 3; i++) tone(880, 860, 0.05 * v, 0.1, 'square', i * 0.5); },           // 压机下压前的三次灯号
-  press: v => { hit(90, 0.6, 0.7 * v, 0.6, 'lowpass'); tone(70, 30, 0.3 * v, 0.5); hit(2000, 1, 0.1 * v, 0.1); },
+  press: v => { hit(90, 0.6, 0.7 * v, 0.6, 'lowpass'); tone(70, 30, 0.3 * v, 0.5); hit(2000, 1, 0.1 * v, 0.1); snd('clank', { gain: 0.25 * v, rate: 0.7, wet: 0.8 }); },
   clunk: () => { hit(260, 1.2, 0.25, 0.12); tone(120, 80, 0.12, 0.1); },
   dock: () => { hit(300, 1.5, 0.3, 0.1); tone(140, 90, 0.2, 0.16, 'square'); tone(520, 780, 0.07, 0.3, 'sine', 0.12); },
   spark: () => { for (let i = 0; i < 6; i++) hit(R2(3000, 6000), 2, 0.12, 0.04, 'bandpass', i * R2(0.03, 0.07)); },
-  splash: () => { hit(900, 0.6, 0.35, 0.5); hit(300, 0.7, 0.3, 0.6, 'lowpass'); },
+  splash: k => { snd('splash', { bus: 'fol', gain: 0.55 * (k ?? 1), wet: 0.4 }); },                                         // 掉进 / 跳进水里
   fall: () => { hit(200, 0.7, 0.3, 0.4, 'lowpass'); },
   bark: v => { for (const d of [0, 0.34]) { hit(700, 1.4, 0.3 * v, 0.13, 'bandpass', d); tone(430, 170, 0.22 * v, 0.14, 'sawtooth', d); } },
   meow: () => { tone(720, 1080, 0.07, 0.16, 'triangle'); tone(1080, 760, 0.07, 0.24, 'triangle', 0.15); },
@@ -2758,27 +3453,152 @@ Object.assign(sfx, {
   grow: () => tone(300, 520, 0.035, 1.3),
   cloth: () => { hit(600, 0.5, 0.2, 0.5); hit(1800, 0.6, 0.08, 0.35); },
   snip: v => { hit(3200, 3, 0.1 * v, 0.05); hit(2400, 3, 0.08 * v, 0.05, 'bandpass', 0.09); },
-  chirp: () => { const f = R2(2200, 3400); for (let i = 0, n = 2 + Math.floor(Math.random() * 3); i < n; i++) tone(f, f * R2(1.15, 1.4), 0.016, 0.07, 'sine', i * 0.1); },
+  chirp: () => snd('bird', { bus: 'amb', gain: 0.1 * SND.vol.bird, pan: R2(-0.8, 0.8), wet: 0.5 }),
   // 地上的小动物和水洼（46-ground.js）
   croak: v => { for (const d of [0, 0.19]) tone(R2(170, 190), 120, 0.035 * v, 0.13, 'square', d); },                  // 青蛙叫两声
   frogHop: () => hit(1500, 1.4, 0.014, 0.05),
-  plop: v => { tone(520, 140, 0.11 * v, 0.14); hit(900, 0.7, 0.07 * v, 0.2, 'bandpass', 0.03); },                      // 扎进水里
+  plop: v => snd('plop', { bus: 'amb', gain: 0.3 * v, wet: 0.4 }),                                                      // 扎进水里
   skitter: () => { for (let i = 0; i < 5; i++) hit(R2(3200, 4400), 2.5, 0.012, 0.025, 'bandpass', i * 0.045); },        // 蜥蜴窜走
-  wade: () => { hit(R2(1000, 1400), 0.6, 0.06, 0.16); hit(380, 0.7, 0.04, 0.2, 'lowpass'); },                         // 一脚踩进水洼
+  puddle: () => { wetStep = T; },                                                                                       // 一脚踩进水洼：这一步的脚步声换成踩水
+  wade: () => snd('st:wade:w', { bus: 'fol', gain: 0.45, wet: 0.3 }),                                                   // 从水里撑上岸
+  blub: () => snd('blub', { bus: 'fol', gain: R2(0.08, 0.16), rate: R2(0.85, 1.2), wet: 0.3 }),                         // 嘴边冒出一个气泡
 });
+
+// ---- 鸟、滴水、远处偶尔一下的声音：每一章一组 ----
+const BIRDS = { 2: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], 7: [['bird', 0.82], ['dove', 0.18]], 9: [['bird', 1]] };
+const FAR = { 1: ['clank', 'chain', 'steam', 'creak', 'hum2'], 2: ['woodpecker', 'crow', 'twig'], 3: ['crow', 'rattle', 'creak', 'crow'], 4: ['chime', 'shutter', 'pigeon'],
+  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'] };
+const FARV = { clank: 0.2, chain: 0.13, steam: 0.08, creak: 0.11, hum2: 0.1, woodpecker: 0.13, crow: 0.13, twig: 0.11, rattle: 0.15, chime: 0.09, shutter: 0.1, pigeon: 0.1,
+  knock: 0.16, zap: 0.06, gurgle: 0.13, bee: 0.08, relay: 0.12, owl: 0.1, pebbles: 0.15, rumble: 0.3, plop: 0.13 };
+const pickW = list => { let s = 0; for (const [, w] of list) s += w; let u = Math.random() * s; for (const [n, w] of list) if ((u -= w) <= 0) return n; return list[0][0]; };
+let farT = 5, strokePh = 0, heartT = 0, leafK = 0.5;
+function stepAmbient(dt) {
+  const ch = chapterAt(P.x).n;
+  if (E.birds > 0.01 && Math.random() < E.birds * dt * 0.32) {
+    const b = pickW(BIRDS[ch] ?? BIRDS[9]);
+    snd(b, { bus: 'amb', gain: R2(0.05, 0.14) * (b === 'dove' ? 0.8 : 1) * SND.vol.bird, pan: R2(-0.9, 0.9), lp: R2(5000, 11000), wet: R2(0.3, 0.9), rate: R2(0.94, 1.06) });
+  }
+  if (E.aDrip > 0.01 && Math.random() < E.aDrip * dt * 1.3) snd('drip', { bus: 'amb', gain: R2(0.03, 0.11) * SND.vol.amb, pan: R2(-0.8, 0.8), wet: 1.3, rate: R2(0.8, 1.25) });
+  if (E.aFar > 0.01 && (farT -= dt * E.aFar) <= 0) {
+    farT = R2(6, 14); const pool = FAR[ch === 8 && E.ext > 0.5 ? '8o' : ch];
+    if (pool) { const n = pool[Math.floor(Math.random() * pool.length)]; snd(n, { bus: 'amb', gain: (FARV[n] ?? 0.1) * R2(0.6, 1) * SND.vol.far, pan: R2(-0.85, 0.85), lp: R2(1800, 6000), wet: R2(0.9, 1.5), rate: R2(0.94, 1.06) }); }
+  }
+}
+// ---- 水里：划水、心跳 ----
+function stepSwimSound(dt) {
+  if (P.mode !== 'swim') { strokePh = 0; return; }
+  const ph = P.stroke ?? 0, moving = Math.abs(P.vx) + Math.abs(P.vy) > 0.3;
+  if (strokePh < 0.36 && ph >= 0.36 && (moving || !P.under)) snd(P.under ? 'strokeU' : 'stroke', { bus: 'fol', gain: (P.under ? 0.3 : 0.24) * R2(0.8, 1.1), rate: R2(0.92, 1.08), wet: 0.3 });
+  strokePh = ph;
+  const panic = P.under ? sstep(0.5, 1, 1 - P.air / SWIM.breath) : 0;              // 憋不住了：心跳一下下响起来，越来越快
+  if (panic > 0.01 && (heartT -= dt) <= 0) { heartT = lerp(1.1, 0.45, panic); snd('heart', { bus: 'fol', gain: 0.5 * panic, wet: 0 }); }
+}
+
 function updateAudio(dt, stepNow) {
   if (!AC) return;
-  const ext = E.ext;
-  setGain('room', (1 - ext) * 0.2, 0.4); setGain('drone', lerp(0.05, 0.015, ext), 0.4); setGain('wind', ext * (0.085 + 0.03 * Math.sin(T * 0.6)), 0.5);
+  pumpJobs();
+  const t = AC.currentTime, g = GUST.v, V = SND.vol.amb;
+  // 空间：走到哪里就是哪里的混响
+  MX.rv.out.gain.setTargetAtTime(E.rvOut * RV.out, t, 0.3); MX.rv.hall.gain.setTargetAtTime(E.rvHall * RV.hall, t, 0.3); MX.rv.cave.gain.setTargetAtTime(E.rvCave * RV.cave, t, 0.3);
+  // 底子
+  setGain('room', E.aRoom * 0.15 * V, 0.5); setFreq('room', E.roomF, 0.5); setGain('drone', E.aRoom * 0.03 * V, 0.5); setGain('mains', E.aHum * 0.038 * V, 0.5);
+  setGain('wind', E.aWind * (0.035 + 0.11 * g) * V, 0.4); setFreq('wind', 260 + 300 * g, 0.5);
+  setGain('windLo', E.aWind * 0.15 * Math.pow(g, 1.6) * V, 0.5);
+  setGain('whistle', E.aWhis * 0.12 * sstep(0.7, 1.3, g) * V, 0.6); setFreq('whistle', 820 + 160 * Math.sin(T * 0.13) + 120 * g, 0.4);
+  setGain('city', E.aCity * 0.18 * V, 0.6);
+  leafK = damp(leafK, g, 1.5, dt);                                                     // 树叶：阵风过来以后慢半拍才响起来
+  const lv = E.aLeaf * (0.02 + 0.17 * Math.pow(clamp(leafK * 0.85 + 0.12, 0, 1.4), 1.6)) * V;
+  setGain('leafD', lv * E.leafDry, 0.25); setGain('leafG', lv * 0.6 * (1 - E.leafDry), 0.25);     // 嫩叶那一段本身响一些，压一点
+  setGain('bugs', E.aBug * 0.12 * V, 0.8);
+  setGain('flow', (E.aFlow * 0.115 + AUD.water * 0.1) * V, 0.4);
+  setGain('spray', AUD.spray * 0.15, 0.3);
+  // 机关和别的东西
   setGain('cart', P.mode === 'push' && P.grabObj ? clamp(Math.abs(P.grabObj.v) * 0.45, 0, 0.5) : 0, 0.05);
-  let dg = 0; for (const g of GATES) if (g.open !== g.want && Math.abs(g.x - P.x) < 30) dg = 0.5;
+  let dg = 0; for (const gt of GATES) if (gt.open !== gt.want && Math.abs(gt.x - P.x) < 30) dg = 0.5;
   setGain('door', dg, 0.12);
-  setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, AC.currentTime, 0.1);
-  setGain('belt', AUD.belt * 0.35, 0.2); setGain('water', AUD.water * 0.16, 0.3); setGain('pump', AUD.pump * 0.12, 0.2);
+  setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, t, 0.1);
+  setGain('belt', AUD.belt * 0.35, 0.2); setGain('water', AUD.water * 0.12, 0.3); setGain('pump', AUD.pump * 0.12, 0.2);
   setGain('buzz', AUD.buzz * 0.012, 0.15); setGain('sweep', AUD.sweep * 0.05, 0.1);
-  if (stepNow) sfx.step(ext > 0.5, keys.has('S') || P.mode === 'push');
-  if (E.birds > 0.01 && Math.random() < E.birds * dt * 0.45) sfx.chirp();
+  // 水下：什么都闷下去，耳朵里只剩一层低低的嗡
+  const uw = P.mode === 'swim' && P.under && state !== 'title' ? 1 : 0;
+  MX.uw.frequency.setTargetAtTime(uw ? 480 : 18000, t, uw ? 0.05 : 0.12); setGain('uw', uw * 0.12, 0.15);
+  if (stepNow) footstep();
+  stepSwimSound(dt);
+  if (state !== 'title') stepAmbient(dt);
 }
+// ============================================================
+//  喘气：跑得越久越累（BR.ex 0..1），呼吸越快、越重；停下来慢慢缓过来。累坏了又站着不动，就弯下腰、两手撑着膝盖喘（BR.bend）。
+//  一呼一吸（BR.chest：肺里有多满，0..1）同时交给声音和主角的动作（42-character-anim.js），听到的吸气、呼气和看到的起伏是对得上的。
+//  另外几下：起跳、翻上高处、推起重东西时使一下劲；从高处落下“呃”一声；被探照灯照到倒吸一口气；
+//  躲在暗处、光扫过来时屏住气，光过去了长长地呼一口；在水下憋着（没有呼吸声），浮上来大口地喘。
+//  声音关着的时候这里照样算（动作要用），只是不出声
+// ============================================================
+const BR = { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, alert: 0, gasp: -9, effort: -9, pushT: -9, skip: null, mode: 'normal', ground: true };
+// 一口气的节奏：每秒几口（不累时四秒一口，最累时一秒一口半）；吸气、呼气各占多少，剩下的是两口气之间停一下
+const brRate = ex => lerp(0.24, 1.45, Math.pow(ex, 0.85));
+const brIn = ex => lerp(0.36, 0.46, ex), brOut = ex => lerp(0.42, 0.54, ex);
+// 单独的几口气（听声音的工具页也直接用这几个）。k 累的程度，v 轻重
+const BREATH = {
+  hup: (k, v = 1) => breathSound('out', 0.16, 0.6 + 0.4 * k, { att: 0.05, rel: 0.3, f0: 320, gain: lerp(0.09, 0.24, k) * v }),     // 起跳：“嘿”
+  oof: (k, v = 1) => breathSound('out', 0.24, 1, { att: 0.04, rel: 0.5, f0: 290, gain: 0.3 * v }),                                  // 从高处落下：“呃”
+  strain: (k, v = 1) => breathSound('out', 0.38, 0.9, { att: 0.14, rel: 0.4, f0: 280, gain: lerp(0.14, 0.28, k) * v }),            // 翻上高处、抓住重东西：使一下劲
+  gasp: () => breathSound('in', 0.42, 1, { att: 0.08, rel: 0.35, f0: 480, voiceAll: 0.15, gain: 0.36 }),                            // 被照到：倒吸一口气
+  surface: lack => breathSound('in', 0.5, 1, { att: 0.06, rel: 0.3, f0: 500, voiceAll: 0.2, gain: lerp(0.3, 0.5, lack) }),          // 浮上水面：大口吸一口
+  sigh: () => breathSound('out', 1.3, 0.35, { att: 0.12, rel: 0.75, f0: 260, gain: 0.2 }),                                          // 光过去了：长长地呼一口
+};
+function effort(kind, v = 1) {                                    // 使一下劲：一口短短的、用力的呼气，接着很快吸一口
+  if (T - BR.effort < 0.35) return; BR.effort = T;
+  const k = BR.ex, f = brRate(k), a = brIn(k), b = brOut(k);
+  BREATH[kind](k, v);
+  BR.ph = clamp(a + b - 0.25 * f, a, 0.999); BR.skip = null;      // 跳到这一口呼气的末尾：马上接着吸
+}
+function stepPant(dt, impact) {
+  const play = state === 'play', swim = P.mode === 'swim';
+  const run = P.mode === 'normal' && P.grounded && Math.abs(P.vx) > 2.2, moving = Math.abs(P.vx) > 0.3 || (swim && Math.abs(P.vy) > 0.3);
+  // ---- 累：跑起来慢慢累上去（一口气跑四五十秒才到最累），推、游也累；被盯上的时候心跳得厉害。走着、站着慢慢缓过来 ----
+  let up = run ? 0.022 : P.mode === 'push' && moving ? 0.02 : swim && moving ? 0.024 : 0;
+  if (play && HX.alert > 0.3) up += 0.05;
+  BR.ex = up ? Math.min(1, BR.ex + up * dt) : Math.max(0, BR.ex - dt * (moving ? 0.022 : 0.05) * (BR.bend ? 1.3 : 1));
+  // ---- 单独的几下 ----
+  if (play) {
+    if (!P.grounded && BR.ground && P.vy > 5 && P.mode === 'normal') { BR.ex = Math.min(1, BR.ex + 0.03); if (BR.ex > 0.28 || Math.random() < 0.3) effort('hup'); }   // 起跳
+    if (impact > 9.5) { BR.ex = Math.min(1, BR.ex + 0.05); effort('oof', clamp((impact - 9) / 5, 0.5, 1)); }                                                      // 从高处落下
+    if (P.mode === 'mantle' && BR.mode !== 'mantle') { BR.ex = Math.min(1, BR.ex + 0.05); if (P.mantle.top - P.mantle.y0 > 0.7) effort('strain'); }             // 翻上高处
+    if (P.mode === 'push' && BR.mode !== 'push' && T - BR.pushT > 5) { BR.pushT = T; effort('strain', 0.6); }                                                   // 抓住重东西
+  }
+  BR.ground = P.grounded; BR.mode = P.mode;
+  // ---- 被照到：倒吸一口气 ----
+  const alert = play ? HX.alert : 0;
+  if (alert > 0.3 && BR.alert <= 0.3 && T - BR.gasp > 15) { BR.gasp = T; BREATH.gasp(); BR.ph = brIn(BR.ex); BR.ex = Math.max(BR.ex, 0.45); }
+  BR.alert = alert;
+  // ---- 憋着：在水下 / 躲着、光扫过来 ----
+  const under = play && swim && P.under, hide = play && HX.hide > 0.35 && alert < 0.3;
+  if (under) BR.under += dt;
+  else if (BR.under > 0) {                                         // 浮上来了：憋得越久，喘得越凶
+    if (BR.under > 1.5) { const lack = 1 - P.air / SWIM.breath; BREATH.surface(lack); BR.ex = Math.max(BR.ex, 0.4 + 0.6 * lack); BR.ph = brIn(BR.ex); }
+    BR.under = 0;
+  }
+  if (hide) BR.hold += dt;
+  else if (BR.hold > 0) {                                          // 光过去了：长长地呼一口
+    if (BR.hold > 1.2) { BREATH.sigh(); BR.ph = brIn(BR.ex); BR.skip = 'out'; }
+    BR.hold = 0;
+  }
+  // ---- 一口一口地呼吸 ----
+  const f = brRate(BR.ex), a = brIn(BR.ex), b = brOut(BR.ex), held = under || hide;
+  if (!held) {
+    const p0 = BR.ph; BR.ph += dt * f;
+    const sound = play || state === 'end';
+    if (p0 < a && BR.ph >= a) { if (BR.skip === 'out') BR.skip = null; else if (sound) breathSound('out', b / f * 0.95, BR.ex); }       // 呼气
+    if (BR.ph >= 1) { BR.ph -= 1; if (sound) breathSound('in', a / f * 0.95, BR.ex); }                                                // 吸气
+  }
+  const p = BR.ph, fill = p < a ? sstep(0, a, p) : p < a + b ? 1 - sstep(a, a + b, p) : 0;
+  BR.chest = held ? damp(BR.chest, 0.8, 3, dt) : fill;
+  // ---- 累坏了：站住不动一会儿，就弯下腰、两手撑着膝盖喘；缓过来一些，或者一动，就直起来 ----
+  const standing = play && P.mode === 'normal' && P.grounded && Math.abs(P.vx) < 0.05;
+  BR.still = standing ? BR.still + dt : 0;
+  BR.bend = standing && (BR.bend ? BR.ex > 0.42 : BR.ex > 0.72 && BR.still > 0.7) ? 1 : 0;
+}
+function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, skip: null }); }
 
 // ============================================================
 //  第一章 · 工厂：关闭回收线
@@ -2788,15 +3608,16 @@ function updateAudio(dt, stepNow) {
 // ============================================================
 const CH1 = (() => {
   const C = chapter({ n: 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线' });
+  C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
   terrain([-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [104, 0]);
   ground(-60, 0x1c2529); ground(103.9, 0x1c2529);
   solid({ id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 });
-  solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45 });
-  solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9 });
-  solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0 });
-  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15 });
-  const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0 });      // 轮挡正好把它停在断电杆下面
+  solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
+  solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
+  solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
+  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal' });
+  const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0, snd: 'wood' });      // 轮挡正好把它停在断电杆下面
   const door = gate({ id: 'door1', x: 104 });
   const LEVER = { x: 97.0, pulled: false, t: 0, reach: 0 };
   // 探照灯：机器在背景深处（z < 0），光束扫过场地；玩家躲在一处处铁柜前面的影子里
@@ -2828,7 +3649,8 @@ const CH1 = (() => {
     [89, 21.5, 2.5, 2.5], [96, 21.5, 2.6, 0.8], [99.5, 21, 2.5, -0.2], [102, 19, 1.9, -1.8], [104.4, 18, 1.7, -1.2]);
   // 整章的光：逆光。颜色还是默认的冷青灰，但环境光和主光压暗、从背后来的轮廓光提亮；
   // 最远的后墙和高窗比雾亮（见下面的布景板），站在它前面的东西都成了剪影
-  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1 });
+  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1,
+    aRoom: 1, roomF: 200, aHum: 0.6, aDrip: 0.25, aFar: 1, rvHall: 1 });              // 声音：空厂房的低鸣和电流声，远处的铁器、铁链、泄气，零星的滴水；大厂房的混响
   env(104.7, {});                                        // 一直保持到出口那面黑墙；镜头穿过黑墙时换成第二章的晨光
 
   hint(() => !P.moved, '<b>←</b><b>→</b> 移动');
@@ -3292,11 +4114,12 @@ const CH1 = (() => {
 const CH2 = (() => {
   const X = X2, CX0 = X + 104, CX1 = CX0 + 5.2, BED = -3.6, LOW = -3.25, HIGH = -0.42;      // 水渠的两岸、渠底、低水位、高水位
   const C = chapter({ n: 2, x0: X + 0.6, start: X + 3.5, name: '林地水闸', sub: '恢复水道' });
+  C.ground = 'dirt';                                                               // 脚步声：坡上是土路，林子里是土上一层落叶（forest），路上两片湿泥（见 FAR_SIDE 后面）
   terrain([X + 2.1, 0.0875], [X + 6, 0.25], [X + 14, 1.0], [X + 20, 1.3], [X + 26, 2.6], [X + 32, 3.0], [X + 46, 3.0], [X + 54, 2.2], [X + 64, 0.9], [X + 76, 0.2], [X + 82, 0],
     [CX0, 0], [CX0 + 0.01, BED], [CX1 - 0.01, BED], [CX1, 0], [X3, 0]);
   ground(X + 0.1, 0x574839); ground(X + 60, 0x574839); ground(X + 84, 0x33341e); ground(X3 - 8, 0x3c381d);      // 林子里的地：枯草的暗褐色
   solid({ id: 'bankL', x1: CX0 - 0.6, x2: CX0, y1: BED, y2: 0 }); solid({ id: 'bankR', x1: CX1, x2: CX1 + 0.6, y1: BED, y2: 0 });
-  const TL = 3.7, timber = solid({ id: 'timber', x: CX0 + 1.95, w: TL, x1: 0, x2: 0, y1: 0, y2: 0, plat: true });
+  const TL = 3.7, timber = solid({ id: 'timber', x: CX0 + 1.95, w: TL, x1: 0, x2: 0, y1: 0, y2: 0, plat: true, snd: 'wood' });
   const W = { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 };      // flown：闸上那几只鸟飞走多久了（0 = 还停着）；bank：主角最后站在哪边岸上（-1 左岸，1 右岸）
   const LEVER_X = CX0 - 4.2;
   function placeTimber() {                               // 木梁：水位低时卡在石槽里；水涨起来就浮着，慢慢漂向对岸
@@ -3316,10 +4139,12 @@ const CH2 = (() => {
   // 室外的清晨：上冷下暖的天，低垂的太阳。
   // 往林子里走：光从林子后面透过来（逆光），远处是一片发白的亮雾；近处的环境光压暗，只留枝叶间漏下来的几束暖光；颜色是枯褐 —— 灰褐的树，干黄的草
   const DAWN = { fog: 0xc9a47c, fogD: 0.0052, hemiS: 0xffe6c4, hemiG: 0x4a4038, hemiI: 0.95, keyC: 0xffc48a, keyI: 2.3, keyDir: [0.74, 0.34, -0.5], rimI: 0.25,
-    dustC: 0xffe2b8, dustO: 0.38, wind: -0.9, ext: 1, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 1, cloud: 1, cloudC: 0xffe1be };
+    dustC: 0xffe2b8, dustO: 0.38, wind: -0.9, ext: 1, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 1, cloud: 1, cloudC: 0xffe1be,
+    aRoom: 0, aHum: 0, aDrip: 0, rvHall: 0, rvOut: 1, aWind: 0.75, aLeaf: 0.15, leafDry: 0.85, aFar: 0.5, birds: 0.45 };   // 声音：坡上的晨风，零星几只鸟
   env(X + 2.1, DAWN); env(X + 50, {});
   env(X + 80, { fog: 0xd9d2c0, fogD: 0.016, hemiS: 0xd8d0c0, hemiG: 0x2a2620, hemiI: 0.42, keyC: 0xf6ead6, keyI: 1.2, keyDir: [-0.15, 0.45, -0.85], rimI: 1.0, dustC: 0xe8e0d0, dustO: 0.5, wind: -0.25,
-    sky: [0x9c9a90, 0xc8c3b2, 0xe6e0cc, 0xf2ecd8, 0xf5efdb, 0xa39a86], sunX: 0.05, sunY: 0.13, sunP: 1, sunC: 0xfff6e0, cloud: 0.5, cloudC: 0xf2f0dc, birds: 1 });
+    sky: [0x9c9a90, 0xc8c3b2, 0xe6e0cc, 0xf2ecd8, 0xf5efdb, 0xa39a86], sunX: 0.05, sunY: 0.13, sunP: 1, sunC: 0xfff6e0, cloud: 0.5, cloudC: 0xf2f0dc, birds: 1,
+    aWind: 0.45, aLeaf: 0.9, aBug: 0.12, aFar: 0.7 });                                 // 声音：林子里风吹枯叶，鸟多起来，远处啄木鸟、乌鸦、断枝
   env(X3 - 12, {});
 
   hint(() => !W.open && Math.abs(P.x - LEVER_X) < 1.7, '按 <b>E</b> 扳动闸杆');
@@ -3466,6 +4291,9 @@ const CH2 = (() => {
       mkLizard(g, life, perch.p.x, perch.p.y, perch.p.z + 0.004, { yaw: 0.6, normal: perch.n, path: [[233.75, 0.03, -1.0], [234.3, 0.012, -2.0], [234.6, 0.012, -3.1], [234.8, 0.012, -4.0]], path2: [[232.5, 0.03, -1.05], [231.9, 0.012, -2.1], [231.5, 0.012, -3.3]] });
       mkBugs(g, life, 237.4, -0.72, 6, { s: 2.2 });
     } };
+  // 脚步声：林子里（从林子边到这一章的尽头）是土上一层落叶；路上那两片湿泥（上面 mud 里的大椭圆在 z = 0 处的那一段）是泥
+  surface(X + 61, X3 + 1, 'forest');
+  for (const S of [NEAR_SIDE, FAR_SIDE]) for (const [x, z, rx, rz] of S.mud) if (Math.abs(z) < rz) { const w = rx * Math.sqrt(1 - (z / rz) ** 2); surface(x - w, x + w, 'mud'); }
   function* groundDetails(R, v, layers) {
     v.gd = {}; v.life = groundLife(R, 2);
     for (const k of GD_KINDS) { const g = new THREE.Group(); g.name = k; R.add(g); v.gd[k] = g; }
@@ -4040,14 +4868,16 @@ const CH2 = (() => {
 const CH3 = (() => {
   const X = X3, WALL = X + 44, PIT0 = X + 56.5, PIT1 = X + 58.7;
   const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '围墙与废料场', sub: '越过围墙' });
+  C.ground = 'sand';                                                               // 脚步声：墙外的废料场是沙土；林子边是落叶，围墙里的场子是碎石；墙、残墙是水泥，货箱是铁的，旧箱子是木头的
   terrain([PIT0, 0], [PIT0 + 0.01, -3.6], [PIT1 - 0.01, -3.6], [PIT1, 0], [X4, 0]);
   ground(X + 10, 0x3c381d); ground(X + 30, 0x675d4b); ground(X + 70, 0x6a604e); ground(X4 - 6, 0x5a5750);      // 头一个：林子的地一直铺到这里，和第二章末尾是同一个颜色
-  solid({ id: 'pwall', x1: WALL, x2: WALL + 1.3, y1: 0, y2: 3.3 });
-  const A = solid({ id: 'ruinA', x1: WALL + 1.3, x2: WALL + 4.6, y1: 0, y2: 2.3 });
-  const B = solid({ id: 'ruinB', x1: WALL + 6.2, x2: WALL + 8.9, y1: 0, y2: 1.9 });
-  const Cb = solid({ id: 'cargo', x1: X + 54.7, x2: PIT0, y1: 0, y2: 1.2 });
+  solid({ id: 'pwall', x1: WALL, x2: WALL + 1.3, y1: 0, y2: 3.3, snd: 'concrete' });
+  const A = solid({ id: 'ruinA', x1: WALL + 1.3, x2: WALL + 4.6, y1: 0, y2: 2.3, snd: 'concrete' });
+  const B = solid({ id: 'ruinB', x1: WALL + 6.2, x2: WALL + 8.9, y1: 0, y2: 1.9, snd: 'concrete' });
+  const Cb = solid({ id: 'cargo', x1: X + 54.7, x2: PIT0, y1: 0, y2: 1.2, snd: 'metal' });
   solid({ id: 'pitL', x1: PIT0 - 0.6, x2: PIT0, y1: -3.6, y2: 0 }); solid({ id: 'pitR', x1: PIT1, x2: PIT1 + 0.6, y1: -3.6, y2: 0 });
-  const crate = pushable({ id: 'crate3', x: X + 31, w: 1.2, h: 1.0, min: X + 27.5, max: WALL - 0.6 });
+  const crate = pushable({ id: 'crate3', x: X + 31, w: 1.2, h: 1.0, min: X + 27.5, max: WALL - 0.6, snd: 'wood' });
+  surface(X - 1, X + 16, 'forest'); surface(X + 16, WALL, 'gravel');
   const CATX = B.x2 - 0.75, DOG0 = B.x1 - 0.75, DMIN = A.x2 + 0.35, DMAX = Cb.x1 - 0.4;
   const DOG = { x: DOG0, vx: 0, facing: 1, mode: 'bark', bite: 0, z: 0 };
   const S = { safe: false };                             // safe：已经带着小猫过了断桥
@@ -4061,7 +4891,8 @@ const CH3 = (() => {
   // 出了林子是工业荒漠的边缘：上午的薄霾，光更亮更白
   env(X + 6, {});
   env(X + 30, { fog: 0xbcae97, fogD: 0.0075, hemiS: 0xf3ebd9, hemiG: 0x4f483c, hemiI: 1.0, keyC: 0xfff0d8, keyI: 1.9, keyDir: [0.55, 0.62, -0.3], rimI: 0.25, dustC: 0xf2e4c8, dustO: 0.4, wind: -0.7,
-    sky: [0x6f8791, 0x9aa9a6, 0xc4c2ae, 0xddd3b6, 0xe8dcbc, 0xb5a88c], sunX: 0.12, sunY: 0.3, sunP: 0.45, cloud: 0.7, cloudC: 0xf6f0e0, birds: 0 });
+    sky: [0x6f8791, 0x9aa9a6, 0xc4c2ae, 0xddd3b6, 0xe8dcbc, 0xb5a88c], sunX: 0.12, sunY: 0.3, sunP: 0.45, cloud: 0.7, cloudC: 0xf6f0e0, birds: 0,
+    aWind: 1, aWhis: 1, aLeaf: 0.12, leafDry: 1, aBug: 0, aFar: 0.9 });                 // 声音：一阵阵的大风，风从铁皮缝里钻过去的哨声，远处乌鸦、铁皮哐哐响
   env(X4 - 20, {});
 
   hint(() => !STORY.cat && crate.x < WALL - 1 && P.x > WALL - 2.6 && P.x < WALL && P.y < 0.5, '墙太高了 —— 墙脚的拖痕通向一只旧箱子');
@@ -4210,14 +5041,16 @@ const CH3 = (() => {
 // ============================================================
 // 旧城：接近正午，铁灰色的薄霾（后面两章的街道也用这一套）
 const CITY_ENV = { fog: 0xaeb5b4, fogD: 0.0085, hemiS: 0xeef2f1, hemiG: 0x4a4d4e, hemiI: 1.05, keyC: 0xfffaf0, keyI: 2.0, keyDir: [0.3, 0.9, -0.15], rimI: 0.2, dustC: 0xe8ecec, dustO: 0.3, wind: -0.4,
-  sky: [0x7890a0, 0x9fb0b8, 0xc0c8c8, 0xd4d6d0, 0xdcdcd4, 0xa9aeac], sunX: -0.05, sunY: 0.5, sunP: 0.3, cloud: 0.8, cloudC: 0xf4f6f6 };
+  sky: [0x7890a0, 0x9fb0b8, 0xc0c8c8, 0xd4d6d0, 0xdcdcd4, 0xa9aeac], sunX: -0.05, sunY: 0.5, sunP: 0.3, cloud: 0.8, cloudC: 0xf4f6f6,
+  aWind: 0.45, aWhis: 0, aLeaf: 0, aBug: 0, aCity: 0.8, aFar: 0.7, aRoom: 0, aHum: 0, aDrip: 0, aFlow: 0, rvOut: 1, rvHall: 0.12, rvCave: 0, birds: 0 };   // 声音：楼群之间的风，城市很低的远声，远处的广播提示音、卷帘门、鸽子
 const CH4 = (() => {
   const X = X4, KIOSK = X + 12, ELDER = X + 13.7, WORKER = X + 16.6, POLE = X + 24, MARK = X + 22.4, BARR = X + 37;
   const C = chapter({ n: 4, x0: X + 0.5, start: X + 3, name: '配给街', sub: '让镜头看不见' });
+  C.ground = 'concrete';                                                           // 脚步声：路面；运输箱是铁的
   terrain([X5, 0]);
   ground(X + 4, 0x55585a); ground(X5 - 4, 0x4d5052);
-  const crate = pushable({ id: 'crate4', x: X + 30, w: 1.2, h: 1.0, min: MARK, max: BARR - 0.6 });      // 往左最多拉到标记上（轮挡）
-  const barr = solid({ id: 'barr', x1: BARR, x2: BARR + 0.9, y1: 0, y2: 3.0, noclimb: true });
+  const crate = pushable({ id: 'crate4', x: X + 30, w: 1.2, h: 1.0, min: MARK, max: BARR - 0.6, snd: 'metal' });      // 往左最多拉到标记上（轮挡）
+  const barr = solid({ id: 'barr', x1: BARR, x2: BARR + 0.9, y1: 0, y2: 3.0, noclimb: true, snd: 'concrete' });
   const shutter = gate({ id: 'shutter', x: BARR + 0.45, w: 0.9, h: 3.0, y0: 3.0, T: 2.2 });
   const S = { down: false, t: 0, bx: X + 15, hide: 0, deny: 3, pack: [0, 0, 0] };
   usable({ id: 'awning', x: MARK, r: 0.8, y0: 0.7, can: () => !S.down, on() { S.down = true; S.t = 0; STORY.fed = true; saveGame(); fx('cloth'); fx('servo'); } });
@@ -4388,15 +5221,17 @@ const CH4 = (() => {
 const CH5 = (() => {
   const X = X5, BOT0 = X + 17.0, L_END = X + 17.95, R_END = X + 33.2, DOOR = X + 35.2, ELDER = X + 15.0, STATION = X + 7;
   const C = chapter({ n: 5, x0: X + 0.5, start: X + 3, name: '维修巷', sub: '分配备用电池' });
+  C.ground = 'concrete';
   terrain([X6, 0]);
   ground(X + 4, 0x3f4446); ground(X6 - 6, 0x44494a);
-  const batt = pushable({ id: 'battery', x: X + 25.5, w: 0.9, h: 0.8, min: L_END, max: R_END, grip: 0.7 });
+  const batt = pushable({ id: 'battery', x: X + 25.5, w: 0.9, h: 0.8, min: L_END, max: R_END, grip: 0.7, snd: 'metal' });
   const door = gate({ id: 'door5', x: DOOR, w: 0.6, h: 3.4 });
   // choice：0 还没选 / 1 给了清洁机器人 / 2 给了门。t：选了以后过了多久
   const S = { choice: 0, t: 0, scan: -1, bx: BOT0, bz: -0.45, bface: 1, spin: 0, lamp: 0, coat: 0, es: 1, ex: ELDER };
   checkpoint(X + 3); checkpoint(X + 20); checkpoint(DOOR + 3);
   camKeys([X + 2, 18.5, 1.75, 0], [X + 14, 19, 1.85, 1.5], [X + 26, 20, 1.9, 0], [DOOR, 19.5, 1.85, 0.5], [X6 - 2, 19, 1.8, 0]);
-  env(X + 5, { fog: 0x7c8588, fogD: 0.014, hemiS: 0xd6dede, hemiG: 0x3a3e40, hemiI: 0.8, keyI: 1.05, keyDir: [0.15, 1, 0.1], dustO: 0.42, wind: -0.1, sunP: 0.1 });   // 两排楼夹着的窄巷：暗一些
+  env(X + 5, { fog: 0x7c8588, fogD: 0.014, hemiS: 0xd6dede, hemiG: 0x3a3e40, hemiI: 0.8, keyI: 1.05, keyDir: [0.15, 1, 0.1], dustO: 0.42, wind: -0.1, sunP: 0.1,
+    aWind: 0.2, aCity: 0.5, aDrip: 0.45, aHum: 0.25, aFar: 0.8, rvHall: 0.35 });   // 声音：巷子里风小，管子滴水、电箱的嗡嗡，墙之间有回声   // 两排楼夹着的窄巷：暗一些
   env(X6 - 12, {}); env(X6 - 2, CITY_ENV);
 
   hint(() => !S.choice && Math.abs(P.x - batt.x) < 2.4 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 推电池 —— 滑轨一头通向清洁机器人，一头通向维护门');
@@ -4581,18 +5416,20 @@ const CH5 = (() => {
 const CH6 = (() => {
   const X = X6, PAD_A = X + 9.0, PAD_B = X + 14.0, PUMP = X + 18.5, GATE = X + 41, LEAK = X + 50, PERCH = X + 55.4, MAN = X + 61.6, Z0 = X + 57.0, Z1 = X + 59.0;
   const C = chapter({ n: 6, x0: X + 0.5, start: X + 3, name: '供水街区', sub: '把水送到需要它的地方' });
+  C.ground = 'concrete';
   terrain([X7, 0]);
   ground(X + 4, 0x4d5052); ground(X + 70, 0x4d5052); ground(X7 - 8, 0x4c5540);
-  const coil = pushable({ id: 'coil', x: PAD_A, w: 1.0, h: 0.85, min: PAD_A, max: PAD_B, grip: 0.72 });
-  const lid = pushable({ id: 'lid', x: X + 46.6, w: 0.95, h: 0.5, min: X + 45.6, max: Z1, grip: 0.74 });
+  const coil = pushable({ id: 'coil', x: PAD_A, w: 1.0, h: 0.85, min: PAD_A, max: PAD_B, grip: 0.72, snd: 'metal' });
+  const lid = pushable({ id: 'lid', x: X + 46.6, w: 0.95, h: 0.5, min: X + 45.6, max: Z1, grip: 0.74, snd: 'metal' });
   const door = gate({ id: 'door6', x: GATE, w: 0.8, h: 3.6, T: 1.6 });
   // ph：0 小猫还跟着 / 1 它闻着味跑向那个人 / 2 被赶到一边蹲着 / 3 那个人把食物推过来 / 4 小猫在喝水 / 5 结束 / 9 没管，走了
   const S = { pump: false, k: 0, fill: 0, ph: 0, t: 0, shoo: 0, morsel: 0, grow: 0 };
   checkpoint(X + 3); checkpoint(X + 22); checkpoint(GATE + 2.5); checkpoint(X + 72);
   camKeys([X + 2, 19, 1.8, 0], [X + 9, 20, 2.3, 2], [X + 20, 20.5, 2.5, 1.5], [X + 33, 21, 2.7, 1], [GATE + 1, 19.5, 2.0, 0.5], [X + 50, 20, 2.2, 1.5], [X + 60, 19.5, 1.9, 0.5], [X + 72, 19, 1.8, 0], [X7 - 2, 19, 1.8, 0]);
-  env(X + 60, {});
+  env(X + 60, { aDrip: 0.3 });                                                     // 声音：漏水的管子一路滴着
   // 往城外走，路面的裂缝里开始长草；午后的光偏暖
-  env(X7 - 10, { fog: 0xb9bda6, hemiS: 0xf2f0dc, hemiG: 0x4b4f40, keyC: 0xfff3d6, keyI: 1.9, keyDir: [-0.35, 0.8, -0.2], sky: [0x7c96a0, 0xa6b6b4, 0xc9cdbc, 0xdcd8be, 0xe6dec2, 0xa8ad98], sunX: -0.25, sunY: 0.42, sunP: 0.35, cloudC: 0xf6f2e2, birds: 0.5 });
+  env(X7 - 10, { fog: 0xb9bda6, hemiS: 0xf2f0dc, hemiG: 0x4b4f40, keyC: 0xfff3d6, keyI: 1.9, keyDir: [-0.35, 0.8, -0.2], sky: [0x7c96a0, 0xa6b6b4, 0xc9cdbc, 0xdcd8be, 0xe6dec2, 0xa8ad98], sunX: -0.25, sunY: 0.42, sunP: 0.35, cloudC: 0xf6f2e2, birds: 0.5,
+    aCity: 0.3, aLeaf: 0.3, leafDry: 0.2, aDrip: 0 });                                 // 往城外走：城市的声音小下去，有了树叶声和鸟
 
   hint(() => !S.pump && Math.abs(P.x - coil.x) < 2.4 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 把线圈推到通向水泵的触点上');
   hint(() => !S.pump && P.x > X + 21 && P.x < GATE && P.y < 1, '监控还亮着，闸门就不会开 —— 这条街的电都在它们身上');
@@ -4773,14 +5610,16 @@ const CH6 = (() => {
 const CH7 = (() => {
   const X = X7, ENTRY = X + 1.2, ARM = X + 31.0, DOOR = X + 34.4, VALVE = X + 41, SENSOR = X + 56, GATE = X + 61.5, W0 = X + 46.5, W1 = X + 60;
   const C = chapter({ n: 7, x0: X + 0.5, start: X + 3, name: '管理花园', sub: '让野地重新得到水' });
+  C.ground = 'grass';                                                              // 脚步声：草地；野地干得开裂是土，长起来以后又是草（见下面的 surface）
   terrain([X8, 0]);
   ground(X + 2, 0x80bd56); ground(X + 44.5, 0x80bd56); ground(X + 47, 0xc2a05c); ground(X + 60, 0xc2a05c); ground(X + 64, 0x7fbb4c); ground(X8 - 4, 0x7fbb4c);
-  const branch = pushable({ id: 'branch', x: X + 21.5, w: 1.7, h: 0.5, min: X + 20.4, max: X + 30.4, grip: 0.72 });
+  const branch = pushable({ id: 'branch', x: X + 21.5, w: 1.7, h: 0.5, min: X + 20.4, max: X + 30.4, grip: 0.72, snd: 'wood' });
   const door = gate({ id: 'door7', x: DOOR, w: 0.6, h: 3.4, T: 4 });
   const relay = gate({ id: 'relay7', x: GATE, w: 0.8, h: 3.6, T: 1.8 });
   // jam 刀片卡住了 / vine 藤长到哪（0..1）/ valve 阀门有没有拨向野地 / g 野地的植物长到哪（0..1）
   const S = { jam: false, snipT: 0, snip: 0, vine: 0.15, valve: 0, vk: 0, g: 0, cat: 0 };
   usable({ id: 'valve', x: VALVE, r: 1.0, on() { S.valve = 1 - S.valve; fx('valve'); } });
+  surface(W0 - 0.5, W1 + 1, () => S.g > 0.6 ? 'grass' : 'dirt');                    // 脚步声：野地干得开裂是土，浇上水长起来以后是草
   checkpoint(X + 3); checkpoint(X + 24); checkpoint(DOOR + 2.6); checkpoint(GATE + 2.5); checkpoint(X + 100);
   camKeys([X + 2, 19, 1.8, 0], [X + 16, 20, 2.2, 1], [X + 28, 20.5, 2.5, 1.5], [X + 38, 19.5, 2.0, 0.5], [X + 50, 20.5, 2.1, 1.5], [GATE + 1, 19.5, 1.9, 0.5], [X + 78, 23, 2.8, 3], [X + 100, 20, 2.0, 0], [X8 - 3, 18.5, 1.8, -1.2]);
   // 进了花园的门：春天的清晨。太阳低低地挂在前方偏右（从正后方往右偏 16°、离地 14°）：逆光，迎着镜头的一面在阴影里（天光是偏冷的蓝），
@@ -4788,11 +5627,13 @@ const CH7 = (() => {
   // 太阳在无穷远：它在画面上的位置不随镜头变，近处的树走过去时一会儿挡住它、一会儿露出来
   const SUN = [0.2674, 0.2419, -0.9327], SUNSKY = [0.277, 0.079];
   env(X + 5, { fog: 0xe9e6d6, fogD: 0.007, hemiS: 0xa4c2e4, hemiG: 0x4c6a42, hemiI: 0.78, keyC: 0xffe2b0, keyI: 5.0, keyDir: SUN, rimI: 0.25, dustC: 0xffe8b8, dustO: 0.7,
-    sky: [0x4f86c8, 0x6a9bd6, 0x8db5e0, 0xd4e1e0, 0xfbedcf, 0xc6c79e], sunX: SUNSKY[0], sunY: SUNSKY[1], sunP: 1.0, sunC: 0xfff5dc, cloud: 0.15, cloudC: 0xfff4e4, birds: 1, vig: 0.6 });
+    sky: [0x4f86c8, 0x6a9bd6, 0x8db5e0, 0xd4e1e0, 0xfbedcf, 0xc6c79e], sunX: SUNSKY[0], sunY: SUNSKY[1], sunP: 1.0, sunC: 0xfff5dc, cloud: 0.15, cloudC: 0xfff4e4, birds: 1, vig: 0.6,
+    aCity: 0, aRoom: 0, aHum: 0, aWind: 0.35, aLeaf: 0.75, leafDry: 0, aBug: 0.15, aDrip: 0, aFar: 0.7, rvOut: 1, rvHall: 0 });   // 声音：清晨，满是鸟，风吹嫩叶，蜜蜂飞过
   env(X + 62, {});
   // 走出花园已是黄昏：太阳落到身后，天边烧成橘红
   env(X + 92, { fog: 0xf0c296, fogD: 0.007, hemiS: 0xffe0c4, hemiG: 0x5a5a38, hemiI: 0.95, keyC: 0xffc080, keyI: 2.3, keyDir: [-0.74, 0.3, -0.5], rimI: 0.3, dustC: 0xffe2b8, dustO: 0.4, wind: -0.5,
-    sky: [0x35478a, 0x6b6fb4, 0xc487a6, 0xf5a878, 0xffd392, 0xb98a62], sunX: -0.38, sunY: 0.05, sunP: 1, sunC: 0xffe2b0, cloud: 1, cloudC: 0xffc9a0, birds: 0.4, flies: 0.5, vig: 0.6 });
+    sky: [0x35478a, 0x6b6fb4, 0xc487a6, 0xf5a878, 0xffd392, 0xb98a62], sunX: -0.38, sunY: 0.05, sunP: 1, sunC: 0xffe2b0, cloud: 1, cloudC: 0xffc9a0, birds: 0.4, flies: 0.5, vig: 0.6,
+    aBug: 0.7, aLeaf: 0.55, aWind: 0.4 });                                            // 黄昏：鸟少了，蟋蟀叫起来
   env(X8 - 13, {});
   // 快到中枢了：天色和暗角回到原来的样子（下一章没有写的项是从这里接过去的）
   env(X8 - 1.5, { sky: [0x33414f, 0x66717a, 0xb09a88, 0xe6b184, 0xf3c48c, 0xa77f60], cloudC: 0xffd9b4, birds: 0.3, flies: 0, vig: 1 });
@@ -5333,6 +6174,8 @@ const CH7 = (() => {
     relay.want = S.g >= 1 ? 1 : 0;
     const scanOn = S.g < 1 ? 1 : 0;
     armL.on = S.jam ? 0 : 1; sensL.on = scanOn * (0.6 + 0.4 * Math.sin(T * 6));
+    // 喷灌头“嘶——嚓嚓嚓”：离最近的那一只越近越响（喷头每隔 6.3 米一只，在树后 5 米深处），水拨给野地以后小下去
+    if (near) { let ds = 99; for (let x = X + 3.6; x < X + 44; x += 6.3) ds = Math.min(ds, Math.abs(P.x - x)); AUD.spray = lerp(1, 0.4, S.vk) * sstep(9, 1.5, Math.hypot(ds, 5.1)); }
     if (near) { AUD.water = Math.max(AUD.water, 0.5 * S.vk * sstep(26, 4, Math.abs(P.x - W0)), 0.16 * lerp(1, 0.4, S.vk) * sstep(52, 20, Math.abs(P.x - (X + 22)))); AUD.hum = Math.max(AUD.hum, S.jam ? 0 : 0.02 * sstep(22, 4, Math.abs(P.x - ARM))); }
     // 走到拱环附近：小猫先停下来，朝那边看了一会儿
     if (STORY.cat && state === 'play') {
@@ -5408,15 +6251,17 @@ const CH7 = (() => {
 const CH8 = (() => {
   const X = X8, D1 = X + 20, D2 = X + 44, D3 = X + 70, EX = X + 96, DOCK = X + 79, SOCK_L = X + 80.65, SOCK_R = X + 90.4, OUT = X + 98.2;
   const C = chapter({ n: 8, x0: X + 0.5, start: X + 4, name: '生态中枢', sub: '分配最后的能源' });
+  C.ground = 'concrete';                                                           // 脚步声：中枢里是磨光的地面；出了门是坡上的草（见下面）；导电桥、电池是铁的
   terrain([EX + 2.1, 0], [X + 104, 0.4], [X + 116, 1.6], [X + 126, 2.4], [X + 140, 2.6], [X + 220, 2.6]);
   ground(X - 0.2, 0x556040); ground(X + 0.2, 0x1e282e); ground(EX + 0.6, 0x1e282e); ground(EX + 1, 0x3f4636); ground(X + 220, 0x3f4636);
   groundBack(X + 60, EX + 2.1, -32); groundBack(EX + 2.1, X + 220, -5);   // 中枢的地面只铺到后墙后面；出了门是一道坡，坡的背后低下去，是一片谷地
   const P2 = [X + 28, X + 32.7, X + 37.4], P3 = [X + 52, X + 57, X + 62];                 // 第二段触点：监控 / 水泵 / 灌溉；第三段：监控 / 灌溉 / 水泵
-  const b2 = pushable({ id: 'bridge2', x: P2[0], w: 0.9, h: 0.8, min: P2[0], max: P2[2], grip: 0.7 });
-  const c1 = pushable({ id: 'bridge3a', x: P3[0], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7 });
-  const c2 = pushable({ id: 'bridge3b', x: P3[1], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7 });
+  const b2 = pushable({ id: 'bridge2', x: P2[0], w: 0.9, h: 0.8, min: P2[0], max: P2[2], grip: 0.7, snd: 'metal' });
+  const c1 = pushable({ id: 'bridge3a', x: P3[0], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7, snd: 'metal' });
+  const c2 = pushable({ id: 'bridge3b', x: P3[1], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7, snd: 'metal' });
   c1.hi = () => c2.x - 1.15; c2.lo = () => c1.x + 1.15;                                     // 两只桥在同一条轨上，互相越不过去
-  const batt = pushable({ id: 'last', x: X + 85.5, w: 0.9, h: 0.8, min: SOCK_L, max: SOCK_R, grip: 0.7 });
+  const batt = pushable({ id: 'last', x: X + 85.5, w: 0.9, h: 0.8, min: SOCK_L, max: SOCK_R, grip: 0.7, snd: 'metal' });
+  surface(EX + 1, X + 230, 'grass');
   const d1 = gate({ id: 'd81', x: D1, w: 0.6, h: 3.4, T: 1.6 }), d2 = gate({ id: 'd82', x: D2, w: 0.6, h: 3.4, T: 3 }), d3 = gate({ id: 'd83', x: D3, w: 0.6, h: 3.4, T: 1.8 }), d4 = gate({ id: 'd84', x: EX, w: 0.9, h: 3.6 });
   // 三段各自的负载状态：eye 监控 / drop 水泵 / leaf 灌溉
   const S = { eye1: true, lv: 0, st: [{ eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 1 }], v2: 0, open2: false, k: [[1, 0, 0], [1, 0, 0], [1, 0, 1]] };
@@ -5458,11 +6303,13 @@ const CH8 = (() => {
   const INK = { hi: '#eefafd', mid: '#bfe4ee', lo: '#7fb6c8', wall: '#0e171c', dark: '#060b0e', rgb: '190,228,238' };
   const mixc = (a, b, t) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
   // 逆光：主光从最远的那面墙照过来，影子朝着镜头；环境光压暗，轮廓光提亮
-  const HUB = { fog: 0x1a2932, fogD: 0.026, hemiS: 0x9fc4d6, hemiG: 0x141c24, hemiI: 0.42, keyC: 0xcfe8ff, keyI: 0.6, keyDir: [0.08, 0.5, -1], rimC: 0xa8d8ee, rimI: 1.1, dustC: 0xcfe6f2, dustO: 0.45, wind: 0.03, ext: 0, sunP: 0, cloud: 0, birds: 0 };
+  const HUB = { fog: 0x1a2932, fogD: 0.026, hemiS: 0x9fc4d6, hemiG: 0x141c24, hemiI: 0.42, keyC: 0xcfe8ff, keyI: 0.6, keyDir: [0.08, 0.5, -1], rimC: 0xa8d8ee, rimI: 1.1, dustC: 0xcfe6f2, dustO: 0.45, wind: 0.03, ext: 0, sunP: 0, cloud: 0, birds: 0,
+    aWind: 0, aLeaf: 0, aBug: 0, aCity: 0, aDrip: 0, aRoom: 0.8, roomF: 260, aHum: 1, aFar: 0.9, rvHall: 1.25, rvOut: 0 };   // 声音：机房的低鸣和电流声，继电器、远处机器转起来又停下；又高又空
   env(X - 0.05, HUB); env(EX + 0.7, {});
   // 走出中枢：天快黑了
   env(EX + 2.1, { fog: 0x8a7f86, fogD: 0.006, hemiS: 0xd9c8d6, hemiG: 0x3a3840, hemiI: 0.8, keyC: 0xffb48a, keyI: 1.3, keyDir: [-0.8, 0.22, -0.5], rimC: 0xa9cdd8, rimI: 0.35, dustC: 0xffd9c0, dustO: 0.3, wind: -0.4, ext: 1,
-    sky: [0x232c44, 0x4a4f6c, 0x8c7488, 0xd29a86, 0xeab08a, 0x7a6660], sunX: -0.42, sunY: 0.0, sunP: 0.8, sunC: 0xffc9a0, stars: 0.25, cloud: 0.8, cloudC: 0xe9b9a8 });
+    sky: [0x232c44, 0x4a4f6c, 0x8c7488, 0xd29a86, 0xeab08a, 0x7a6660], sunX: -0.42, sunY: 0.0, sunP: 0.8, sunC: 0xffc9a0, stars: 0.25, cloud: 0.8, cloudC: 0xe9b9a8,
+    aRoom: 0, aHum: 0, aDrip: 0, aCity: 0, rvHall: 0, rvOut: 1, aWind: 0.5, aLeaf: 0.3, leafDry: 0.5, aBug: 0.85, aFar: 0.5 });   // 出了门：傍晚的风，满坡的蟋蟀，远处一只猫头鹰
   env(X + 220, {});
   // 旁路结局里天色分两步变。先是余晖（END.night）：天顶黑下来，山后面留着一线橙红，谷地的灯在这时候一盏一盏亮起来；
   // 灯亮齐以后余晖慢慢褪掉（END.deep），剩下满天的星。dim：远山和谷地那几层画出来的布景跟着暗到几成（乘的是线性亮度，所以数字很小）
@@ -5874,6 +6721,7 @@ const CH9 = (() => {
   const X = X9;
   const C = chapter({ n: 9, x0: X + 0.5, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
     intro() { CAT.state = 'none'; } });                    // 小猫不进山洞（它怕水）
+  C.ground = 'rock';                                                               // 脚步声：湿的岩石
   const A = (pts) => pts.map(([x, y]) => [X + x, y]);
   // ---- 地面（脚下的岩石、潭底）----
   terrain(...A([[-30, 0], [9.5, 0], [9.9, -0.6], [10.3, -2.4], [11.2, -3.1], [16, -3.3], [21.5, -3.1], [22.6, -2.2], [23.1, -0.7], [23.35, 0.3], [30, 0.3], [34, 0.2],
@@ -5965,9 +6813,11 @@ const CH9 = (() => {
       pts: [[296.5, -2.4, 1.5, 0x5aa890, 3.2, 9], [312, 3, 0, 0xb8cccc, 3, 16]] },
   ];
   // 环境：每一段一组，段与段之间几米里慢慢换过去
-  const ENVC = { dustO: 0, wind: 0, ext: 0, sky: [0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1, rimC: 0x9fb6bd };
+  const ENVC = { dustO: 0, wind: 0, ext: 0, sky: [0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1, rimC: 0x9fb6bd,
+    aWind: 0, aLeaf: 0, aBug: 0, aCity: 0, aHum: 0, aRoom: 0.7, roomF: 120, aDrip: 1, aFlow: 0.5, aFar: 0.8, rvCave: 1, rvHall: 0, rvOut: 0 };   // 声音：山洞的低鸣，到处滴水（带回声），暗河在远处流，偶尔滚下几颗石子
   for (const S of SEC) { env(X + S.x1 + (S.x1 > 0 ? 2 : 0), { ...ENVC, ...S.env }); env(X + Math.min(S.x2 - 2, 304), {}); }
-  env(X + 316, { fog: 0x6a7c7a, hemiS: 0xc8d6d4, hemiG: 0x2a3433, hemiI: 0.85, keyI: 0.45 });   // 洞口外面亮起来
+  env(X + 316, { fog: 0x6a7c7a, hemiS: 0xc8d6d4, hemiG: 0x2a3433, hemiI: 0.85, keyI: 0.45,
+    rvCave: 0.35, rvOut: 0.7, aRoom: 0.2, aWind: 0.35, aDrip: 0.2, aFlow: 0.3, birds: 0.35, aLeaf: 0.3, leafDry: 0.3 });   // 洞口：外面的风和鸟   // 洞口外面亮起来
   // 照主角的灯（各段登记好，离镜头近的几盏才真的亮）；另有一盏跟着主角走的补光，颜色跟着段落换
   for (const S of SEC) for (const [x, y, z, c, i, d] of S.pts || []) pointLight({ p: [X + x, y, z], c, i, d });
   const skyL = SEC.filter(S => S.sky).map(S => spotLight({ p: [X + S.sky.x, 9, 0.5], t: [X + S.sky.x - 0.4, -3.5, 0], c: 0xd8eef0, i: 6, d: 16, a: 0.32, pen: 0.8 }));
@@ -6651,7 +7501,7 @@ airZone(2, [X2, X3 + 4], [X2 + 0.7, X3 + 2], function* (R, sys) {
 // 残墙顶上停着两只乌鸦，翻上墙头就飞；墙外枯树上也有几只；废料场上空几只乌鸦在慢慢盘旋
 airZone(3, [X3 - 6, X4 + 6], [X3 - 4, X4 + 1], function* (R, sys) {
   const where = () => sstep(X3 + 16, X3 + 34, camera.position.x) * (1 - sstep(X4 - 16, X4 - 3, camera.position.x));   // 风沙从林子外面开始，进旧城以前停下
-  const gust = () => where() * clamp(0.55 + 0.25 * Math.sin(T * 0.37) + 0.2 * Math.sin(T * 1.13 + 1) + 0.7 * Math.pow(Math.max(0, Math.sin(T * 0.19)), 8), 0, 1.5);
+  const gust = () => where() * gustAt(T);                                  // 和风声、树叶声同一阵风（36-lights-fx.js 的 gustAt）
   const wind = { wind: -3.8, gust };
   sys.push(airSand(R, { n: 520, ...wind }));
   sys.push(sandSheet(R, X3 + 10, X3 + 56.3, -8, 9, wind), sandSheet(R, X3 + 58.9, X4, -8, 9, wind)); yield;
@@ -6801,7 +7651,7 @@ function stepWaterFx(dt) {
     const w = P.water;
     if (P.under) {                                       // 在水下：隔一会儿从嘴边冒一两个气泡；憋不住了冒得更勤
       bubT -= dt * (1 + 3 * sstep(0.55, 1, 1 - P.air / SWIM.breath));
-      if (bubT <= 0) { const h = heroHead(); bubT = ar(0.3, 1.0); for (let i = 0, n = Math.random() < 0.3 ? 3 : 1; i < n; i++) bubbleAt(h.x + P.facing * 0.1, h.y + i * 0.05, w.y, ar(0.015, 0.04)); }
+      if (bubT <= 0) { const h = heroHead(); bubT = ar(0.3, 1.0); for (let i = 0, n = Math.random() < 0.3 ? 3 : 1; i < n; i++) bubbleAt(h.x + P.facing * 0.1, h.y + i * 0.05, w.y, ar(0.015, 0.04)); fx('blub'); }
     } else {                                             // 浮在水面上：身边一道道波纹
       ripT -= dt * (0.6 + Math.min(1.5, Math.abs(P.vx))); if (ripT <= 0) { ripT = 0.55; rippleAt(P.x + ar(-0.2, 0.2), w.y, 0.6); }
     }
@@ -6848,7 +7698,7 @@ function startChapter(n, o = {}) {
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
   STORY.done = n - 1; STORY.ch = n; saveGame();
   for (const z of ZONES) { if (z.n < n) z.solve(); else z.reset(); }
-  placePlayer(c.start); P.cp = cpAt(c.start + 0.01);
+  placePlayer(c.start); P.cp = cpAt(c.start + 0.01); resetPant();
   Object.assign(P, { moved: n > 1, jumped: n > 1, pushed: n > 1, used: n > 1 });
   if (STORY.cat) catPlace(c.start - 0.9, floorY(c.start - 0.9, P.y + 0.1)); else if (n > 3) CAT.state = 'none';
   ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null;
@@ -7166,9 +8016,10 @@ function sim(dt) {
   stepPits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
+  GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
-    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose,
+    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -7182,7 +8033,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
@@ -7190,7 +8041,21 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, 
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
-  zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on) };
+  zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
+  // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
+  sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),
+  audio: () => ({ AC, MX, master, loops, jobs: JOBS.length, banks: Object.keys(BANKS).length, surface: surfaceUnder() }),
+  // 量一量声音（听不到的时候用）：meter(秒) → 总输出 out 和三路 amb / fol / sfx 各自的 RMS 和峰值（dBFS）。250 赫兹以下不算：小喇叭放不出来的低音不计
+  meter(sec = 2) {
+    if (!AC) return Promise.resolve(null);
+    if (!DBG._an) { DBG._an = {}; for (const [k, n] of [['out', master], ['amb', MX.bus.amb], ['fol', MX.bus.fol], ['sfx', MX.bus.sfx]]) { const f = AC.createBiquadFilter(), a = AC.createAnalyser(); f.type = 'highpass'; f.frequency.value = 250; a.fftSize = 2048; n.connect(f).connect(a); DBG._an[k] = a; } }
+    const acc = {}, buf = new Float32Array(2048), t0 = performance.now(); for (const k in DBG._an) acc[k] = [0, 0, 0];
+    return new Promise(res => { const tick = () => {
+      for (const k in DBG._an) { DBG._an[k].getFloatTimeDomainData(buf); const A = acc[k]; for (const v of buf) { A[0] += v * v; A[2] = Math.max(A[2], Math.abs(v)); } A[1] += buf.length; }
+      if (performance.now() - t0 < sec * 1000) requestAnimationFrame(tick);
+      else { const o = {}; for (const k in acc) { const [ss, n, pk] = acc[k]; o[k] = [+(10 * Math.log10(ss / n + 1e-18)).toFixed(1), +(20 * Math.log10(pk + 1e-9)).toFixed(1)]; } res(o); } };
+      requestAnimationFrame(tick); });
+  } };
 
 let lastT = performance.now(), frameN = 0;
 function frame(now) {

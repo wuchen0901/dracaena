@@ -9,18 +9,20 @@
 const CH6 = (() => {
   const X = X6, PAD_A = X + 9.0, PAD_B = X + 14.0, PUMP = X + 18.5, GATE = X + 41, LEAK = X + 50, PERCH = X + 55.4, MAN = X + 61.6, Z0 = X + 57.0, Z1 = X + 59.0;
   const C = chapter({ n: 6, x0: X + 0.5, start: X + 3, name: '供水街区', sub: '把水送到需要它的地方' });
+  C.ground = 'concrete';
   terrain([X7, 0]);
   ground(X + 4, 0x4d5052); ground(X + 70, 0x4d5052); ground(X7 - 8, 0x4c5540);
-  const coil = pushable({ id: 'coil', x: PAD_A, w: 1.0, h: 0.85, min: PAD_A, max: PAD_B, grip: 0.72 });
-  const lid = pushable({ id: 'lid', x: X + 46.6, w: 0.95, h: 0.5, min: X + 45.6, max: Z1, grip: 0.74 });
+  const coil = pushable({ id: 'coil', x: PAD_A, w: 1.0, h: 0.85, min: PAD_A, max: PAD_B, grip: 0.72, snd: 'metal' });
+  const lid = pushable({ id: 'lid', x: X + 46.6, w: 0.95, h: 0.5, min: X + 45.6, max: Z1, grip: 0.74, snd: 'metal' });
   const door = gate({ id: 'door6', x: GATE, w: 0.8, h: 3.6, T: 1.6 });
   // ph：0 小猫还跟着 / 1 它闻着味跑向那个人 / 2 被赶到一边蹲着 / 3 那个人把食物推过来 / 4 小猫在喝水 / 5 结束 / 9 没管，走了
   const S = { pump: false, k: 0, fill: 0, ph: 0, t: 0, shoo: 0, morsel: 0, grow: 0 };
   checkpoint(X + 3); checkpoint(X + 22); checkpoint(GATE + 2.5); checkpoint(X + 72);
   camKeys([X + 2, 19, 1.8, 0], [X + 9, 20, 2.3, 2], [X + 20, 20.5, 2.5, 1.5], [X + 33, 21, 2.7, 1], [GATE + 1, 19.5, 2.0, 0.5], [X + 50, 20, 2.2, 1.5], [X + 60, 19.5, 1.9, 0.5], [X + 72, 19, 1.8, 0], [X7 - 2, 19, 1.8, 0]);
-  env(X + 60, {});
+  env(X + 60, { aDrip: 0.3 });                                                     // 声音：漏水的管子一路滴着
   // 往城外走，路面的裂缝里开始长草；午后的光偏暖
-  env(X7 - 10, { fog: 0xb9bda6, hemiS: 0xf2f0dc, hemiG: 0x4b4f40, keyC: 0xfff3d6, keyI: 1.9, keyDir: [-0.35, 0.8, -0.2], sky: [0x7c96a0, 0xa6b6b4, 0xc9cdbc, 0xdcd8be, 0xe6dec2, 0xa8ad98], sunX: -0.25, sunY: 0.42, sunP: 0.35, cloudC: 0xf6f2e2, birds: 0.5 });
+  env(X7 - 10, { fog: 0xb9bda6, hemiS: 0xf2f0dc, hemiG: 0x4b4f40, keyC: 0xfff3d6, keyI: 1.9, keyDir: [-0.35, 0.8, -0.2], sky: [0x7c96a0, 0xa6b6b4, 0xc9cdbc, 0xdcd8be, 0xe6dec2, 0xa8ad98], sunX: -0.25, sunY: 0.42, sunP: 0.35, cloudC: 0xf6f2e2, birds: 0.5,
+    aCity: 0.3, aLeaf: 0.3, leafDry: 0.2, aDrip: 0 });                                 // 往城外走：城市的声音小下去，有了树叶声和鸟
 
   hint(() => !S.pump && Math.abs(P.x - coil.x) < 2.4 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 把线圈推到通向水泵的触点上');
   hint(() => !S.pump && P.x > X + 21 && P.x < GATE && P.y < 1, '监控还亮着，闸门就不会开 —— 这条街的电都在它们身上');

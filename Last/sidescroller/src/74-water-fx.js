@@ -61,7 +61,7 @@ function stepWaterFx(dt) {
     const w = P.water;
     if (P.under) {                                       // 在水下：隔一会儿从嘴边冒一两个气泡；憋不住了冒得更勤
       bubT -= dt * (1 + 3 * sstep(0.55, 1, 1 - P.air / SWIM.breath));
-      if (bubT <= 0) { const h = heroHead(); bubT = ar(0.3, 1.0); for (let i = 0, n = Math.random() < 0.3 ? 3 : 1; i < n; i++) bubbleAt(h.x + P.facing * 0.1, h.y + i * 0.05, w.y, ar(0.015, 0.04)); }
+      if (bubT <= 0) { const h = heroHead(); bubT = ar(0.3, 1.0); for (let i = 0, n = Math.random() < 0.3 ? 3 : 1; i < n; i++) bubbleAt(h.x + P.facing * 0.1, h.y + i * 0.05, w.y, ar(0.015, 0.04)); fx('blub'); }
     } else {                                             // 浮在水面上：身边一道道波纹
       ripT -= dt * (0.6 + Math.min(1.5, Math.abs(P.vx))); if (ripT <= 0) { ripT = 0.55; rippleAt(P.x + ar(-0.2, 0.2), w.y, 0.6); }
     }

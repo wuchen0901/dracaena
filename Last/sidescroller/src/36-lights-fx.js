@@ -60,10 +60,15 @@ function assignLights(cx) {                              // 越远越暗，暗�
 // fog 雾色 / fogD 雾的浓度 / hemi* 环境光 / key* 主光 / rim* 轮廓光 / dust* 尘埃 / wind 风 / ext 室外程度（0..1，管声音和门口的光）
 // sky 六个颜色：从天顶到地平线再到地平线以下 / sun* 太阳的位置、颜色、强度 / stars 星星 / cloud 云 / birds 鸟叫 / flies 萤火虫 /
 // vig 画面四角的暗角有多重（1 = 平常；明亮的章节放轻一些）
+// 声音（52-audio.js）：aWind 风 / aWhis 风从铁皮缝里钻过的哨声 / aLeaf 风吹树叶，leafDry 1 是枯叶、0 是嫩叶 / aBug 蟋蟀 / aDrip 滴水 / aFlow 流水、暗河 /
+// aRoom 室内的低鸣，roomF 有多低 / aHum 电流的嗡嗡 / aCity 城市的远声 / aFar 远处偶尔一下的声音（每一章是什么见 52-audio.js 的 FAR）/
+// rvOut / rvHall / rvCave 混响用哪种空间：室外 / 大厂房 / 山洞
 const ENV0 = { fog: 0x25343a, fogD: 0.026, hemiS: 0x9fb6bd, hemiG: 0x1c2224, hemiI: 0.6, keyC: 0xd4e6ec, keyI: 0.85, keyDir: [0.22, 1, 0.32], rimC: 0xa9cdd8, rimI: 0.7,
   dustC: 0xcfe2e6, dustO: 0.5, wind: 0.04, ext: 0, sky: [0x2d3d46, 0x5d7074, 0xa99a82, 0xe2b680, 0xf1c88b, 0xa37d5c], sunX: 0.36, sunY: 0.04, sunC: 0xfff0cd, sunP: 0,
-  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0, vig: 1 };
-const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies', 'vig'];
+  stars: 0, cloud: 0, cloudC: 0xffe1be, birds: 0, flies: 0, vig: 1,
+  aWind: 0, aWhis: 0, aLeaf: 0, leafDry: 0.7, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0, roomF: 210, aHum: 0, aCity: 0, aFar: 0, rvOut: 0, rvHall: 0, rvCave: 0 };
+const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX', 'sunY', 'sunP', 'stars', 'cloud', 'birds', 'flies', 'vig',
+  'aWind', 'aWhis', 'aLeaf', 'leafDry', 'aBug', 'aDrip', 'aFlow', 'aRoom', 'roomF', 'aHum', 'aCity', 'aFar', 'rvOut', 'rvHall', 'rvCave'];
 const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['sunC', 'cloudC'];
 const ENVKEYS = [];
 function env(x, o = {}) {
@@ -76,6 +81,9 @@ function env(x, o = {}) {
 }
 const E = { sky: [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0]), sunC: [0, 0, 0], cloudC: [0, 0, 0], keyDir: V3(0, 1, 0), ext: 0 };
 for (const f of ENV_COL) E[f] = new THREE.Color();
+// 阵风：这一刻的风有多大（0..1.5）。风声、树叶的沙沙声、草的摆动、第三章贴着地刮过去的风沙都跟着它，一阵来了一起来
+const gustAt = t => clamp(0.55 + 0.25 * Math.sin(t * 0.37) + 0.2 * Math.sin(t * 1.13 + 1) + 0.7 * Math.pow(Math.max(0, Math.sin(t * 0.19)), 8), 0, 1.5);
+const GUST = { v: gustAt(0) };
 let envMod = null;                                       // 结局用：在插值结果上再改一道（比如让天慢慢黑下来）
 let vigNow = 1;                                          // 暗角那一层网页元素现在的不透明度
 function applyEnv(x) {

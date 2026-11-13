@@ -7,15 +7,16 @@
 // ============================================================
 const CH1 = (() => {
   const C = chapter({ n: 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线' });
+  C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
   terrain([-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [104, 0]);
   ground(-60, 0x1c2529); ground(103.9, 0x1c2529);
   solid({ id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 });
-  solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45 });
-  solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9 });
-  solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0 });
-  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15 });
-  const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0 });      // 轮挡正好把它停在断电杆下面
+  solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
+  solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
+  solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
+  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal' });
+  const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0, snd: 'wood' });      // 轮挡正好把它停在断电杆下面
   const door = gate({ id: 'door1', x: 104 });
   const LEVER = { x: 97.0, pulled: false, t: 0, reach: 0 };
   // 探照灯：机器在背景深处（z < 0），光束扫过场地；玩家躲在一处处铁柜前面的影子里
@@ -47,7 +48,8 @@ const CH1 = (() => {
     [89, 21.5, 2.5, 2.5], [96, 21.5, 2.6, 0.8], [99.5, 21, 2.5, -0.2], [102, 19, 1.9, -1.8], [104.4, 18, 1.7, -1.2]);
   // 整章的光：逆光。颜色还是默认的冷青灰，但环境光和主光压暗、从背后来的轮廓光提亮；
   // 最远的后墙和高窗比雾亮（见下面的布景板），站在它前面的东西都成了剪影
-  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1 });
+  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1,
+    aRoom: 1, roomF: 200, aHum: 0.6, aDrip: 0.25, aFar: 1, rvHall: 1 });              // 声音：空厂房的低鸣和电流声，远处的铁器、铁链、泄气，零星的滴水；大厂房的混响
   env(104.7, {});                                        // 一直保持到出口那面黑墙；镜头穿过黑墙时换成第二章的晨光
 
   hint(() => !P.moved, '<b>←</b><b>→</b> 移动');

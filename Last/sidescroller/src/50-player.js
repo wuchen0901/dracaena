@@ -171,7 +171,7 @@ function enterSwim(w) {
   const vy = P.vy;
   Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55 });
   P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
-  fx(vy < -4 ? 'splash' : 'plop', 1); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+  fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
 }
 // 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
 function climbOut(w, side, cx) {

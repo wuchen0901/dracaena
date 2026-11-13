@@ -11,15 +11,17 @@
 const CH5 = (() => {
   const X = X5, BOT0 = X + 17.0, L_END = X + 17.95, R_END = X + 33.2, DOOR = X + 35.2, ELDER = X + 15.0, STATION = X + 7;
   const C = chapter({ n: 5, x0: X + 0.5, start: X + 3, name: '维修巷', sub: '分配备用电池' });
+  C.ground = 'concrete';
   terrain([X6, 0]);
   ground(X + 4, 0x3f4446); ground(X6 - 6, 0x44494a);
-  const batt = pushable({ id: 'battery', x: X + 25.5, w: 0.9, h: 0.8, min: L_END, max: R_END, grip: 0.7 });
+  const batt = pushable({ id: 'battery', x: X + 25.5, w: 0.9, h: 0.8, min: L_END, max: R_END, grip: 0.7, snd: 'metal' });
   const door = gate({ id: 'door5', x: DOOR, w: 0.6, h: 3.4 });
   // choice：0 还没选 / 1 给了清洁机器人 / 2 给了门。t：选了以后过了多久
   const S = { choice: 0, t: 0, scan: -1, bx: BOT0, bz: -0.45, bface: 1, spin: 0, lamp: 0, coat: 0, es: 1, ex: ELDER };
   checkpoint(X + 3); checkpoint(X + 20); checkpoint(DOOR + 3);
   camKeys([X + 2, 18.5, 1.75, 0], [X + 14, 19, 1.85, 1.5], [X + 26, 20, 1.9, 0], [DOOR, 19.5, 1.85, 0.5], [X6 - 2, 19, 1.8, 0]);
-  env(X + 5, { fog: 0x7c8588, fogD: 0.014, hemiS: 0xd6dede, hemiG: 0x3a3e40, hemiI: 0.8, keyI: 1.05, keyDir: [0.15, 1, 0.1], dustO: 0.42, wind: -0.1, sunP: 0.1 });   // 两排楼夹着的窄巷：暗一些
+  env(X + 5, { fog: 0x7c8588, fogD: 0.014, hemiS: 0xd6dede, hemiG: 0x3a3e40, hemiI: 0.8, keyI: 1.05, keyDir: [0.15, 1, 0.1], dustO: 0.42, wind: -0.1, sunP: 0.1,
+    aWind: 0.2, aCity: 0.5, aDrip: 0.45, aHum: 0.25, aFar: 0.8, rvHall: 0.35 });   // 声音：巷子里风小，管子滴水、电箱的嗡嗡，墙之间有回声   // 两排楼夹着的窄巷：暗一些
   env(X6 - 12, {}); env(X6 - 2, CITY_ENV);
 
   hint(() => !S.choice && Math.abs(P.x - batt.x) < 2.4 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 推电池 —— 滑轨一头通向清洁机器人，一头通向维护门');

@@ -8,14 +8,16 @@
 // ============================================================
 // 旧城：接近正午，铁灰色的薄霾（后面两章的街道也用这一套）
 const CITY_ENV = { fog: 0xaeb5b4, fogD: 0.0085, hemiS: 0xeef2f1, hemiG: 0x4a4d4e, hemiI: 1.05, keyC: 0xfffaf0, keyI: 2.0, keyDir: [0.3, 0.9, -0.15], rimI: 0.2, dustC: 0xe8ecec, dustO: 0.3, wind: -0.4,
-  sky: [0x7890a0, 0x9fb0b8, 0xc0c8c8, 0xd4d6d0, 0xdcdcd4, 0xa9aeac], sunX: -0.05, sunY: 0.5, sunP: 0.3, cloud: 0.8, cloudC: 0xf4f6f6 };
+  sky: [0x7890a0, 0x9fb0b8, 0xc0c8c8, 0xd4d6d0, 0xdcdcd4, 0xa9aeac], sunX: -0.05, sunY: 0.5, sunP: 0.3, cloud: 0.8, cloudC: 0xf4f6f6,
+  aWind: 0.45, aWhis: 0, aLeaf: 0, aBug: 0, aCity: 0.8, aFar: 0.7, aRoom: 0, aHum: 0, aDrip: 0, aFlow: 0, rvOut: 1, rvHall: 0.12, rvCave: 0, birds: 0 };   // 声音：楼群之间的风，城市很低的远声，远处的广播提示音、卷帘门、鸽子
 const CH4 = (() => {
   const X = X4, KIOSK = X + 12, ELDER = X + 13.7, WORKER = X + 16.6, POLE = X + 24, MARK = X + 22.4, BARR = X + 37;
   const C = chapter({ n: 4, x0: X + 0.5, start: X + 3, name: '配给街', sub: '让镜头看不见' });
+  C.ground = 'concrete';                                                           // 脚步声：路面；运输箱是铁的
   terrain([X5, 0]);
   ground(X + 4, 0x55585a); ground(X5 - 4, 0x4d5052);
-  const crate = pushable({ id: 'crate4', x: X + 30, w: 1.2, h: 1.0, min: MARK, max: BARR - 0.6 });      // 往左最多拉到标记上（轮挡）
-  const barr = solid({ id: 'barr', x1: BARR, x2: BARR + 0.9, y1: 0, y2: 3.0, noclimb: true });
+  const crate = pushable({ id: 'crate4', x: X + 30, w: 1.2, h: 1.0, min: MARK, max: BARR - 0.6, snd: 'metal' });      // 往左最多拉到标记上（轮挡）
+  const barr = solid({ id: 'barr', x1: BARR, x2: BARR + 0.9, y1: 0, y2: 3.0, noclimb: true, snd: 'concrete' });
   const shutter = gate({ id: 'shutter', x: BARR + 0.45, w: 0.9, h: 3.0, y0: 3.0, T: 2.2 });
   const S = { down: false, t: 0, bx: X + 15, hide: 0, deny: 3, pack: [0, 0, 0] };
   usable({ id: 'awning', x: MARK, r: 0.8, y0: 0.7, can: () => !S.down, on() { S.down = true; S.t = 0; STORY.fed = true; saveGame(); fx('cloth'); fx('servo'); } });

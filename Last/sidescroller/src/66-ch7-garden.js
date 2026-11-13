@@ -16,14 +16,16 @@
 const CH7 = (() => {
   const X = X7, ENTRY = X + 1.2, ARM = X + 31.0, DOOR = X + 34.4, VALVE = X + 41, SENSOR = X + 56, GATE = X + 61.5, W0 = X + 46.5, W1 = X + 60;
   const C = chapter({ n: 7, x0: X + 0.5, start: X + 3, name: '管理花园', sub: '让野地重新得到水' });
+  C.ground = 'grass';                                                              // 脚步声：草地；野地干得开裂是土，长起来以后又是草（见下面的 surface）
   terrain([X8, 0]);
   ground(X + 2, 0x80bd56); ground(X + 44.5, 0x80bd56); ground(X + 47, 0xc2a05c); ground(X + 60, 0xc2a05c); ground(X + 64, 0x7fbb4c); ground(X8 - 4, 0x7fbb4c);
-  const branch = pushable({ id: 'branch', x: X + 21.5, w: 1.7, h: 0.5, min: X + 20.4, max: X + 30.4, grip: 0.72 });
+  const branch = pushable({ id: 'branch', x: X + 21.5, w: 1.7, h: 0.5, min: X + 20.4, max: X + 30.4, grip: 0.72, snd: 'wood' });
   const door = gate({ id: 'door7', x: DOOR, w: 0.6, h: 3.4, T: 4 });
   const relay = gate({ id: 'relay7', x: GATE, w: 0.8, h: 3.6, T: 1.8 });
   // jam 刀片卡住了 / vine 藤长到哪（0..1）/ valve 阀门有没有拨向野地 / g 野地的植物长到哪（0..1）
   const S = { jam: false, snipT: 0, snip: 0, vine: 0.15, valve: 0, vk: 0, g: 0, cat: 0 };
   usable({ id: 'valve', x: VALVE, r: 1.0, on() { S.valve = 1 - S.valve; fx('valve'); } });
+  surface(W0 - 0.5, W1 + 1, () => S.g > 0.6 ? 'grass' : 'dirt');                    // 脚步声：野地干得开裂是土，浇上水长起来以后是草
   checkpoint(X + 3); checkpoint(X + 24); checkpoint(DOOR + 2.6); checkpoint(GATE + 2.5); checkpoint(X + 100);
   camKeys([X + 2, 19, 1.8, 0], [X + 16, 20, 2.2, 1], [X + 28, 20.5, 2.5, 1.5], [X + 38, 19.5, 2.0, 0.5], [X + 50, 20.5, 2.1, 1.5], [GATE + 1, 19.5, 1.9, 0.5], [X + 78, 23, 2.8, 3], [X + 100, 20, 2.0, 0], [X8 - 3, 18.5, 1.8, -1.2]);
   // 进了花园的门：春天的清晨。太阳低低地挂在前方偏右（从正后方往右偏 16°、离地 14°）：逆光，迎着镜头的一面在阴影里（天光是偏冷的蓝），
@@ -31,11 +33,13 @@ const CH7 = (() => {
   // 太阳在无穷远：它在画面上的位置不随镜头变，近处的树走过去时一会儿挡住它、一会儿露出来
   const SUN = [0.2674, 0.2419, -0.9327], SUNSKY = [0.277, 0.079];
   env(X + 5, { fog: 0xe9e6d6, fogD: 0.007, hemiS: 0xa4c2e4, hemiG: 0x4c6a42, hemiI: 0.78, keyC: 0xffe2b0, keyI: 5.0, keyDir: SUN, rimI: 0.25, dustC: 0xffe8b8, dustO: 0.7,
-    sky: [0x4f86c8, 0x6a9bd6, 0x8db5e0, 0xd4e1e0, 0xfbedcf, 0xc6c79e], sunX: SUNSKY[0], sunY: SUNSKY[1], sunP: 1.0, sunC: 0xfff5dc, cloud: 0.15, cloudC: 0xfff4e4, birds: 1, vig: 0.6 });
+    sky: [0x4f86c8, 0x6a9bd6, 0x8db5e0, 0xd4e1e0, 0xfbedcf, 0xc6c79e], sunX: SUNSKY[0], sunY: SUNSKY[1], sunP: 1.0, sunC: 0xfff5dc, cloud: 0.15, cloudC: 0xfff4e4, birds: 1, vig: 0.6,
+    aCity: 0, aRoom: 0, aHum: 0, aWind: 0.35, aLeaf: 0.75, leafDry: 0, aBug: 0.15, aDrip: 0, aFar: 0.7, rvOut: 1, rvHall: 0 });   // 声音：清晨，满是鸟，风吹嫩叶，蜜蜂飞过
   env(X + 62, {});
   // 走出花园已是黄昏：太阳落到身后，天边烧成橘红
   env(X + 92, { fog: 0xf0c296, fogD: 0.007, hemiS: 0xffe0c4, hemiG: 0x5a5a38, hemiI: 0.95, keyC: 0xffc080, keyI: 2.3, keyDir: [-0.74, 0.3, -0.5], rimI: 0.3, dustC: 0xffe2b8, dustO: 0.4, wind: -0.5,
-    sky: [0x35478a, 0x6b6fb4, 0xc487a6, 0xf5a878, 0xffd392, 0xb98a62], sunX: -0.38, sunY: 0.05, sunP: 1, sunC: 0xffe2b0, cloud: 1, cloudC: 0xffc9a0, birds: 0.4, flies: 0.5, vig: 0.6 });
+    sky: [0x35478a, 0x6b6fb4, 0xc487a6, 0xf5a878, 0xffd392, 0xb98a62], sunX: -0.38, sunY: 0.05, sunP: 1, sunC: 0xffe2b0, cloud: 1, cloudC: 0xffc9a0, birds: 0.4, flies: 0.5, vig: 0.6,
+    aBug: 0.7, aLeaf: 0.55, aWind: 0.4 });                                            // 黄昏：鸟少了，蟋蟀叫起来
   env(X8 - 13, {});
   // 快到中枢了：天色和暗角回到原来的样子（下一章没有写的项是从这里接过去的）
   env(X8 - 1.5, { sky: [0x33414f, 0x66717a, 0xb09a88, 0xe6b184, 0xf3c48c, 0xa77f60], cloudC: 0xffd9b4, birds: 0.3, flies: 0, vig: 1 });
@@ -576,6 +580,8 @@ const CH7 = (() => {
     relay.want = S.g >= 1 ? 1 : 0;
     const scanOn = S.g < 1 ? 1 : 0;
     armL.on = S.jam ? 0 : 1; sensL.on = scanOn * (0.6 + 0.4 * Math.sin(T * 6));
+    // 喷灌头“嘶——嚓嚓嚓”：离最近的那一只越近越响（喷头每隔 6.3 米一只，在树后 5 米深处），水拨给野地以后小下去
+    if (near) { let ds = 99; for (let x = X + 3.6; x < X + 44; x += 6.3) ds = Math.min(ds, Math.abs(P.x - x)); AUD.spray = lerp(1, 0.4, S.vk) * sstep(9, 1.5, Math.hypot(ds, 5.1)); }
     if (near) { AUD.water = Math.max(AUD.water, 0.5 * S.vk * sstep(26, 4, Math.abs(P.x - W0)), 0.16 * lerp(1, 0.4, S.vk) * sstep(52, 20, Math.abs(P.x - (X + 22)))); AUD.hum = Math.max(AUD.hum, S.jam ? 0 : 0.02 * sstep(22, 4, Math.abs(P.x - ARM))); }
     // 走到拱环附近：小猫先停下来，朝那边看了一会儿
     if (STORY.cat && state === 'play') {

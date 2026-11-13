@@ -13,15 +13,17 @@
 const CH8 = (() => {
   const X = X8, D1 = X + 20, D2 = X + 44, D3 = X + 70, EX = X + 96, DOCK = X + 79, SOCK_L = X + 80.65, SOCK_R = X + 90.4, OUT = X + 98.2;
   const C = chapter({ n: 8, x0: X + 0.5, start: X + 4, name: '生态中枢', sub: '分配最后的能源' });
+  C.ground = 'concrete';                                                           // 脚步声：中枢里是磨光的地面；出了门是坡上的草（见下面）；导电桥、电池是铁的
   terrain([EX + 2.1, 0], [X + 104, 0.4], [X + 116, 1.6], [X + 126, 2.4], [X + 140, 2.6], [X + 220, 2.6]);
   ground(X - 0.2, 0x556040); ground(X + 0.2, 0x1e282e); ground(EX + 0.6, 0x1e282e); ground(EX + 1, 0x3f4636); ground(X + 220, 0x3f4636);
   groundBack(X + 60, EX + 2.1, -32); groundBack(EX + 2.1, X + 220, -5);   // 中枢的地面只铺到后墙后面；出了门是一道坡，坡的背后低下去，是一片谷地
   const P2 = [X + 28, X + 32.7, X + 37.4], P3 = [X + 52, X + 57, X + 62];                 // 第二段触点：监控 / 水泵 / 灌溉；第三段：监控 / 灌溉 / 水泵
-  const b2 = pushable({ id: 'bridge2', x: P2[0], w: 0.9, h: 0.8, min: P2[0], max: P2[2], grip: 0.7 });
-  const c1 = pushable({ id: 'bridge3a', x: P3[0], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7 });
-  const c2 = pushable({ id: 'bridge3b', x: P3[1], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7 });
+  const b2 = pushable({ id: 'bridge2', x: P2[0], w: 0.9, h: 0.8, min: P2[0], max: P2[2], grip: 0.7, snd: 'metal' });
+  const c1 = pushable({ id: 'bridge3a', x: P3[0], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7, snd: 'metal' });
+  const c2 = pushable({ id: 'bridge3b', x: P3[1], w: 0.9, h: 0.8, min: P3[0], max: P3[2], grip: 0.7, snd: 'metal' });
   c1.hi = () => c2.x - 1.15; c2.lo = () => c1.x + 1.15;                                     // 两只桥在同一条轨上，互相越不过去
-  const batt = pushable({ id: 'last', x: X + 85.5, w: 0.9, h: 0.8, min: SOCK_L, max: SOCK_R, grip: 0.7 });
+  const batt = pushable({ id: 'last', x: X + 85.5, w: 0.9, h: 0.8, min: SOCK_L, max: SOCK_R, grip: 0.7, snd: 'metal' });
+  surface(EX + 1, X + 230, 'grass');
   const d1 = gate({ id: 'd81', x: D1, w: 0.6, h: 3.4, T: 1.6 }), d2 = gate({ id: 'd82', x: D2, w: 0.6, h: 3.4, T: 3 }), d3 = gate({ id: 'd83', x: D3, w: 0.6, h: 3.4, T: 1.8 }), d4 = gate({ id: 'd84', x: EX, w: 0.9, h: 3.6 });
   // 三段各自的负载状态：eye 监控 / drop 水泵 / leaf 灌溉
   const S = { eye1: true, lv: 0, st: [{ eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 1 }], v2: 0, open2: false, k: [[1, 0, 0], [1, 0, 0], [1, 0, 1]] };
@@ -63,11 +65,13 @@ const CH8 = (() => {
   const INK = { hi: '#eefafd', mid: '#bfe4ee', lo: '#7fb6c8', wall: '#0e171c', dark: '#060b0e', rgb: '190,228,238' };
   const mixc = (a, b, t) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
   // 逆光：主光从最远的那面墙照过来，影子朝着镜头；环境光压暗，轮廓光提亮
-  const HUB = { fog: 0x1a2932, fogD: 0.026, hemiS: 0x9fc4d6, hemiG: 0x141c24, hemiI: 0.42, keyC: 0xcfe8ff, keyI: 0.6, keyDir: [0.08, 0.5, -1], rimC: 0xa8d8ee, rimI: 1.1, dustC: 0xcfe6f2, dustO: 0.45, wind: 0.03, ext: 0, sunP: 0, cloud: 0, birds: 0 };
+  const HUB = { fog: 0x1a2932, fogD: 0.026, hemiS: 0x9fc4d6, hemiG: 0x141c24, hemiI: 0.42, keyC: 0xcfe8ff, keyI: 0.6, keyDir: [0.08, 0.5, -1], rimC: 0xa8d8ee, rimI: 1.1, dustC: 0xcfe6f2, dustO: 0.45, wind: 0.03, ext: 0, sunP: 0, cloud: 0, birds: 0,
+    aWind: 0, aLeaf: 0, aBug: 0, aCity: 0, aDrip: 0, aRoom: 0.8, roomF: 260, aHum: 1, aFar: 0.9, rvHall: 1.25, rvOut: 0 };   // 声音：机房的低鸣和电流声，继电器、远处机器转起来又停下；又高又空
   env(X - 0.05, HUB); env(EX + 0.7, {});
   // 走出中枢：天快黑了
   env(EX + 2.1, { fog: 0x8a7f86, fogD: 0.006, hemiS: 0xd9c8d6, hemiG: 0x3a3840, hemiI: 0.8, keyC: 0xffb48a, keyI: 1.3, keyDir: [-0.8, 0.22, -0.5], rimC: 0xa9cdd8, rimI: 0.35, dustC: 0xffd9c0, dustO: 0.3, wind: -0.4, ext: 1,
-    sky: [0x232c44, 0x4a4f6c, 0x8c7488, 0xd29a86, 0xeab08a, 0x7a6660], sunX: -0.42, sunY: 0.0, sunP: 0.8, sunC: 0xffc9a0, stars: 0.25, cloud: 0.8, cloudC: 0xe9b9a8 });
+    sky: [0x232c44, 0x4a4f6c, 0x8c7488, 0xd29a86, 0xeab08a, 0x7a6660], sunX: -0.42, sunY: 0.0, sunP: 0.8, sunC: 0xffc9a0, stars: 0.25, cloud: 0.8, cloudC: 0xe9b9a8,
+    aRoom: 0, aHum: 0, aDrip: 0, aCity: 0, rvHall: 0, rvOut: 1, aWind: 0.5, aLeaf: 0.3, leafDry: 0.5, aBug: 0.85, aFar: 0.5 });   // 出了门：傍晚的风，满坡的蟋蟀，远处一只猫头鹰
   env(X + 220, {});
   // 旁路结局里天色分两步变。先是余晖（END.night）：天顶黑下来，山后面留着一线橙红，谷地的灯在这时候一盏一盏亮起来；
   // 灯亮齐以后余晖慢慢褪掉（END.deep），剩下满天的星。dim：远山和谷地那几层画出来的布景跟着暗到几成（乘的是线性亮度，所以数字很小）
