@@ -281,11 +281,12 @@ let ROOT = scene;                                   // 布景板当前挂到哪�
 // o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
 //    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）/
 //    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）
+//    side 贴在一面朝 ±x 的竖墙上（比如水渠的内壁）：这时 x1、x2 是 z 的范围，z 那个参数是墙在哪个 x，画的时候横坐标就是 z；-1 朝 -x，+1 朝 +x（要自己给 order）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
-  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined;
+  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined, side = o.side ?? 0;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
-  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处
+  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : side > 0 ? g.setTransform(-s, 0, 0, -s, x2 * s, y2 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处；朝 +x 的那面，画布从左到右是 z 从大到小
   g.save();
   if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
   place();
@@ -302,7 +303,9 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   mat.userData.own = true;                          // 这一章被卸载时，连同贴图一起释放
   const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat); m.receiveShadow = !!o.lit;
-  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); } else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); }
+  else if (side) { m.rotation.y = side < 0 ? -Math.PI / 2 : Math.PI / 2; m.position.set(z, (y1 + y2) / 2, (x1 + x2) / 2); }
+  else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
   m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
@@ -2649,6 +2652,258 @@ const CH2 = (() => {
       return { mesh, x, y, z, s, dir, wait: 0.05 + 0.13 * i, vx: dir * (2.2 + 0.5 * i), vy: 2.3 + 0.25 * (i % 2), vz: -1.2 - 0.4 * i };     // wait：听到动静以后隔多久起飞
     });
     v.crowTexs = crowTexs;
+    yield;
+    // ---------------- 水闸这一屏的细节（标杆画面第三步，2 到 8 全选）----------------
+    // 闸门：漏水、旧痕、铁梯和铁链；水渠：石块和青苔、水里的倒影和落叶；地上：枯草和落叶、碎光斑。
+    // 样子和 tools/look-sheet.html?ch=2&step=3 里的各版一样；会动的几样（漏水、水面上的东西、倒影）在 update() 里
+    const oval = (g, x, y, rx, ry, a = 0) => { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, 6.2832); g.fill(); };
+    const drip = (g, x, y, len, w, col, rn) => {                                                     // 一道往下挂的流痕：上宽下尖，略微弯
+      const Lf = [], Rt = [], ph = rn() * 6;
+      for (let i = 0; i <= 7; i++) { const t = i / 7, xx = x + Math.sin(ph + t * 4) * 0.025, ww = w * (1 - 0.85 * t) / 2; Lf.push([xx - ww, y - t * len]); Rt.push([xx + ww, y - t * len]); }
+      g.fillStyle = col; poly(g, Lf.concat(Rt.reverse()));
+    };
+    const leaf = (g, x, y, s, a, col) => { g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = col; g.beginPath(); g.moveTo(-s, 0); g.quadraticCurveTo(0, -s * 0.5, s, 0); g.quadraticCurveTo(0, s * 0.5, -s, 0); g.fill(); g.restore(); };
+    const LEAFC = ['rgba(120,86,40,.95)', 'rgba(142,102,48,.92)', 'rgba(96,68,34,.95)', 'rgba(150,118,60,.9)', 'rgba(78,56,28,.95)'];
+    const own = m => { m.userData.own = true; return m; };
+    v.gz = GZ; v.extraTex = [];
+
+    // 闸门 · 漏水：闸板的几道缝里往外喷细水，逆光下发亮，落进渠里溅起白沫。
+    // 水柱的形状画在一张透明度贴图上，上面再贴一层一直往下滚的明暗，看起来水在流；闸板一升起来就停了
+    const LEAKS = [[209.2, -1.3, 1, 0.2], [210.35, -2.0, 0.75, -0.12], [211.75, -1.3, 0.7, 0.14], [212.5, -2.0, 1, -0.2], [210.95, -2.7, 1.15, 0.06], [208.7, -2.7, 0.6, 0.12]];   // [x, 哪道缝（高度）, 水有多大, 往哪边偏]
+    {
+      const x1 = 207.9, x2 = 213.3, y1 = -3.45, y2 = -0.3, s = 160, [mc, g] = mkCanvas(Math.round((x2 - x1) * s), Math.round((y2 - y1) * s)), rn = seeded(52);
+      g.fillStyle = '#000'; g.fillRect(0, 0, mc.width, mc.height);
+      g.filter = 'blur(1.6px)'; g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s); setInk(g, '#fff');
+      for (const [x, y, k, lean] of LEAKS) {
+        const ey = LOW - 0.03, n = k > 0.9 ? 2 : 1;
+        for (let j = 0; j < n; j++) {                                                                   // 从缝里冲出来，越往下越散，到了下面断成水珠
+          const lj = lean + (j - (n - 1) / 2) * 0.09 * k + (rn() - 0.5) * 0.04, pts = [];
+          for (let i = 0; i <= 24; i++) { const t = i / 24; pts.push([x + (j - (n - 1) / 2) * 0.03 + lj * Math.pow(t, 0.7), y - (y - ey) * Math.pow(t, 1.5)]); }
+          for (let i = 1; i < pts.length; i++) { const t = i / 24; if (t > 0.72 && rn() < 0.3) continue; g.globalAlpha = (0.75 - 0.45 * t) * (j ? 0.6 : 1); line(g, [pts[i - 1], pts[i]], (0.012 + 0.03 * t) * k); }
+        }
+        g.globalAlpha = 1; g.save(); g.translate(x, y); g.scale(0.16 * k, 0.035);                    // 缝口一点亮
+        const sp = g.createRadialGradient(0, 0, 0, 0, 0, 1); sp.addColorStop(0, `rgba(255,255,255,${0.55 * k})`); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.fillRect(-1, -1, 2, 2); g.restore();
+        for (let i = 0; i < 9; i++) { g.globalAlpha = 0.25 + 0.4 * rn(); oval(g, x + lean + (rn() - 0.5) * 0.3 * k, ey + 0.03 + rn() * 0.16 * k, 0.012 + 0.012 * rn(), 0.012 + 0.02 * rn()); }   // 溅起来的水珠
+        g.globalAlpha = 1; setInk(g, '#fff');
+      }
+      const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace; v.extraTex.push(mask);             // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
+      const [fc, fg] = mkCanvas(32, 128); fg.fillStyle = '#dcdcdc'; fg.fillRect(0, 0, 32, 128);              // 水流：大体是亮的，夹着一道道更亮的和暗一些的，一直往下滚
+      { const rf = seeded(53); for (let i = 0; i < 36; i++) { fg.fillStyle = rf() < 0.6 ? '#fff' : '#6a6a6a'; fg.fillRect(rf() * 32, rf() * 128, 2 + rf() * 4, 6 + rf() * 20); } }
+      v.flowTex = canvasTex(fc); v.flowTex.colorSpace = THREE.NoColorSpace; v.flowTex.wrapS = v.flowTex.wrapT = THREE.RepeatWrapping; v.flowTex.repeat.set(12, 3);
+      v.jets = add(R, new THREE.PlaneGeometry(x2 - x1, y2 - y1), own(new THREE.MeshBasicMaterial({ map: v.flowTex, alphaMap: mask, color: 0xe8eee4, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })), (x1 + x2) / 2, (y1 + y2) / 2, GZ + 0.25, false);
+      v.jets.renderOrder = 25;
+    }
+    v.mist = backdrop(207.9, 213.3, -3.45, -2.3, GZ + 0.5, 40, g => { g.fillStyle = vgrad(g, -3.3, -2.4, 'rgba(230,234,226,.22)', 'rgba(230,234,226,0)'); g.fillRect(207.9, -3.45, 5.4, 1.15); },   // 闸板脚下飘着的一层水雾
+      { additive: true, fog: false, blur: 6, order: 24 });
+    v.foam = backdrop(CX0, CX1, -7.1, -5.3, 0, 120, g => {                                             // 水落下去的地方：一团团白沫、一圈圈水纹（跟着水位走）
+      const rn = seeded(51);
+      for (const [x, y, k, lean] of LEAKS) {
+        const fx = x + lean, fz = -6.8 + (y + 3.25) * 0.06;
+        for (let i = 0; i < 10; i++) { g.fillStyle = `rgba(226,230,220,${((0.12 + 0.28 * rn()) * k).toFixed(3)})`; oval(g, fx + (rn() - 0.5) * 0.45 * k, fz + (rn() - 0.3) * 0.25, 0.04 + 0.12 * rn() * k, 0.025 + 0.05 * rn()); }
+        g.strokeStyle = `rgba(220,226,214,${(0.22 * k).toFixed(3)})`; g.lineWidth = 0.022;
+        for (const r of [0.22, 0.42, 0.66]) { g.beginPath(); g.ellipse(fx, fz + 0.05, r * k, r * 0.5 * k, 0, 0, 6.2832); g.stroke(); }
+      }
+      g.fillStyle = vgrad(g, -7.1, -6.4, 'rgba(225,230,220,.35)', 'rgba(225,230,220,0)'); g.fillRect(CX0, -7.1, 5.2, 0.7);
+    }, { floor: LOW + 0.035, fog: false, order: 22 });
+    // 闸板：木板缝、两道铁箍和铆钉、漏水的地方湿着；水线以上一截颜色深，水线上一圈青苔。贴在闸板上，跟着闸板一起升起来
+    v.gate.attach(backdrop(CX0, CX1, -3.6, -0.4, GZ + 0.155, 90, g => {
+      const rn = seeded(94);
+      for (let y = -0.4; y > -3.6; y -= 0.27) { g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(CX0, y - 0.012, 5.2, 0.022); }
+      for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${rn() < 0.5 ? '0,0,0' : '200,180,150'},${(0.05 + 0.1 * rn()).toFixed(3)})`; g.fillRect(CX0 + rn() * 5.2, -3.3 + rn() * 2.9, 0.2 + rn() * 1.2, 0.02 + rn() * 0.05); }   // 木纹
+      for (const [x, y, k] of LEAKS) { g.fillStyle = vgrad(g, y, -3.3, 'rgba(0,0,0,.55)', 'rgba(0,0,0,.2)'); g.fillRect(x - 0.2 * k, -3.3, 0.4 * k, y + 3.3); }
+      for (const x of [209.0, 212.2]) { g.fillStyle = 'rgba(14,14,12,.92)'; g.fillRect(x - 0.07, -3.6, 0.14, 3.2); g.fillStyle = 'rgba(170,150,120,.6)'; for (let y = -0.6; y > -3.5; y -= 0.27) oval(g, x, y, 0.022, 0.022); }
+      g.fillStyle = vgrad(g, -3.3, -2.2, 'rgba(0,0,0,.5)', 'rgba(0,0,0,0)'); g.fillRect(CX0, -3.6, 5.2, 1.4);
+      g.fillStyle = 'rgba(50,62,26,.8)'; g.beginPath(); g.moveTo(CX0, -3.6); for (let x = CX0; x <= CX1; x += 0.08) g.lineTo(x, -3.16 + rn() * 0.12); g.lineTo(CX1, -3.6); g.closePath(); g.fill();
+    }, { lit: true, order: 21 }));
+    yield;
+
+    // 闸门 · 旧痕：石墩上挂着白色的钙化流痕（水从横梁上几处漏下来，流痕就挂在这几处）和深色水渍，脚下一圈青苔，棱角缺了几块
+    for (const [x1, x2, seed] of [[CX0 - 1.2, CX0 + 0.2, 91], [CX1 - 0.2, CX1 + 1.2, 92]]) backdrop(x1 - 0.02, x2 + 0.02, -0.5, 3.62, GZ + 0.915, 90, g => {
+      const rn = seeded(seed), spots = [0, 1, 2].map(() => x1 + 0.15 + rn() * (x2 - x1 - 0.3));
+      for (let i = 0; i < 8; i++) drip(g, x1 + 0.06 + rn() * (x2 - x1 - 0.12), 3.62 - rn() * 1.5, 0.8 + rn() * 2.2, 0.05 + rn() * 0.12, `rgba(6,7,4,${(0.18 + 0.25 * rn()).toFixed(2)})`, rn);
+      for (let i = 0; i < 10; i++) drip(g, spots[i % 3] + (rn() - 0.5) * 0.25, 3.62, 0.4 + Math.pow(rn(), 2) * 3.2, 0.05 + rn() * 0.12, `rgba(222,216,196,${(0.3 + 0.3 * rn()).toFixed(2)})`, rn);
+      g.fillStyle = 'rgba(62,78,30,.92)'; g.beginPath(); g.moveTo(x1 - 0.02, -0.5);
+      for (let x = x1 - 0.02; x <= x2 + 0.02; x += 0.06) g.lineTo(x, 0.08 + 0.3 * rn() + 0.22 * Math.sin(x * 7 + seed));
+      g.lineTo(x2 + 0.02, -0.5); g.closePath(); g.fill();
+      for (let i = 0; i < 80; i++) { g.fillStyle = `rgba(104,120,52,${(0.35 + 0.45 * rn()).toFixed(2)})`; oval(g, x1 + rn() * (x2 - x1), 0.05 + rn() * 0.45, 0.02 + rn() * 0.05, 0.015 + rn() * 0.035); }
+      for (let i = 0; i < 4; i++) { const ex = rn() < 0.5 ? x1 : x2, sd = ex === x1 ? 1 : -1, y = 0.6 + rn() * 2.8, d = 0.06 + rn() * 0.14, h = 0.12 + rn() * 0.3; g.fillStyle = 'rgba(0,0,0,.5)'; poly(g, [[ex, y], [ex + sd * d, y - h * 0.3], [ex + sd * d * 0.7, y - h], [ex, y - h * 1.1]]); }
+    }, { lit: true, order: 6 });
+    // 横梁：上沿挂下来的白色流痕，下沿一道黑，顶上长着几丛草（衬在后面的亮雾前面是一圈剪影；鸟站的地方空着）
+    backdrop(CX0 - 1.62, CX1 + 1.62, 3.58, 4.8, GZ + 0.765, 90, g => {
+      const rn = seeded(93);
+      for (let i = 0; i < 26; i++) drip(g, CX0 - 1.5 + rn() * 8.2, 4.3, 0.15 + rn() * 0.55, 0.04 + rn() * 0.1, `rgba(222,216,196,${(0.3 + 0.3 * rn()).toFixed(2)})`, rn);
+      g.fillStyle = vgrad(g, 3.6, 3.78, 'rgba(0,0,0,.5)', 'rgba(0,0,0,0)'); g.fillRect(CX0 - 1.62, 3.58, 8.44, 0.2);
+      for (let i = 0; i < 9; i++) {
+        const x = CX0 - 1.4 + rn() * 8.0, n = 5 + Math.floor(rn() * 6);
+        if ([210.3, 210.95, 212.6].some(c => Math.abs(c - x) < 0.4)) continue;
+        g.fillStyle = '#1a1a10';
+        for (let j = 0; j < n; j++) { const bx0 = x + (rn() - 0.5) * 0.3, h = 0.12 + rn() * 0.38, lean = (rn() - 0.5) * 0.25; poly(g, [[bx0 - 0.018, 4.3], [bx0 + 0.018, 4.3], [bx0 + lean, 4.3 + h]]); }
+      }
+    }, { lit: true, order: 6 });
+
+    // 闸门 · 铁梯和铁链：左边石墩上一架检修用的铁梯，一直爬到横梁上面（几十根铁条拼成一个网格，一次画完）
+    {
+      const z = GZ + 1.03, list = [], pos = [], nor = [];
+      for (const x of [207.12, 207.62]) list.push([0.045, 4.9, 0.045, x, -0.05, z], [0.045, 0.045, 0.5, x, 4.82, z - 0.22]);      // 两根扶手，上头往后弯到横梁顶上
+      for (let y = 0.3; y < 4.8; y += 0.3) list.push([0.5, 0.032, 0.032, 207.37, y, z]);
+      for (const y of [0.7, 2.1, 3.3]) for (const x of [207.12, 207.62]) list.push([0.03, 0.03, 0.14, x, y, z - 0.07]);                // 钉在石墩上的卡子
+      for (const [w, h, d, x, y, zz] of list) { const b = bx(w, h, d).toNonIndexed(); b.translate(x, y + h / 2, zz); pos.push(...b.attributes.position.array); nor.push(...b.attributes.normal.array); b.dispose(); }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      add(R, geo, own(lam(0x141716)));
+    }
+    // 铁链：从绞盘上垂下来，兜着挂到横梁前面的钩子上，钩子上再垂下一截，衬在闸门里的亮光前面
+    backdrop(208.3, 212.3, 2.6, 5.0, GZ + 0.84, 200, g => {
+      setInk(g, '#0b0c0b'); g.lineWidth = 0.014;
+      const chain = pts => {                                                                           // 沿着折线每 9 厘米一节，一节扁一节立
+        let k = 0;
+        for (let i = 1; i < pts.length; i++) {
+          const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], d = Math.hypot(x1 - x0, y1 - y0), a = Math.atan2(y1 - y0, x1 - x0);
+          for (let t = 0; t < d; t += 0.09, k++) {
+            g.save(); g.translate(x0 + (x1 - x0) * t / d, y0 + (y1 - y0) * t / d); g.rotate(a);
+            if (k % 2) g.fillRect(-0.055, -0.009, 0.11, 0.018); else { g.beginPath(); g.ellipse(0, 0, 0.055, 0.032, 0, 0, 6.2832); g.stroke(); }
+            g.restore();
+          }
+        }
+      };
+      const sagPts = []; for (let i = 0; i <= 24; i++) { const t = i / 24; sagPts.push([208.95 + t * 2.55, 4.45 - t * 0.25 - 0.55 * Math.sin(Math.PI * t)]); }
+      chain(sagPts); chain([[211.5, 4.2], [211.52, 3.4], [211.5, 2.86]]);
+      g.fillRect(211.46, 4.16, 0.08, 0.14); g.lineWidth = 0.025; g.beginPath(); g.arc(211.5, 4.12, 0.06, Math.PI, 2 * Math.PI); g.stroke();   // 钩子
+      g.lineWidth = 0.02; g.beginPath(); g.ellipse(211.5, 2.82, 0.05, 0.07, 0, 0, 6.2832); g.stroke();                                      // 最下面一节大一点的环
+    }, { order: 26 });
+    // 锈铁牌：横梁上钉着的一块，喷着闸门的编号，锈水顺着往下流
+    backdrop(212.15, 213.55, 3.58, 4.22, GZ + 0.77, 160, g => {
+      const rn = seeded(97);
+      g.fillStyle = '#6a3b20'; g.fillRect(212.25, 3.72, 1.2, 0.46);
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(212.25, 3.72, 1.2, 0.04); g.fillRect(212.25, 3.72, 0.04, 0.46);
+      for (let i = 0; i < 30; i++) { g.fillStyle = `rgba(${rn() < 0.5 ? '140,74,34' : '30,18,10'},${(0.2 + 0.4 * rn()).toFixed(2)})`; oval(g, 212.27 + rn() * 1.16, 3.74 + rn() * 0.42, 0.02 + rn() * 0.06, 0.015 + rn() * 0.04); }   // 锈斑
+      g.fillStyle = 'rgba(160,130,96,.85)'; for (const [x, y] of [[212.31, 3.78], [213.39, 3.78], [212.31, 4.12], [213.39, 4.12]]) oval(g, x, y, 0.022, 0.022);   // 铆钉
+      g.save(); g.translate(212.85, 3.84); g.scale(0.01, -0.01); g.font = '700 24px -apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(220,210,180,.85)'; g.fillText('闸 07', 0, 0); g.restore();
+      for (let i = 0; i < 7; i++) drip(g, 212.3 + rn() * 1.1, 3.72, 0.05 + rn() * 0.07, 0.02 + rn() * 0.05, `rgba(110,58,26,${(0.35 + 0.3 * rn()).toFixed(2)})`, rn);   // 锈水
+    }, { lit: true, order: 7 });
+    yield;
+
+    // 渠壁 · 石块和青苔：一层层砌的石块；高水位以下泡过水，深一档、偏青；现在的水面上方一道湿的深色，水线上一层青苔。贴在两面渠壁朝里的那一面
+    const wall = seed => g => {
+      const rn = seeded(seed), top = 0.06, bot = -3.32;
+      for (let y = top; y > bot; y -= 0.42) {                                                          // 每层 0.42 米高，每块 0.8 到 1.4 米长，上下两层的缝错开
+        let z = -6.25 - rn() * 0.8;
+        while (z < 14) {
+          const len = 0.8 + rn() * 0.6;
+          g.fillStyle = rn() < 0.5 ? `rgba(0,0,0,${(0.05 + 0.18 * rn()).toFixed(3)})` : `rgba(235,230,210,${(0.03 + 0.07 * rn()).toFixed(3)})`; g.fillRect(z, y - 0.42, len, 0.42);
+          g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(z - 0.014, y - 0.42, 0.028, 0.42); z += len;
+        }
+        g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(-6.25, y - 0.434, 20.25, 0.028);
+      }
+      g.fillStyle = 'rgba(26,34,16,.4)'; g.fillRect(-6.25, bot, 20.25, HIGH - bot);
+      for (let i = 0; i < 90; i++) { const z = -6.2 + rn() * 20, len = 0.15 + rn() * 0.9; g.fillStyle = `rgba(44,56,22,${(0.3 + 0.35 * rn()).toFixed(2)})`; g.fillRect(z, HIGH - len, 0.03 + rn() * 0.08, len); }   // 旧水位线下面挂着的青苔
+      g.fillStyle = vgrad(g, -3.3, -2.6, 'rgba(0,0,0,.5)', 'rgba(0,0,0,0)'); g.fillRect(-6.25, bot, 20.25, 0.72);
+      g.fillStyle = 'rgba(62,76,30,.85)'; g.beginPath(); g.moveTo(-6.25, bot); for (let z = -6.25; z <= 14; z += 0.15) g.lineTo(z, -3.2 + rn() * 0.14); g.lineTo(14, bot); g.closePath(); g.fill();   // 水线上的青苔
+      for (let i = 0; i < 30; i++) { const z = -6 + rn() * 19.8, w = 0.15 + rn() * 0.4, h = 0.08 + rn() * 0.3; g.fillStyle = `rgba(56,66,28,${(0.5 + 0.4 * rn()).toFixed(2)})`; poly(g, [[z, top], [z + w, top], [z + w * 0.6, top - h], [z + w * 0.3, top - h * 0.7]]); }   // 岸顶垂下来的苔藓
+    };
+    backdrop(-6.25, 14, -3.32, 0.06, CX1 - 0.01, 48, wall(61), { side: -1, lit: true, order: 5 });
+    backdrop(-6.25, 14, -3.32, 0.06, CX0 + 0.01, 48, wall(62), { side: 1, lit: true, order: 5 });
+    // 岸顶的石沿：一块块的，靠水渠那边缺了几块，外沿长着一小团一小团的苔藓
+    for (const [x1, x2, seed] of [[CX0 - 1, CX0, 63], [CX1, CX1 + 1, 64]]) backdrop(x1, x2, -6.25, 14, 0, 60, g => {
+      const rn = seeded(seed), inner = x1 < 210 ? x2 : x1, out = x1 < 210 ? -1 : 1, outer = x1 < 210 ? x1 : x2;
+      for (let z = -6.25; z < 14;) { const len = 0.9 + rn() * 0.5; g.fillStyle = rn() < 0.5 ? `rgba(0,0,0,${(0.06 + 0.16 * rn()).toFixed(3)})` : `rgba(230,225,205,${(0.04 + 0.07 * rn()).toFixed(3)})`; g.fillRect(x1, z, 1, len); g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(x1, z - 0.016, 1, 0.032); z += len; }
+      for (let i = 0; i < 4; i++) { const z = -5 + rn() * 18, d = 0.15 + rn() * 0.25, l = 0.3 + rn() * 0.5; g.fillStyle = 'rgba(0,0,0,.55)'; poly(g, [[inner, z], [inner + out * d, z + l * 0.3], [inner + out * d * 0.6, z + l], [inner, z + l * 1.1]]); }
+      for (let i = 0; i < 70; i++) { const z = -6 + rn() * 20, cx = outer - out * rn() * 0.26; g.fillStyle = `rgba(40,50,22,${(0.4 + 0.4 * rn()).toFixed(2)})`; for (let j = 0; j < 3; j++) oval(g, cx + (rn() - 0.5) * 0.12, z + (rn() - 0.5) * 0.3, 0.03 + rn() * 0.07, 0.05 + rn() * 0.14, rn() * 3); }
+    }, { floor: 0.065, lit: true, order: -10 });
+    yield;
+
+    // 水面 · 倒影：闸门里那片亮光倒映在近处的水里，被水纹切成一道道。它落在水面的哪一块，每一帧按镜头和水位重新算（placeMirror）：
+    // 一块四个角的平面，贴图上头是靠闸门的一边，下头是靠镜头的一边
+    {
+      const [mc, g] = mkCanvas(256, 512), rn = seeded(71);
+      g.setTransform(256, 0, 0, 512, 0, 0);                                                            // 以 0..1 为单位画
+      g.fillStyle = vgrad(g, 0, 0.35, 'rgba(190,186,170,0)', 'rgba(190,186,170,.3)'); g.fillRect(0, 0, 1, 1);
+      for (let y = 0.02; y < 1; y += 0.012 + y * 0.03 + rn() * 0.015) {
+        const a = Math.min(1, y / 0.3) * (0.1 + 0.2 * rn()), th = 0.004 + y * 0.008 + rn() * 0.006;
+        for (let x = 0; x < 1;) { const len = 0.1 + rn() * 0.45; g.fillStyle = `rgba(200,196,180,${a.toFixed(3)})`; g.fillRect(x, y, Math.min(len, 1 - x), th); x += len + rn() * 0.1; }
+      }
+      g.globalCompositeOperation = 'destination-out';                                                  // 左右两边淡掉：贴着的是石墩的倒影
+      for (const [a, b] of [[0, 0.24], [1, 0.76]]) { const e = g.createLinearGradient(a, 0, b, 0); e.addColorStop(0, 'rgba(0,0,0,1)'); e.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = e; g.fillRect(Math.min(a, b), 0, 0.24, 1); }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(12).fill(0), 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2)); geo.setIndex([0, 2, 1, 1, 2, 3]);
+      v.mirror = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: canvasTex(mc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide })));
+      v.mirror.renderOrder = 18; v.mirror.frustumCulled = false; R.add(v.mirror);
+    }
+    // 水面 · 落叶：零零散散地漂着，在木梁两头、渠壁跟前积得多（跟着水位走）
+    v.floatLeaves = backdrop(CX0, CX1, -7.07, 5.5, 0, 90, g => {
+      const rn = seeded(72), put = (x, z) => leaf(g, x, z, 0.05 + rn() * 0.05, rn() * 6.28, LEAFC[Math.floor(rn() * LEAFC.length)]);
+      for (let i = 0; i < 70; i++) put(211.9 + rn() ** 1.5 * 0.9, 0.3 + rn() * 0.5 - (rn() < 0.5 ? 0.6 : 0));
+      for (let i = 0; i < 40; i++) put(CX0 + 0.05 + rn() ** 2 * 0.35, -0.2 + rn() * 1.2);
+      for (let i = 0; i < 60; i++) { const side = rn() < 0.5; put(side ? CX0 + 0.05 + rn() ** 2 * 0.5 : CX1 - 0.05 - rn() ** 2 * 0.5, -6.8 + rn() * 12); }
+      for (let i = 0; i < 45; i++) put(CX0 + 0.2 + rn() * 4.8, -6.8 + rn() * 12);
+    }, { floor: LOW + 0.02, order: 19 });
+    yield;
+
+    // 地上 · 枯草：渠边、闸杆和灯杆脚下、水塘边上一丛丛枯草，草尖被逆光照亮（水塘边的一排衬在亮水面前面是剪影）。
+    // 四种草丛画在一张 2×2 的贴图上，所有草丛拼成一个网格，一次画完；从远到近排好，叠在一起时前面的盖住后面的
+    {
+      const [ac, g] = mkCanvas(384, 288);
+      for (let t = 0; t < 4; t++) {
+        const rn = seeded(101 + t); g.save(); g.translate((t % 2) * 192, Math.floor(t / 2) * 144); g.beginPath(); g.rect(0, 0, 192, 144); g.clip();
+        for (let i = 0; i < 16; i++) {
+          const x0 = 96 + (rn() - 0.5) * 70, h = 50 + rn() * 90, lean = (rn() - 0.5) * 90, w = 2.5 + rn() * 3, x1 = x0 + lean, y1 = 144 - h;
+          const gr = g.createLinearGradient(0, 144, 0, y1); gr.addColorStop(0, '#141309'); gr.addColorStop(0.55, '#2b2816'); gr.addColorStop(1, '#5d553a');
+          g.fillStyle = gr; g.beginPath(); g.moveTo(x0 - w, 144); g.quadraticCurveTo(x0 + lean * 0.3 - w * 0.5, 144 - h * 0.6, x1, y1); g.quadraticCurveTo(x0 + lean * 0.3 + w * 0.5, 144 - h * 0.6, x0 + w, 144); g.closePath(); g.fill();
+          if (rn() < 0.45) { g.strokeStyle = 'rgba(238,222,176,.75)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x1, y1); g.quadraticCurveTo(x0 + lean * 0.75, 144 - h * 0.82, x0 + lean * 0.55 + w * 0.3, 144 - h * 0.6); g.stroke(); }   // 草尖被逆光照亮的一边
+        }
+        g.restore();
+      }
+      const rn = seeded(105), quads = [], pos = [], uv = [], idx = [];
+      for (let z = -5.8; z < 11.5; z += 0.55 + rn() * 0.5) { quads.push([CX0 - 1.45 + rn() * 0.42, z, 0.35 + rn() * 0.45]); quads.push([CX1 + 1.05 + rn() * 0.42, z + rn() * 0.3, 0.35 + rn() * 0.45]); }   // 两边渠沿外面
+      for (const [x, z] of [[LEVER_X - 0.4, -0.3], [LEVER_X + 0.4, -0.2], [LEVER_X - 0.05, -0.95], [CX1 + 3.1, -1.95], [CX1 + 3.7, -2.4]]) quads.push([x, z, 0.4 + rn() * 0.3]);   // 闸杆、灯杆脚下
+      const shoreZ = x => -21.6 + 11.85 * Math.sqrt(1 - (1 - clamp((x - 185.8) / 9.2, 0, 1)) ** 2);           // 水塘近岸在哪（和上面水塘那块板的岸线一样：左头是一个弯进去的水湾）
+      for (let x = 186; x < 230; x += 0.5 + rn() * 0.7) {                                                        // 水塘边上：顺着岸线长，两头渐渐变稀、变矮
+        const p = sstep(186, 194, x) * (1 - sstep(222, 230, x));
+        if ((x > CX0 - 1.4 && x < CX1 + 1.4) || rn() > p) continue;
+        quads.push([x, shoreZ(x) + 0.45 - rn() * 0.5, (0.8 + rn() * 0.9) * (0.55 + 0.45 * p)]);
+      }
+      for (let i = 0; i < 16; i++) { const left = rn() < 0.55, x = left ? 199.5 + rn() * 5.5 : 215 + rn() * 4.5, z = -6 + rn() * 9; if (left && x > 204.6 && z > -0.8) continue; quads.push([x, z, 0.3 + rn() * 0.35]); }   // 两岸地上零散的几丛（主角站的地方空着）
+      quads.sort((a, b) => a[1] - b[1]).forEach(([x, z, w], i) => {
+        const h = w * 0.75, t = Math.floor(rn() * 4), u0 = (t % 2) * 0.5, v0 = t < 2 ? 0.5 : 0, k = i * 4;
+        pos.push(x - w / 2, -0.02, z, x + w / 2, -0.02, z, x - w / 2, h - 0.02, z, x + w / 2, h - 0.02, z);
+        uv.push(u0, v0, u0 + 0.5, v0, u0, v0 + 0.5, u0 + 0.5, v0 + 0.5); idx.push(k, k + 1, k + 2, k + 2, k + 1, k + 3);
+      });
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
+      const m = add(R, geo, own(new THREE.MeshBasicMaterial({ map: canvasTex(ac), transparent: true, depthWrite: false })), 0, 0, 0, false); m.renderOrder = 12;
+    }
+    // 地上 · 落叶和小石头：渠沿、水塘边上多，路中间少
+    backdrop(198, 221, -9.4, 12.5, 0, 36, g => {
+      const rn = seeded(106);
+      for (let i = 0; i < 1400; i++) {
+        const x = 198 + rn() * 23, z = -9.3 + rn() * 21.7;
+        if (x > CX0 && x < CX1) continue;
+        const nearEdge = Math.min(Math.abs(x - (CX0 - 1)), Math.abs(x - (CX1 + 1))) < 0.9 || z < -8.4;
+        if (!nearEdge && rn() < 0.6) continue;
+        leaf(g, x, z, 0.06 + rn() * 0.06, rn() * 6.28, LEAFC[Math.floor(rn() * 4)]);
+      }
+      for (let i = 0; i < 50; i++) {
+        const x = 198 + rn() * 23, z = -9 + rn() * 21, r = 0.04 + rn() * 0.1; if (x > CX0 - 1 && x < CX1 + 1) continue;
+        g.fillStyle = 'rgba(18,18,12,.85)'; oval(g, x, z, r, r * 0.7); g.fillStyle = 'rgba(150,145,125,.35)'; oval(g, x - r * 0.2, z - r * 0.25, r * 0.6, r * 0.35);
+      }
+    }, { floor: 0.012, lit: true, order: -24 });
+    // 地上 · 碎光斑：枝叶间漏下来的光落在地上，被树叶的影子切成一块块。先把原来那几团光压暗，再在一个个空隙里把光留下来、提亮一点；
+    // 空隙成团成片（几道正弦叠出一张起伏的疏密图），小的多、大的少
+    {
+      const POOLS = [[X + 86, -0.6, 3.1, 2.4], [CX0 - 5.9, -0.6, 3.1, 2.4], [202.6, -0.4, 1.7, 1.6], [206.3, -0.4, 0.95, 1.4], [214.4, -0.4, 0.8, 1.4], [217.4, -0.4, 1.5, 1.6], [CX1 + 8.4, -0.6, 3.1, 2.4]];   // 地上原来亮的那几块：[x, z, 横半径, 纵半径]
+      const nz = (x, z) => Math.sin(x * 1.3 + 1.3) * Math.sin(z * 1.9 + 0.7) + 0.6 * Math.sin(x * 3.1 + z * 2.3 + 2.1) + 0.4 * Math.sin(x * 0.7 - z * 3.7 + 0.4);
+      const spots = [], rn = seeded(111);
+      for (const [x, z, rx, rz] of POOLS) for (let i = 0, n = Math.round(rx * rz * 60); i < n; i++) {
+        const a = rn() * 6.2832, r = Math.sqrt(rn()), sx = x + Math.cos(a) * r * rx, sz = z + Math.sin(a) * r * rz;
+        if (nz(sx, sz) < -0.3 + rn() * 1.2) continue;
+        const s = 0.04 + 0.3 * Math.pow(rn(), 2.4); spots.push([sx, sz, s * (0.8 + 0.5 * rn()), s * (0.6 + 0.4 * rn()), rn() * 3.14]);
+      }
+      backdrop(186.5, 225, -3.6, 2.6, 0, 40, g => {
+        for (const [x, z, rx, rz] of POOLS) { g.save(); g.translate(x, z); g.scale(rx * 1.15, rz * 1.15); const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, 'rgba(0,0,0,.42)'); gr.addColorStop(0.7, 'rgba(0,0,0,.34)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); g.restore(); }
+        g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+        for (const [x, z, rx, rz, a] of spots) oval(g, x, z, rx, rz, a);
+      }, { floor: 0.016, fog: false, blur: 2, order: -19 });
+      backdrop(186.5, 225, -3.6, 2.6, 0, 40, g => { g.fillStyle = 'rgba(255,236,196,.14)'; for (const [x, z, rx, rz, a] of spots) oval(g, x, z, rx * 0.8, rz * 0.8, a); },
+        { floor: 0.017, additive: true, fog: false, blur: 2, order: -18 });
+    }
     V = v;
   }
 
@@ -2683,10 +2938,31 @@ const CH2 = (() => {
     v.fall.visible = drop > 0.05; v.fall.scale.y = Math.max(0.05, drop + 0.3); v.fall.position.y = W.level + (drop + 0.3) / 2; v.fall.material.opacity = 0.5 * sstep(0, 0.6, drop);
     v.timber.position.set(timber.x, timber.y2 + (W.k > 0.1 ? 0.012 * Math.sin(T * 1.7) : 0), 0); v.timber.rotation.z = W.k > 0.1 ? 0.012 * Math.sin(T * 1.1) : -0.03;
     v.farGlow.material.opacity = 0.9 * W.lamp; v.farLens.material.color.setHex(W.lamp > 0.5 ? 0xe8f6ff : 0x2c3a40); v.nearGlow.material.opacity = 0.5 * W.lamp;
+
+    // 第三步的细节：闸板一动，漏水就停了；水面上的白沫、落叶跟着水位走；近处水里那片亮光的倒影按镜头和水位重新摆
+    const leak = 1 - sstep(0, 0.04, W.k);
+    for (const o of [v.jets, v.mist, v.foam]) { o.visible = leak > 0.01; o.material.opacity = leak; }
+    v.flowTex.offset.y += dt * 1.4;
+    v.foam.position.y = W.level + 0.035; v.floatLeaves.position.y = W.level + 0.02;
+    placeMirror(v);
+  }
+  // 闸门里那片亮光在近处水面上的倒影，照镜子的道理：把亮着的那一段（闸板上沿到横梁底；闸板升起来以后是水面到闸板下沿，哪段大用哪段）
+  // 按水面翻到水下，从镜头看过去，视线穿过水面的地方就是倒影落的地方。四个角各算一次；镜头偏左，倒影也就偏左、比闸门窄
+  function placeMirror(v) {
+    const C = camera.position, L = W.level, top = v.gate.position.y + 1.6, bot = v.gate.position.y - 1.6;
+    const up = top < 3.6 ? 3.6 - Math.max(top, L) : 0, low = bot > L ? Math.min(bot, 3.6) - L : 0;
+    const [yA, yB] = up >= low ? [Math.max(top, L), 3.6] : [L, Math.min(bot, 3.6)], m = v.mirror;
+    m.visible = yB - yA > 0.05 && C.y > L + 0.5; if (!m.visible) return;
+    const zg = v.gz + 0.3, p = m.geometry.attributes.position;
+    [[CX0 + 0.2, yA], [CX1 - 0.2, yA], [CX0 + 0.2, yB], [CX1 - 0.2, yB]].forEach(([xo, yo], i) => {
+      const t = (C.y - L) / (C.y - (2 * L - yo));
+      p.setXYZ(i, clamp(C.x + t * (xo - C.x), CX0 + 0.02, CX1 - 0.02), L + 0.012, Math.min(13.9, C.z + t * (zg - C.z)));
+    });
+    p.needsUpdate = true;
   }
   function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); }
   function solve() { Object.assign(W, { open: true, t: 7, k: 1, level: HIGH, lamp: 1, flown: 99, bank: 1 }); placeTimber(); }
-  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { V = null; }, W, timber });
+  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.extraTex ?? []) t.dispose(); V = null; }, W, timber });
 })();
 
 // ============================================================

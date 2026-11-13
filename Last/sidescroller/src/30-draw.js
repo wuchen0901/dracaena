@@ -8,11 +8,12 @@ let ROOT = scene;                                   // 布景板当前挂到哪�
 // o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
 //    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）/
 //    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）
+//    side 贴在一面朝 ±x 的竖墙上（比如水渠的内壁）：这时 x1、x2 是 z 的范围，z 那个参数是墙在哪个 x，画的时候横坐标就是 z；-1 朝 -x，+1 朝 +x（要自己给 order）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
-  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined;
+  const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined, side = o.side ?? 0;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
-  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处
+  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : side > 0 ? g.setTransform(-s, 0, 0, -s, x2 * s, y2 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处；朝 +x 的那面，画布从左到右是 z 从大到小
   g.save();
   if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
   place();
@@ -29,7 +30,9 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   if (o.additive) mat.blending = THREE.AdditiveBlending;
   mat.userData.own = true;                          // 这一章被卸载时，连同贴图一起释放
   const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, y2 - y1), mat); m.receiveShadow = !!o.lit;
-  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); } else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
+  if (flat) { m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, o.floor, (y1 + y2) / 2); }
+  else if (side) { m.rotation.y = side < 0 ? -Math.PI / 2 : Math.PI / 2; m.position.set(z, (y1 + y2) / 2, (x1 + x2) / 2); }
+  else m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z);
   m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
