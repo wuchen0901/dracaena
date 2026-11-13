@@ -72,7 +72,7 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZON
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
-  brush: { BRUSH, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
+  brush: { BRUSH, BRK, BRV, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
   zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
   sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),

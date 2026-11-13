@@ -287,18 +287,22 @@ function stepDrops(Pl, dt) {
   }
 }
 function stepPlant(Pl, dt, obs) {
+  let rub = 0, back = 0, drop = 0;                                                                   // 给声音的（52-audio.js 的 brushSound）：擦得多快、弹回去多快、抖落了几片
   for (const e of Pl.els) {
-    const sw = e.sway * (0.7 + 0.46 * GUST.v) * (Math.sin(T * 1.7 + e.ph) + 0.4 * Math.sin(T * 2.9 + e.ph * 1.7));   // 风：阵风来了摆得大一些，和地上的草、风吹树叶的声音同一阵（36-lights-fx.js 的 GUST）
+    const d0 = e.d, sw = e.sway * (0.7 + 0.46 * GUST.v) * (Math.sin(T * 1.7 + e.ph) + 0.4 * Math.sin(T * 2.9 + e.ph * 1.7));   // 风：阵风来了摆得大一些，和地上的草、风吹树叶的声音同一阵（36-lights-fx.js 的 GUST）
     e.dv += (-e.K * (e.d - sw) - e.C * e.dv) * dt; e.d += e.dv * dt;
     e.tv += (-e.K * 0.8 * e.tw - e.C * e.tv) * dt; e.tw += e.tv * dt;
     if (!obs || !e.touch) { e.slip = false; continue; }
     if (e.slip) { if (elPen(e, e.d, obs) <= 0) e.slip = false; continue; }
     const was = e.dir, hit = elContact(e, obs, dt);
+    if (hit) rub += Math.abs(e.d - d0) * e.L;                                                          // 挨着主角的这一条，这一帧被带着走了多远（量在梢上）；站着不动、叶子贴着不动就是 0
+    else if (was) back = Math.max(back, Math.abs(e.d) * Math.sqrt(e.K) * e.L);                         // 刚松开：弹回去的时候梢上最快有多快
     if (hit === 2 && e.twMax) { e.tw = damp(e.tw, e.twMax, 7, dt); e.tv = 0; }                        // 被手推着：朝侧面翻过去
-    if (Pl.kind === 'branch' && was && !hit && Pl.shed < 3 && Math.abs(e.dv) > 1.2 && brn() < 0.7) { brushDrop(Pl, e); Pl.shed++; }   // 一松手枝条弹回去，抖下一两片叶子
+    if (Pl.kind === 'branch' && was && !hit && Pl.shed < 3 && Math.abs(e.dv) > 1.2 && brn() < 0.7) { brushDrop(Pl, e); Pl.shed++; drop++; }   // 一松手枝条弹回去，抖下一两片叶子
   }
   stepDrops(Pl, dt);
   brushShape(Pl);
+  brushSound(Pl, dt, rub / dt, back, drop);
 }
 // 主角身上会碰到叶子的地方，侧视平面里的几段胶囊：身子、头、两条前臂和两只手。用的是模型上一帧的骨头位置
 const _bo = [V3(), V3(), V3()];

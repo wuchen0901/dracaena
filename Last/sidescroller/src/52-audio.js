@@ -11,14 +11,15 @@ const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
 const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0 };
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
-const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1 } };
+const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1, brush: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
 const SR = () => AC.sampleRate, seed = () => SY.rng(Math.random() * 2147483647 | 0);
 const R2 = (a, b) => a + (b - a) * Math.random();   // 声音用的随机数：不动关卡那一套固定种子
 
 // ---- 一组一组算好的声音：第一次要用的时候先算一个马上放，剩下的排队，每一帧抽几毫秒慢慢算 ----
+// rec(n 一组几个, fn 一口气算一个, steps 可以不给：一层一层算的版本 —— 排队的时候每次只算一层，一层只要一两毫秒)
 const RECIPE = {}, BANKS = {}, JOBS = [];
-const rec = (n, fn) => ({ n, fn });
+const rec = (n, fn, steps) => ({ n, fn, steps });
 Object.assign(RECIPE, {
   bird: rec(10, r => SY.songbird(SR(), r)), dove: rec(3, r => SY.coo(SR(), r)), pigeon: rec(3, r => SY.coo(SR(), r, { pigeon: true })), crow: rec(4, r => SY.crow(SR(), r)),
   woodpecker: rec(3, r => SY.woodpecker(SR(), r)), bee: rec(3, r => SY.bee(SR(), r)), owl: rec(2, r => SY.owl(SR(), r)),
@@ -38,10 +39,26 @@ function sbuf(name) {
   if (!b) {
     const R = RECIPE[name]; if (!R || !AC) return null;
     b = BANKS[name] = { list: [MX.toBuf(R.fn(seed()))], last: -1 };
-    if (R.n > 1) JOBS.push(() => { b.list.push(MX.toBuf(R.fn(seed()))); return b.list.length < R.n; });
+    if (R.n > 1) JOBS.push(fillJob(R, b));
   }
+  if (!b.list.length) return null;                  // 还在排队算（prepBank）
   let i = Math.floor(Math.random() * b.list.length); if (b.list.length > 2 && i === b.last) i = (i + 1) % b.list.length;
   b.last = i; return b.list[i];
+}
+// 先排上队、不在这一帧算：离得还远就开始准备，等真要响的时候已经算好了，不会在那一刻卡一下
+function prepBank(name) {
+  if (BANKS[name] || !RECIPE[name] || !AC) return;
+  const R = RECIPE[name], b = BANKS[name] = { list: [], last: -1 };
+  JOBS.push(fillJob(R, b));
+}
+// 排队的活：往 b 里一个一个地补，补够 R.n 个为止（返回 true 表示还没完）
+function fillJob(R, b) {
+  let it = null;
+  return () => {
+    if (!R.steps) b.list.push(MX.toBuf(R.fn(seed())));
+    else { it = it || R.steps(seed()); const st = it.next(); if (st.done) { b.list.push(MX.toBuf(st.value)); it = null; } }
+    return b.list.length < R.n;
+  };
 }
 function pumpJobs(ms = 4) { const t0 = performance.now(); while (JOBS.length && performance.now() - t0 < ms) if (!JOBS[0]()) JOBS.shift(); }
 // 放一组里的一个：o 同 SY.mixer 的 play（gain / rate / pan / lp / wet / bus / delay）
@@ -217,9 +234,65 @@ function stepSwimSound(dt) {
   if (panic > 0.01 && (heartT -= dt) <= 0) { heartT = lerp(1.1, 0.45, panic); snd('heart', { bus: 'fol', gain: 0.5 * panic, wet: 0 }); }
 }
 
+// ---- 路边的植物被拨开（48-brush.js 的 stepPlant 每帧报上来：rub 挨着主角的叶子被带着走得多快、back 刚松开的叶子弹回去多快、drop 枝条抖落了几片）----
+// 清脆的“沙啦”（配方在 51-sound-synth.js 的 brushSteps）。擦：一段循环的沙沙声，推得越快越响、越亮；弹回去：轻轻“唰”一下；抖落：零零星星几下碎响。
+// 叶子是枯是嫩看这一章的环境关键帧（leafDry）。这几组都是一层一层算的：一丛植物离主角还有二十几米、头一次报上来的时候就排上队，等走到跟前早就算好了
+for (const k of ['leaf', 'grass', 'fern', 'branch']) for (const d of [0, 1]) {
+  const R = (n, ev) => rec(n, r => SY.brush(SR(), r, { kind: k, dry: d, ev }), r => SY.brushSteps(SR(), r, { kind: k, dry: d, ev }));
+  RECIPE[`br:${k}:${d}:rub`] = R(1, 'rub'); RECIPE[`br:${k}:${d}:back`] = R(4, 'back');
+  if (k === 'branch') RECIPE[`br:${k}:${d}:drop`] = R(3, 'drop');
+}
+// n：走着穿过这一丛时擦得最快的那几下有多快（实测，拿来归一：草一次挨着十几根，数大）/ g 擦的音量 / gb 弹回去的音量 / gap 同一丛两声弹回去至少隔多久 / gd 抖落叶子的音量
+const BRK = { leaf: { n: 15, g: 0.23, gb: 0.2, gap: 0.07 }, grass: { n: 105, g: 0.31, gb: 0.13, gap: 0.1 }, fern: { n: 21, g: 0.25, gb: 0.18, gap: 0.07 }, branch: { n: 9, g: 0.42, gb: 0.2, gap: 0.08, gd: 0.16 } };
+const BRV = new Map();                                // 正在响的“擦”：每一丛一个
+let brFrame = 0;
+function brushSound(Pl, dt, rub, back, drop) {
+  if (!AC || muted) return;
+  const K = BRK[Pl.kind], dk = E.leafDry > 0.5 ? 1 : 0, now = AC.currentTime, V = SND.vol.brush;
+  if (Pl.sk?.d !== dk) {                              // 这一丛用哪几组（枯叶 / 嫩叶）；头一次报上来就排队去算
+    const k = `br:${Pl.kind}:${dk}`; Pl.sk = { d: dk, rub: k + ':rub', back: k + ':back', drop: k + ':drop' };
+    prepBank(Pl.sk.rub); prepBank(Pl.sk.back); if (K.gd) prepBank(Pl.sk.drop);
+  }
+  const N = Pl.sk;
+  // 擦：推得越快越响（压一压，跑起来不至于太冲），也越亮；一碰就起来，松开以后落得慢一点
+  const lvl = Math.pow(Math.min(rub / K.n, 3.5), 0.7);
+  Pl.rubL = lerp(Pl.rubL ?? 0, lvl, 1 - Math.exp(-dt / (lvl > (Pl.rubL ?? 0) ? 0.03 : 0.09)));
+  let v = BRV.get(Pl);
+  if (v && v.key !== N.rub) { v.g.gain.setTargetAtTime(0, now, 0.04); v.s.stop(now + 0.3); BRV.delete(Pl); v = null; }   // 叶子从枯换成嫩（走进了另一章的环境）
+  if (!v && Pl.rubL > 0.02) {
+    const b = BANKS[N.rub]?.list[0];
+    if (b) {
+      const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), w = AC.createGain();
+      s.buffer = b; s.loop = true; f.type = 'lowpass'; f.Q.value = 0.5; f.frequency.value = 6000; g.gain.value = 0; w.gain.value = 0.3;
+      s.connect(f).connect(g).connect(MX.bus.fol); g.connect(w).connect(MX.send); s.start(0, Math.random() * b.duration);
+      BRV.set(Pl, v = { s, f, g, key: N.rub, idle: 0 });
+    }
+  }
+  if (v) {
+    v.seen = brFrame;
+    v.g.gain.setTargetAtTime(K.g * Pl.rubL * V, now, 0.02);
+    v.f.frequency.setTargetAtTime(lerp(2800, 12000, clamp(rub / K.n / 2.5, 0, 1)), now, 0.05);
+    v.idle = Pl.rubL < 0.01 ? v.idle + dt : 0;
+    if (v.idle > 1) { v.g.gain.setTargetAtTime(0, now, 0.03); v.s.stop(now + 0.3); BRV.delete(Pl); }
+  }
+  // 弹回去：刚松开的叶子里弹得最快的那一片，轻轻“唰”一下；同一丛隔一小会儿才响下一声（草叶多，隔得长一些）
+  Pl.bk = Math.max((Pl.bk ?? 0) * Math.exp(-dt / 0.08), back);
+  if (Pl.bk > 3 && T - (Pl.bkT ?? -9) > K.gap) {
+    snd(N.back, { bus: 'fol', gain: K.gb * Math.pow(clamp((Pl.bk - 3) / 12, 0, 1.4), 0.8) * R2(0.85, 1.1) * V, rate: R2(0.92, 1.08), wet: 0.35 });
+    Pl.bkT = T; Pl.bk = 0;
+  }
+  // 枝条抖落叶子
+  for (let i = 0; i < drop; i++) snd(N.drop, { bus: 'fol', gain: K.gd * R2(0.8, 1.1) * V, rate: R2(0.92, 1.08), wet: 0.4, delay: i * R2(0.05, 0.12) });
+}
+function stepBrushVoices() {                          // 这一帧没再报上来的（那一丛离远了、那一章卸载了、声音关了）：淡出、停掉
+  for (const [Pl, v] of BRV) if (v.seen !== brFrame) { v.g.gain.setTargetAtTime(0, AC.currentTime, 0.04); v.s.stop(AC.currentTime + 0.3); BRV.delete(Pl); }
+  brFrame++;
+}
+
 function updateAudio(dt, stepNow) {
   if (!AC) return;
   pumpJobs();
+  stepBrushVoices();
   const t = AC.currentTime, g = GUST.v, V = SND.vol.amb;
   // 空间：走到哪里就是哪里的混响
   MX.rv.out.gain.setTargetAtTime(E.rvOut * RV.out, t, 0.3); MX.rv.hall.gain.setTargetAtTime(E.rvHall * RV.hall, t, 0.3); MX.rv.cave.gain.setTargetAtTime(E.rvCave * RV.cave, t, 0.3);

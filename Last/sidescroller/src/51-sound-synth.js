@@ -63,15 +63,17 @@ const SY = (() => {
   }
   const jit = (r, M, k) => M.map(([f, t, a]) => [f * (1 + k * (r() * 2 - 1)), t, a]);      // 同一种东西，每一块的音高略有不同
   // 一阵细碎的声音：n 颗很短的噪声颗粒散在 t0..t1 之间（shape(u) 决定前密后疏，u 从 0 到 1），整串再过一遍滤波
-  function grains(out, sr, r, o) {
+  function grains(out, sr, r, o) { const it = grainsSteps(out, sr, r, o); while (!it.next().done); }
+  function* grainsSteps(out, sr, r, o) {                            // 同 grains，只是算一段停一下（游戏里每一帧只算一小段，见 brushSteps）
     const i0 = Math.round(o.t0 * sr), span = Math.max(1, (o.t1 - o.t0) * sr), tmp = new Float32Array(Math.ceil(span + 0.012 * sr)), gen = whiteGen(r), p = o.pow ?? 2;
     for (let k = 0; k < o.n; k++) {
       let u; do u = r(); while (o.shape && r() > o.shape(u));
       const j = Math.floor(u * span), a = Math.pow(r(), p), dec = U(r, o.dec[0], o.dec[1]) * sr, m = Math.min(tmp.length - j, Math.ceil(dec * 5));
-      for (let i = 0; i < m; i++) tmp[j + i] += a * gen() * Math.exp(-i / dec);
+      for (let i = 0, g = a, q = Math.exp(-1 / dec); i < m; i++, g *= q) tmp[j + i] += g * gen();   // 指数地落：每个点乘同一个系数，不必每个点算一次 exp
+      if ((k & 511) === 511) yield;
     }
     const hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), a = o.a ?? 1;
-    for (let i = 0; i < tmp.length && i0 + i < out.length; i++) { let x = tmp[i]; if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i0 + i] += a * x; }
+    for (let i = 0; i < tmp.length && i0 + i < out.length; i++) { let x = tmp[i]; if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i0 + i] += a * x; if ((i & 32767) === 32767) yield; }
   }
   // 一串小石子相碰：每一颗是一声很短的、有音高的“嗒”
   function ticks(out, sr, r, o) {
@@ -491,6 +493,90 @@ const SY = (() => {
   }
 
   // ============================================================
+  //  路边的植物被拨开（48-brush.js）：清脆的“沙啦”（2026-11-14 用户从四种听感里挑的 B）
+  //  kind：leaf 大叶子 / grass 高草 / fern 蕨 / branch 小树枝；dry 0 嫩叶、1 枯叶
+  //  ev：rub 被推着、贴着身子擦过去时一直响的那一段（循环用；多响由推得多快决定）/ back 一松开，叶子弹回去轻轻“唰”一下 / drop 枝条上抖落几片叶子
+  //  brushSteps 一层一层地算，算完一层停一下：游戏里每一帧只算一两层，主角走近植物的时候不会卡一下。brush 一口气算完（检查脚本、声音样板页用）
+  // ============================================================
+  // 一个鼓包（线性地起、指数地落）叠到 x[i0..i0+m) 上：落的那一段每个点乘同一个系数，不必每个点都算一次 exp
+  function decay(x, i0, m, a, at, dc) {
+    const ia = Math.min(m, Math.ceil(at)), k = Math.exp(-1 / dc);
+    for (let i = 0; i < ia; i++) x[i0 + i] += a * (i / at);
+    for (let i = ia, g = a * Math.exp(-(ia - at) / dc); i < m; i++, g *= k) x[i0 + i] += g;
+  }
+  // 擦的声音：一串软的小鼓包（每个 att 起、dec 落）当包络，乘上一段滤过的噪声。rate 每秒几个 / floor 包络底下垫多少（连着不断的那一层）/
+  // t0..t1 鼓包出现在哪一段，shape(u) 前密后疏
+  function* puffs(out, sr, r, o) {
+    const n = out.length, env = new Float32Array(n), gen = o.pink ? pinkGen(r) : whiteGen(r), t0 = o.t0 ?? 0, t1 = o.t1 ?? n / sr, fl = o.floor ?? 0;
+    for (let t = t0 + U(r, 0, 1 / o.rate); t < t1; t += -Math.log(1 - r() * 0.999) / o.rate) {
+      if (o.shape && r() > o.shape((t - t0) / (t1 - t0))) continue;
+      const i0 = Math.floor(t * sr), a = Math.pow(r(), o.pow ?? 1.5), at = Math.max(1, U(r, o.att[0], o.att[1]) * sr), dc = U(r, o.dec[0], o.dec[1]) * sr, m = Math.min(n - i0, Math.ceil(at + dc * 5));
+      decay(env, i0, m, a, at, dc);
+    }
+    yield;
+    const hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), a = o.a ?? 1, i0 = Math.round(t0 * sr), i1 = o.floorEnd ? Math.round(o.floorEnd * sr) : n;
+    for (let i = 0; i < n; i++) { let x = gen() * (env[i] + (i >= i0 && i < i1 ? fl : 0)); if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i] += a * x; if ((i & 32767) === 32767) yield; }   // 先乘包络再滤波：鼓包起得再快，也不会漏出低音
+  }
+  // 一片叶子从袖子上滑开、拍回去：很短的“嗒”（叶片自己的一两个音）+ 一点擦的噪声
+  function* flicks(out, sr, r, o) {
+    const tmp = new Float32Array(out.length), gen = whiteGen(r);
+    for (let k = 0; k < o.n; k++) {
+      let u; do u = r(); while (o.shape && r() > o.shape(u));
+      const t = o.t0 + u * (o.t1 - o.t0), a = (o.a ?? 1) * Math.pow(r(), o.pow ?? 1.4), f = o.f[0] * Math.pow(o.f[1] / o.f[0], r()), d = U(r, o.dec[0], o.dec[1]);
+      modes(out, sr, { t, a: 0.6 * a, modes: [[f, d, 1], [f * U(r, 1.6, 2.4), d * 0.5, 0.35]] });
+      const j = Math.round(t * sr), at = 0.0004 * sr, dc = U(r, 0.0015, 0.004) * sr, m = Math.min(tmp.length - j, Math.ceil(at + dc * 5));
+      for (let i = 0; i < m; i++) tmp[j + i] += 0.5 * a * gen() * (i < at ? i / at : Math.exp(-(i - at) / dc));
+    }
+    yield;
+    const hp = BQ(sr, 'hp', o.hp ?? 1800, 0.7), lp = BQ(sr, 'lp', o.lp ?? 9000, 0.7);
+    for (let i = 0; i < out.length; i++) { out[i] += lp.run(hp.run(tmp[i])); if ((i & 32767) === 32767) yield; }
+  }
+  // 挑定的听感：puff 擦的那一层 / floor 连着的底子 / att 鼓包起得快慢 / hp、lp 频带整体往上挪 / crack 脆的碎响（这一种的主角）/
+  // body 叶片扇动的“呼” / flick 偶尔一片拍开的“嗒”
+  const BMIX = { puff: 0.6, floor: 0.1, att: 0.8, hp: 1.2, lp: 1.1, crack: 1.7, body: 0.2, flick: 0.12 };
+  // 四种植物：hp、lp 擦的频带 / rate 每秒几个鼓包，att、dec 每个多长 / cr [嫩, 枯] 每秒多少下脆响，crHp 脆响多高 / body 叶片扇动的分量，bodyLp 多低 /
+  // scrape 树枝每秒刮几下 / fl 一片片“嗒”的音高，fn 每秒几下 / sw 弹回去那一下“唰”从多高滑到多低，bd 拖多长
+  const BKIND = {
+    leaf: { hp: 800, lp: 5200, rate: 26, att: [0.003, 0.009], dec: [0.015, 0.04], cr: [40, 260], crHp: 2000, body: 0.55, bodyLp: 950, scrape: 0, fl: [1100, 3000], fn: 12, sw: [2000, 900], bd: 0.11 },
+    grass: { hp: 2400, lp: 10500, rate: 90, att: [0.001, 0.003], dec: [0.004, 0.014], cr: [70, 420], crHp: 3000, body: 0.08, bodyLp: 1700, scrape: 0, fl: [2600, 5600], fn: 30, sw: [6000, 3200], bd: 0.06 },
+    fern: { hp: 1300, lp: 7200, rate: 60, att: [0.002, 0.006], dec: [0.008, 0.024], cr: [40, 220], crHp: 2400, body: 0.25, bodyLp: 1150, scrape: 0, fl: [1800, 4200], fn: 22, sw: [3600, 1800], bd: 0.09 },
+    branch: { hp: 1000, lp: 6200, rate: 40, att: [0.002, 0.006], dec: [0.01, 0.03], cr: [60, 320], crHp: 2200, body: 0.3, bodyLp: 1000, scrape: 32, fl: [1300, 3500], fn: 16, sw: [3000, 1300], bd: 0.08 },
+  };
+  function* brushSteps(sr, r, o = {}) {
+    const K = BKIND[o.kind] ?? BKIND.leaf, S = BMIX, dry = o.dry ?? 0.5, ev = o.ev ?? 'rub';
+    const lpK = S.lp * mix(0.85, 1.15, dry), crHp = K.crHp * mix(0.85, 1.15, dry) * S.hp, crDec = dry > 0.5 ? [0.00012, 0.0007] : [0.0003, 0.0014], crLp = mix(6500, 11000, dry);
+    if (ev === 'rub') {
+      const len = 2.6, T = len + 0.5, out = buf(sr, T);
+      yield* puffs(out, sr, r, { a: S.puff, rate: K.rate, att: K.att.map(v => v * S.att), dec: K.dec, floor: S.floor, hp: K.hp * S.hp, lp: Math.min(16000, K.lp * lpK) });   // 叶子贴着衣服滑过去
+      const crN = Math.round(mix(K.cr[0], K.cr[1], dry) * S.crack * T);                                                                                  // 叶子边上脆的碎响（枯叶多、嫩叶少）
+      if (crN) yield* grainsSteps(out, sr, r, { t0: 0, t1: T, n: crN, a: 0.9 * mix(0.5, 1, dry), pow: 2.2, dec: crDec, hp: crHp, lp: crLp });
+      yield* puffs(out, sr, r, { a: 1.6 * K.body * S.body, rate: 6, att: [0.015, 0.04], dec: [0.05, 0.12], pow: 1.2, hp: 180, lp: K.bodyLp, pink: 1 });   // 叶片扇过来的“呼”
+      if (K.scrape) ticks(out, sr, r, { t0: 0, t1: T, n: Math.round(K.scrape * T), a: 0.45, f: [1100, 3400], dec: [0.002, 0.006], pow: 1.6 });          // 树枝刮过衣服
+      yield* flicks(out, sr, r, { t0: 0, t1: T, n: Math.round(K.fn * S.flick * T), a: 1, f: K.fl, dec: dry > 0.5 ? [0.0012, 0.003] : [0.002, 0.005], hp: crHp * 0.8, lp: crLp });   // 偶尔一片拍开
+      yield;
+      return normRms(loopable(dcBlock(out, sr, 25), sr, 0.5), 0.15);
+    }
+    if (ev === 'back') {                                          // 一松开：叶子扫过空气、擦过别的叶子，“唰”一下；剩下的叶子还沙沙地抖两下
+      const out = buf(sr, 0.8), bd = K.bd * S.att;
+      noise(out, sr, r, { t: 0, a: 0.9 * (1 - 0.6 * S.flick), bp: [K.sw[0] * S.hp, 1.0], sweep: [K.sw[0] * S.hp, K.sw[1] * S.hp, 0.14], att: bd * 0.35, dec: bd, len: 0.5 });
+      yield* puffs(out, sr, r, { t0: 0.01, t1: 0.42, shape: u => Math.exp(-u * 3.5), a: 0.6 * S.puff, rate: K.rate * 0.8, att: K.att.map(v => v * S.att), dec: K.dec, hp: K.hp * S.hp, lp: Math.min(16000, K.lp * lpK) });
+      const crN = Math.round(mix(K.cr[0], K.cr[1], dry) * S.crack * 0.3);
+      if (crN) yield* grainsSteps(out, sr, r, { t0: 0.01, t1: 0.4, n: crN, a: 0.8 * mix(0.5, 1, dry), pow: 2.2, dec: crDec, hp: crHp, lp: crLp, shape: u => Math.exp(-u * 3) });
+      noise(out, sr, r, { t: 0, a: 0.5 * K.body * S.body, lp: K.bodyLp, hp: 180, att: bd * 0.5, dec: bd * 1.2, len: 0.4, pink: true });
+      if (K.scrape) ticks(out, sr, r, { t0: 0.005, t1: 0.2, n: 2 + (r() * 3 | 0), a: 0.5, f: [900, 2400], dec: [0.003, 0.008], pow: 1 });   // 树枝晃回去，枝条磕一两下
+      yield* flicks(out, sr, r, { t0: 0, t1: 0.3, n: 2 + (r() * 3 | 0), a: 1.2 * S.flick, f: K.fl, dec: [0.0015, 0.004], hp: crHp * 0.8, lp: crLp, shape: u => Math.exp(-u * 3), pow: 1 });
+      return done(out, sr);
+    }
+    // drop：枝条一抖，几片叶子掉下来 —— 先是一小把碎响（叶柄断开、叶子互相碰），再零零星星几下（落下去的路上碰到别的叶子）
+    const out = buf(sr, 1.1);
+    yield* grainsSteps(out, sr, r, { t0: 0, t1: 0.22, n: Math.round(mix(30, 90, dry) * (0.4 + S.crack)), a: 0.9, pow: 2, dec: crDec, hp: crHp, lp: crLp, shape: u => Math.exp(-u * 3) });
+    yield* puffs(out, sr, r, { t0: 0, t1: 0.3, shape: u => Math.exp(-u * 4), a: 0.5 * S.puff, rate: 50, att: [0.002, 0.006], dec: [0.006, 0.02], hp: 1500 * S.hp, lp: Math.min(16000, 8000 * lpK) });
+    yield* flicks(out, sr, r, { t0: 0.12, t1: 0.95, n: 3 + (r() * 4 | 0), a: mix(0.35, 0.6, dry) * 1.5, f: [1600, 4200], dec: dry > 0.5 ? [0.001, 0.0025] : [0.002, 0.004], hp: crHp, lp: crLp, pow: 1.2 });
+    return done(out, sr);
+  }
+  function brush(sr, r, o) { const it = brushSteps(sr, r, o); let s; do s = it.next(); while (!s.done); return s.value; }
+
+  // ============================================================
   //  混响：一段脉冲响应（左右两路互不相关的噪声，指数衰减，越往后越闷）+ 几下早期反射
   //  len 长度 / t60 衰减到 -60 dB 用多久 / f0 → f1 一开始和最后的低通 / pre 预延迟 / er 早期反射 [[时间, 音量], ...]
   // ============================================================
@@ -542,5 +628,5 @@ const SY = (() => {
 
   return { rng, BQ, wander, noise, sine, modes, grains, ticks, bubble, note, peak, rms, normPeak, normRms, loopable, step, SURF, breath, rustle, babble, crickets, sprinkler,
     songbird, coo, crow, woodpecker, bee, owl, clank, chain, steam, creak, rattle, twig, chime, shutter, knock, zap, relay, hum2, pebbles, rumble, plop, gurgle, drip,
-    stroke, blub, heart, splash, SPACE, ir, mixer };
+    stroke, blub, heart, splash, brush, brushSteps, SPACE, ir, mixer };
 })();

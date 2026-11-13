@@ -3156,18 +3156,22 @@ function stepDrops(Pl, dt) {
   }
 }
 function stepPlant(Pl, dt, obs) {
+  let rub = 0, back = 0, drop = 0;                                                                   // 给声音的（52-audio.js 的 brushSound）：擦得多快、弹回去多快、抖落了几片
   for (const e of Pl.els) {
-    const sw = e.sway * (0.7 + 0.46 * GUST.v) * (Math.sin(T * 1.7 + e.ph) + 0.4 * Math.sin(T * 2.9 + e.ph * 1.7));   // 风：阵风来了摆得大一些，和地上的草、风吹树叶的声音同一阵（36-lights-fx.js 的 GUST）
+    const d0 = e.d, sw = e.sway * (0.7 + 0.46 * GUST.v) * (Math.sin(T * 1.7 + e.ph) + 0.4 * Math.sin(T * 2.9 + e.ph * 1.7));   // 风：阵风来了摆得大一些，和地上的草、风吹树叶的声音同一阵（36-lights-fx.js 的 GUST）
     e.dv += (-e.K * (e.d - sw) - e.C * e.dv) * dt; e.d += e.dv * dt;
     e.tv += (-e.K * 0.8 * e.tw - e.C * e.tv) * dt; e.tw += e.tv * dt;
     if (!obs || !e.touch) { e.slip = false; continue; }
     if (e.slip) { if (elPen(e, e.d, obs) <= 0) e.slip = false; continue; }
     const was = e.dir, hit = elContact(e, obs, dt);
+    if (hit) rub += Math.abs(e.d - d0) * e.L;                                                          // 挨着主角的这一条，这一帧被带着走了多远（量在梢上）；站着不动、叶子贴着不动就是 0
+    else if (was) back = Math.max(back, Math.abs(e.d) * Math.sqrt(e.K) * e.L);                         // 刚松开：弹回去的时候梢上最快有多快
     if (hit === 2 && e.twMax) { e.tw = damp(e.tw, e.twMax, 7, dt); e.tv = 0; }                        // 被手推着：朝侧面翻过去
-    if (Pl.kind === 'branch' && was && !hit && Pl.shed < 3 && Math.abs(e.dv) > 1.2 && brn() < 0.7) { brushDrop(Pl, e); Pl.shed++; }   // 一松手枝条弹回去，抖下一两片叶子
+    if (Pl.kind === 'branch' && was && !hit && Pl.shed < 3 && Math.abs(e.dv) > 1.2 && brn() < 0.7) { brushDrop(Pl, e); Pl.shed++; drop++; }   // 一松手枝条弹回去，抖下一两片叶子
   }
   stepDrops(Pl, dt);
   brushShape(Pl);
+  brushSound(Pl, dt, rub / dt, back, drop);
 }
 // 主角身上会碰到叶子的地方，侧视平面里的几段胶囊：身子、头、两条前臂和两只手。用的是模型上一帧的骨头位置
 const _bo = [V3(), V3(), V3()];
@@ -4526,15 +4530,17 @@ const SY = (() => {
   }
   const jit = (r, M, k) => M.map(([f, t, a]) => [f * (1 + k * (r() * 2 - 1)), t, a]);      // 同一种东西，每一块的音高略有不同
   // 一阵细碎的声音：n 颗很短的噪声颗粒散在 t0..t1 之间（shape(u) 决定前密后疏，u 从 0 到 1），整串再过一遍滤波
-  function grains(out, sr, r, o) {
+  function grains(out, sr, r, o) { const it = grainsSteps(out, sr, r, o); while (!it.next().done); }
+  function* grainsSteps(out, sr, r, o) {                            // 同 grains，只是算一段停一下（游戏里每一帧只算一小段，见 brushSteps）
     const i0 = Math.round(o.t0 * sr), span = Math.max(1, (o.t1 - o.t0) * sr), tmp = new Float32Array(Math.ceil(span + 0.012 * sr)), gen = whiteGen(r), p = o.pow ?? 2;
     for (let k = 0; k < o.n; k++) {
       let u; do u = r(); while (o.shape && r() > o.shape(u));
       const j = Math.floor(u * span), a = Math.pow(r(), p), dec = U(r, o.dec[0], o.dec[1]) * sr, m = Math.min(tmp.length - j, Math.ceil(dec * 5));
-      for (let i = 0; i < m; i++) tmp[j + i] += a * gen() * Math.exp(-i / dec);
+      for (let i = 0, g = a, q = Math.exp(-1 / dec); i < m; i++, g *= q) tmp[j + i] += g * gen();   // 指数地落：每个点乘同一个系数，不必每个点算一次 exp
+      if ((k & 511) === 511) yield;
     }
     const hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), a = o.a ?? 1;
-    for (let i = 0; i < tmp.length && i0 + i < out.length; i++) { let x = tmp[i]; if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i0 + i] += a * x; }
+    for (let i = 0; i < tmp.length && i0 + i < out.length; i++) { let x = tmp[i]; if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i0 + i] += a * x; if ((i & 32767) === 32767) yield; }
   }
   // 一串小石子相碰：每一颗是一声很短的、有音高的“嗒”
   function ticks(out, sr, r, o) {
@@ -4954,6 +4960,90 @@ const SY = (() => {
   }
 
   // ============================================================
+  //  路边的植物被拨开（48-brush.js）：清脆的“沙啦”（2026-11-14 用户从四种听感里挑的 B）
+  //  kind：leaf 大叶子 / grass 高草 / fern 蕨 / branch 小树枝；dry 0 嫩叶、1 枯叶
+  //  ev：rub 被推着、贴着身子擦过去时一直响的那一段（循环用；多响由推得多快决定）/ back 一松开，叶子弹回去轻轻“唰”一下 / drop 枝条上抖落几片叶子
+  //  brushSteps 一层一层地算，算完一层停一下：游戏里每一帧只算一两层，主角走近植物的时候不会卡一下。brush 一口气算完（检查脚本、声音样板页用）
+  // ============================================================
+  // 一个鼓包（线性地起、指数地落）叠到 x[i0..i0+m) 上：落的那一段每个点乘同一个系数，不必每个点都算一次 exp
+  function decay(x, i0, m, a, at, dc) {
+    const ia = Math.min(m, Math.ceil(at)), k = Math.exp(-1 / dc);
+    for (let i = 0; i < ia; i++) x[i0 + i] += a * (i / at);
+    for (let i = ia, g = a * Math.exp(-(ia - at) / dc); i < m; i++, g *= k) x[i0 + i] += g;
+  }
+  // 擦的声音：一串软的小鼓包（每个 att 起、dec 落）当包络，乘上一段滤过的噪声。rate 每秒几个 / floor 包络底下垫多少（连着不断的那一层）/
+  // t0..t1 鼓包出现在哪一段，shape(u) 前密后疏
+  function* puffs(out, sr, r, o) {
+    const n = out.length, env = new Float32Array(n), gen = o.pink ? pinkGen(r) : whiteGen(r), t0 = o.t0 ?? 0, t1 = o.t1 ?? n / sr, fl = o.floor ?? 0;
+    for (let t = t0 + U(r, 0, 1 / o.rate); t < t1; t += -Math.log(1 - r() * 0.999) / o.rate) {
+      if (o.shape && r() > o.shape((t - t0) / (t1 - t0))) continue;
+      const i0 = Math.floor(t * sr), a = Math.pow(r(), o.pow ?? 1.5), at = Math.max(1, U(r, o.att[0], o.att[1]) * sr), dc = U(r, o.dec[0], o.dec[1]) * sr, m = Math.min(n - i0, Math.ceil(at + dc * 5));
+      decay(env, i0, m, a, at, dc);
+    }
+    yield;
+    const hp = o.hp && BQ(sr, 'hp', o.hp, 0.7), lp = o.lp && BQ(sr, 'lp', o.lp, 0.7), bp = o.bp && BQ(sr, 'bp', o.bp[0], o.bp[1]), a = o.a ?? 1, i0 = Math.round(t0 * sr), i1 = o.floorEnd ? Math.round(o.floorEnd * sr) : n;
+    for (let i = 0; i < n; i++) { let x = gen() * (env[i] + (i >= i0 && i < i1 ? fl : 0)); if (hp) x = hp.run(x); if (lp) x = lp.run(x); if (bp) x = bp.run(x); out[i] += a * x; if ((i & 32767) === 32767) yield; }   // 先乘包络再滤波：鼓包起得再快，也不会漏出低音
+  }
+  // 一片叶子从袖子上滑开、拍回去：很短的“嗒”（叶片自己的一两个音）+ 一点擦的噪声
+  function* flicks(out, sr, r, o) {
+    const tmp = new Float32Array(out.length), gen = whiteGen(r);
+    for (let k = 0; k < o.n; k++) {
+      let u; do u = r(); while (o.shape && r() > o.shape(u));
+      const t = o.t0 + u * (o.t1 - o.t0), a = (o.a ?? 1) * Math.pow(r(), o.pow ?? 1.4), f = o.f[0] * Math.pow(o.f[1] / o.f[0], r()), d = U(r, o.dec[0], o.dec[1]);
+      modes(out, sr, { t, a: 0.6 * a, modes: [[f, d, 1], [f * U(r, 1.6, 2.4), d * 0.5, 0.35]] });
+      const j = Math.round(t * sr), at = 0.0004 * sr, dc = U(r, 0.0015, 0.004) * sr, m = Math.min(tmp.length - j, Math.ceil(at + dc * 5));
+      for (let i = 0; i < m; i++) tmp[j + i] += 0.5 * a * gen() * (i < at ? i / at : Math.exp(-(i - at) / dc));
+    }
+    yield;
+    const hp = BQ(sr, 'hp', o.hp ?? 1800, 0.7), lp = BQ(sr, 'lp', o.lp ?? 9000, 0.7);
+    for (let i = 0; i < out.length; i++) { out[i] += lp.run(hp.run(tmp[i])); if ((i & 32767) === 32767) yield; }
+  }
+  // 挑定的听感：puff 擦的那一层 / floor 连着的底子 / att 鼓包起得快慢 / hp、lp 频带整体往上挪 / crack 脆的碎响（这一种的主角）/
+  // body 叶片扇动的“呼” / flick 偶尔一片拍开的“嗒”
+  const BMIX = { puff: 0.6, floor: 0.1, att: 0.8, hp: 1.2, lp: 1.1, crack: 1.7, body: 0.2, flick: 0.12 };
+  // 四种植物：hp、lp 擦的频带 / rate 每秒几个鼓包，att、dec 每个多长 / cr [嫩, 枯] 每秒多少下脆响，crHp 脆响多高 / body 叶片扇动的分量，bodyLp 多低 /
+  // scrape 树枝每秒刮几下 / fl 一片片“嗒”的音高，fn 每秒几下 / sw 弹回去那一下“唰”从多高滑到多低，bd 拖多长
+  const BKIND = {
+    leaf: { hp: 800, lp: 5200, rate: 26, att: [0.003, 0.009], dec: [0.015, 0.04], cr: [40, 260], crHp: 2000, body: 0.55, bodyLp: 950, scrape: 0, fl: [1100, 3000], fn: 12, sw: [2000, 900], bd: 0.11 },
+    grass: { hp: 2400, lp: 10500, rate: 90, att: [0.001, 0.003], dec: [0.004, 0.014], cr: [70, 420], crHp: 3000, body: 0.08, bodyLp: 1700, scrape: 0, fl: [2600, 5600], fn: 30, sw: [6000, 3200], bd: 0.06 },
+    fern: { hp: 1300, lp: 7200, rate: 60, att: [0.002, 0.006], dec: [0.008, 0.024], cr: [40, 220], crHp: 2400, body: 0.25, bodyLp: 1150, scrape: 0, fl: [1800, 4200], fn: 22, sw: [3600, 1800], bd: 0.09 },
+    branch: { hp: 1000, lp: 6200, rate: 40, att: [0.002, 0.006], dec: [0.01, 0.03], cr: [60, 320], crHp: 2200, body: 0.3, bodyLp: 1000, scrape: 32, fl: [1300, 3500], fn: 16, sw: [3000, 1300], bd: 0.08 },
+  };
+  function* brushSteps(sr, r, o = {}) {
+    const K = BKIND[o.kind] ?? BKIND.leaf, S = BMIX, dry = o.dry ?? 0.5, ev = o.ev ?? 'rub';
+    const lpK = S.lp * mix(0.85, 1.15, dry), crHp = K.crHp * mix(0.85, 1.15, dry) * S.hp, crDec = dry > 0.5 ? [0.00012, 0.0007] : [0.0003, 0.0014], crLp = mix(6500, 11000, dry);
+    if (ev === 'rub') {
+      const len = 2.6, T = len + 0.5, out = buf(sr, T);
+      yield* puffs(out, sr, r, { a: S.puff, rate: K.rate, att: K.att.map(v => v * S.att), dec: K.dec, floor: S.floor, hp: K.hp * S.hp, lp: Math.min(16000, K.lp * lpK) });   // 叶子贴着衣服滑过去
+      const crN = Math.round(mix(K.cr[0], K.cr[1], dry) * S.crack * T);                                                                                  // 叶子边上脆的碎响（枯叶多、嫩叶少）
+      if (crN) yield* grainsSteps(out, sr, r, { t0: 0, t1: T, n: crN, a: 0.9 * mix(0.5, 1, dry), pow: 2.2, dec: crDec, hp: crHp, lp: crLp });
+      yield* puffs(out, sr, r, { a: 1.6 * K.body * S.body, rate: 6, att: [0.015, 0.04], dec: [0.05, 0.12], pow: 1.2, hp: 180, lp: K.bodyLp, pink: 1 });   // 叶片扇过来的“呼”
+      if (K.scrape) ticks(out, sr, r, { t0: 0, t1: T, n: Math.round(K.scrape * T), a: 0.45, f: [1100, 3400], dec: [0.002, 0.006], pow: 1.6 });          // 树枝刮过衣服
+      yield* flicks(out, sr, r, { t0: 0, t1: T, n: Math.round(K.fn * S.flick * T), a: 1, f: K.fl, dec: dry > 0.5 ? [0.0012, 0.003] : [0.002, 0.005], hp: crHp * 0.8, lp: crLp });   // 偶尔一片拍开
+      yield;
+      return normRms(loopable(dcBlock(out, sr, 25), sr, 0.5), 0.15);
+    }
+    if (ev === 'back') {                                          // 一松开：叶子扫过空气、擦过别的叶子，“唰”一下；剩下的叶子还沙沙地抖两下
+      const out = buf(sr, 0.8), bd = K.bd * S.att;
+      noise(out, sr, r, { t: 0, a: 0.9 * (1 - 0.6 * S.flick), bp: [K.sw[0] * S.hp, 1.0], sweep: [K.sw[0] * S.hp, K.sw[1] * S.hp, 0.14], att: bd * 0.35, dec: bd, len: 0.5 });
+      yield* puffs(out, sr, r, { t0: 0.01, t1: 0.42, shape: u => Math.exp(-u * 3.5), a: 0.6 * S.puff, rate: K.rate * 0.8, att: K.att.map(v => v * S.att), dec: K.dec, hp: K.hp * S.hp, lp: Math.min(16000, K.lp * lpK) });
+      const crN = Math.round(mix(K.cr[0], K.cr[1], dry) * S.crack * 0.3);
+      if (crN) yield* grainsSteps(out, sr, r, { t0: 0.01, t1: 0.4, n: crN, a: 0.8 * mix(0.5, 1, dry), pow: 2.2, dec: crDec, hp: crHp, lp: crLp, shape: u => Math.exp(-u * 3) });
+      noise(out, sr, r, { t: 0, a: 0.5 * K.body * S.body, lp: K.bodyLp, hp: 180, att: bd * 0.5, dec: bd * 1.2, len: 0.4, pink: true });
+      if (K.scrape) ticks(out, sr, r, { t0: 0.005, t1: 0.2, n: 2 + (r() * 3 | 0), a: 0.5, f: [900, 2400], dec: [0.003, 0.008], pow: 1 });   // 树枝晃回去，枝条磕一两下
+      yield* flicks(out, sr, r, { t0: 0, t1: 0.3, n: 2 + (r() * 3 | 0), a: 1.2 * S.flick, f: K.fl, dec: [0.0015, 0.004], hp: crHp * 0.8, lp: crLp, shape: u => Math.exp(-u * 3), pow: 1 });
+      return done(out, sr);
+    }
+    // drop：枝条一抖，几片叶子掉下来 —— 先是一小把碎响（叶柄断开、叶子互相碰），再零零星星几下（落下去的路上碰到别的叶子）
+    const out = buf(sr, 1.1);
+    yield* grainsSteps(out, sr, r, { t0: 0, t1: 0.22, n: Math.round(mix(30, 90, dry) * (0.4 + S.crack)), a: 0.9, pow: 2, dec: crDec, hp: crHp, lp: crLp, shape: u => Math.exp(-u * 3) });
+    yield* puffs(out, sr, r, { t0: 0, t1: 0.3, shape: u => Math.exp(-u * 4), a: 0.5 * S.puff, rate: 50, att: [0.002, 0.006], dec: [0.006, 0.02], hp: 1500 * S.hp, lp: Math.min(16000, 8000 * lpK) });
+    yield* flicks(out, sr, r, { t0: 0.12, t1: 0.95, n: 3 + (r() * 4 | 0), a: mix(0.35, 0.6, dry) * 1.5, f: [1600, 4200], dec: dry > 0.5 ? [0.001, 0.0025] : [0.002, 0.004], hp: crHp, lp: crLp, pow: 1.2 });
+    return done(out, sr);
+  }
+  function brush(sr, r, o) { const it = brushSteps(sr, r, o); let s; do s = it.next(); while (!s.done); return s.value; }
+
+  // ============================================================
   //  混响：一段脉冲响应（左右两路互不相关的噪声，指数衰减，越往后越闷）+ 几下早期反射
   //  len 长度 / t60 衰减到 -60 dB 用多久 / f0 → f1 一开始和最后的低通 / pre 预延迟 / er 早期反射 [[时间, 音量], ...]
   // ============================================================
@@ -5005,7 +5095,7 @@ const SY = (() => {
 
   return { rng, BQ, wander, noise, sine, modes, grains, ticks, bubble, note, peak, rms, normPeak, normRms, loopable, step, SURF, breath, rustle, babble, crickets, sprinkler,
     songbird, coo, crow, woodpecker, bee, owl, clank, chain, steam, creak, rattle, twig, chime, shutter, knock, zap, relay, hum2, pebbles, rumble, plop, gurgle, drip,
-    stroke, blub, heart, splash, SPACE, ir, mixer };
+    stroke, blub, heart, splash, brush, brushSteps, SPACE, ir, mixer };
 })();
 // ============================================================
 //  声音：全部现场合成（配方在 51-sound-synth.js），不加载任何音频文件
@@ -5020,14 +5110,15 @@ const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
 const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0 };
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
-const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1 } };
+const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1, brush: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
 const SR = () => AC.sampleRate, seed = () => SY.rng(Math.random() * 2147483647 | 0);
 const R2 = (a, b) => a + (b - a) * Math.random();   // 声音用的随机数：不动关卡那一套固定种子
 
 // ---- 一组一组算好的声音：第一次要用的时候先算一个马上放，剩下的排队，每一帧抽几毫秒慢慢算 ----
+// rec(n 一组几个, fn 一口气算一个, steps 可以不给：一层一层算的版本 —— 排队的时候每次只算一层，一层只要一两毫秒)
 const RECIPE = {}, BANKS = {}, JOBS = [];
-const rec = (n, fn) => ({ n, fn });
+const rec = (n, fn, steps) => ({ n, fn, steps });
 Object.assign(RECIPE, {
   bird: rec(10, r => SY.songbird(SR(), r)), dove: rec(3, r => SY.coo(SR(), r)), pigeon: rec(3, r => SY.coo(SR(), r, { pigeon: true })), crow: rec(4, r => SY.crow(SR(), r)),
   woodpecker: rec(3, r => SY.woodpecker(SR(), r)), bee: rec(3, r => SY.bee(SR(), r)), owl: rec(2, r => SY.owl(SR(), r)),
@@ -5047,10 +5138,26 @@ function sbuf(name) {
   if (!b) {
     const R = RECIPE[name]; if (!R || !AC) return null;
     b = BANKS[name] = { list: [MX.toBuf(R.fn(seed()))], last: -1 };
-    if (R.n > 1) JOBS.push(() => { b.list.push(MX.toBuf(R.fn(seed()))); return b.list.length < R.n; });
+    if (R.n > 1) JOBS.push(fillJob(R, b));
   }
+  if (!b.list.length) return null;                  // 还在排队算（prepBank）
   let i = Math.floor(Math.random() * b.list.length); if (b.list.length > 2 && i === b.last) i = (i + 1) % b.list.length;
   b.last = i; return b.list[i];
+}
+// 先排上队、不在这一帧算：离得还远就开始准备，等真要响的时候已经算好了，不会在那一刻卡一下
+function prepBank(name) {
+  if (BANKS[name] || !RECIPE[name] || !AC) return;
+  const R = RECIPE[name], b = BANKS[name] = { list: [], last: -1 };
+  JOBS.push(fillJob(R, b));
+}
+// 排队的活：往 b 里一个一个地补，补够 R.n 个为止（返回 true 表示还没完）
+function fillJob(R, b) {
+  let it = null;
+  return () => {
+    if (!R.steps) b.list.push(MX.toBuf(R.fn(seed())));
+    else { it = it || R.steps(seed()); const st = it.next(); if (st.done) { b.list.push(MX.toBuf(st.value)); it = null; } }
+    return b.list.length < R.n;
+  };
 }
 function pumpJobs(ms = 4) { const t0 = performance.now(); while (JOBS.length && performance.now() - t0 < ms) if (!JOBS[0]()) JOBS.shift(); }
 // 放一组里的一个：o 同 SY.mixer 的 play（gain / rate / pan / lp / wet / bus / delay）
@@ -5226,9 +5333,65 @@ function stepSwimSound(dt) {
   if (panic > 0.01 && (heartT -= dt) <= 0) { heartT = lerp(1.1, 0.45, panic); snd('heart', { bus: 'fol', gain: 0.5 * panic, wet: 0 }); }
 }
 
+// ---- 路边的植物被拨开（48-brush.js 的 stepPlant 每帧报上来：rub 挨着主角的叶子被带着走得多快、back 刚松开的叶子弹回去多快、drop 枝条抖落了几片）----
+// 清脆的“沙啦”（配方在 51-sound-synth.js 的 brushSteps）。擦：一段循环的沙沙声，推得越快越响、越亮；弹回去：轻轻“唰”一下；抖落：零零星星几下碎响。
+// 叶子是枯是嫩看这一章的环境关键帧（leafDry）。这几组都是一层一层算的：一丛植物离主角还有二十几米、头一次报上来的时候就排上队，等走到跟前早就算好了
+for (const k of ['leaf', 'grass', 'fern', 'branch']) for (const d of [0, 1]) {
+  const R = (n, ev) => rec(n, r => SY.brush(SR(), r, { kind: k, dry: d, ev }), r => SY.brushSteps(SR(), r, { kind: k, dry: d, ev }));
+  RECIPE[`br:${k}:${d}:rub`] = R(1, 'rub'); RECIPE[`br:${k}:${d}:back`] = R(4, 'back');
+  if (k === 'branch') RECIPE[`br:${k}:${d}:drop`] = R(3, 'drop');
+}
+// n：走着穿过这一丛时擦得最快的那几下有多快（实测，拿来归一：草一次挨着十几根，数大）/ g 擦的音量 / gb 弹回去的音量 / gap 同一丛两声弹回去至少隔多久 / gd 抖落叶子的音量
+const BRK = { leaf: { n: 15, g: 0.23, gb: 0.2, gap: 0.07 }, grass: { n: 105, g: 0.31, gb: 0.13, gap: 0.1 }, fern: { n: 21, g: 0.25, gb: 0.18, gap: 0.07 }, branch: { n: 9, g: 0.42, gb: 0.2, gap: 0.08, gd: 0.16 } };
+const BRV = new Map();                                // 正在响的“擦”：每一丛一个
+let brFrame = 0;
+function brushSound(Pl, dt, rub, back, drop) {
+  if (!AC || muted) return;
+  const K = BRK[Pl.kind], dk = E.leafDry > 0.5 ? 1 : 0, now = AC.currentTime, V = SND.vol.brush;
+  if (Pl.sk?.d !== dk) {                              // 这一丛用哪几组（枯叶 / 嫩叶）；头一次报上来就排队去算
+    const k = `br:${Pl.kind}:${dk}`; Pl.sk = { d: dk, rub: k + ':rub', back: k + ':back', drop: k + ':drop' };
+    prepBank(Pl.sk.rub); prepBank(Pl.sk.back); if (K.gd) prepBank(Pl.sk.drop);
+  }
+  const N = Pl.sk;
+  // 擦：推得越快越响（压一压，跑起来不至于太冲），也越亮；一碰就起来，松开以后落得慢一点
+  const lvl = Math.pow(Math.min(rub / K.n, 3.5), 0.7);
+  Pl.rubL = lerp(Pl.rubL ?? 0, lvl, 1 - Math.exp(-dt / (lvl > (Pl.rubL ?? 0) ? 0.03 : 0.09)));
+  let v = BRV.get(Pl);
+  if (v && v.key !== N.rub) { v.g.gain.setTargetAtTime(0, now, 0.04); v.s.stop(now + 0.3); BRV.delete(Pl); v = null; }   // 叶子从枯换成嫩（走进了另一章的环境）
+  if (!v && Pl.rubL > 0.02) {
+    const b = BANKS[N.rub]?.list[0];
+    if (b) {
+      const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), w = AC.createGain();
+      s.buffer = b; s.loop = true; f.type = 'lowpass'; f.Q.value = 0.5; f.frequency.value = 6000; g.gain.value = 0; w.gain.value = 0.3;
+      s.connect(f).connect(g).connect(MX.bus.fol); g.connect(w).connect(MX.send); s.start(0, Math.random() * b.duration);
+      BRV.set(Pl, v = { s, f, g, key: N.rub, idle: 0 });
+    }
+  }
+  if (v) {
+    v.seen = brFrame;
+    v.g.gain.setTargetAtTime(K.g * Pl.rubL * V, now, 0.02);
+    v.f.frequency.setTargetAtTime(lerp(2800, 12000, clamp(rub / K.n / 2.5, 0, 1)), now, 0.05);
+    v.idle = Pl.rubL < 0.01 ? v.idle + dt : 0;
+    if (v.idle > 1) { v.g.gain.setTargetAtTime(0, now, 0.03); v.s.stop(now + 0.3); BRV.delete(Pl); }
+  }
+  // 弹回去：刚松开的叶子里弹得最快的那一片，轻轻“唰”一下；同一丛隔一小会儿才响下一声（草叶多，隔得长一些）
+  Pl.bk = Math.max((Pl.bk ?? 0) * Math.exp(-dt / 0.08), back);
+  if (Pl.bk > 3 && T - (Pl.bkT ?? -9) > K.gap) {
+    snd(N.back, { bus: 'fol', gain: K.gb * Math.pow(clamp((Pl.bk - 3) / 12, 0, 1.4), 0.8) * R2(0.85, 1.1) * V, rate: R2(0.92, 1.08), wet: 0.35 });
+    Pl.bkT = T; Pl.bk = 0;
+  }
+  // 枝条抖落叶子
+  for (let i = 0; i < drop; i++) snd(N.drop, { bus: 'fol', gain: K.gd * R2(0.8, 1.1) * V, rate: R2(0.92, 1.08), wet: 0.4, delay: i * R2(0.05, 0.12) });
+}
+function stepBrushVoices() {                          // 这一帧没再报上来的（那一丛离远了、那一章卸载了、声音关了）：淡出、停掉
+  for (const [Pl, v] of BRV) if (v.seen !== brFrame) { v.g.gain.setTargetAtTime(0, AC.currentTime, 0.04); v.s.stop(AC.currentTime + 0.3); BRV.delete(Pl); }
+  brFrame++;
+}
+
 function updateAudio(dt, stepNow) {
   if (!AC) return;
   pumpJobs();
+  stepBrushVoices();
   const t = AC.currentTime, g = GUST.v, V = SND.vol.amb;
   // 空间：走到哪里就是哪里的混响
   MX.rv.out.gain.setTargetAtTime(E.rvOut * RV.out, t, 0.3); MX.rv.hall.gain.setTargetAtTime(E.rvHall * RV.hall, t, 0.3); MX.rv.cave.gain.setTargetAtTime(E.rvCave * RV.cave, t, 0.3);
@@ -10629,7 +10792,7 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZON
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
-  brush: { BRUSH, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
+  brush: { BRUSH, BRK, BRV, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
   zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
   sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),
