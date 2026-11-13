@@ -76,4 +76,4 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys.delete(k); });
 addEventListener('blur', () => keys.clear());
-addEventListener('pointerdown', () => { anyKey = true; });
+addEventListener('pointerdown', e => { if (e.pointerType !== 'touch' && TOUCH_Q !== '1') anyKey = true; });   // 手指交给触屏那一段（82-touch.js）去管

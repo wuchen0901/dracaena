@@ -23,6 +23,7 @@ function snapCamera() { const [d, yo, xo, lift] = camKey(P.x); closeUp = false; 
 let prevPh = 0;
 function sim(dt) {
   T += dt;
+  touchInput(dt);                                  // 触屏：手指折算成按键
   if (rawKeys.has('Escape') || rawKeys.has('KeyP')) toggleMenu();
   if (menuOpen) { menuInput(); pressed.clear(); rawKeys.clear(); anyKey = false; return; }
   if (state === 'title' && anyKey) begin();
@@ -67,12 +68,13 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, 
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
-  zone: n => ZONES.find(z => z.n === n) };
+  zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on) };
 
 let lastT = performance.now(), frameN = 0;
 function frame(now) {
   const dt = clamp((now - lastT) / 1000, 0.001, 0.05); lastT = now;
-  if (!DBG.paused) { sim(dt); renderer.render(scene, camera); } else if (DBG.redraw) { DBG.redraw = false; renderer.render(scene, camera); }
+  if (rotBlock) { /* 竖着拿手机：游戏停住，等横过来 */ }
+  else if (!DBG.paused) { sim(dt); renderer.render(scene, camera); hudRender(dt); } else if (DBG.redraw) { DBG.redraw = false; renderer.render(scene, camera); hudRender(0); }
   if (++frameN % 2 === 0) $('grain').style.backgroundPosition = `${Math.random() * 256 | 0}px ${Math.random() * 256 | 0}px`;
   requestAnimationFrame(frame);
 }
@@ -84,7 +86,7 @@ CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;
 setSkin('R'); loadGame();                               // 主角使用 models/hero.glb（3K 面的少年）
 { const n = +new URLSearchParams(location.search).get('ch'); if (n >= 1 && n <= CHAPTERS.length) STORY.ch = n; }   // 地址后面加 ?ch=5 直接从第五章开始
 { const c = CHAPTERS[STORY.ch - 1], intro = c.intro; c.intro = null; startChapter(STORY.ch, { quiet: true }); c.intro = intro; state = 'title'; }
-$('go').textContent = STORY.ch > 1 ? `按任意键继续 · 第${CN[STORY.ch - 1]}章 ${CHAPTERS[STORY.ch - 1].name}` : '按任意键开始';
+applyInputTexts();                                      // 标题上的操作说明和“按任意键开始”：触屏和键盘各一套
 $('title').classList.remove('hide'); $('fade').style.opacity = 0.42; $('msg').remove();
 window.__ready = true;
 requestAnimationFrame(frame);

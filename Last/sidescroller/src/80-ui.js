@@ -11,6 +11,7 @@ function loadGame() {
 const hintEl = $('hint'); let hintNow = '';
 function updateHint() {
   let h = ''; if (state === 'play' && ctl && !menuOpen) for (const [c, html] of HINTS) if (c()) { h = html; break; }
+  if (h && touchMode) h = touchText(h);              // 触屏：把按键换成手势的说法
   if (h !== hintNow) { hintNow = h; if (h) hintEl.innerHTML = h; hintEl.style.opacity = h ? 1 : 0; }
 }
 
@@ -23,7 +24,7 @@ function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.class
 // ---- 声音开关的提示：右上角的黑边里淡淡地出现一会儿（现阶段默认静音，开始游戏时提醒一次按 M 打开）----
 const sndEl = $('snd'); let sndTO = 0;
 function soundNote(first) {
-  sndEl.innerHTML = !muted ? '声音 开' : first ? '声音关着　按 <b>M</b> 打开' : '声音 关';
+  sndEl.innerHTML = !muted ? '声音 开' : first ? (touchMode ? '声音关着　点最右边的小喇叭打开' : '声音关着　按 <b>M</b> 打开') : '声音 关';
   sndEl.classList.add('on'); clearTimeout(sndTO); sndTO = setTimeout(() => sndEl.classList.remove('on'), first ? 5000 : 1800);
 }
 
