@@ -1549,6 +1549,13 @@ const LAND_POSE = {
   3: { drop: 0.17, pitch: 0.45, head: 0.6, arms: null },
   4: { drop: 0.15, pitch: 0.5, head: 0.6, arms: null },
 };
+// ---- 身子朝哪 ----
+// 人不是一张纸片：只有推东西、攀爬的时候才是正侧面，别的时候身子都朝镜头转过来一些（下面的数是弧度，0 是正侧面，正的朝镜头，负的背过去朝画面里面）。
+// 站着：四分之三侧身，隔几秒换一个站法（stand 是刚停下来的站法，idle 是后面轮着换的几种 —— 有的是背过身去看远处）；
+// 走、跑、跳：身子转得少一些，上身再多拧一点（chest：上身比胯多转几成），头转回去看着前面的路；
+// 走和跑的时候肩和胯反着拧（sway：走 / 跑时拧多少）；原地转身、换站法的时候两只脚跟着一下一下挪。
+// 网址后面加 ?turn=0 回到原来的正侧面（对比的时候用），?turn=0.5 就是只转一半
+const TURN = { k: +(new URLSearchParams(location.search).get('turn') ?? 1), stand: 0.5, idle: [0.32, 0.72, -0.45, 0.58, 0.96, 0.4, -0.3, 0.66], walk: 0.34, run: 0.24, air: 0.3, float: 0.6, chest: 0.5, sway: [0.16, 0.26] };
 // o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
 function makeCharacter(kind, prev, o = {}) {
   const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
@@ -1557,6 +1564,8 @@ function makeCharacter(kind, prev, o = {}) {
   A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
   A.swim ??= 0; A.pitch ??= 0;                                              // 游泳：在水里的程度、身子放平了多少（0 竖着，π/2 平躺）
   A.bend ??= 0;                                                             // 累坏了弯腰、两手撑着膝盖的程度
+  A.turn ??= 0; A.twist ??= 0; A.tph ??= 0; A.pivot ??= 0; A.restT ??= 0; A.stN ??= 0; A.st ??= -1; A.stNext ??= 3;   // 身子朝镜头转了多少、上身又多拧了多少、挪步的相位和程度、站了多久、站法
+  const npcTurn = o.npc ? 0.26 + 0.3 * hash1(root.id) : null;              // 路上的人：各有各的站法，不换
   (o.parent ?? scene).add(root);
 
   function update(dt, s) {
@@ -1564,7 +1573,6 @@ function makeCharacter(kind, prev, o = {}) {
     const push = s.mode === 'push', mant = s.mode === 'mantle';
     // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
     const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0;
-    A.yaw = damp(A.yaw, dir > 0 ? 0 : -Math.PI, 13, dt); root.rotation.y = A.yaw;
     root.position.set(s.x, s.y, s.z ?? 0);
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
     A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
@@ -1580,6 +1588,22 @@ function makeCharacter(kind, prev, o = {}) {
     const LP = LAND_POSE[A.lst ?? 1];
     A.lc = damp(A.lc ?? 0, ld.c, 40, dt); A.hand = damp(A.hand ?? 0, ld.hand, 30, dt); A.trip = damp(A.trip ?? 0, ld.trip, 30, dt); A.ltuck = damp(A.ltuck ?? 0, ld.tuck, 40, dt);
     const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck;
+    // 身子朝哪（见上面的 TURN）。摆好的姿势（坐下、弯腰、伸手够东西）都是照正侧面排的，这时候不转；q.turn 可以直接指定
+    const posed = !!(q.sit || q.bow || q.reach || q.arms || limp), sw = s.swim || A.lastSwim;
+    const rest = s.grounded && sp < 0.05 && s.mode === 'normal' && !posed && !o.npc;
+    if (rest) {                                                              // 站了一会儿就换个站法（不和上一个重样）
+      A.restT += dt;
+      if (A.restT > A.stNext) { A.stN++; A.st = (Math.max(A.st, 0) + 1 + Math.floor(hash1(A.stN * 7.31) * (TURN.idle.length - 1))) % TURN.idle.length; A.stNext = A.restT + 5 + 6 * hash1(A.stN * 3.17 + 1); }
+    } else { A.restT = 0; A.st = -1; A.stNext = 3.5 + 3 * hash1(A.stN * 5.3 + 2); }
+    let turnT = npcTurn ?? (A.st < 0 ? TURN.stand : TURN.idle[A.st]);
+    turnT = lerp(lerp(turnT, lerp(TURN.walk, TURN.run, A.run), A.mv), TURN.air, A.air);
+    turnT *= (1 - A.grip) * (1 - A.tuck) * (1 - A.cover) * (1 - 0.6 * A.ltuck);
+    if (A.swim > 0.002 && sw) turnT = lerp(turnT, TURN.float * sw.top * (1 - sstep(0.15, 0.9, Math.hypot(sw.vx, sw.vy))), A.swim);   // 在水里只有浮在水面上踩水时才转过来
+    if (posed) turnT = 0;
+    A.turn = damp(A.turn, (q.turn ?? turnT) * TURN.k, rest ? 2.6 : 7, dt);
+    const yaw0 = A.yaw; A.yaw = damp(A.yaw, dir > 0 ? -A.turn : -Math.PI + A.turn, 12, dt); root.rotation.y = A.yaw;
+    const dYaw = Math.abs(A.yaw - yaw0);                                     // 原地转：转得越快脚抬得越高，每转过 100 度左右两只脚各挪一步
+    A.tph = (A.tph + dYaw / 1.75) % 1; A.pivot = damp(A.pivot, clamp(dYaw / Math.max(dt, 1e-4) / 1.4, 0, 1) * (1 - A.mv) * (1 - A.air) * (1 - A.swim), 16, dt);
     // 喘气（53-breath.js）：br.chest 肺里有多满，br.ex 有多累，br.bend 要不要弯下腰撑着膝盖。
     // heave：一呼一吸 —— 吸气时上身挺起来、头抬一点，呼气时塌下去；越累起伏越大，走着跑着的时候小一些
     const br = s.br || NOBR, still = (1 - A.mv) * (1 - A.air) * (1 - A.grip) * (1 - A.swim) * (1 - A.tuck) * (q.sit ? 0 : 1) * (1 - Math.min(1, A.lc + A.trip + A.ltuck));   // 落地缓冲的那一下不弯腰
@@ -1614,7 +1638,10 @@ function makeCharacter(kind, prev, o = {}) {
     leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -(A.lean + bl + landPitch) + hv;
-    chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
+    // 上身绕竖直方向拧多少：走和跑的时候肩跟着同侧的手臂一前一后（胯反着来），再加上朝镜头多转的那一点
+    const sway = -lerp(TURN.sway[0], TURN.sway[1], A.run) * A.mv * Math.cos(2 * Math.PI * A.ph - 0.35) * (1 - A.grip) * (1 - A.air) * (1 - A.swim) * TURN.k;
+    A.twist = -dir * A.turn * TURN.chest * Math.max(A.mv, A.air) * (1 - A.swim);
+    chest.rotation.y = A.twist + sway;
     if (B.traveler?.group) {
       // 主角的模型不挂在骨盆上：落地时重心往下压，要让整个模型跟着降下去，脚才踩得住地（不然腿一弯，脚就往上缩）
       B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY + A.sq - landDrop;
@@ -1635,6 +1662,7 @@ function makeCharacter(kind, prev, o = {}) {
       }
       const idleX = (i ? -0.03 : 0.034) * u;
       fx = lerp(idleX, fx, A.mv); fy *= A.mv; pitch = pitch * A.mv + Math.atan(slope);
+      fy += 0.04 * u * A.pivot * Math.max(0, Math.sin(6.2832 * (A.tph + i * 0.5)));       // 原地转身：两只脚轮着抬起来挪一下
       let tx = fx, ty = fy + fx * slope + D.ankle;
       // 腾空：一条腿屈膝在前，一条腿拖在后；下落时两腿伸开准备着地
       const ax = i ? lerp(-0.07, -0.12, rise) : lerp(0.06, 0.14, rise), ay = i ? lerp(-0.455, -0.4, rise) : lerp(-0.43, -0.3, rise);
@@ -1693,7 +1721,9 @@ function makeCharacter(kind, prev, o = {}) {
 
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
-    head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0)
+    // 身子朝镜头转过来了，头要转回去一些：走着跑着看前面的路，站着就介于身子和正侧面之间；背过身去看远处时头转得比身子还多
+    const lookFix = dir * A.turn * (A.turn < 0 ? -0.35 : lerp(0.45, 0.75, Math.max(A.mv, A.air))) - A.twist * 0.8;
+    head.rotation.set(0, A.look + lookFix, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0)
       + 0.72 * bl + 0.9 * hv                                                // 弯着腰也抬着头看前面一点；吸气时头微微一抬
       + LP.pitch * A.lc * LP.head + 0.2 * A.trip - 0.6 * A.ltuck);         // 落地蹲下时把头抬回来看着前面；滚翻时低头
     // ---- 游泳：在水下身子放平，蛙泳 —— 两手往前伸直、往两边划回胸前，两腿收起来再往后一蹬，然后滑一下；
@@ -1763,9 +1793,11 @@ function makeCharacter(kind, prev, o = {}) {
         entry.node.updateWorldMatrix(false, true);
       };
       // 弯腰、落地蹲下：大半在胯上（骨盆往前倾，两条大腿反着转回来，腿不跟着歪），剩下的分给三节脊椎；呼吸的起伏在胸口那两节；滚翻时整个背拱起来
-      const bh = bl * .55 + landPitch * .65; poseBone('Hips', -bh);
-      poseBone('Spine02', -bl * .2 - landPitch * .2); poseBone('Spine01', -bl * .15 - landPitch * .15 + hv * .5);
-      poseBone('Spine', -A.lean * .35 - bl * .1 + hv * .5 - A.ltuck * .35);
+      // 上身的拧转（见上面的 sway / A.twist）：胯反着转一点，三节脊椎一节一节拧过去
+      const tw = chest.rotation.y;
+      const bh = bl * .55 + landPitch * .65; poseBone('Hips', -bh, -.3 * sway);
+      poseBone('Spine02', -bl * .2 - landPitch * .2, tw * .3 + .3 * sway); poseBone('Spine01', -bl * .15 - landPitch * .15 + hv * .5, tw * .35);
+      poseBone('Spine', -A.lean * .35 - bl * .1 + hv * .5 - A.ltuck * .35, tw * .35);
       poseBone('neck', head.rotation.z * .35 * A.swim, head.rotation.y * .35);   // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的（游泳时抬头也分给脖子三成）
       poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
@@ -9398,7 +9430,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
