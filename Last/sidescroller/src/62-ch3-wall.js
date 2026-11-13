@@ -145,6 +145,7 @@ const CH3 = (() => {
     const D = DOG, inYard = P.x > A.x1 && P.x < PIT0 + 0.3, low = inYard && P.y < 0.75, near = Math.abs(P.x - D.x) < 30;
     if (near && state === 'play') {
       const chase = STORY.cat || low;
+      if (chase) TIRED.rushT = 0.5;                                          // 被追着：顾不上累
       if (D.bite > 0) { D.bite += dt; D.mode = 'bark'; if (D.bite > 0.7 && state === 'play') respawn(); }
       else if (chase) {
         let tx = clamp(P.x > PIT0 ? DMAX : P.x, DMIN, DMAX);

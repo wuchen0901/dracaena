@@ -450,6 +450,7 @@ const CH1 = (() => {
     }
     // 躲在矮墙的影子里、光束又扫到附近时：站住不动的 07 会捂住胸口的灯
     const nearYard = P.x > W.cx - W.amp - 4 && P.x < W.cx + W.amp + 4 && P.y < 2.4;
+    if (nearYard && inHall) TIRED.rushT = 0.5;                              // 探照灯底下：顾不上累
     HX.hide = state === 'play' && nearYard && inShadow(P.x) ? sstep(8, 4, Math.abs(P.x - W.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
     HX.alert = W.exposure;
     if (inHall) { AUD.hum = (1 - E.ext) * sstep(34, 6, Math.abs(P.x - W.cx)) * (0.02 + 0.05 * W.exposure); AUD.humF = 52 + 60 * W.exposure; }

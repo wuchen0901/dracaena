@@ -1,5 +1,6 @@
 // ============================================================
 //  喘气：跑得越久越累（BR.ex 0..1），呼吸越快、越重；停下来慢慢缓过来。累坏了又站着不动，就弯下腰、两手撑着膝盖喘（BR.bend）。
+//  爬坡爬久了、一口气跑太久累了（50-player.js 的 TIRED），也喘得这么凶：BR.ex 不低于累的程度。
 //  一呼一吸（BR.chest：肺里有多满，0..1）同时交给声音和主角的动作（42-character-anim.js），听到的吸气、呼气和看到的起伏是对得上的。
 //  另外几下：起跳、翻上高处、推起重东西时使一下劲；从高处落下“呃”一声；被探照灯照到倒吸一口气；
 //  躲在暗处、光扫过来时屏住气，光过去了长长地呼一口；在水下憋着（没有呼吸声），浮上来大口地喘。
@@ -31,6 +32,7 @@ function stepPant(dt, impact) {
   let up = run ? 0.022 : P.mode === 'push' && moving ? 0.02 : swim && moving ? 0.024 : 0;
   if (play && HX.alert > 0.3) up += 0.05;
   BR.ex = up ? Math.min(1, BR.ex + up * dt) : Math.max(0, BR.ex - dt * (moving ? 0.022 : 0.05) * (BR.bend ? 1.3 : 1));
+  BR.ex = Math.max(BR.ex, 0.9 * TIRED.k);                         // 累得显出样子来了，就喘得和一口气跑了四十来秒一样凶；缓过来以后按上面的慢慢平下来
   // ---- 单独的几下 ----
   if (play) {
     if (!P.grounded && BR.ground && P.vy > 5 && P.mode === 'normal') { BR.ex = Math.min(1, BR.ex + 0.03); if (BR.ex > 0.28 || Math.random() < 0.3) effort('hup'); }   // 起跳
@@ -65,8 +67,9 @@ function stepPant(dt, impact) {
   }
   const p = BR.ph, fill = p < a ? sstep(0, a, p) : p < a + b ? 1 - sstep(a, a + b, p) : 0;
   BR.chest = held ? damp(BR.chest, 0.8, 3, dt) : fill;
-  // ---- 累坏了：站住不动一会儿，就弯下腰、两手撑着膝盖喘；缓过来一些，或者一动，就直起来 ----
-  const standing = play && P.mode === 'normal' && P.grounded && Math.abs(P.vx) < 0.05;
+  // ---- 累坏了：站住不动一会儿，就弯下腰、两手撑着膝盖喘；缓过来一些，或者一动，就直起来。
+  //      爬坡、长跑累的这一阵（TIRED.ep）里站住，撑膝盖由累的那一套来做（TIRED.rest），这里不弯，免得两种弯腰叠在一起 ----
+  const standing = play && P.mode === 'normal' && P.grounded && Math.abs(P.vx) < 0.05 && !TIRED.ep;
   BR.still = standing ? BR.still + dt : 0;
   BR.bend = standing && (BR.bend ? BR.ex > 0.42 : BR.ex > 0.72 && BR.still > 0.7) ? 1 : 0;
 }
