@@ -57,14 +57,15 @@ function usable(o) { USES.push(o); return o; }
 function pit(o) { PITS.push(o); return o; }
 function checkpoint(x, o = {}) { CPS.push({ x, ...o }); }
 function cpAt(x) { let k = 0; for (let i = 0; i < CPS.length; i++) if (x >= CPS[i].x - 0.01) k = i; return k; }
-// 镜头关键帧：[x, 距离, 目标高度偏移, 目标水平偏移]
+// 镜头关键帧：[x, 距离, 目标高度偏移, 目标水平偏移, 抬高多少（不写就是 0）]
+// 抬高：镜头在原来的位置上再升高这么多米，对着的还是同一点，于是从平视变成往下看（要看清地面以下的东西时用，比如水渠里面）
 function camKeys(...k) { CAMKEYS.push(...k); }
 function camKey(x) {
   for (let i = 1; i < CAMKEYS.length; i++) {
     const a = CAMKEYS[i - 1], b = CAMKEYS[i];
-    if (x <= b[0]) { const t = sstep(a[0], b[0], x); return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)]; }
+    if (x <= b[0]) { const t = sstep(a[0], b[0], x); return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t), lerp(a[4] ?? 0, b[4] ?? 0, t)]; }
   }
-  return CAMKEYS[CAMKEYS.length - 1].slice(1);
+  const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
 // 一个章节的画面和逻辑：{ n, vis: [x1, x2] 画面占的范围, build*(R) 搭建, update(dt) 每帧, reset() 回到初始, solve() 当作已经通过 }

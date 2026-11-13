@@ -128,9 +128,9 @@ const sky = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMateri
       gl_FragColor = vec4(col, 1.);
     }` }));
 sky.frustumCulled = false; sky.renderOrder = -5000; scene.add(sky);
-function updateSky(t, az) {
+function updateSky(t, az, pitch = 0.05) {                // pitch：镜头往下看多少（正切）。镜头抬高往下看时，地平线要跟着往画面上方挪
   const th = Math.tan(camera.fov * Math.PI / 360);
-  skyU.uTan.value.set(th * camera.aspect, th); skyU.uAz.value = -az; skyU.uT.value = t; skyU.uCamX.value = camera.position.x;
+  skyU.uTan.value.set(th * camera.aspect, th); skyU.uPitch.value = -pitch; skyU.uAz.value = -az; skyU.uT.value = t; skyU.uCamX.value = camera.position.x;
   for (let i = 0; i < 6; i++) skyU.uC.value[i].set(...E.sky[i]);
   skyU.uSun.value.set(E.sunX, E.sunY, E.sunP, 0.44); skyU.uSunC.value.set(...E.sunC);
   skyU.uStars.value = E.stars; skyU.uCloud.value = E.cloud; skyU.uCloudC.value.set(...E.cloudC);

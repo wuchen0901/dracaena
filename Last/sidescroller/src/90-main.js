@@ -2,23 +2,23 @@
 // ============================================================
 //  镜头 / 主循环
 // ============================================================
-const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0 };
+const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0, lift: 0 };     // lift：镜头比平常再抬高多少（往下看）
 let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
 let camOvr = null;                                 // 过场时由章节临时接管镜头：{ d 距离, yo 高度偏移, xo 水平偏移 }
 function placeCamera() {
-  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
+  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
   key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
   rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
 }
 function updateCamera(dt) {
-  const [d, yo, xo] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo] : camKey(P.x);
+  const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo] : camKey(P.x);
   cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
   cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
   const ty = (P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;      // 跳起来时镜头只跟一小半
-  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt);
+  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt); cam.lift = damp(cam.lift, lift, 1.6, dt);
   placeCamera();
 }
-function snapCamera() { const [d, yo, xo] = camKey(P.x); closeUp = false; cam.az = 0; cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; placeCamera(); }
+function snapCamera() { const [d, yo, xo, lift] = camKey(P.x); closeUp = false; cam.az = 0; cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; cam.lift = lift; placeCamera(); }
 
 let prevPh = 0;
 function sim(dt) {
@@ -51,7 +51,7 @@ function sim(dt) {
   stepCat(dt);
 
   updateCamera(dt);
-  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x); updateSky(T, cam.az);
+  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x); updateSky(T, cam.az, 0.05 + cam.lift / cam.d);
   updateDust(dt, T, cam.x, cam.y, E.wind); updateFlies(dt, T, cam.x, groundY(cam.x), E.flies);
   updateHint(); updateAudio(dt, stepNow);
   pressed.clear(); rawKeys.clear(); anyKey = false;

@@ -9,7 +9,7 @@ const CH3 = (() => {
   const X = X3, WALL = X + 44, PIT0 = X + 56.5, PIT1 = X + 58.7;
   const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '围墙与废料场', sub: '越过围墙' });
   terrain([PIT0, 0], [PIT0 + 0.01, -3.6], [PIT1 - 0.01, -3.6], [PIT1, 0], [X4, 0]);
-  ground(X + 10, 0x47482f); ground(X + 30, 0x675d4b); ground(X + 70, 0x6a604e); ground(X4 - 6, 0x5a5750);
+  ground(X + 10, 0x3c381d); ground(X + 30, 0x675d4b); ground(X + 70, 0x6a604e); ground(X4 - 6, 0x5a5750);      // 头一个：林子的地一直铺到这里，和第二章末尾是同一个颜色
   solid({ id: 'pwall', x1: WALL, x2: WALL + 1.3, y1: 0, y2: 3.3 });
   const A = solid({ id: 'ruinA', x1: WALL + 1.3, x2: WALL + 4.6, y1: 0, y2: 2.3 });
   const B = solid({ id: 'ruinB', x1: WALL + 6.2, x2: WALL + 8.9, y1: 0, y2: 1.9 });
@@ -78,7 +78,7 @@ const CH3 = (() => {
       for (let x = X - 2; x <= X4 + 4; x += rr(0.4, 1.3)) { const h = (gy(x) < -1 ? -0.6 : 0) + rr(0.2, 0.55); top.push([x, h]); if (rnd() < 0.3) top.push([x + 0.05, h + rr(0.2, 0.9)], [x + 0.12, h]); }
       top.push([X4 + 4, -5]); poly(g, top);
       for (const x of [X + 10.5, X + 73.5, X + 108]) { box(g, x, -3, 0.3, 13); line(g, [[x - 1.6, 8.6], [x + 1.9, 8.9]], 0.14); }      // 近处的杆子
-    }, { fog: false, blur: 2.2, order: 4000 });
+    }, { fog: false, blur: 2.2, order: 4000, fadeL: 7 });      // 左头渐渐显出来：第二章已经没有这道前景了，不能在两章交界的地方齐齐地冒出一个头
     yield;
 
     // ---------------- 围墙里侧：废料场的回收线 ----------------
