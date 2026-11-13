@@ -18,7 +18,11 @@ function rebuildHero() { const prev = hero; prev.dispose(); hero = makeCharacter
 function startMantle(s, side) {                   // 抓住方块 s 的边缘翻上去；side = 1 表示方块在右边
   const ex = side > 0 ? s.x1 : s.x2, h = s.y2 - P.y;
   P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, s, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };
-  P.mode = 'mantle'; P.modeT = 0; P.vx = P.vy = 0; P.facing = side; fx('grab');
+  P.mode = 'mantle'; P.modeT = 0; P.vx = P.vy = 0; P.facing = side; P.land = null; fx('grab');
+}
+function startLand() {                            // 落地：落差够大，就按情况挑一种落地的动作（挑法、动作和拖住玩家多久，见 42-character-anim.js 的 landStyle / landAt）
+  const k = landHard(P.impact);
+  P.land = k > 0.02 ? { t: 0, k, v: P.vx, dir: Math.sign(P.vx) || P.facing, style: landStyle(P.impact, P.vx) } : null;
 }
 function findUse() {                              // 脚边够得着、现在能用的机关
   let best = null, bd = 1e9;
@@ -68,12 +72,15 @@ function stepPlayer(dt) {
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
 
   // ---- 普通状态 ----
-  const speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK;
-  P.vx = damp(P.vx, d * speed, P.grounded ? (d ? 9 : 14) : 3.5, dt);
-  if (d) { P.facing = d; P.moved = true; }
-  if (Math.abs(P.vx) < 0.02 && !d) P.vx = 0;
+  // 从高处落地以后的一小会儿：lh 被拖住多少（蹲着走不快、跳不起来），lp 被惯性带着往前的速度，lc 这时按键能管几成
+  let lh = 0, lp = null, lc = 1;
+  if (P.land) { const L = P.land; L.t += dt * (d && L.t > 0.15 && L.style < 3 ? 1.35 : 1); const l = landAt(L); if (l.done) P.land = null; else { lh = l.hold; lp = l.push; lc = l.ctl; } }   // 按着方向键就起身快一些
+  const speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK * (1 - lh);
+  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), P.grounded ? (d || lp !== null ? 9 : 14) : 3.5, dt);
+  if (d && lc > 0.5) { P.facing = d; P.moved = true; }
+  if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 
-  if (P.jumpBuf > 0 && (P.grounded || P.coyote > 0) && P.speedK > 0.5) {
+  if (P.jumpBuf > 0 && (P.grounded || P.coyote > 0) && P.speedK > 0.5 && lh < 0.35 && lc > 0.5) {
     P.vy = JUMP_V; P.grounded = false; P.jumpBuf = 0; P.coyote = 0; P.jumped = true; fx('jump');
   }
   if (!P.grounded && P.vy > 0 && !(ctl && keys.has('J'))) P.vy -= GRAV * 1.3 * dt;   // 松开跳跃键就跳得矮一些
@@ -97,7 +104,7 @@ function stepPlayer(dt) {
   }
   if (!P.grounded) {
     P.vy -= GRAV * dt; const ny = P.y + P.vy * dt;
-    if (P.vy <= 0 && ny <= f) { P.y = f; P.impact = -P.vy; P.vy = 0; P.grounded = true; fx('land', P.impact); }
+    if (P.vy <= 0 && ny <= f) { P.y = f; P.impact = -P.vy; P.vy = 0; P.grounded = true; fx('land', P.impact); startLand(); }
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
   const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
@@ -106,7 +113,7 @@ function stepPlayer(dt) {
   // 抓住可以推拉的东西 / 操作机关
   if (ctl && P.grounded && keys.has('E')) {
     const g = findGrab();
-    if (g) { P.mode = 'push'; P.grabObj = g[0]; P.grab = g[1]; P.facing = g[1]; g[0].v = 0; }
+    if (g) { P.mode = 'push'; P.grabObj = g[0]; P.grab = g[1]; P.facing = g[1]; g[0].v = 0; P.land = null; }
     else if (pressed.has('E')) { const u = findUse(); if (u) { P.used = true; u.on(u); } }
   }
   for (let i = CPS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CPS[i].x) { P.cp = i; break; }
@@ -131,7 +138,7 @@ function stepFade(dt) {
   const f = fadeThen; fadeThen = null; state = 'play'; ctl = true; $('fade').style.opacity = 0; if (f) f();
 }
 function placePlayer(x, y) {
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath });
+  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
   P.y = y ?? floorY(x, 60); P.gy = P.y;
 }
 function respawn() {
@@ -169,7 +176,7 @@ function swimHit(x, cy) {                            // 身体中点在 (x, cy) 
 }
 function enterSwim(w) {
   const vy = P.vy;
-  Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55 });
+  Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55, land: null });
   P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
   fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
 }

@@ -47,7 +47,7 @@ function sim(dt) {
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
-    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR,
+    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -61,7 +61,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角

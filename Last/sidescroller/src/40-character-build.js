@@ -308,6 +308,9 @@ function buildRobot07(o = {}) {
       if (node.isBone) traveler.bones.set(node.name, { node, rest: node.quaternion.clone() });
       if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; node.userData.travelerShared = !node.userData.travelerOwned; }
     });
+    // 脚平平地踩在地上时（绑定姿势），脚踝离地多高：落地蹲下时拿它来对齐前脚（见 42-character-anim.js）
+    const ankle = traveler.bones.get('LeftFoot'); root.updateMatrixWorld(true);
+    if (ankle) traveler.footY = ankle.node.getWorldPosition(new THREE.Vector3()).y - root.getWorldPosition(new THREE.Vector3()).y;
   });
   return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp, traveler };
 }

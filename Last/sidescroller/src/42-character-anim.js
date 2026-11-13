@@ -12,8 +12,61 @@ function ik2(hx, hy, tx, ty, l1, l2, bendFwd) {
 const KNEE = [[0, 0], [0, 0]];                                              // 这一帧两个膝盖在角色坐标里的位置
 const _bv = [0, 1, 2, 3, 4].map(() => new THREE.Vector3()), wrapA = a => a - Math.round(a / 6.2832) * 6.2832;
 const hash1 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 0..1 的固定“随机”数
+const _v = new THREE.Vector3();                                           // 量骨头位置用的临时向量
+function lowestY(model, step = 6) {                                     // 模型此刻最低的一点有多高（世界坐标）：每隔几个顶点量一个，滚翻的那半秒里才用
+  let m = Infinity;
+  model.traverse(o => { if (!o.isSkinnedMesh) return; const n = o.geometry.attributes.position.count; for (let i = 0; i < n; i += step) { o.getVertexPosition(i, _v).applyMatrix4(o.matrixWorld); if (_v.y < m) m = _v.y; } });
+  return m;
+}
 
 const NOPOSE = {}, NOBR = { chest: 0.45, ex: 0, bend: 0 };
+
+// ---- 从高处落地 ----
+// 原地跳一下，落差约 1.2 米，落地只是膝盖一软（下面的 A.sq 弹簧）；再高就做一个落地的动作，落差越大做得越重。
+// 做哪一种看情况（landStyle）：站着或慢慢走着掉下来 —— 不太高就 1 蹲下缓冲，很高（high 米以上）就 2 单手撑地；
+// 跑着冲下来（往前的速度在 run 以上）—— 不太高就 3 踉跄几步，很高就 4 前滚翻。
+// 网址后面加 ?land=2 让每次落地都用同一种（对比、调动作的时候用）
+const LAND = { force: +new URLSearchParams(location.search).get('land') || 0, high: 2.6, run: 2, names: ['', '蹲下缓冲', '单手撑地', '踉跄几步', '前滚翻'] };
+const landHard = impact => clamp((impact * impact / (2 * GRAV) - 1.4) / 1.5, 0, 1) ** 0.75;   // 落得多重：原地跳的落差（1.2 米）是 0，2 米一半，2.9 米以上是 1
+function landStyle(impact, v) {                                          // 按落差和落地时往前冲的速度，挑一种落地的样子
+  if (LAND.force) return LAND.force;
+  const high = impact * impact / (2 * GRAV) >= LAND.high;
+  return Math.abs(v) >= LAND.run ? (high ? 4 : 3) : (high ? 2 : 1);
+}
+const NOLAND = { c: 0, hold: 0, hand: 0, trip: 0, tuck: 0, roll: 0, push: null, ctl: 1, style: 0, done: true };
+// 落地以后第 L.t 秒：c 蹲下去多少，hold 玩家被拖住多少（走不快、跳不起来），hand 手撑在地上的程度，trip 往前踉跄的程度，
+// tuck 滚翻时抱成一团的程度，roll 滚了几分之几圈，push 被惯性带着往前的速度（null 就是照玩家的按键走），ctl 这时按键能管几成
+function landAt(L) {
+  const k = L.k, t = L.t, st = L.style === 4 && Math.abs(L.v) < 1.2 ? 1 : L.style, o = { ...NOLAND, style: st, done: false };
+  const curve = (dn, hd, up) => t < dn ? 1 - (1 - t / dn) ** 2 : 1 - sstep(dn + hd, dn + hd + up, t);   // 很快蹲到底，停一下，再慢慢站起来
+  if (st === 1 || st === 2) {
+    const two = st === 2, dn = 0.08 + 0.03 * k, hd = two ? 0.12 + 0.22 * k : 0.05 + 0.17 * k, up = (two ? 0.36 : 0.28) + 0.3 * k;
+    o.c = k * curve(dn, hd, up); o.hold = o.c * sstep(0.3, 1, k);           // 拖住玩家只在落得很重的时候：两米来高蹲一下，照样走得动、跳得起来
+    if (two) o.hand = sstep(0.25, 0.6, k) * (t < dn ? sstep(0.2 * dn, dn, t) : 1 - sstep(dn + hd, dn + hd + 0.55 * up, t));   // 落得不够高就只蹲不撑
+    o.done = t > dn + hd + up;
+  } else if (st === 3) {
+    o.c = 0.7 * k * curve(0.07, 0.03, 0.32 + 0.2 * k);
+    o.trip = k * sstep(0, 0.08, t) * (1 - sstep(0.32, 0.85, t));
+    o.push = L.dir * Math.max(Math.abs(L.v) * 0.85, 1.5) * (1 - sstep(0.12, 0.75, t)); o.ctl = lerp(1, sstep(0.3, 0.75, t), sstep(0.15, 0.5, k));   // 落得不重就不怎么拽着玩家
+    o.done = t > 0.9;
+  } else if (st === 4) {
+    const t0 = 0.06, T = 0.5, p = clamp((t - t0) / T, 0, 1);
+    o.roll = lerp(p, p * p * (3 - 2 * p), 0.4);
+    o.tuck = sstep(0, t0 + 0.1, t) * (1 - sstep(t0 + T - 0.16, t0 + T + 0.06, t));
+    o.c = 0.6 * k * sstep(0, t0, t) * (1 - sstep(t0, t0 + 0.12, t)) + 0.35 * sstep(t0 + T - 0.1, t0 + T, t) * (1 - sstep(t0 + T, t0 + T + 0.3, t));
+    if (t < t0 + T) { o.push = L.dir * Math.max(Math.abs(L.v), 2.8); o.ctl = 0; }
+    o.done = t > t0 + T + 0.3;
+  }
+  return o;
+}
+// 各种落地蹲到最低时（c = 1）的样子：drop 重心降多少（身高的几成）、pitch 上身前倾多少（弧度）、head 头抬回来几成、
+// feet 两只脚踩在哪（[前脚, 后脚]，身高的几成）、heel 后脚跟抬起多少、arms 两只手臂在世界里的角度 [肩, 肘]（0 垂直往下，正的往前）
+const LAND_POSE = {
+  1: { drop: 0.2, pitch: 0.62, head: 0.85, feet: [0.06, -0.035], heel: 0.022, arms: [[0.8, 0.45], [0.55, 0.6]] },
+  2: { drop: 0.24, pitch: 1.05, head: 0.5, feet: [0.05, -0.045], heel: 0.03, arms: [[0.45, 0.35], [0, 0]] },     // 靠镜头的那只手（1 号）撑地
+  3: { drop: 0.17, pitch: 0.45, head: 0.6, arms: null },
+  4: { drop: 0.15, pitch: 0.5, head: 0.6, arms: null },
+};
 // o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
 function makeCharacter(kind, prev, o = {}) {
   const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
@@ -40,23 +93,28 @@ function makeCharacter(kind, prev, o = {}) {
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
     A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
     if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
+    // 从高处落地（见上面的 landAt）：蹲下去多少、手撑地、踉跄、滚翻时抱成一团
+    const ld = s.land && s.mode === 'normal' ? landAt(s.land) : NOLAND; if (ld.style) A.lst = ld.style;
+    const LP = LAND_POSE[A.lst ?? 1];
+    A.lc = damp(A.lc ?? 0, ld.c, 40, dt); A.hand = damp(A.hand ?? 0, ld.hand, 30, dt); A.trip = damp(A.trip ?? 0, ld.trip, 30, dt); A.ltuck = damp(A.ltuck ?? 0, ld.tuck, 40, dt);
+    const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck;
     // 喘气（53-breath.js）：br.chest 肺里有多满，br.ex 有多累，br.bend 要不要弯下腰撑着膝盖。
     // heave：一呼一吸 —— 吸气时上身挺起来、头抬一点，呼气时塌下去；越累起伏越大，走着跑着的时候小一些
-    const br = s.br || NOBR, still = (1 - A.mv) * (1 - A.air) * (1 - A.grip) * (1 - A.swim) * (1 - A.tuck) * (q.sit ? 0 : 1);
+    const br = s.br || NOBR, still = (1 - A.mv) * (1 - A.air) * (1 - A.grip) * (1 - A.swim) * (1 - A.tuck) * (q.sit ? 0 : 1) * (1 - Math.min(1, A.lc + A.trip + A.ltuck));   // 落地缓冲的那一下不弯腰
     const wantBend = br.bend * still;
     A.bend = damp(A.bend, wantBend, wantBend > A.bend ? 2.4 : 9, dt);       // 慢慢弯下去，一动就直起来
     const heave = (br.chest - 0.45) * lerp(0.25, 1, br.ex) * (1 - 0.6 * A.mv) * (1 - A.swim) * (1 - A.air);
     const bl = A.bend * (0.85 - 0.08 * heave), hv = 0.075 * heave;           // bl 弯腰的角度（呼气时再低一点）/ hv 上身随呼吸挺起多少
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
-    const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u;
+    const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u * (1 - 0.35 * A.trip);   // 踉跄的时候步子又碎又急
     A.ph = ((A.ph + fwd * dt * duty / stride) % 1 + 1) % 1;
     const bobPh = Math.cos(4 * Math.PI * (A.ph - duty / 2));
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
-    if (s.impact > 0) A.sqv -= s.impact * 0.28;                              // 落地：重心被压下去再弹回
+    if (s.impact > 0) A.sqv -= s.impact * 0.28 * (1 - 0.6 * landHard(s.impact));   // 落地：重心被压下去再弹回（从高处落下时主要靠下面的蹲下来缓，弹簧只带一点震）
     A.sqv += (-A.sq * 230 - A.sqv * 21) * dt; A.sq = clamp(A.sq + A.sqv * dt, -0.2 * u, 0.04 * u);
     const breathY = -0.045 * u * A.bend + 0.006 * u * heave;                // 弯腰撑着大腿时膝盖弯一些、重心低下来；吸气时整个人微微往上一提
-    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY;
+    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY - landDrop;
     const hipStand = hipY;
     if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
     const sitDrop = hipY - hipStand;                                          // 坐下时重心降了多少（主角的模型不挂在骨盆上，要自己跟着降）
@@ -73,10 +131,12 @@ function makeCharacter(kind, prev, o = {}) {
     leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
     leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
-    spine.rotation.z = -(A.lean + bl) + hv;
+    spine.rotation.z = -(A.lean + bl + landPitch) + hv;
     chest.rotation.y = 0.2 * A.mv * lerp(0.5, 1, A.run) * Math.sin(2 * Math.PI * A.ph) * (1 - A.grip);
     if (B.traveler?.group) {
-      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY;
+      // 主角的模型不挂在骨盆上：落地时重心往下压，要让整个模型跟着降下去，脚才踩得住地（不然腿一弯，脚就往上缩）
+      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY + A.sq - landDrop;
+      B.traveler.group.position.x = 0.05 * u * Math.sin(0.65 * landPitch);     // 上身从胯那里往前折，两条腿的根会往后挪一点：整个模型往前补回来
       B.traveler.group.rotation.z = -A.lean;
     }
 
@@ -96,17 +156,24 @@ function makeCharacter(kind, prev, o = {}) {
       let tx = fx, ty = fy + fx * slope + D.ankle;
       // 腾空：一条腿屈膝在前，一条腿拖在后；下落时两腿伸开准备着地
       const ax = i ? lerp(-0.07, -0.12, rise) : lerp(0.06, 0.14, rise), ay = i ? lerp(-0.455, -0.4, rise) : lerp(-0.43, -0.3, rise);
-      tx = lerp(tx, ax * u, A.air); ty = lerp(ty, hipY + ay * u, A.air); pitch = lerp(pitch, -0.45, A.air);
+      const tyG = ty; tx = lerp(tx, ax * u, A.air); ty = lerp(ty, hipY + ay * u, A.air); pitch = lerp(pitch, -0.45, s.grounded ? 0 : A.air);
+      if (s.grounded) ty = Math.max(ty, tyG);                  // 刚着地那几帧，伸长的腿不能插进地里
       // 攀爬：收腿
       tx = lerp(tx, (i ? 0.03 : 0.12) * u, A.tuck); ty = lerp(ty, hipY + (i ? -0.4 : -0.27) * u, A.tuck);
+      if (A.lc > 0.001 && LP.feet) {                                         // 落地蹲下：两只脚一前一后踩稳，后脚跟抬起来
+        tx = lerp(tx, LP.feet[i] * u, A.lc); ty = lerp(ty, D.ankle + (i ? LP.heel * u : 0), A.lc); pitch = lerp(pitch, i ? -0.5 : 0, A.lc);
+      }
       if (sit) { tx = lerp(tx, (i ? 0.19 : 0.26) * u * (q.sitLeg ?? 1), sit); ty = lerp(ty, D.ankle, sit); pitch = lerp(pitch, 0, sit); }   // 坐着：两只脚搁在身前的地上
       const L = legs[i], [th, kn] = ik2(0, hipY - 0.005 * u, tx, ty, D.thigh, D.shin, true);
       L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) + pitch;
       KNEE[i][0] = Math.sin(th) * D.thigh; KNEE[i][1] = hipY - 0.005 * u - Math.cos(th) * D.thigh;      // 膝盖在哪（弯腰撑膝盖时手放这里）
+      if (A.ltuck > 0.001) {                                                 // 滚翻：两腿收到胸前
+        const w = A.ltuck; L.hip.rotation.z = lerp(th, i ? 2.45 : 2.3, w); L.knee.rotation.z = lerp(kn, -2.55, w); L.foot.rotation.z = lerp(L.foot.rotation.z, 0.7, w);
+      }
     }
 
     // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
-    const LB = A.lean + bl, shX = Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;
+    const LB = A.lean + bl + landPitch, shX = Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;   // LB：上身一共往前倾了多少（累了弯腰、落地蹲下）
     const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
     const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
     for (let i = 0; i < 2; i++) {
@@ -133,6 +200,11 @@ function makeCharacter(kind, prev, o = {}) {
         a = lerp(a, ua + A.lean, k); b = lerp(b, fa, k);
       }
       if (q.arms && q.arms[i]) { const o = q.arms[i], k = o.k ?? 1; a = lerp(a, o.a, k); b = lerp(b, o.b, k); }
+      // 从高处落地：两手往前伸着保持平衡 / 一只手撑到身前的地上 / 踉跄时两手往前乱抓 / 滚翻时抱住小腿
+      if (A.lc > 0.001 && LP.arms) { const [aw, bw] = LP.arms[i]; a = lerp(a, aw + LB, A.lc); b = lerp(b, bw, A.lc); }
+      if (A.hand > 0.001 && i === 1) { const [ua, fa] = ik2(shX, shY, 0.2 * u, 0.012 * u, D.uarm, D.farm + 0.02 * u, false); a = lerp(a, ua + LB, A.hand); b = lerp(b, fa, A.hand); }
+      if (A.trip > 0.001) { a = lerp(a, 0.6 + (i ? 0.2 : -0.1) + 0.18 * Math.sin(t * 17 + i * 2.1) + LB, A.trip); b = lerp(b, 0.55 + 0.2 * Math.sin(t * 13 + i), A.trip); }
+      if (A.ltuck > 0.001) { a = lerp(a, 1.0 + LB, A.ltuck); b = lerp(b, 1.7, A.ltuck); }
       const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
       R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
@@ -140,7 +212,8 @@ function makeCharacter(kind, prev, o = {}) {
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
     head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0)
-      + 0.72 * bl + 0.9 * hv);                                              // 弯着腰也抬着头看前面一点；吸气时头微微一抬
+      + 0.72 * bl + 0.9 * hv                                                // 弯着腰也抬着头看前面一点；吸气时头微微一抬
+      + LP.pitch * A.lc * LP.head + 0.2 * A.trip - 0.6 * A.ltuck);         // 落地蹲下时把头抬回来看着前面；滚翻时低头
     // ---- 游泳：在水下身子放平，蛙泳 —— 两手往前伸直、往两边划回胸前，两腿收起来再往后一蹬，然后滑一下；
     //      浮在水面上身子竖起来，两手在身前一前一后地拨水，两腿像蹬自行车一样踩水；在水下停着不动就斜着身子慢慢划 ----
     if (A.swim > 0.002) {
@@ -169,6 +242,10 @@ function makeCharacter(kind, prev, o = {}) {
     // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）
     root.rotation.z = -A.pitch;
     if (A.pitch > 1e-4) { const c = s.swim?.c ?? A.lastSwim?.c ?? 0.6, sp = Math.sin(A.pitch) * c; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(A.pitch) * c; }
+    if (ld.roll > 1e-4 && ld.roll < 1 && !B.traveler?.model) {             // 前滚翻（搭出来的骨架）：抱成一团，绕着胯往前滚一圈。主角的模型在最后单独转
+      const a = ld.roll * 6.2832, c = hipY, sp = Math.sin(a) * c;
+      root.rotation.z -= a; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(a) * c;
+    }
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
@@ -203,15 +280,15 @@ function makeCharacter(kind, prev, o = {}) {
         if (turn) entry.node.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(up.clone().applyQuaternion(parentQ).normalize(), turn));   // 左右转：绕竖直方向
         entry.node.updateWorldMatrix(false, true);
       };
-      // 弯腰：一半多在胯上（骨盆往前倾，两条大腿反着转回来，腿不跟着歪），剩下的分给三节脊椎；呼吸的起伏在胸口那两节
-      const bh = bl * .55; poseBone('Hips', -bh);
-      poseBone('Spine02', -bl * .2); poseBone('Spine01', -bl * .15 + hv * .5);
-      poseBone('Spine', -A.lean * .35 - bl * .1 + hv * .5);
+      // 弯腰、落地蹲下：大半在胯上（骨盆往前倾，两条大腿反着转回来，腿不跟着歪），剩下的分给三节脊椎；呼吸的起伏在胸口那两节；滚翻时整个背拱起来
+      const bh = bl * .55 + landPitch * .65; poseBone('Hips', -bh);
+      poseBone('Spine02', -bl * .2 - landPitch * .2); poseBone('Spine01', -bl * .15 - landPitch * .15 + hv * .5);
+      poseBone('Spine', -A.lean * .35 - bl * .1 + hv * .5 - A.ltuck * .35);
       poseBone('neck', head.rotation.z * .35 * A.swim, head.rotation.y * .35);   // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的（游泳时抬头也分给脖子三成）
       poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
-        poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);
+        poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);                 // 胯折过去多少，大腿就补回来多少
         poseBone(side + 'Leg', legs[i].knee.rotation.z);
         poseBone(side + 'Foot', legs[i].foot.rotation.z);
         poseBone(side + 'Arm', arms[i].sh.rotation.z);
@@ -235,6 +312,30 @@ function makeCharacter(kind, prev, o = {}) {
           const al = wrapA(w1 - r1), be = wrapA(w1 + w2 - (r2 + al));
           poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
         }
+      }
+      // 上面的角度是照搭出来的那副骨架算的，模型自己的腿和胳膊长短不太一样：落地蹲下、手撑地时再照模型本身对一遍
+      if (A.lc > 0.001 && LP.feet && traveler.footY !== undefined) {   // 前脚踝比平平地踩在地上时高了多少，整个模型就往下补多少
+        const f = traveler.bones.get('LeftFoot');
+        if (f) { traveler.group.position.y -= (f.node.getWorldPosition(_v).y - root.position.y - traveler.footY - 0.011) * A.lc; traveler.group.updateMatrixWorld(true); }   // 0.011：蹲下时脚掌微微前倾，脚踝要比绑定姿势高一点
+      }
+      if (A.hand > 0.001) {                                                  // 手撑地：用模型自己的胳膊长短重新解一遍，让手腕落到身前的地面上
+        const b0 = traveler.bones.get('RightArm'), b1 = traveler.bones.get('RightForeArm'), b2 = traveler.bones.get('RightHand');
+        if (b0 && b1 && b2) {
+          const cy = Math.cos(A.yaw), sy = Math.sin(A.yaw), r = root.position;
+          const sideOf = n => { n.getWorldPosition(_v); return [(_v.x - r.x) * cy - (_v.z - r.z) * sy, _v.y - r.y]; };   // 侧面里的坐标：往前多远、离地多高
+          const ang = (p, q) => Math.atan2(q[0] - p[0], p[1] - q[1]);       // 从 p 指向 q 的方向：0 竖直往下，正的往前
+          let S = sideOf(b0.node), E = sideOf(b1.node), W = sideOf(b2.node);
+          const [ua, fa] = ik2(S[0], S[1], 0.24, 0.1, Math.hypot(E[0] - S[0], E[1] - S[1]), Math.hypot(W[0] - E[0], W[1] - E[1]), false);
+          poseBone('RightArm', arms[1].sh.rotation.z + (ua - ang(S, E)) * A.hand);
+          E = sideOf(b1.node); W = sideOf(b2.node);
+          poseBone('RightForeArm', arms[1].el.rotation.z + (ua + fa - ang(E, W)) * A.hand);
+        }
+      }
+      if (ld.roll > 1e-4 && ld.roll < 1) {                                  // 前滚翻：抱成一团以后，绕着身体的中心往前滚一圈，最低的地方一直贴着地面
+        const G_ = traveler.group, loc = n => root.worldToLocal(traveler.bones.get(n).node.getWorldPosition(new THREE.Vector3()));
+        const C = loc('Hips').lerp(loc('Spine01'), 0.5), a = -ld.roll * 6.2832, cs = Math.cos(a), sn = Math.sin(a), dx = G_.position.x - C.x, dy = G_.position.y - C.y;
+        G_.position.x = C.x + dx * cs - dy * sn; G_.position.y = C.y + dx * sn + dy * cs; G_.rotation.z += a; G_.updateMatrixWorld(true);
+        G_.position.y -= lowestY(traveler.model) - root.position.y; G_.updateMatrixWorld(true);
       }
     }
   }
