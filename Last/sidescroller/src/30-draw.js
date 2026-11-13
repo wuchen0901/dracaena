@@ -42,6 +42,14 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
+// 让一块布景板按它画出来的形状投下真的影子（太阳很低时，树篱和树的长影子用）：一个看不见的替身，用同一张贴图做透明测试，只进影子贴图。
+// 返回原来那块板子。贴图和几何体是共用的，卸载时会释放两次，没有关系
+function castShadowFrom(m) {
+  const mat = new THREE.MeshBasicMaterial({ map: m.material.map, alphaTest: 0.5, colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+  mat.userData.own = true;
+  const p = new THREE.Mesh(m.geometry, mat); p.position.copy(m.position); p.rotation.copy(m.rotation); p.castShadow = true;
+  m.parent.add(p); return m;
+}
 
 // ---- 画笔小工具（坐标都是米，y 向上）----
 const box = (g, x, y, w, h) => g.fillRect(x, y, w, h);

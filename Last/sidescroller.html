@@ -315,6 +315,14 @@ function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   m.renderOrder = o.order ?? Math.round(z * 4);
   ROOT.add(m); renderer.initTexture(tex); return m;
 }
+// 让一块布景板按它画出来的形状投下真的影子（太阳很低时，树篱和树的长影子用）：一个看不见的替身，用同一张贴图做透明测试，只进影子贴图。
+// 返回原来那块板子。贴图和几何体是共用的，卸载时会释放两次，没有关系
+function castShadowFrom(m) {
+  const mat = new THREE.MeshBasicMaterial({ map: m.material.map, alphaTest: 0.5, colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+  mat.userData.own = true;
+  const p = new THREE.Mesh(m.geometry, mat); p.position.copy(m.position); p.rotation.copy(m.rotation); p.castShadow = true;
+  m.parent.add(p); return m;
+}
 
 // ---- 画笔小工具（坐标都是米，y 向上）----
 const box = (g, x, y, w, h) => g.fillRect(x, y, w, h);
@@ -4358,7 +4366,10 @@ const CH6 = (() => {
 //  把倒在地上的树枝沿着压痕推到机械臂下面 → 刀片卡住，藤长上去，把维护门撑开 →
 //  转动旧阀门，把一部分水从标准树列引到野地 → 野花和灌木慢慢长起来，盖住地面传感器 → 通往中继站的闸门打开
 //
-//  画面：这一章是大自然，颜色是鲜艳的（和前面几章的灰暗分开）—— 晴朗的春天：蓝天白云、嫩绿的草木、一垄一垄的花。
+//  画面：这一章是大自然，颜色是鲜艳的（和前面几章的灰暗分开）—— 春天的清晨：蓝天、嫩绿的草木、一垄一垄的花。
+//  太阳低低地挂在前方偏右的树后：逆光。树和树篱迎着镜头的一面在阴影里，朝太阳的边上透亮；影子拉得很长、朝镜头这边；
+//  画框边上是深色的前景（下沿的草丛、上角垂下来的枝叶），修剪机那一段主角身后落在树荫里。（2026-11-13 定的“白天的六个办法”里的 2、4、6，
+//  对比图见 Last/tools/daylight-sheet.html）
 //  花园里的东西都是“规整”的：一模一样的球形树、笔直的树篱、一垄一个颜色的花、割出条纹的草坪、一直在喷的水。
 //  野地和花园外面是“乱”的：每一棵树都不一样，花混着开。系统自己的东西（高杆上的镜头、水管）还是冷的深色。
 // ============================================================
@@ -4375,10 +4386,12 @@ const CH7 = (() => {
   usable({ id: 'valve', x: VALVE, r: 1.0, on() { S.valve = 1 - S.valve; fx('valve'); } });
   checkpoint(X + 3); checkpoint(X + 24); checkpoint(DOOR + 2.6); checkpoint(GATE + 2.5); checkpoint(X + 100);
   camKeys([X + 2, 19, 1.8, 0], [X + 16, 20, 2.2, 1], [X + 28, 20.5, 2.5, 1.5], [X + 38, 19.5, 2.0, 0.5], [X + 50, 20.5, 2.1, 1.5], [GATE + 1, 19.5, 1.9, 0.5], [X + 78, 23, 2.8, 3], [X + 100, 20, 2.0, 0], [X8 - 3, 18.5, 1.8, -1.2]);
-  // 进了花园的门：晴朗的春天。太阳在左上方、略微偏后，影子朝右前方落在草地上；四角的暗角也放轻
-  const SUN = [-0.42, 0.78, -0.28];
-  env(X + 5, { fog: 0xd6ecf2, fogD: 0.006, hemiS: 0xeaf6ff, hemiG: 0x86b060, hemiI: 1.15, keyC: 0xfff4dc, keyI: 2.3, keyDir: SUN, rimI: 0.25, dustC: 0xffffff, dustO: 0.22,
-    sky: [0x2f78c8, 0x4a94dc, 0x62aae8, 0xa3d2f2, 0xe2f1ee, 0xb9d8a0], sunX: -0.3, sunY: 0.36, sunP: 0.5, sunC: 0xfffbe8, cloud: 0.35, cloudC: 0xffffff, birds: 1, vig: 0.45 });
+  // 进了花园的门：春天的清晨。太阳低低地挂在前方偏右（从正后方往右偏 16°、离地 14°）：逆光，迎着镜头的一面在阴影里（天光是偏冷的蓝），
+  // 太阳那边是暖的金色；影子拉得很长、朝镜头这边。天上看得见的那个太阳（SUNSKY = 天空的 sunX、sunY）在画面右上方，比打光的方向还低一点。
+  // 太阳在无穷远：它在画面上的位置不随镜头变，近处的树走过去时一会儿挡住它、一会儿露出来
+  const SUN = [0.2674, 0.2419, -0.9327], SUNSKY = [0.277, 0.079];
+  env(X + 5, { fog: 0xe9e6d6, fogD: 0.007, hemiS: 0xa4c2e4, hemiG: 0x4c6a42, hemiI: 0.78, keyC: 0xffe2b0, keyI: 5.0, keyDir: SUN, rimI: 0.25, dustC: 0xffe8b8, dustO: 0.7,
+    sky: [0x4f86c8, 0x6a9bd6, 0x8db5e0, 0xd4e1e0, 0xfbedcf, 0xc6c79e], sunX: SUNSKY[0], sunY: SUNSKY[1], sunP: 1.0, sunC: 0xfff5dc, cloud: 0.15, cloudC: 0xfff4e4, birds: 1, vig: 0.6 });
   env(X + 62, {});
   // 走出花园已是黄昏：太阳落到身后，天边烧成橘红
   env(X + 92, { fog: 0xf0c296, fogD: 0.007, hemiS: 0xffe0c4, hemiG: 0x5a5a38, hemiI: 0.95, keyC: 0xffc080, keyI: 2.3, keyDir: [-0.74, 0.3, -0.5], rimI: 0.3, dustC: 0xffe2b8, dustO: 0.4, wind: -0.5,
@@ -4399,7 +4412,13 @@ const CH7 = (() => {
   const ringL = pointLight({ p: [X + 84, 2.2, -7], c: 0x9fd6ff, i: 9, d: 14, dec: 1.6 });
 
   // ---- 配色（春天的嫩绿）----
-  const PAL = { cloud: '#ffffff', cloudS: '#d9e6f2', mt1: ['#9dc0e2', '#c4dcee'], mt2: ['#78abcf', '#a9cedd'], mt3: ['#5fa487', '#8cc292'], haze: '#e6f4f6',
+  // 画在布景板上的东西自己带着明暗。逆光的几套（back*）：迎着镜头的一面偏冷偏深（body、shade），朝太阳的边透出黄绿（glow），最外面一圈金色（rim）。
+  // near、mid、hedge 这几套原来的颜色留着：花垄的叶子是受光照的板子，用的是它们（颜色本身，明暗交给灯光）
+  const BACK = { near: { body: '#2c6650', shade: '#1f4c42', glow: '#b9d070', rim: '#f8e8a8', trunk: '#2f362e' },
+    mid: { body: '#6f9a86', shade: '#628c7c', glow: '#c8dc96', rim: '#f8ecc0', trunk: '#5d6a62' }, midG: '#6a937e', mast: '#45524f',
+    hedge: { front: '#29604a', low: '#1b4538', glow: '#a9cf5c', top: '#fbe69a' },
+    fore: '#16301f', fore2: '#1a3021', foreBranch: '#17150f', dry: '#2b2818', dry2: '#35301d', rimLight: '#ffe3a2' };
+  const PAL = { cloud: '#fff7e8', cloudS: '#d6d4dc', mt1: ['#c9d0dc', '#e9e6dc'], mt2: ['#b3bfcc', '#dcdcd4'], mt3: ['#98ad9f', '#c8cdb8'], haze: '#f3ecd6',
     midG: '#6ab552', mid: { base: '#58aa4a', shade: '#3f9046', light: '#8bcb5c', trunk: '#7a6650', trunkD: '#5f4f40' },
     near: { base: '#42a23e', shade: '#2b8438', light: '#93d552', trunk: '#6e553c', trunkD: '#4f3d2c' },
     hedge: { front: '#37943a', top: '#86cc52', low: '#2a7c35' }, mast: '#4a5860', shadow: 'rgba(8,50,30,.3)',
@@ -4410,6 +4429,8 @@ const CH7 = (() => {
   // 花田的每一垄：深度、花的颜色、亮一点的花。离路最近的一垄正好在主角身后，用深一些的红，米白的上衣才分得出来
   const ROWS = [[-3.4, '#d93a34', '#f0625a'], [-4.5, '#f08a2c', '#f8ae58'], [-5.6, '#f6cf3a', '#fbe27a'], [-6.7, '#f2efe4', '#ffffff'], [-7.8, '#9a6fd6', '#b894e6']];
   const NEAR = { step: 5.2, y: 1.4, h: 5.4 }, MID = { step: 4.2, y: 0.6, h: 6 };      // 两排标准树：间距、树根的高度、树高
+  // 修剪机那一段的树荫：主角站在刀头下面（x = X + 29.2）时，从镜头看过去他身后的树篱在 SHADE_X 附近
+  const SHADE_X = X + 28.2;
   // 这一章自己的材质：修剪机是黄的，两道门是蓝绿的，围墙刷成白的，藤和灌木的叶子比别处鲜
   const M = { yellow: lam(0xedb630), teal: lam(0x2f8c94), teal2: lam(0x256f78), wall: lam(0xe6dfcb), leaf: lam(0x4fa83a), leaf2: lam(0x86cc4a), beak: lam(0xf0a030), eye: unlit(0x14181a) };
   const BIRD_COLS = [[0xf2c230, 0xfff0b8, 0xb98a1c], [0x4a90d9, 0xf4ecd8, 0x2f64a8], [0xe8683a, 0xf9e4c8, 0xa8442a], [0xe6e6de, 0xfafaf4, 0xa9b2b6], [0x58656c, 0xb9c4c6, 0x39444a]];   // 背、肚子、翅膀
@@ -4420,13 +4441,28 @@ const CH7 = (() => {
   const mix = (a, b, t) => { const A = hex3(hexOf(a)), B = hex3(hexOf(b)); return '#' + A.map((v, i) => Math.round(lerp(v, B[i], t) * 255).toString(16).padStart(2, '0')).join(''); };
   const rgba = (c, a) => { const [r, g, b] = hex3(hexOf(c)).map(v => Math.round(v * 255)); return `rgba(${r},${g},${b},${a})`; };
   const hash = n => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
-  const LIGHT = [-0.62, 0.78];                                     // 画在板子上的东西，亮面朝哪边：左上
+  const LIGHT = [-0.62, 0.78];                                     // 画在板子上的东西，亮面朝哪边：左上（野地里的树还是这样画）
+  const RIM = [0.6, 0.8];                                          // 逆光：太阳在前方偏右，朝右上的边透光
   // 一团枝叶：边上一圈小叶团，里面的叶团朝光的一面浅、背光的一面深。c: { shade 背光, base 本色, light 受光 }
+  // c 是逆光的一套（{ body, shade, glow, rim }）时换一种画法：整团偏暗，朝太阳又靠边的叶团透出黄绿和金色，边上漏几点阳光
   // same = true 时每一团都从同一个种子画起 —— 标准树真的一模一样；野地里的树不这样，每一团都不同
   function leafBall(g, x, y, r, c, same = true, n = 340) {
     const s0 = _seed; if (same) _seed = 4242;
     const blobs = [[0, 0, 0.9]]; for (let i = 0; i < 26; i++) { const a = i / 26 * 6.2832 + rr(-0.08, 0.08); blobs.push([Math.cos(a) * 0.84, Math.sin(a) * 0.84, rr(0.13, 0.2)]); }
     g.save(); g.beginPath(); for (const [bx_, by, br] of blobs) { g.moveTo(x + (bx_ + br) * r, y + by * r); g.arc(x + bx_ * r, y + by * r, br * r, 0, 6.2832); } g.clip();
+    if (c.body) {
+      g.fillStyle = c.shade; g.fillRect(x - 1.2 * r, y - 1.2 * r, 2.4 * r, 2.4 * r);
+      g.fillStyle = c.body; disc(g, x + RIM[0] * 0.14 * r, y + RIM[1] * 0.14 * r, r * 0.97);
+      const low = mix(c.body, c.shade, 0.55), mid = mix(c.body, c.glow, 0.3);
+      for (let i = 0; i < n; i++) {
+        const a = rr(0, 6.2832), d = Math.sqrt(rnd()), px = Math.cos(a) * d, py = Math.sin(a) * d, e = (px * RIM[0] + py * RIM[1]) * 0.75 + d * d * 0.5 + rr(-0.22, 0.22);
+        g.fillStyle = e > 1.1 ? c.rim : e > 0.88 ? c.glow : e > 0.6 ? mid : e > 0.0 ? c.body : e > -0.4 ? low : c.shade;
+        disc(g, x + px * r, y + py * r, r * rr(0.04, 0.095) * Math.sqrt(340 / n));
+      }
+      g.fillStyle = rgba(c.rim, 0.85);                                // 叶缝里漏过来的几点阳光
+      for (let i = 0; i < n / 22; i++) { const a = Math.atan2(RIM[1], RIM[0]) + rr(-1.1, 1.1), d = rr(0.82, 1.02); disc(g, x + Math.cos(a) * d * r, y + Math.sin(a) * d * r, r * rr(0.02, 0.04)); }
+      g.restore(); if (same) _seed = s0; return;
+    }
     g.fillStyle = c.shade; g.fillRect(x - 1.2 * r, y - 1.2 * r, 2.4 * r, 2.4 * r);
     g.fillStyle = c.base; disc(g, x + LIGHT[0] * 0.22 * r, y + LIGHT[1] * 0.22 * r, r * 0.98);
     const hi = mix(c.light, '#fffbe0', 0.3), mid = mix(c.base, c.light, 0.5), low = mix(c.base, c.shade, 0.5);
@@ -4441,7 +4477,8 @@ const CH7 = (() => {
   function stdTree(g, x, y, h, c) {
     const r = h * 0.26, cy_ = y + h * 0.74, tw = Math.max(0.1, h * 0.03);
     g.fillStyle = c.trunk; poly(g, [[x - tw * 0.6, y], [x + tw * 0.6, y], [x + tw * 0.42, cy_], [x - tw * 0.42, cy_]]);
-    g.fillStyle = c.trunkD; poly(g, [[x + tw * 0.1, y], [x + tw * 0.6, y], [x + tw * 0.42, cy_], [x + tw * 0.08, cy_]]);
+    if (c.body) { g.fillStyle = rgba(c.rim, 0.55); poly(g, [[x + tw * 0.35, y], [x + tw * 0.6, y], [x + tw * 0.42, cy_], [x + tw * 0.24, cy_]]); }   // 逆光：树干朝太阳的一边一道细亮线
+    else { g.fillStyle = c.trunkD; poly(g, [[x + tw * 0.1, y], [x + tw * 0.6, y], [x + tw * 0.42, cy_], [x + tw * 0.08, cy_]]); }
     leafBall(g, x, cy_, r, c);
   }
   // 没人修剪过的树：树干歪一点、分着杈，顶上几团大小不一的枝叶
@@ -4472,10 +4509,20 @@ const CH7 = (() => {
     g.fillStyle = PAL.cloudS; for (const [dx, dy, rx, ry] of puffs) { g.beginPath(); g.ellipse(x + dx, y + dy - ry * 0.25, rx, ry, 0, 0, 6.2832); g.fill(); }
     g.fillStyle = PAL.cloud; for (const [dx, dy, rx, ry] of puffs) { g.beginPath(); g.ellipse(x + dx - rx * 0.05, y + dy + ry * 0.12, rx * 0.97, ry * 0.9, 0, 0, 6.2832); g.fill(); }
   }
-  // 剪得笔直的树篱：正面一片细碎的叶团，越往上越亮，顶上一道受光的边
+  // 剪得笔直的树篱：正面一片细碎的叶团，越往上越亮，顶上一道受光的边。
+  // 逆光的一套（c.glow）：正面是背光的深色，只有顶上一道透光的黄绿、最上面一线金色和一排透亮的小叶子
   function hedge(g, x1, x2, top, c) {
     setInk(g, c.front); box(g, x1, -3, x2 - x1, top + 3);
     setInk(g, vgrad(g, top * 0.7, -0.1, rgba(c.low, 0), rgba(c.low, 1))); box(g, x1, -3, x2 - x1, top * 0.7 + 3);
+    if (c.glow) {
+      const dk = mix(c.front, c.low, 0.6), lt = mix(c.front, c.glow, 0.22);
+      for (let i = 0, n = Math.round((x2 - x1) * 170); i < n; i++) { const x = rr(x1, x2), y = rr(0, top - 0.03), k = y / top + rr(-0.3, 0.3); g.fillStyle = k > 1.02 ? c.glow : k > 0.85 ? lt : k < 0.45 ? dk : c.front; disc(g, x, y, rr(0.03, 0.07)); }
+      setInk(g, vgrad(g, top - 0.3, top, rgba(c.glow, 0), rgba(c.glow, 0.85))); box(g, x1, top - 0.3, x2 - x1, 0.3);
+      setInk(g, c.top); box(g, x1, top - 0.055, x2 - x1, 0.055);
+      // 这一排用自己的随机数：不然后面的板子（门外的林子、野花……）用到的随机数都会挪位，摆出来就和原来不一样了
+      const s0 = _seed; _seed = 777; g.fillStyle = c.top; for (let x = x1; x < x2; x += rr(0.04, 0.16)) disc(g, x, top - 0.03 + rr(-0.02, 0.05), rr(0.025, 0.055)); _seed = s0;
+      return;
+    }
     const lt = mix(c.front, c.top, 0.55), dk = mix(c.front, c.low, 0.6);
     for (let i = 0, n = Math.round((x2 - x1) * 170); i < n; i++) { const x = rr(x1, x2), y = rr(0, top - 0.03), k = y / top + rr(-0.4, 0.4); g.fillStyle = k > 0.8 ? lt : k < 0.35 ? dk : c.front; disc(g, x, y, rr(0.03, 0.07)); }
     setInk(g, c.top); box(g, x1, top - 0.16, x2 - x1, 0.16);
@@ -4560,6 +4607,27 @@ const CH7 = (() => {
     for (const b of F.birds) { b.g.position.x = x + b.dx; b.g.position.y = F.y + b.dy + 0.3 * Math.sin(T * 0.8 + b.ph); const a = 0.12 + 0.55 * Math.sin(T * 6.5 + b.ph); b.wings[0].rotation.z = -a; b.wings[1].rotation.z = a; }
   }
 
+  // 画面上的太阳（SUNSKY）落在深度 z 那一层上的哪一点：太阳在无穷远，所以它跟着镜头走。光晕和暖光每一帧画之前挪到这里
+  const _sp = V3(0, 0, 0);
+  function sunAt(o, z) {
+    const th = Math.tan(camera.fov * Math.PI / 360);
+    _sp.set((SUNSKY[0] - skyU.uAz.value) / (th * camera.aspect), (SUNSKY[1] - skyU.uPitch.value) / th, 0.5).unproject(camera).sub(camera.position).normalize();
+    const t = (z - camera.position.z) / _sp.z; o.position.set(camera.position.x + _sp.x * t, camera.position.y + _sp.y * t, z); o.updateMatrixWorld();
+  }
+  // 看不见的树冠：只进影子贴图（留出阴影区用）。[x1,x2]×[z1,z2] 是地上要落在树荫里的一片，按太阳的方向把这片树冠挂到 h 米高的地方。
+  // 太阳很低，挂得高了树冠会跑到主光影子贴图的范围外面（影子相机在主角身后 55 米，最近只算到 1 米），所以 h 取得低一些；反正看不见
+  function shadeCaster(R, x1, x2, z1, z2, h) {
+    const k = V3(...SUN).normalize(), t = h / k.y, W = x2 - x1, D = z2 - z1, [c, g] = mkCanvas(512, 512);
+    g.setTransform(512 / W, 0, 0, 512 / D, 0, 0); g.fillStyle = '#000';
+    const s0 = _seed; _seed = 99;
+    for (let i = 0; i < 260; i++) { const u = rr(0.08, 0.92), w = rr(0.1, 0.9), e = Math.hypot((u - 0.5) * 1.15, (w - 0.5) * 1.1); if (e > 0.5) continue; g.beginPath(); g.ellipse(u * W, w * D, rr(0.4, 0.9), rr(0.4, 0.9), 0, 0, 6.2832); g.fill(); }
+    g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 14; i++) { g.beginPath(); g.arc(rr(0.2, 0.8) * W, rr(0.2, 0.8) * D, rr(0.1, 0.22), 0, 6.2832); g.fill(); }   // 几个漏光的小洞
+    _seed = s0;
+    const mat = new THREE.MeshBasicMaterial({ map: canvasTex(c), alphaTest: 0.5, colorWrite: false, depthWrite: false, side: THREE.DoubleSide }); mat.userData.own = true;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat); m.rotation.x = Math.PI / 2;
+    m.position.set((x1 + x2) / 2 + k.x * t, h, (z1 + z2) / 2 + k.z * t); m.castShadow = true; R.add(m); return m;
+  }
+
   let V = null;
   const VPTS = [[X + 31.25, 0], [X + 31.4, 0.7], [X + 31.9, 1.5], [X + 32.7, 2.2], [X + 33.4, 2.75], [X + 34.0, 3.2], [X + 34.5, 3.45], [X + 35.1, 3.2]];   // 藤从水泥缝里一路长到门顶
   function* build(R) {
@@ -4582,12 +4650,19 @@ const CH7 = (() => {
     }, { fog: false, order: -1999, fadeL: 44, fadeR: 44 }), 0xd8a2b6));
     for (const [m, a] of v.out) { m.material.opacity = a * outK(); m.visible = outK() > 0.01; }      // 搭的时候镜头已经在中枢里：一开始就是收起来的
     yield;
-    // 中景（花园）：一排一模一样的标准树，隔几棵一根架着镜头的高杆。底下那道矮坡正好挡住它后面远处的地面
+    // 中景（花园）：一排一模一样的标准树，隔几棵一根架着镜头的高杆。底下那道矮坡正好挡住它后面远处的地面。逆光，比前排淡
     dusk(backdrop(X + 1.4, X + 64, -4, 14, -40, 28, g => {
-      setInk(g, PAL.midG); ridge(g, X + 1.4, X + 64, -4, x => 2.7 + rr(0, 0.3), 2);
-      for (let x = X + 8; x < X + 62; x += 14) { setInk(g, PAL.mast); poly(g, [[x - 0.14, 0], [x + 0.14, 0], [x + 0.09, 10.5], [x - 0.09, 10.5]]); box(g, x - 0.85, 10.1, 1.0, 0.4); box(g, x - 1.0, 10.16, 0.2, 0.28); setInk(g, '#f0503c'); disc(g, x - 0.74, 10.3, 0.09); }
-      for (let x = X + 4.6; x < X + 62; x += MID.step) stdTree(g, x, MID.y, MID.h, PAL.mid);
+      setInk(g, BACK.midG); ridge(g, X + 1.4, X + 64, -4, x => 2.7 + rr(0, 0.3), 2);
+      for (let x = X + 8; x < X + 62; x += 14) { setInk(g, BACK.mast); poly(g, [[x - 0.14, 0], [x + 0.14, 0], [x + 0.09, 10.5], [x - 0.09, 10.5]]); box(g, x - 0.85, 10.1, 1.0, 0.4); box(g, x - 1.0, 10.16, 0.2, 0.28); setInk(g, '#f0503c'); disc(g, x - 0.74, 10.3, 0.09); }
+      for (let x = X + 4.6; x < X + 62; x += MID.step) stdTree(g, x, MID.y, MID.h, BACK.mid);
     }, { fadeR: 2 }), 0xcfae96);
+    // 太阳那边的空气是亮的：一大片暖光（叠加上去）盖在后排树和更远的东西上。它跟着画面上的太阳走（见 update），出了花园就淡掉
+    v.sunHaze = backdrop(-50, 50, -34, 34, 0, 3, g => {
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, 26);
+      gr.addColorStop(0, 'rgba(255,238,200,.4)'); gr.addColorStop(0.3, 'rgba(255,228,176,.16)'); gr.addColorStop(1, 'rgba(255,220,160,0)');
+      g.fillStyle = gr; g.fillRect(-50, -34, 100, 68);
+    }, { fog: false, additive: true, order: -120 });
+    v.sunHaze.position.z = -30; v.sunHaze.frustumCulled = false; v.sunHaze.onBeforeRender = () => sunAt(v.sunHaze, -30);
     yield;
     // 中景（花园外）：自己长的林子，每一棵都不一样
     dusk(backdrop(X + 62, X8 + 20, -4, 34, -40, 20, g => {
@@ -4597,11 +4672,27 @@ const CH7 = (() => {
     yield;
     // 两排树之间的一层薄雾：把前后两排分开
     dusk(backdrop(X - 30, X8 - 2, 0, 9, -24, 2, g => { g.fillStyle = vgrad(g, 8.5, 0.5, rgba(PAL.haze, 0), rgba(PAL.haze, 0.5)); g.fillRect(X - 30, 0, X8 - X + 28, 9); }, { fog: false, fadeL: 26, fadeR: 14 }), 0xffc49a);   // 到中枢的墙为止：再往右它就挡在中枢的后墙前面了
-    // 近一层（花园）：剪得笔直的树篱，树篱后面一排标准树。从进门的那道墙开始
-    backdrop(ENTRY, X + 44.4, -3, 9, -9, 56, g => {
-      for (let x = X + 6.4; x < X + 44; x += NEAR.step) stdTree(g, x, NEAR.y, NEAR.h, PAL.near);
-      hedge(g, ENTRY, X + 44, 1.6, PAL.hedge);
-    }, { order: -35 });
+    // 近一层（花园）：剪得笔直的树篱，树篱后面一排标准树。从进门的那道墙开始。逆光；它的影子是真的（castShadowFrom）：
+    // 太阳很低，树篱的影子盖住后面几垄花，树干的影子一道道斜着拉过草地，一直拉到镜头跟前
+    castShadowFrom(backdrop(ENTRY, X + 44.4, -3, 9, -9, 56, g => {
+      for (let x = X + 6.4; x < X + 44; x += NEAR.step) stdTree(g, x, NEAR.y, NEAR.h, BACK.near);
+      hedge(g, ENTRY, X + 44, 1.6, BACK.hedge);
+      // 修剪机这一段落在树荫里（和地上的那片树荫一起，见下面的 shadeCaster）：主角站在刀头下面时，身后的树篱和树干再暗一些
+      g.globalCompositeOperation = 'source-atop';
+      const gr = g.createLinearGradient(SHADE_X - 5, 0, SHADE_X + 5, 0);
+      gr.addColorStop(0, 'rgba(10,26,30,0)'); gr.addColorStop(0.22, 'rgba(10,26,30,.32)'); gr.addColorStop(0.78, 'rgba(10,26,30,.32)'); gr.addColorStop(1, 'rgba(10,26,30,0)');
+      g.fillStyle = gr; g.fillRect(SHADE_X - 5, -3, 10, 12); g.globalCompositeOperation = 'source-over';
+    }, { order: -35 }));
+    // 太阳在树冠后面时，光晕漫过树冠的边：一层叠加的柔光，放在近一层树的前面（前面的东西会挡住它），跟着画面上的太阳走。
+    // 不加亮核：太阳正好藏在树冠中间时，亮核会浮在树冠上，像树里挂了一盏灯（太阳本身由天空画，会被树挡住）
+    { const [c, g] = mkCanvas(256, 256), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.07, 'rgba(255,255,255,.85)'); gr.addColorStop(0.22, 'rgba(255,255,255,.3)'); gr.addColorStop(0.55, 'rgba(255,255,255,.07)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 256, 256); const map = canvasTex(c);
+      v.glare = [[8, 0.32]].map(([s, o]) => {
+        const m = new THREE.SpriteMaterial({ map, color: 0xffe8bc, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }); m.userData.own = true;
+        const sp = new THREE.Sprite(m); sp.scale.setScalar(s); sp.position.z = -8.6; sp.renderOrder = -33; sp.frustumCulled = false; sp.userData.o = o; sp.onBeforeRender = () => sunAt(sp, -8.6); R.add(sp); return sp;
+      });
+    }
     yield;
     // 近一层（野地和花园外）：野地里是枯树；出了花园是没人管的树和灌木
     dusk(backdrop(X + 43.6, X8 + 8, -3, 20, -9, 30, g => {
@@ -4616,13 +4707,12 @@ const CH7 = (() => {
     yield;
 
     // ---- 花园的地面 ----
-    // 草坪：割草机留下的一道道深浅；树篱和树冠落在草地上的影子。要先画：立在草地上的花垄得盖在它上面
+    // 草坪：割草机留下的一道道深浅（树篱和树的影子是真的，不用画）。要先画：立在草地上的花垄得盖在它上面
     decal(R, ENTRY + 0.2, X + 44.5, -9, 9.6, 0, 14, g => {             // 往镜头这边一直铺到画面外（镜头最低的时候，能看到 z = 8.9）
       for (let x = X - 2, i = 0; x < X + 44.5; x += 1.3, i++) { g.fillStyle = i % 2 ? 'rgba(255,255,255,.06)' : 'rgba(0,40,10,.06)'; g.fillRect(x, -9, 1.3, 18.6); }
-      g.fillStyle = PAL.shadow; g.fillRect(ENTRY, -9, X + 44.5 - ENTRY, 1.6 * -SUN[2] / SUN[1]);
-      const hC = NEAR.y + NEAR.h * 0.74, r = NEAR.h * 0.26, k = Math.hypot(SUN[0], SUN[2]) / SUN[1];
-      for (let x = X + 6.4; x < X + 44; x += NEAR.step) { g.beginPath(); g.ellipse(x - SUN[0] / SUN[1] * hC, -9 - SUN[2] / SUN[1] * hC, r * Math.hypot(1, k), r, Math.atan2(-SUN[2], -SUN[0]), 0, 6.2832); g.fill(); }
     }).renderOrder = -40;
+    // 留出阴影区：修剪机这一段（推树枝、站在刀头下面的地方），主角身后的花田和草地落在树荫里，他自己走的这条路在亮处
+    shadeCaster(R, X + 24.4, X + 32.6, -8.9, -1.15, 6);
     // 修剪机脚下的一块水泥地：藤就是从它的裂缝里长出来的
     decal(R, ARM - 4.1, ARM + 1.1, -1.9, 0.8, 0.001, 36, g => {
       g.fillStyle = '#d4cfc0'; g.fillRect(ARM - 4.1, -1.9, 5.2, 2.7);
@@ -4663,18 +4753,14 @@ const CH7 = (() => {
     // 滴灌管：沿着标准树列的一根细管，隔一段一个滴头
     add(R, cy(0.05, 0.05, 41, 6), MAT.steel, X + 22, 0.3, -2.3).rotation.z = Math.PI / 2;
     v.drips = []; for (let x = X + 2; x < X + 42; x += 4.2) { add(R, cy(0.03, 0.03, 0.3, 5), MAT.dark, x, 0.15, -2.3, false); v.drips.push(add(R, new THREE.SphereGeometry(0.035, 6, 5), unlit(0xbfe6f0, { fog: false }), x, 0.06, -2.2, false)); }
-    // 喷灌：标准树这一侧隔一段一只喷头，细细的水线向两边甩开；隔两只有一只的水雾里挂着一小段彩虹。水拨给野地以后就小下去
+    // 喷灌：标准树这一侧隔一段一只喷头，细细的水线向两边甩开。迎着太阳，水线和水雾是亮的、暖的（迎着太阳看不见彩虹）。水拨给野地以后就小下去
     v.spr = [];
-    for (let x = X + 3.6, i = 0; x < X + 44; x += 6.3, i++) v.spr.push({ x, m: rooted(backdrop(x - 2.7, x + 2.7, 0, 4.2, -5.1, 40, g => {
-      setInk(g, '#56646a'); box(g, x - 0.03, 0, 0.06, 0.62); box(g, x - 0.08, 0.58, 0.16, 0.08);
-      const gr = g.createRadialGradient(x, 0.9, 0.1, x, 0.9, 2.5); gr.addColorStop(0, 'rgba(255,255,255,.34)'); gr.addColorStop(0.55, 'rgba(255,255,255,.14)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    for (let x = X + 3.6; x < X + 44; x += 6.3) v.spr.push({ x, m: rooted(backdrop(x - 2.7, x + 2.7, 0, 4.2, -5.1, 40, g => {
+      setInk(g, '#3a4446'); box(g, x - 0.03, 0, 0.06, 0.62); box(g, x - 0.08, 0.58, 0.16, 0.08);
+      const gr = g.createRadialGradient(x, 0.9, 0.1, x, 0.9, 2.5); gr.addColorStop(0, 'rgba(255,242,210,.5)'); gr.addColorStop(0.55, 'rgba(255,238,200,.2)'); gr.addColorStop(1, 'rgba(255,238,200,0)');
       g.fillStyle = gr; g.beginPath(); g.ellipse(x, 0.9, 2.5, 1.5, 0, 0, 6.2832); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 0.022;
+      g.strokeStyle = 'rgba(255,247,226,.85)'; g.lineWidth = 0.024;
       for (let k = 0; k < 9; k++) { const dx = (k - 4) * 0.52, top = 1.9 - Math.abs(k - 4) * 0.2; g.beginPath(); g.moveTo(x, 0.64); g.quadraticCurveTo(x + dx * 0.55, 0.64 + top * 1.5, x + dx, 0.5); g.stroke(); }
-      if (i % 3 === 2) ['236,84,84', '244,160,70', '246,226,96', '120,208,124', '96,166,240', '150,116,226'].forEach((c, k) => {
-        const a0 = Math.PI * 0.2, a1 = Math.PI * 0.52, r = 2.25 - k * 0.06, gr2 = g.createLinearGradient(x + 0.3 + r * Math.cos(a0), 0, x + 0.3 + r * Math.cos(a1), 0);
-        gr2.addColorStop(0, `rgba(${c},0)`); gr2.addColorStop(0.3, `rgba(${c},.5)`); gr2.addColorStop(0.75, `rgba(${c},.5)`); gr2.addColorStop(1, `rgba(${c},0)`);
-        g.strokeStyle = gr2; g.lineWidth = 0.06; g.beginPath(); g.arc(x + 0.3, 0.1, r, a0, a1); g.stroke(); });
     }, { fog: false })) });
     { // 沿着水线飞的水珠
       const n = v.spr.length * 54, geo = new THREE.BufferGeometry(); v.dropPos = new Float32Array(n * 3); geo.setAttribute('position', new THREE.BufferAttribute(v.dropPos, 3));
@@ -4774,19 +4860,50 @@ const CH7 = (() => {
         if (flowers && rnd() < 0.6) { g.fillStyle = flowers[Math.floor(rr(0, flowers.length))]; for (let k = 0; k < 4; k++) disc(g, x + rr(-w, w), h * rr(0.7, 1.0), rr(0.06, 0.1)); }
       }
     };
-    backdrop(ENTRY + 0.4, X + 45, 0, 2.2, 8.7, 36, tufts(ENTRY + 0.4, X + 45, 3.6, 6.5, 0.7, 1.25, [PAL.fore, PAL.fore2], PAL.foreFlower), { fog: false, blur: 1.3, order: 4000 });
-    backdrop(X + 45, GATE, 0, 2.2, 8.7, 36, tufts(X + 45, GATE, 7, 12, 0.45, 0.8, ['#b99a58', '#cdb06a']), { fog: false, blur: 1.3, order: 4000, opacity: 0.8 });
+    // 花园和野地（清晨，逆光）：前景压暗 —— 贴着画面下沿一丛一丛深色的草，大丛和小丛相间。大丛隔 9.1 米一丛，镜头走到哪里，
+    // 两个下角上差不多都有一丛（主角站在刀头下面时正好一边一丛）；中间是一线矮草，不挡主角。少数草尖朝太阳的一边亮一线。野地那一段是干草的深褐色
+    backdrop(ENTRY + 0.4, GATE, 0, 3.2, 8.7, 36, g => {
+      const clump = (cx, spread, n, h0, h1) => { const dry = cx > X + 45; for (let j = 0; j < n; j++) {
+        const x = cx + rr(-spread, spread), f = 1 - 0.55 * Math.abs(x - cx) / spread, h = rr(h0, h1) * f, l = rr(-0.45, 0.45) * h, top = h * rr(0.7, 1);
+        setInk(g, dry ? (rnd() < 0.5 ? BACK.dry : BACK.dry2) : (rnd() < 0.5 ? BACK.fore : BACK.fore2)); poly(g, [[x - 0.08, 0], [x + 0.08, 0], [x + l, top]]);
+        if (rnd() < 0.22) { g.strokeStyle = rgba(BACK.rimLight, 0.55); line(g, [[x + l, top], [lerp(x + l, x + 0.08, 0.3), top * 0.7]], 0.022); }
+      } };
+      for (let x = X + 8.65; x < GATE - 1.5; x += 9.1) clump(x, 1.8, 160, 0.95, 2.2);
+      for (let x = ENTRY + 2.4; x < GATE - 1.5; x += rr(1.4, 2.4)) clump(x, 0.7, 26, 0.25, 0.6);
+    }, { fog: false, blur: 0.9, order: 4000 });
     dusk(backdrop(GATE, X8 + 2, 0, 2.6, 8.7, 36, tufts(GATE, X8 + 2, 2.2, 4.2, 0.9, 1.7, [PAL.fore, PAL.fore2], PAL.flower), { fog: false, blur: 1.3, order: 4000 }), 0x70583c);
-    // 从画面上角伸进来的一枝叶子
-    const twigIn = (x0, s, tintHex) => {
+    // 从画面上角伸进来的一枝叶子。dark：花园里是深色的剪影，少数叶子朝太阳的一边亮一点
+    const twigIn = (x0, s, tintHex, dark) => {
       const m = backdrop(x0 - 0.2, x0 + 5.2, 3.6, 6.2, 10.2, 40, g => {
-        const px = k => x0 + (s > 0 ? k : 5 - k);
-        setInk(g, PAL.foreBranch); line(g, [[px(0.2), 5.75], [px(2.2), 5.05], [px(3.8), 4.72]], 0.1); line(g, [[px(2.2), 5.05], [px(2.7), 4.45]], 0.055); line(g, [[px(1.2), 5.4], [px(1.5), 4.7]], 0.05);
-        for (let i = 0; i < 120; i++) { const t = rnd(), lx = px(lerp(0.3, 4.0, t)), ly = lerp(5.65, 4.68, t) + rr(-0.75, 0.3); g.fillStyle = rnd() < 0.45 ? PAL.fore : PAL.fore2; g.beginPath(); g.ellipse(lx, ly, rr(0.14, 0.26), rr(0.06, 0.1), s * rr(-1.2, 0.4), 0, 6.2832); g.fill(); }
-      }, { fog: false, blur: 1.6, order: 4001 });
+        const px = k => x0 + (s > 0 ? k : 5 - k), c1 = dark ? BACK.fore : PAL.fore, c2 = dark ? BACK.fore2 : PAL.fore2;
+        setInk(g, dark ? BACK.foreBranch : PAL.foreBranch); line(g, [[px(0.2), 5.75], [px(2.2), 5.05], [px(3.8), 4.72]], 0.1); line(g, [[px(2.2), 5.05], [px(2.7), 4.45]], 0.055); line(g, [[px(1.2), 5.4], [px(1.5), 4.7]], 0.05);
+        for (let i = 0; i < 120; i++) { const t = rnd(), lx = px(lerp(0.3, 4.0, t)), ly = lerp(5.65, 4.68, t) + rr(-0.75, 0.3); g.fillStyle = rnd() < 0.45 ? c1 : c2; g.beginPath(); g.ellipse(lx, ly, rr(0.14, 0.26), rr(0.06, 0.1), s * rr(-1.2, 0.4), 0, 6.2832); g.fill(); }
+      }, { fog: false, blur: dark ? 1.0 : 1.6, order: 4001 });
       return tintHex ? dusk(m, tintHex) : m;
     };
-    twigIn(X + 8.6, -1); twigIn(X + 26.2, 1); twigIn(X + 39.5, -1); twigIn(X + 70, 1, 0x70583c); twigIn(X + 86, -1, 0x70583c); twigIn(X + 101, 1, 0x70583c);
+    twigIn(X + 8.6, -1, 0, true); twigIn(X + 39.5, -1, 0, true); twigIn(X + 70, 1, 0x70583c); twigIn(X + 86, -1, 0x70583c); twigIn(X + 101, 1, 0x70583c);
+    // 修剪机那一段：左边一棵树，树干立在画框边上，枝叶从左上角压下来；右上角再伸进来一枝（主角站在刀头下面时正好框住画面）。
+    // 树干单独一块板：镜头往前走时它会扫过画面，扫到主角跟前就淡掉（见 update），不挡人
+    { const tL = X + 27.0, tz = 10.4, top = 6.6;
+      v.trunk = backdrop(tL - 0.9, tL + 0.8, -1, top - 0.5, tz, 40, g => {
+        setInk(g, BACK.foreBranch); poly(g, [[tL - 0.5, -1], [tL + 0.42, -1], [tL + 0.3, top - 1.2], [tL - 0.55, top - 0.8]]);
+        g.fillStyle = rgba('#ffd890', 0.35); poly(g, [[tL + 0.32, -1], [tL + 0.42, -1], [tL + 0.3, top - 1.2], [tL + 0.2, top - 1.2]]);   // 朝太阳的一边一道亮线
+      }, { fog: false, blur: 1.1, order: 4002 });
+      v.trunk.userData.x = tL; v.trunk.userData.z = tz;
+      backdrop(tL - 3, tL + 6.5, top - 4, top + 2, tz, 40, g => {
+        setInk(g, BACK.foreBranch); line(g, [[tL + 0.2, top - 1.4], [tL + 2.2, top - 1.9], [tL + 4.2, top - 2.0]], 0.13); line(g, [[tL + 1.8, top - 1.8], [tL + 2.6, top - 2.6]], 0.07);
+        for (let i = 0; i < 320; i++) {
+          const t = Math.pow(rnd(), 1.6), lx = tL - 1.5 + t * 5.6, ly = top - 0.35 - t * 1.4 + rr(-0.9, 0.45) * (1 - t * 0.5), rx = rr(0.12, 0.26), ry = rr(0.05, 0.1), a = rr(-1.2, 0.5);
+          g.fillStyle = rnd() < 0.5 ? BACK.fore : BACK.fore2; g.beginPath(); g.ellipse(lx, ly, rx, ry, a, 0, 6.2832); g.fill();
+          if (rnd() < 0.3) { g.fillStyle = rgba(BACK.rimLight, 0.5); g.beginPath(); g.ellipse(lx + rx * 0.3, ly + ry * 0.5, rx * 0.6, ry * 0.45, a, 0, 6.2832); g.fill(); }
+        }
+      }, { fog: false, blur: 1.1, order: 4003 });
+      const rR = X + 36.0, rz = 10.2, rtop = 6.46;
+      backdrop(rR - 4.6, rR + 0.6, rtop - 2.4, rtop + 0.4, rz, 40, g => {
+        setInk(g, BACK.foreBranch); line(g, [[rR + 0.5, rtop - 0.2], [rR - 1.6, rtop - 0.8], [rR - 3.6, rtop - 1.1]], 0.08);
+        for (let i = 0; i < 130; i++) { const t = rnd(), lx = rR + 0.3 - t * 3.9, ly = rtop - 0.25 - t * 0.85 + rr(-0.6, 0.25); g.fillStyle = rnd() < 0.5 ? BACK.fore : BACK.fore2; g.beginPath(); g.ellipse(lx, ly, rr(0.12, 0.24), rr(0.05, 0.09), rr(-0.4, 1.2), 0, 6.2832); g.fill(); }
+      }, { fog: false, blur: 1.0, order: 4001 });
+    }
     yield;
 
     // ---- 鸟 ----
@@ -4827,6 +4944,13 @@ const CH7 = (() => {
     }
 
     const v = V; if (!v) return;
+    // 清晨的太阳：进花园时慢慢亮起来，出了花园（往黄昏那一段走）就淡掉
+    const sk = sstep(X - 6, X + 5, camera.position.x) * (1 - sstep(X + 60, X + 78, camera.position.x));
+    v.sunHaze.visible = sk > 0.01; v.sunHaze.material.opacity = sk;
+    for (const s of v.glare) { s.visible = sk > 0.01; s.material.opacity = s.userData.o * sk; }
+    // 前景那棵树的树干扫到主角跟前时淡掉（看的是画面上的左右位置）
+    { const t = v.trunk.userData, a = _sp.set(t.x, 2, t.z).project(camera).x, b = _sp.set(P.x, P.y + 0.7, 0).project(camera).x;
+      v.trunk.material.opacity = sstep(0.12, 0.3, Math.abs(a - b)); v.trunk.visible = v.trunk.material.opacity > 0.01; }
     v.branch.position.x = branch.x;
     const jamA = S.jam ? 0.2 : 0;
     v.head.position.y = lerp(1.5, 0.78, S.jam ? 1 : sstep(0, 0.5, S.snip)) + (S.jam && S.vine < 0.5 ? 0.02 * Math.sin(T * 37) : 0);
