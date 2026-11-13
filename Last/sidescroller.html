@@ -414,8 +414,8 @@ function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z
 // ---- 玩家状态 ----
 const P = { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, hw: 0.19, hh: 1.1, H: 1.24, coyote: 0, jumpBuf: 0,
   mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1 };
-// 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势
-const HX = { hide: 0, alert: 0, energy: 1, pose: null };
+// 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势，brush 拨开路边的植物（48-brush.js）
+const HX = { hide: 0, alert: 0, energy: 1, pose: null, brush: null };
 
 function sideHit(nx, y) {      // 位置 (nx, y) 是否撞进某个方块的侧面
   for (const s of SOLIDS) if (!s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
@@ -1556,6 +1556,11 @@ const LAND_POSE = {
 // 走和跑的时候肩和胯反着拧（sway：走 / 跑时拧多少）；原地转身、换站法的时候两只脚跟着一下一下挪。
 // 网址后面加 ?turn=0 回到原来的正侧面（对比的时候用），?turn=0.5 就是只转一半
 const TURN = { k: +(new URLSearchParams(location.search).get('turn') ?? 1), stand: 0.5, idle: [0.32, 0.72, -0.45, 0.58, 0.96, 0.4, -0.3, 0.66], walk: 0.34, run: 0.24, air: 0.3, float: 0.6, chest: 0.5, sway: [0.16, 0.26] };
+const _shv = new THREE.Vector3();                                         // 拨叶子时量肩膀的位置（48-brush.js）
+function armLengths(tv) {                                                    // 模型手臂的长度（肩到肘、肘到腕），和姿势无关
+  const p = n => tv.bones.get(n).node.getWorldPosition(new THREE.Vector3()), s = p('RightArm'), e = p('RightForeArm'), h = p('RightHand');
+  return { l1: s.distanceTo(e), l2: e.distanceTo(h) };
+}
 // o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
 function makeCharacter(kind, prev, o = {}) {
   const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
@@ -1573,6 +1578,7 @@ function makeCharacter(kind, prev, o = {}) {
     const push = s.mode === 'push', mant = s.mode === 'mantle';
     // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
     const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0;
+    const brush = s.brush && s.mode !== 'swim' ? s.brush : null;             // 拨开路边的植物（48-brush.js 算好的）：手伸到身前 (hx, hy)，k 多大程度，hands 一只手还是两只，turn 手臂往外翻，bow 低头弯腰
     root.position.set(s.x, s.y, s.z ?? 0);
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
     A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
@@ -1633,7 +1639,7 @@ function makeCharacter(kind, prev, o = {}) {
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
-    leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
+    leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp + (brush ? brush.bow * (1 - A.air) : 0);
     leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
     leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
@@ -1686,6 +1692,7 @@ function makeCharacter(kind, prev, o = {}) {
     const LB = A.lean + bl + landPitch, shX = Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;   // LB：上身一共往前倾了多少（累了弯腰、落地蹲下）
     const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
     const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
+    const near = B.traveler?.model ? (dir > 0 ? 1 : 0) : (dir > 0 ? 0 : 1);   // 靠镜头的那只手（模型的右手在 +z 那边，骨架的 0 号手在 +z 那边）
     for (let i = 0; i < 2; i++) {
       const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
       let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
@@ -1710,12 +1717,26 @@ function makeCharacter(kind, prev, o = {}) {
         a = lerp(a, ua + A.lean, k); b = lerp(b, fa, k);
       }
       if (q.arms && q.arms[i]) { const o = q.arms[i], k = o.k ?? 1; a = lerp(a, o.a, k); b = lerp(b, o.b, k); }
+      let turn = 0;
+      if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) {   // 拨叶子：手伸到身前那一点
+        const tv = B.traveler, glb = !!tv?.model;
+        let sx = shX, sy = shY, l1 = D.uarm, l2 = D.farm + 0.02 * u, off = LB, bend = 0;
+        if (glb) {                                                           // 模型的手臂比骨架的短：用模型自己的肩膀位置和手臂长度来算
+          tv.arm ??= armLengths(tv);
+          tv.bones.get(i ? 'RightArm' : 'LeftArm').node.getWorldPosition(_shv);
+          sx = (_shv.x - s.x) * dir; sy = _shv.y - s.y; l1 = tv.arm.l1; l2 = tv.arm.l2 + 0.05; off = 0.35 * A.lean; bend = -0.14;   // 模型的胳膊肘本来就弯着一点
+        }
+        const [ua, fa] = ik2(sx, sy, brush.hx, brush.hy - (i === near ? 0 : 0.04), l1, l2, false), k = brush.k;
+        a = lerp(a, ua + off, k); b = lerp(b, fa + bend, k);
+        // 手臂往外翻：靠镜头的手往镜头这边翻，另一只往里翻。身子朝镜头转过来的那一点（A.turn）先减掉，手伸到头时手臂在画面里的方向和正侧面时一样
+        turn = k * ((i === near ? -dir : dir) * brush.turn + dir * A.turn);
+      }
       // 从高处落地：两手往前伸着保持平衡 / 一只手撑到身前的地上 / 踉跄时两手往前乱抓 / 滚翻时抱住小腿
       if (A.lc > 0.001 && LP.arms) { const [aw, bw] = LP.arms[i]; a = lerp(a, aw + LB, A.lc); b = lerp(b, bw, A.lc); }
       if (A.hand > 0.001 && i === 1) { const [ua, fa] = ik2(shX, shY, 0.2 * u, 0.012 * u, D.uarm, D.farm + 0.02 * u, false); a = lerp(a, ua + LB, A.hand); b = lerp(b, fa, A.hand); }
       if (A.trip > 0.001) { a = lerp(a, 0.6 + (i ? 0.2 : -0.1) + 0.18 * Math.sin(t * 17 + i * 2.1) + LB, A.trip); b = lerp(b, 0.55 + 0.2 * Math.sin(t * 13 + i), A.trip); }
       if (A.ltuck > 0.001) { a = lerp(a, 1.0 + LB, A.ltuck); b = lerp(b, 1.7, A.ltuck); }
-      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
+      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b; R.turn = turn * (1 - Math.min(1, A.lc + A.hand + A.trip + A.ltuck));   // 落地的姿势盖过来时，手臂的外翻也跟着收回
       R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
 
@@ -1805,7 +1826,7 @@ function makeCharacter(kind, prev, o = {}) {
         poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);                 // 胯折过去多少，大腿就补回来多少
         poseBone(side + 'Leg', legs[i].knee.rotation.z);
         poseBone(side + 'Foot', legs[i].foot.rotation.z);
-        poseBone(side + 'Arm', arms[i].sh.rotation.z);
+        poseBone(side + 'Arm', arms[i].sh.rotation.z, arms[i].turn || 0);
         poseBone(side + 'ForeArm', arms[i].el.rotation.z);
       }
       if (A.bend > 0.01) {
@@ -1824,7 +1845,7 @@ function makeCharacter(kind, prev, o = {}) {
           const r1 = Math.atan2(ux, -uy), r2 = Math.atan2(fx, -fy);           // 上臂、前臂现在朝哪（从竖直往下量，往前为正）
           const [w1, w2] = ik2(X(S), Y(S), lerp(X(K), X(Hp), 0.3) + 0.035 * u, lerp(Y(K), Y(Hp), 0.3) + 0.05 * u, Math.hypot(ux, uy), Math.hypot(fx, fy), false);   // 腕子在大腿前上方一点：手掌正好搭在腿上
           const al = wrapA(w1 - r1), be = wrapA(w1 + w2 - (r2 + al));
-          poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
+          poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend), (arms[i].turn || 0) * (1 - A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
         }
       }
       // 上面的角度是照搭出来的那副骨架算的，模型自己的腿和胳膊长短不太一样：落地蹲下、手撑地时再照模型本身对一遍
@@ -1840,7 +1861,7 @@ function makeCharacter(kind, prev, o = {}) {
           const ang = (p, q) => Math.atan2(q[0] - p[0], p[1] - q[1]);       // 从 p 指向 q 的方向：0 竖直往下，正的往前
           let S = sideOf(b0.node), E = sideOf(b1.node), W = sideOf(b2.node);
           const [ua, fa] = ik2(S[0], S[1], 0.24, 0.1, Math.hypot(E[0] - S[0], E[1] - S[1]), Math.hypot(W[0] - E[0], W[1] - E[1]), false);
-          poseBone('RightArm', arms[1].sh.rotation.z + (ua - ang(S, E)) * A.hand);
+          poseBone('RightArm', arms[1].sh.rotation.z + (ua - ang(S, E)) * A.hand, (arms[1].turn || 0) * (1 - A.hand));
           E = sideOf(b1.node); W = sideOf(b2.node);
           poseBone('RightForeArm', arms[1].el.rotation.z + (ua + fa - ang(E, W)) * A.hand);
         }
@@ -2741,6 +2762,353 @@ function caveSpecks(R, n, box, lum, o = {}) {
 }
 // 光斑（[x, y, 半径, 'r,g,b', 强度]）合起来在 (x, y) 这里有多亮
 const lumOf = lights => (x, y) => { let s = 0; for (const [lx, ly, r, , a] of lights) s += a * Math.exp(-((x - lx) ** 2 + (y - ly) ** 2) / (r * r * 0.35)); return s; };
+
+// ============================================================
+//  路边会被拨开的植物
+//  长在路边、叶子伸到路上的一丛：大叶子（牛蒡一类）、高草、蕨、从小树上垂到路上的枝条。
+//  主角走到跟前，用靠镜头的那只手把挡路的叶子拨开（高草用两只手分开，蕨往下按，枝条托起来、低头钻过去）；
+//  手一松，叶子弹回来，晃几下才停。
+//  每一片叶子（一根草、一片蕨叶、一根枝条）是一根能弯的长条：根不动，弯多少由一个带阻尼的弹簧算；
+//  碰到主角的手、前臂、身子、头，就被推到刚好碰不到的地方 —— 推得太弯了就从手边滑开，弹回去。
+//  手往哪里伸由这里算好放进 HX.brush，42-character-anim.js 照着摆手臂；叶子怎么被推开，看的是手和身子实际在哪里。
+// ============================================================
+const BRUSH = { list: [], tex: null, mat: null, cells: {} };
+
+// ---- 图集：灰白的一张，摆的时候每一条染上自己的颜色。每一格竖着画一条：根在底边中点，梢朝上 ----
+function brushAtlas() {
+  if (BRUSH.tex) return BRUSH.tex;
+  const S = 1024, [c, g] = mkCanvas(S, S);
+  const cell = (kind, x, y, w, h, draw) => {
+    g.save(); g.beginPath(); g.rect(x + 1, y + 1, w - 2, h - 2); g.clip();
+    g.setTransform(1, 0, 0, -1, x + w / 2, y + h - 3); g.lineCap = 'round'; g.lineJoin = 'round';        // 原点在根上，y 朝上，单位是像素
+    draw(g, w / 2 - 4, h - 6); g.restore();
+    (BRUSH.cells[kind] ??= []).push([x / S, 1 - (y + h - 3) / S, w / S, (h - 6) / S]);                    // [u0, 根的 v, 宽, 长]
+  };
+  withSeed(5311, () => {
+    for (let i = 0; i < 3; i++) cell('leaf', i * 192, 0, 192, 512, (g, W, H) => bigLeaf(g, W, H, i));
+    for (let i = 0; i < 2; i++) cell('frond', 576 + i * 192, 0, 192, 512, fernFrond);
+    for (let i = 0; i < 2; i++) cell('blade', 960 + i * 32, 0, 32, 512, grassBlade);
+    for (let i = 0; i < 2; i++) cell('twig', i * 256, 512, 256, 512, leafyTwig);
+    for (let i = 0; i < 3; i++) cell('plume', 512 + i * 64, 512, 64, 512, plumeStem);
+    for (let i = 0; i < 4; i++) cell('leaflet', 704 + i * 64, 512, 64, 96, smallLeaf);
+  });
+  BRUSH.tex = sharedTex(canvasTex(c)); BRUSH.tex.anisotropy = 8; renderer.initTexture(BRUSH.tex);
+  return BRUSH.tex;
+}
+// 一片大叶子（牛蒡、款冬一类）：长叶柄，心形的叶片，基部两片耳朵；中脉和侧脉浅一些，叶缘暗一些，有一两个虫子咬的洞
+function bigLeaf(g, W, H, v) {
+  const st = H * (0.38 + 0.03 * v), L = H - st, a = st + 0.06 * L, w = W * (0.94 - 0.05 * v);
+  setInk(g, '#adadad'); line(g, [[0, 0], [1.5, st * 0.55], [0, a + 6]], 8);
+  const outline = () => {
+    g.beginPath(); g.moveTo(0, a);
+    g.bezierCurveTo(-0.24 * w, a - 0.13 * L, -0.88 * w, a - 0.14 * L, -0.98 * w, a + 0.15 * L);
+    g.bezierCurveTo(-1.05 * w, a + 0.47 * L, -0.5 * w, a + 0.83 * L, 0, H);
+    g.bezierCurveTo(0.5 * w, a + 0.83 * L, 1.05 * w, a + 0.47 * L, 0.98 * w, a + 0.15 * L);
+    g.bezierCurveTo(0.88 * w, a - 0.14 * L, 0.24 * w, a - 0.13 * L, 0, a); g.closePath();
+  };
+  outline(); g.fillStyle = '#b0b0b0'; g.fill();
+  g.save(); outline(); g.clip();
+  g.fillStyle = '#c6c6c6'; g.fillRect(0, a - 0.2 * L, W + 4, H);                                      // 叶片顺着中脉微微折起来：一半亮、一半暗
+  setInk(g, '#8e8e8e'); outline(); g.lineWidth = 7; g.stroke();                                       // 叶缘
+  setInk(g, '#e0e0e0'); line(g, [[0, a - 4], [0, H - 0.05 * L]], 4.5);                               // 中脉
+  g.lineWidth = 2.4;
+  for (let i = 0; i < 6; i++) {                                                                       // 侧脉：从中脉斜着伸向叶缘
+    const t = 0.05 + i * 0.145, y0 = a + t * L * 0.95, s = 1 - t * 0.75;
+    for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(0, y0); g.quadraticCurveTo(sd * w * 0.38 * s, y0 + 0.04 * L, sd * w * 0.8 * s, y0 + 0.17 * L * s); g.stroke(); }
+  }
+  g.restore();
+  g.save(); g.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 1 + v % 2; i++) { g.beginPath(); g.ellipse(rr(-0.55, 0.55) * w, a + rr(0.25, 0.7) * L, rr(4, 9), rr(3, 6), rr(0, 3), 0, 6.2832); g.fill(); }
+  g.restore();
+}
+// 一片蕨叶：直的叶轴，两边一对对小叶，中间长、两头短；小叶边上几道浅浅的缺刻
+function fernFrond(g, W, H) {
+  setInk(g, '#a4a4a4'); line(g, [[0, 0], [0, H - 2]], 5);
+  const n = 18;
+  for (let i = 0; i < n; i++) {
+    const t = 0.1 + 0.9 * i / (n - 1), y = t * H, len = W * 0.98 * Math.pow(Math.sin(Math.PI * (0.06 + 0.94 * t)), 0.6) * (1 - 0.3 * t), bw = H / n * 0.36;
+    for (const sd of [-1, 1]) {
+      g.fillStyle = sd < 0 ? '#bebebe' : '#d6d6d6';
+      const d = [sd * Math.sin(1.1), Math.cos(1.1)], nu = sd > 0 ? [-d[1], d[0]] : [d[1], -d[0]], pts = [];        // 小叶斜着朝上伸出去；nu 指向小叶靠上的那条边
+      for (let j = 0; j <= 6; j++) { const k = j / 6, hw = bw * Math.pow(1 - k, 0.7) * (1 + 0.18 * Math.sin(k * 19)); pts.push([d[0] * len * k + nu[0] * hw, y + d[1] * len * k + nu[1] * hw]); }
+      for (let j = 6; j >= 0; j--) { const k = j / 6, hw = bw * Math.pow(1 - k, 0.7) * (1 + 0.18 * Math.sin(k * 19 + 1.5)); pts.push([d[0] * len * k - nu[0] * hw, y + d[1] * len * k - nu[1] * hw]); }
+      poly(g, pts);
+    }
+  }
+}
+// 一根草叶：根上宽，一路收到尖
+function grassBlade(g, W, H) {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#9a9a9a'); gr.addColorStop(0.55, '#cecece'); gr.addColorStop(1, '#eaeaea');
+  g.fillStyle = gr; g.beginPath(); g.moveTo(-W * 0.85, 0); g.quadraticCurveTo(-W * 0.6, H * 0.62, 0, H); g.quadraticCurveTo(W * 0.5, H * 0.56, W * 0.85, 0); g.closePath(); g.fill();
+}
+// 一根结了穗的草茎（芒草一类）：细茎，梢上一蓬毛茸茸的穗
+function plumeStem(g, W, H) {
+  setInk(g, '#b8b8b8'); line(g, [[0, 0], [0, H - 3]], 3);
+  for (let i = 0; i < 60; i++) {
+    const t = rr(0.58, 0.985), y = t * H, l = W * Math.sin(Math.PI * Math.min(1, (t - 0.55) / 0.45)) * rr(0.45, 1), sd = rnd() < 0.5 ? -1 : 1;
+    setInk(g, pick(['#dcdcdc', '#f0f0f0', '#cccccc'])); line(g, [[0, y - 4], [sd * l * 0.55, y + l * 0.5], [sd * l * 0.9, y + l * 1.3]], 1.8);
+  }
+}
+// 一根带叶子的细枝：从根往梢渐细、有几个小折角；叶子互生，越到梢上越密，梢上一簇
+function leafyTwig(g, W, H) {
+  const n = 7, pts = [[0, 0]]; for (let i = 1; i <= n; i++) pts.push([rr(-0.06, 0.06) * W, i / n * H * 0.94]);
+  setInk(g, '#767676'); for (let i = 0; i < n; i++) line(g, [pts[i], pts[i + 1]], lerp(11, 3, i / n));
+  const at = t => { const f = t * n, i = Math.min(n - 1, Math.floor(f)), k = f - i; return [lerp(pts[i][0], pts[i + 1][0], k), lerp(pts[i][1], pts[i + 1][1], k)]; };
+  const L = [];
+  for (let i = 0; i < 15; i++) { const t = 0.2 + 0.78 * Math.pow(i / 14, 0.8), sd = i % 2 ? 1 : -1; L.push([...at(t), sd * rr(0.55, 1.05), rr(0.15, 0.2) * H * (0.75 + 0.25 * t)]); }
+  for (let i = 0; i < 3; i++) L.push([...at(0.97), rr(-0.5, 0.5), rr(0.14, 0.18) * H]);
+  for (const [x, y, ang, len] of L) { g.fillStyle = pick(['#bababa', '#d4d4d4', '#a4a4a4', '#e2e2e2']); leafShape(g, x, y, ang, len, len * 0.36); }
+}
+function leafShape(g, x, y, ang, len, wid) {                                                         // 一片尖头的叶子，从 (x, y) 朝 ang（从竖直往右偏）长出去
+  g.save(); g.translate(x, y); g.rotate(-ang);
+  g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(wid * 1.1, len * 0.42, 0, len); g.quadraticCurveTo(-wid * 1.1, len * 0.42, 0, 0); g.fill();
+  g.restore();
+}
+function smallLeaf(g, W, H) { g.fillStyle = pick(['#c6c6c6', '#dcdcdc', '#b2b2b2']); leafShape(g, 0, 2, 0, H - 6, W * 0.75); setInk(g, '#eaeaea'); line(g, [[0, 3], [0, H - 12]], 1.5); }
+
+function brushMat() {
+  if (BRUSH.mat) return BRUSH.mat;
+  return BRUSH.mat = new THREE.MeshLambertMaterial({ map: brushAtlas(), vertexColors: true, alphaTest: 0.05, alphaToCoverage: true, side: THREE.DoubleSide });
+}
+
+// ---- 一条能弯的长条 ----
+// o: x, y, z 根 / th 根部朝哪边（从竖直往 +x 偏多少弧度）/ k0 一路再弯过去多少 / L 长 / dz 梢比根往镜头那边多出来多少 /
+// q 弯在哪里（<1 多半在根上转，像叶柄；>1 越到梢上越弯，像草叶）/ f 回弹的频率（次/秒）、zeta 阻尼比 / lim 最多被推弯多少，再推就滑开 /
+// tw 被手推开时朝侧面翻过去多少 / touch 伸没伸到路上（伸到了才会碰到主角）/ col 颜色 / ws 宽窄 / n 分几节 /
+// pad 宽的叶片（大叶子、蕨叶、枝条）离手和身子要留出半个叶片宽的多少，叶片才不会盖在主角身上；p0 从多长以后才算叶片（前面是叶柄）
+function brushEl(kind, o) {
+  const cs = BRUSH.cells[kind], uv = cs[o.cell ?? Math.floor(rnd() * cs.length)], f = o.f ?? 1.5, zeta = o.zeta ?? 0.15, w0 = 2 * Math.PI * f;
+  return { kind, rx: o.x, ry: o.y, rz: o.z, dz: o.dz ?? 0, th0: o.th, k0: o.k0 ?? 0, L: o.L, w: o.L * uv[2] / uv[3] * (o.ws ?? 1), q: o.q ?? 1, n: o.n ?? 8, uv, flip: o.flip ?? rnd() < 0.5,
+    col: new THREE.Color(o.col), touch: o.touch ?? true, K: w0 * w0, C: 2 * zeta * w0, lim: o.lim ?? 1.2, twMax: o.tw ?? 0, twSign: (o.z + (o.dz ?? 0)) >= 0 ? 1 : -1,
+    sway: o.sway ?? 0.035, ph: rnd() * 6.2832, d: 0, dv: 0, tw: 0, tv: 0, slip: false, dir: 0, v0: 0, pad: (o.pad ?? 0) * o.L * uv[2] / uv[3] * (o.ws ?? 1) / 2, p0: o.p0 ?? 0.3 };
+}
+// 这一条弯成 d 的时候，各节末端在哪里（只算 x、y：碰撞在侧视平面里算）
+const _nx = new Float32Array(24), _ny = new Float32Array(24);
+function elNodes(e, d) {
+  let x = e.rx, y = e.ry; const n = e.n, st = e.L / n;
+  for (let k = 0; k < n; k++) { const t = (k + 0.5) / n, a = e.th0 + e.k0 * t + d * Math.pow(t, e.q); x += Math.sin(a) * st; y += Math.cos(a) * st; _nx[k] = x; _ny[k] = y; }
+}
+function segDist(px, py, o) {                                                                        // 点到一段胶囊中轴的距离
+  const dx = o.bx - o.ax, dy = o.by - o.ay, l2 = dx * dx + dy * dy, t = l2 > 1e-9 ? clamp(((px - o.ax) * dx + (py - o.ay) * dy) / l2, 0, 1) : 0;
+  return Math.hypot(px - o.ax - dx * t, py - o.ay - dy * t);
+}
+let _penHand = false;
+function elPen(e, d, obs) {                                                                          // 弯成 d 时戳进主角的手、身子里最深多少米（<= 0 就是碰不到）
+  elNodes(e, d); let m = -1; _penHand = false;
+  for (let k = Math.floor(e.n * e.p0); k < e.n; k++) { const r = (k + 1) / e.n > e.p0 + 0.08 ? e.pad : e.pad * 0.3; for (const o of obs) { const v = o.r + r - segDist(_nx[k], _ny[k], o); if (v > m) { m = v; _penHand = o.hand; } } }
+  return m;
+}
+// 碰到了：往碰不到的那边推，推到刚好碰不到为止（先一步步找，再对半找准）；推到 lim 还躲不开，就从手边、身边滑过去
+function elContact(e, obs, dt) {
+  if (elPen(e, e.d, obs) <= 0) { e.dir = 0; return 0; }
+  const hand = _penHand;
+  let dir = e.dir;
+  if (!dir) { const pp = elPen(e, e.d + 0.05, obs), pm = elPen(e, e.d - 0.05, obs); dir = pp < pm ? 1 : pm < pp ? -1 : (e.th0 >= 0 ? 1 : -1); }
+  let lo = 0, hi = -1;
+  for (let s = 0.06; Math.abs(e.d + dir * s) <= e.lim + 0.06; s += 0.06) { if (elPen(e, e.d + dir * s, obs) <= 0) { hi = s; break; } lo = s; }
+  if (hi < 0 || Math.abs(e.d + dir * hi) > e.lim) { e.slip = true; e.dir = 0; return 0; }           // 滑开以后穿过去，直到不再挨着主角才重新算碰撞
+  for (let i = 0; i < 4; i++) { const m = (lo + hi) / 2; if (elPen(e, e.d + dir * m, obs) <= 0) hi = m; else lo = m; }
+  const nd = e.d + dir * hi, v = (nd - e.d) / Math.max(dt, 1e-3);
+  e.dv = clamp(dir > 0 ? Math.max(e.dv, v) : Math.min(e.dv, v), -12, 12); e.d = nd; e.dir = dir;
+  return hand ? 2 : 1;
+}
+
+// ---- 路边的一丛 ----
+// kind：leaf 大叶子 / grass 高草（路两边各一丛）/ fern 蕨 / branch 路后面一棵小树，枝条垂到路上。
+// z：长在路的哪一边（正的靠镜头）；o.cols 换一套颜色（默认是第二章林子里的枯褐色）；o.s 整体大小
+const BR_COLS = {
+  leaf: [0x5a5630, 0x6a6034, 0x4e4c2c, 0x726036],
+  grass: [0x9c8c5a, 0x857a4a, 0xa89a68, 0x8e7f4c], plume: [0xcabd98, 0xbfb08a],
+  fern: [0x6e5232, 0x7c5c36, 0x5f4a2e, 0x55553a],
+  twig: [0x9a7436, 0x8a6a34, 0xa8843e, 0x6e6438], bark: 0x4f4133,
+};
+// 手怎么拨。手走的路是按“身子走到哪里”排的几个点：rel 是身子离叶子还有多远（负的是还没走到手碰到叶子的地方），
+// 每个点 [rel, 手在身前多远, 手离地多高, 手臂往外翻多少]；k [开始抬手, 抬到位, 开始放下, 放完] 也按 rel 排；
+// hands 用几只手 / gh 手碰到叶子的高度 / bow 低头弯腰多少
+const BR_GEST = {
+  leaf: { hands: 1, gh: 0.86, keys: [[-0.5, 0.44, 0.92, 0], [0, 0.46, 0.88, 0.15], [0.35, 0.42, 0.8, 0.55], [0.7, 0.24, 0.62, 1.0]], k: [-1.1, -0.55, 0.65, 1.0], bow: 0.03 },
+  grass: { hands: 2, gh: 0.88, keys: [[-0.5, 0.38, 0.92, 0], [0, 0.4, 0.88, 0.2], [0.35, 0.38, 0.84, 0.6], [0.7, 0.2, 0.7, 1.0]], k: [-1.1, -0.55, 0.65, 1.0], bow: 0.05 },
+  fern: { hands: 1, gh: 0.62, keys: [[-0.5, 0.38, 0.7, 0], [0, 0.38, 0.6, 0.1], [0.35, 0.34, 0.5, 0.3], [0.65, 0.2, 0.5, 0.5]], k: [-1.1, -0.55, 0.6, 0.95], bow: 0.12 },
+  branch: { hands: 1, gh: 1.16, keys: [[-0.5, 0.3, 1.14, 0], [0, 0.26, 1.24, 0.05], [0.4, 0.14, 1.3, 0.2], [0.8, 0.04, 1.3, 0.3]], k: [-0.95, -0.45, 0.8, 1.15], bow: 0.22 },
+};
+function brushPlant(parent, kind, x, z, o = {}) {
+  brushAtlas();
+  const s = o.s ?? 1, y = groundY(x), C = { ...BR_COLS, ...o.cols }, Pl = { kind, x, y, z, els: [], gest: BR_GEST[kind], drops: [], shed: 0, extra: [] };
+  const E = (k, eo) => Pl.els.push(brushEl(k, eo));
+  if (kind === 'leaf') {
+    // 七八片大叶子从同一个地方朝四周散开：中间的高，两边的低垂；叶梢朝路这边伸
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 0.5) / n * 2 - 1, th = k * 1.15 + rr(-0.12, 0.12), L = rr(0.8, 1.02) * s * (1 - 0.2 * Math.abs(k));
+      E('leaf', { x: x + rr(-0.06, 0.06), y, z: z + rr(-0.12, 0.12), dz: -z * rr(0.8, 1.3), th, k0: th * 0.4, L, q: 0.55, f: rr(1.0, 1.3), zeta: 0.12, lim: 1.35, tw: 1.15, pad: 0.75, p0: 0.4, col: pick(C.leaf), touch: Math.abs(k) < 0.85 });
+    }
+  } else if (kind === 'grass') {
+    // 高草：路两边各一丛，草叶朝外拱、梢垂到路上；几根结了穗
+    for (const zz of [z, -z * 0.85]) for (let i = 0; i < 26; i++) {
+      const th = rr(-0.55, 0.55);
+      E('blade', { x: x + rr(-0.32, 0.32), y, z: zz + rr(-0.1, 0.1), dz: -Math.sign(zz) * 0.15, th, k0: Math.sign(th || 1) * rr(0.15, 0.6), L: rr(0.85, 1.3) * s, q: 1.6, f: rr(1.6, 2.2), zeta: 0.16, lim: 1.15, n: 7, col: pick(C.grass), ws: rr(0.9, 1.3) });
+      if (i % 6 === 0) E('plume', { x: x + rr(-0.3, 0.3), y, z: zz + rr(-0.08, 0.08), th: rr(-0.35, 0.35), k0: rr(-0.4, 0.4), L: rr(1.15, 1.4) * s, q: 1.4, f: rr(1.3, 1.7), zeta: 0.14, lim: 1.1, col: pick(C.plume) });
+    }
+  } else if (kind === 'fern') {
+    // 一丛大蕨：十来片蕨叶从根上朝四周拱出去、梢垂下来，伸到路上的那几片在腰那么高
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 0.5) / n * 2 - 1, th = k * 1.0 + rr(-0.1, 0.1), L = rr(0.85, 1.1) * s * (1 - 0.15 * Math.abs(k));
+      E('frond', { x: x + rr(-0.05, 0.05), y, z: z + rr(-0.12, 0.12), dz: -z * rr(0.8, 1.2), th, k0: th * 1.25 + Math.sign(th) * 0.25, L, q: 1.15, f: rr(1.3, 1.7), zeta: 0.13, lim: 1.3, tw: 0.5, pad: 0.5, p0: 0.25, col: pick(C.fern) });
+    }
+  } else if (kind === 'branch') {
+    // 路后面一棵小树：树干在一人多高的地方分成两杈，树冠是一圈带叶的枝条；几根枝条从分杈下面朝路两边伸出去、往下垂，梢在主角的头那么高
+    const H = 1.75 * s, bark = lam(C.bark), limb = (x0, y0, a, len, r0, r1) => {                   // 一截树枝：从 (x0, y0) 朝 a（从竖直往右偏）长 len
+      const m = add(parent, new THREE.CylinderGeometry(r1, r0, len, 6), bark, x0 + Math.sin(a) * len / 2, y0 + Math.cos(a) * len / 2, z); m.rotation.z = -a; Pl.extra.push(m);
+      return [x0 + Math.sin(a) * len, y0 + Math.cos(a) * len];
+    };
+    limb(x, y - 0.05, 0.03, H + 0.05, 0.075 * s, 0.05 * s);
+    const tops = [limb(x, y + H, -0.42, 0.95 * s, 0.045 * s, 0.026 * s), limb(x, y + H, 0.36, 1.05 * s, 0.05 * s, 0.03 * s), limb(x, y + H * 0.9, 0.05, 1.3 * s, 0.04 * s, 0.022 * s)];
+    for (const [h, th, L] of [[1.45, -1.92, 1.4], [1.32, -2.12, 1.1], [1.58, 1.95, 1.25], [1.36, 2.15, 1.0]])
+      E('twig', { x, y: y + h * s, z: z + rr(0.04, 0.12), dz: -z * 0.75, th: th + rr(-0.06, 0.06), k0: Math.sign(th) * 0.3, L: L * s, q: 0.8, f: rr(1.1, 1.4), zeta: 0.1, lim: 0.95, tw: 0.3, pad: 0.45, p0: 0.25, col: pick(C.twig) });
+    for (const [tx, ty] of tops) for (let i = 0; i < 5; i++) {                                           // 树冠：每一杈的梢上一圈枝条，朝上、朝两边散开
+      const th = rr(-1.6, 1.6);
+      E('twig', { x: tx, y: ty - rr(0, 0.25), z: z + rr(-0.15, 0.15), th, k0: Math.sign(th) * rr(0.1, 0.4), L: rr(0.75, 1.1) * s, q: 0.9, f: rr(0.8, 1.1), zeta: 0.12, touch: false, sway: 0.06, col: pick(C.twig) });
+    }
+  }
+  // 手从哪里开始碰到叶子：伸到路上的那几条，在手的高度上的那些点里，靠来路的那一头（去掉最外面一成零星的叶尖）——往右走用左边那一头，往左走用右边那一头
+  const gy = y + Pl.gest.gh, band = []; let wl = x, wr = x;
+  for (const e of Pl.els) {
+    if (!e.touch) continue; elNodes(e, 0);
+    for (let k = Math.floor(e.n * 0.3); k < e.n; k++) { wl = Math.min(wl, _nx[k]); wr = Math.max(wr, _nx[k]); if (k >= e.n * 0.4 && Math.abs(_ny[k] - gy) < 0.22) band.push(_nx[k]); }
+  }
+  band.sort((a, b) => a - b); const pc = f => band[Math.min(band.length - 1, Math.floor(f * band.length))];
+  Pl.gx = band.length ? [pc(0.12), pc(0.88)] : [x - 0.3, x + 0.3]; Pl.gy = gy; Pl.span = Math.max(x - wl, wr - x, 0.5);
+  if (o.lit) for (const e of Pl.els) e.col.multiplyScalar(o.lit);
+  for (const m of Pl.extra) m.material.userData.own = true;                                              // 树干的材质是这一丛自己的：章节卸载时一起释放
+  brushMesh(Pl); parent.add(Pl.mesh); brushShape(Pl); BRUSH.list.push(Pl);
+  const bs = Pl.mesh.geometry; bs.computeBoundingSphere(); bs.boundingSphere.radius += 0.6;              // 叶子会动：包围球放大一圈，不用每帧重算
+  return Pl;
+}
+// 沿路摆几丛：list 里每一项 [种类, x, z, 大小, 亮度]；cols 这一章的颜色（不给就是第二章林子里的枯褐色，见 BR_COLS）；亮度：摆在暗处的那一丛调亮一些，不然和地面糊在一起
+function brushRow(parent, list, cols, seed = 1) { return withSeed(seed, () => list.map(([k, x, z, s, lit]) => brushPlant(parent, k, x, z, { s, cols, lit }))); }
+// 一丛的网格：所有长条合在一个网格里，每一条 n 节、2(n+1) 个顶点。法线朝上（明暗和地面一致），根上暗一些
+function brushMesh(Pl) {
+  let nv = 0, ni = 0; for (const e of Pl.els) { e.v0 = nv; nv += (e.n + 1) * 2; ni += e.n * 6; }
+  const pos = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), col = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), idx = new Uint16Array(ni);
+  let ii = 0;
+  for (const e of Pl.els) {
+    const [u0, v0, du, dv] = e.uv;
+    for (let k = 0; k <= e.n; k++) {
+      const t = k / e.n, sh = 0.55 + 0.45 * sstep(0, 0.55, t);
+      for (let sd = 0; sd < 2; sd++) {
+        const vi = e.v0 + k * 2 + sd;
+        uv[vi * 2] = u0 + du * (e.flip ? 1 - sd : sd); uv[vi * 2 + 1] = v0 + dv * t;
+        col[vi * 3] = e.col.r * sh; col[vi * 3 + 1] = e.col.g * sh; col[vi * 3 + 2] = e.col.b * sh; nrm[vi * 3 + 1] = 1;
+      }
+      if (k < e.n) { const a = e.v0 + k * 2; idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], ii); ii += 6; }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  Pl.mesh = new THREE.Mesh(geo, brushMat()); Pl.mesh.receiveShadow = true; Pl.pos = pos; Pl.posAttr = geo.attributes.position;
+}
+// 按每一条现在弯了多少，重新摆它的顶点：中轴一节节接下去，宽度方向和中轴垂直，被推开时朝侧面翻过去（tw）
+function brushShape(Pl) {
+  const p = Pl.pos;
+  for (const e of Pl.els) {
+    let x = e.rx, y = e.ry; const n = e.n, st = e.L / n, hw = e.w / 2, ct = Math.cos(e.tw), stw = Math.sin(e.tw) * e.twSign;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, a = e.th0 + e.k0 * t + e.d * Math.pow(t, e.q), z = e.rz + e.dz * t;
+      const nx = Math.cos(a) * ct, ny = -Math.sin(a) * ct, nz = stw, vi = (e.v0 + k * 2) * 3;
+      p[vi] = x - nx * hw; p[vi + 1] = y - ny * hw; p[vi + 2] = z - nz * hw;
+      p[vi + 3] = x + nx * hw; p[vi + 4] = y + ny * hw; p[vi + 5] = z + nz * hw;
+      if (k < n) { const tm = (k + 0.5) / n, am = e.th0 + e.k0 * tm + e.d * Math.pow(tm, e.q); x += Math.sin(am) * st; y += Math.cos(am) * st; }
+    }
+  }
+  Pl.posAttr.needsUpdate = true;
+}
+// 玩的时候用的随机数（抖不抖下叶子、抖下哪一片）：自己一套，不动搭关卡用的那一套
+let _brs = 977;
+const brn = () => { _brs = _brs * 16807 % 2147483647; return _brs / 2147483647; };
+// 从枝条上抖下来的一片叶子：一个小方片，打着旋飘下来，落到地上躺平。每一丛最多留 6 片，再抖下来的就拿最早落地的那片来用
+function brushDrop(Pl, e) {
+  let d = Pl.drops.length >= 6 ? Pl.drops.reduce((a, b) => (b.t0 < a.t0 ? b : a)) : null;
+  if (!d) {
+    const c = BRUSH.cells.leaflet[Math.floor(brn() * BRUSH.cells.leaflet.length)], [u0, v0, du, dv] = c, geo = new THREE.PlaneGeometry(0.075, 0.11), uv = geo.attributes.uv, cl = new Float32Array(12);
+    for (let i = 0; i < 4; i++) { uv.setXY(i, u0 + du * uv.getX(i), v0 + dv * uv.getY(i)); cl.set([e.col.r, e.col.g, e.col.b], i * 3); }
+    geo.setAttribute('color', new THREE.BufferAttribute(cl, 3));
+    d = { m: new THREE.Mesh(geo, brushMat()) }; Pl.mesh.parent.add(d.m); Pl.drops.push(d);
+  }
+  const t = 0.45 + 0.5 * brn(), k = Math.min(e.n - 1, Math.floor(t * e.n)); elNodes(e, e.d);
+  Object.assign(d, { x: _nx[k], y: _ny[k], z: e.rz + e.dz * t + 0.05, vx: e.dv * 0.05, ph: brn() * 6.28, t: 0, t0: T, lie: false });
+}
+function stepDrops(Pl, dt) {
+  for (const d of Pl.drops) {
+    if (d.lie) continue;
+    d.t += dt; d.vx = damp(d.vx, 0.25 * Math.sin(d.t * 3.1 + d.ph), 2, dt);
+    d.x += d.vx * dt; d.y -= (0.42 + 0.18 * Math.sin(d.t * 6.2 + d.ph)) * dt;
+    const gy = groundY(d.x) + 0.012;
+    if (d.y <= gy) { d.y = gy; d.lie = true; d.m.rotation.set(-Math.PI / 2, 0, d.ph); }
+    else d.m.rotation.set(0.6 * Math.sin(d.t * 4 + d.ph), d.t * 2.5 + d.ph, 0.9 * Math.sin(d.t * 3.1 + d.ph));
+    d.m.position.set(d.x, d.y, d.z);
+  }
+}
+function stepPlant(Pl, dt, obs) {
+  for (const e of Pl.els) {
+    const sw = e.sway * (0.7 + 0.46 * GUST.v) * (Math.sin(T * 1.7 + e.ph) + 0.4 * Math.sin(T * 2.9 + e.ph * 1.7));   // 风：阵风来了摆得大一些，和地上的草、风吹树叶的声音同一阵（36-lights-fx.js 的 GUST）
+    e.dv += (-e.K * (e.d - sw) - e.C * e.dv) * dt; e.d += e.dv * dt;
+    e.tv += (-e.K * 0.8 * e.tw - e.C * e.tv) * dt; e.tw += e.tv * dt;
+    if (!obs || !e.touch) { e.slip = false; continue; }
+    if (e.slip) { if (elPen(e, e.d, obs) <= 0) e.slip = false; continue; }
+    const was = e.dir, hit = elContact(e, obs, dt);
+    if (hit === 2 && e.twMax) { e.tw = damp(e.tw, e.twMax, 7, dt); e.tv = 0; }                        // 被手推着：朝侧面翻过去
+    if (Pl.kind === 'branch' && was && !hit && Pl.shed < 3 && Math.abs(e.dv) > 1.2 && brn() < 0.7) { brushDrop(Pl, e); Pl.shed++; }   // 一松手枝条弹回去，抖下一两片叶子
+  }
+  stepDrops(Pl, dt);
+  brushShape(Pl);
+}
+// 主角身上会碰到叶子的地方，侧视平面里的几段胶囊：身子、头、两条前臂和两只手。用的是模型上一帧的骨头位置
+const _bo = [V3(), V3(), V3()];
+function heroObstacles() {
+  const out = [], tv = hero.B.traveler, cap = (ax, ay, bx, by, r, hand = false) => out.push({ ax, ay, bx, by, r, hand });
+  if (tv?.model) {
+    const b = n => tv.bones.get(n).node, hip = b('Hips').getWorldPosition(_bo[0]), nk = b('neck').getWorldPosition(_bo[1]);
+    cap(hip.x, P.y + 0.22, nk.x, nk.y - 0.04, 0.12);
+    const hd = b('Head').getWorldPosition(_bo[0]); cap(hd.x + 0.02 * P.facing, hd.y + 0.08, hd.x + 0.02 * P.facing, hd.y + 0.08, 0.11);
+    for (const sd of ['Left', 'Right']) {
+      const el = b(sd + 'ForeArm').getWorldPosition(_bo[0]), wr = b(sd + 'Hand').getWorldPosition(_bo[1]), dx = wr.x - el.x, dy = wr.y - el.y, l = Math.hypot(dx, dy) || 1;
+      const px = wr.x + dx / l * 0.05, py = wr.y + dy / l * 0.05;
+      cap(el.x, el.y, px, py, 0.05, true); cap(px, py, px, py, 0.08, true);
+    }
+  } else cap(P.x, P.y + 0.22, P.x, P.y + 1.1, 0.14);
+  return out;
+}
+// 走近哪一丛，手就照那一丛的要求伸出去：抬手伸向叶子，碰到了往前推，再往外、往下一拨，手臂回到平常的摆动。
+// 手的位置是相对身子给的（手臂怎么摆都好看）；叶子被推开看的是手实际在哪里
+function brushGesture(Pl) {
+  const g = Pl.gest; if (!g || P.mode !== 'normal' || !P.grounded) return null;
+  const dir = P.facing, rel = (P.x - (dir > 0 ? Pl.gx[0] : Pl.gx[1])) * dir + 0.42, [r0, r1, r2, r3] = g.k;     // rel = 0：伸直的手刚好碰到叶子
+  if (rel < r0 || rel > r3) return null;
+  const K = g.keys, j = rel <= K[0][0] ? 0 : rel >= K[K.length - 1][0] ? K.length - 2 : K.findIndex((p, i) => rel >= p[0] && rel < K[i + 1][0]);
+  const a = K[Math.max(0, j)], b = K[Math.min(K.length - 1, j + 1)], t = sstep(a[0], b[0], rel);
+  return { hands: g.hands, k: sstep(r0, r1, rel) * (1 - sstep(r2, r3, rel)), hx: lerp(a[1], b[1], t), hy: lerp(a[2], b[2], t), turn: lerp(a[3], b[3], t), bow: g.bow * sstep(r0 + 0.2, r1, rel) * (1 - sstep(r2, r3, rel)) };
+}
+const inScene = o => { while (o) { if (o === scene) return true; o = o.parent; } return false; };
+// 每帧一次（各章更新之后、主角动画之前）：推进画面附近的每一丛，挑出主角正在拨的那一丛
+function stepBrush(dt) {
+  HX.brush = null;
+  if (!BRUSH.list.length) return;
+  const play = state === 'play';
+  let best = null, obs = null;                                                                       // 主角身上的那几段胶囊：有一丛挨着主角了才去算
+  for (let i = BRUSH.list.length - 1; i >= 0; i--) {
+    const Pl = BRUSH.list[i];
+    if (!inScene(Pl.mesh)) { BRUSH.list.splice(i, 1); continue; }                                        // 那一章已经卸载了
+    if (Math.abs(Pl.x - cam.x) > 24) continue;                                                       // 不在画面附近：不动
+    const near = play && Math.abs(Pl.x - P.x) < Pl.span + 1.3 && Math.abs(P.y - Pl.y) < 1.5;
+    if (!near && Math.abs(Pl.x - P.x) > Pl.span + 4) Pl.shed = 0;
+    if (near) obs ??= heroObstacles();
+    stepPlant(Pl, dt, near ? obs : null);
+    if (near) { const g = brushGesture(Pl); if (g && (!best || g.k > best.k)) best = g; }
+  }
+  HX.brush = best;
+}
 
 // ============================================================
 //  主角脚边的东西（一）：道具
@@ -5202,6 +5570,9 @@ const CH2 = (() => {
     // 水闸那一屏（x 约 200.5 到 219.5）不铺：那里的枯草、落叶、小石头、碎光斑是水闸标杆画面第三步定下来的（见上面）。两段在这两头慢慢淡进去
     yield* woods(v, layers, 176, 200.5, NEAR_SIDE, 2100);
     yield* woods(v, layers, 219.5, 257.5, FAR_SIDE, 2300);
+    // 路边会被拨开的植物（48-brush.js）：主角走过去，伸手把挡路的叶子拨开。水闸那一屏不摆；避开水洼、石头、青蛙、蜥蜴和虫子
+    brushRow(R, [['fern', 182.6, -0.4, 1.05], ['leaf', 189.5, 0.42, 1.35], ['branch', 224.6, -0.75, 1], ['grass', 238.6, 0.35, 1], ['leaf', 246.2, 0.42, 1.25, 1.45], ['fern', 252.8, 0.4, 1.0]], null, 2207);
+    yield;
     // 前景：贴着画面下沿的几丛草和蕨，深色、略微虚焦。从林子边一直到这一章的尽头（渠上没有：那里的地面低下去，这几丛落到画面外了）
     ROOT = v.gd.fore; withSeed(2105, () => foreTufts(165, 262, 9.7, { skip: [[202, 216.5]] }));          // 水闸那一屏的四个角已经有设计好的前景（枯枝、芦苇），这里不再画
     yield;
@@ -5882,6 +6253,10 @@ const CH3 = (() => {
     // 沿路的维修标记：一块块指向旧城方向的小牌子
     for (const x of [X + 68, X + 96, X + 122]) { add(R, cy(0.04, 0.05, 2.2, 6), MAT.dark, x, 1.1, -1.6); plate(R, iconTex('bolt'), 0.4, 0.4, x - 0.25, 2.0, -1.55, 0xb9c4c0, { fog: true, order: 1 }); add(R, bx(1.1, 0.5, 0.05), MAT.steel, x, 2.0, -1.6); add(R, bx(0.3, 0.07, 0.06), MAT.pale, x + 0.25, 2.0, -1.56, false); }
     v.dog = makeCritter('dog', R);
+    // 墙外荒地的路边：几丛干草、一棵蒙着灰的牛蒡、一棵孤零零的小树（48-brush.js）。颜色是荒地上的灰黄
+    brushRow(R, [['grass', 334.5, 0.35, 1.05], ['leaf', 347.5, 0.42, 1.25], ['grass', 362.5, -0.35, 1.1], ['branch', 377.5, -0.75, 0.95]], {
+      leaf: [0x5e6040, 0x6a6a46, 0x55583a, 0x76704a], grass: [0xa89a6c, 0x9a8c5e, 0xb8aa7c, 0x8e8058], plume: [0xd6caa4, 0xc8bb92],
+      fern: [0x6e6040, 0x7a6c48], twig: [0x7a7a52, 0x6a6c48, 0x8a8458, 0x747048], bark: 0x4a4238 }, 3307);
     V = v;
   }
 
@@ -6990,6 +7365,10 @@ const CH7 = (() => {
     // 脚下的草：没人割，高高低低，里面夹着野花。靠镜头的几排矮一些，不挡主角
     for (const [z, hMax, dens] of [[-2.3, 0.6, 0.5], [-1.3, 0.5, 0.6], [-0.5, 0.36, 0.6], [0.5, 0.3, 0.5], [1.4, 0.36, 0.45], [2.7, 0.4, 0.3]])
       litBoard(GATE + 0.6, X8 + 1, 0, hMax + 0.06, z, 72, g => wildflowers(g, GATE + 0.6, X8 + 1, hMax, dens));
+    // 路边会被拨开的植物（48-brush.js）：大叶子、高草、蕨、垂到路上的小树枝，都是嫩绿的。小猫蹲下来等主角的地方（X + 79）不摆
+    brushRow(R, [['leaf', X + 73.5, 0.42, 1.3], ['grass', X + 84.5, 0.35, 1.15], ['fern', X + 91.5, -0.4, 1.1], ['branch', X + 99, -0.75, 1.05], ['grass', X + 109.5, -0.35, 1.1]], {
+      leaf: [0x3d6e30, 0x4a7e36, 0x335f2a, 0x588a3c], grass: [0x5e8c36, 0x6c9a3e, 0x52802f, 0x7aa446], plume: [0xc9c48e, 0xb8b47e],
+      fern: [0x3f7432, 0x4c8238, 0x37662c], twig: [0x4c8236, 0x5a903c, 0x427430, 0x6a9a44], bark: 0x4a3c30 }, 7707);
     yield;
 
     // ---- 前景：离镜头最近的一层，略微虚焦 ----
@@ -9410,13 +9789,14 @@ function sim(dt) {
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
   stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
+  stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
   stepPits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
-    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR,
+    modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
@@ -9438,6 +9818,7 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZON
   hold(ks, sec, dt = 1 / 60) { ks = [].concat(ks); for (const k of ks) { if (!keys.has(k)) pressed.add(k); keys.add(k); } DBG.step(sec, dt); for (const k of ks) keys.delete(k); },
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
+  brush: { BRUSH, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
   zone: n => ZONES.find(z => z.n === n), touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
   sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),

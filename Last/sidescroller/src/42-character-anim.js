@@ -74,6 +74,11 @@ const LAND_POSE = {
 // 走和跑的时候肩和胯反着拧（sway：走 / 跑时拧多少）；原地转身、换站法的时候两只脚跟着一下一下挪。
 // 网址后面加 ?turn=0 回到原来的正侧面（对比的时候用），?turn=0.5 就是只转一半
 const TURN = { k: +(new URLSearchParams(location.search).get('turn') ?? 1), stand: 0.5, idle: [0.32, 0.72, -0.45, 0.58, 0.96, 0.4, -0.3, 0.66], walk: 0.34, run: 0.24, air: 0.3, float: 0.6, chest: 0.5, sway: [0.16, 0.26] };
+const _shv = new THREE.Vector3();                                         // 拨叶子时量肩膀的位置（48-brush.js）
+function armLengths(tv) {                                                    // 模型手臂的长度（肩到肘、肘到腕），和姿势无关
+  const p = n => tv.bones.get(n).node.getWorldPosition(new THREE.Vector3()), s = p('RightArm'), e = p('RightForeArm'), h = p('RightHand');
+  return { l1: s.distanceTo(e), l2: e.distanceTo(h) };
+}
 // o.npc：路上的其他角色（不带光源）；o.parent：挂到哪个节点下（章节卸载时一起清掉）
 function makeCharacter(kind, prev, o = {}) {
   const B = buildBody(kind, o), { u, D, root, pelvis, spine, chest, head, tail, arms, legs } = B;
@@ -91,6 +96,7 @@ function makeCharacter(kind, prev, o = {}) {
     const push = s.mode === 'push', mant = s.mode === 'mantle';
     // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
     const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0;
+    const brush = s.brush && s.mode !== 'swim' ? s.brush : null;             // 拨开路边的植物（48-brush.js 算好的）：手伸到身前 (hx, hy)，k 多大程度，hands 一只手还是两只，turn 手臂往外翻，bow 低头弯腰
     root.position.set(s.x, s.y, s.z ?? 0);
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
     A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
@@ -151,7 +157,7 @@ function makeCharacter(kind, prev, o = {}) {
     leanT = lerp(leanT, 0.1 - clamp(s.vy * 0.02, -0.12, 0.12), A.air);
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
-    leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
+    leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp + (brush ? brush.bow * (1 - A.air) : 0);
     leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
     leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
@@ -204,6 +210,7 @@ function makeCharacter(kind, prev, o = {}) {
     const LB = A.lean + bl + landPitch, shX = Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;   // LB：上身一共往前倾了多少（累了弯腰、落地蹲下）
     const cl = Math.cos(A.lean), sl = Math.sin(A.lean), Lm = B.lamp;         // 灯在角色坐标里的位置（跟着上身前倾）
     const lampX = Lm ? Lm.x * cl + Lm.y * sl : 0, lampY = Lm ? hipY + Lm.y * cl - Lm.x * sl : 0;
+    const near = B.traveler?.model ? (dir > 0 ? 1 : 0) : (dir > 0 ? 0 : 1);   // 靠镜头的那只手（模型的右手在 +z 那边，骨架的 0 号手在 +z 那边）
     for (let i = 0; i < 2; i++) {
       const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
       let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
@@ -228,12 +235,26 @@ function makeCharacter(kind, prev, o = {}) {
         a = lerp(a, ua + A.lean, k); b = lerp(b, fa, k);
       }
       if (q.arms && q.arms[i]) { const o = q.arms[i], k = o.k ?? 1; a = lerp(a, o.a, k); b = lerp(b, o.b, k); }
+      let turn = 0;
+      if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) {   // 拨叶子：手伸到身前那一点
+        const tv = B.traveler, glb = !!tv?.model;
+        let sx = shX, sy = shY, l1 = D.uarm, l2 = D.farm + 0.02 * u, off = LB, bend = 0;
+        if (glb) {                                                           // 模型的手臂比骨架的短：用模型自己的肩膀位置和手臂长度来算
+          tv.arm ??= armLengths(tv);
+          tv.bones.get(i ? 'RightArm' : 'LeftArm').node.getWorldPosition(_shv);
+          sx = (_shv.x - s.x) * dir; sy = _shv.y - s.y; l1 = tv.arm.l1; l2 = tv.arm.l2 + 0.05; off = 0.35 * A.lean; bend = -0.14;   // 模型的胳膊肘本来就弯着一点
+        }
+        const [ua, fa] = ik2(sx, sy, brush.hx, brush.hy - (i === near ? 0 : 0.04), l1, l2, false), k = brush.k;
+        a = lerp(a, ua + off, k); b = lerp(b, fa + bend, k);
+        // 手臂往外翻：靠镜头的手往镜头这边翻，另一只往里翻。身子朝镜头转过来的那一点（A.turn）先减掉，手伸到头时手臂在画面里的方向和正侧面时一样
+        turn = k * ((i === near ? -dir : dir) * brush.turn + dir * A.turn);
+      }
       // 从高处落地：两手往前伸着保持平衡 / 一只手撑到身前的地上 / 踉跄时两手往前乱抓 / 滚翻时抱住小腿
       if (A.lc > 0.001 && LP.arms) { const [aw, bw] = LP.arms[i]; a = lerp(a, aw + LB, A.lc); b = lerp(b, bw, A.lc); }
       if (A.hand > 0.001 && i === 1) { const [ua, fa] = ik2(shX, shY, 0.2 * u, 0.012 * u, D.uarm, D.farm + 0.02 * u, false); a = lerp(a, ua + LB, A.hand); b = lerp(b, fa, A.hand); }
       if (A.trip > 0.001) { a = lerp(a, 0.6 + (i ? 0.2 : -0.1) + 0.18 * Math.sin(t * 17 + i * 2.1) + LB, A.trip); b = lerp(b, 0.55 + 0.2 * Math.sin(t * 13 + i), A.trip); }
       if (A.ltuck > 0.001) { a = lerp(a, 1.0 + LB, A.ltuck); b = lerp(b, 1.7, A.ltuck); }
-      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b;
+      const R = arms[i]; R.sh.rotation.z = a; R.el.rotation.z = b; R.turn = turn * (1 - Math.min(1, A.lc + A.hand + A.trip + A.ltuck));   // 落地的姿势盖过来时，手臂的外翻也跟着收回
       R.sh.rotation.x = (i ? 1 : -1) * (0.1 + 0.28 * A.air) * (1 - A.grip) * (1 - A.cover); R.sh.rotation.y = (i ? -1 : 1) * 0.45 * A.cover;
     }
 
@@ -323,7 +344,7 @@ function makeCharacter(kind, prev, o = {}) {
         poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);                 // 胯折过去多少，大腿就补回来多少
         poseBone(side + 'Leg', legs[i].knee.rotation.z);
         poseBone(side + 'Foot', legs[i].foot.rotation.z);
-        poseBone(side + 'Arm', arms[i].sh.rotation.z);
+        poseBone(side + 'Arm', arms[i].sh.rotation.z, arms[i].turn || 0);
         poseBone(side + 'ForeArm', arms[i].el.rotation.z);
       }
       if (A.bend > 0.01) {
@@ -342,7 +363,7 @@ function makeCharacter(kind, prev, o = {}) {
           const r1 = Math.atan2(ux, -uy), r2 = Math.atan2(fx, -fy);           // 上臂、前臂现在朝哪（从竖直往下量，往前为正）
           const [w1, w2] = ik2(X(S), Y(S), lerp(X(K), X(Hp), 0.3) + 0.035 * u, lerp(Y(K), Y(Hp), 0.3) + 0.05 * u, Math.hypot(ux, uy), Math.hypot(fx, fy), false);   // 腕子在大腿前上方一点：手掌正好搭在腿上
           const al = wrapA(w1 - r1), be = wrapA(w1 + w2 - (r2 + al));
-          poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
+          poseBone(side + 'Arm', lerp(arms[i].sh.rotation.z, al, A.bend), (arms[i].turn || 0) * (1 - A.bend)); poseBone(side + 'ForeArm', lerp(arms[i].el.rotation.z, be, A.bend));
         }
       }
       // 上面的角度是照搭出来的那副骨架算的，模型自己的腿和胳膊长短不太一样：落地蹲下、手撑地时再照模型本身对一遍
@@ -358,7 +379,7 @@ function makeCharacter(kind, prev, o = {}) {
           const ang = (p, q) => Math.atan2(q[0] - p[0], p[1] - q[1]);       // 从 p 指向 q 的方向：0 竖直往下，正的往前
           let S = sideOf(b0.node), E = sideOf(b1.node), W = sideOf(b2.node);
           const [ua, fa] = ik2(S[0], S[1], 0.24, 0.1, Math.hypot(E[0] - S[0], E[1] - S[1]), Math.hypot(W[0] - E[0], W[1] - E[1]), false);
-          poseBone('RightArm', arms[1].sh.rotation.z + (ua - ang(S, E)) * A.hand);
+          poseBone('RightArm', arms[1].sh.rotation.z + (ua - ang(S, E)) * A.hand, (arms[1].turn || 0) * (1 - A.hand));
           E = sideOf(b1.node); W = sideOf(b2.node);
           poseBone('RightForeArm', arms[1].el.rotation.z + (ua + fa - ang(E, W)) * A.hand);
         }

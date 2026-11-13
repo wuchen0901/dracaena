@@ -102,8 +102,8 @@ function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z
 // ---- 玩家状态 ----
 const P = { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, hw: 0.19, hh: 1.1, H: 1.24, coyote: 0, jumpBuf: 0,
   mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1 };
-// 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势
-const HX = { hide: 0, alert: 0, energy: 1, pose: null };
+// 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势，brush 拨开路边的植物（48-brush.js）
+const HX = { hide: 0, alert: 0, energy: 1, pose: null, brush: null };
 
 function sideHit(nx, y) {      // 位置 (nx, y) 是否撞进某个方块的侧面
   for (const s of SOLIDS) if (!s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
