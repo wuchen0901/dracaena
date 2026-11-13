@@ -85,6 +85,12 @@ Object.assign(sfx, {
   cloth: () => { hit(600, 0.5, 0.2, 0.5); hit(1800, 0.6, 0.08, 0.35); },
   snip: v => { hit(3200, 3, 0.1 * v, 0.05); hit(2400, 3, 0.08 * v, 0.05, 'bandpass', 0.09); },
   chirp: () => { const f = R2(2200, 3400); for (let i = 0, n = 2 + Math.floor(Math.random() * 3); i < n; i++) tone(f, f * R2(1.15, 1.4), 0.016, 0.07, 'sine', i * 0.1); },
+  // 地上的小动物和水洼（46-ground.js）
+  croak: v => { for (const d of [0, 0.19]) tone(R2(170, 190), 120, 0.035 * v, 0.13, 'square', d); },                  // 青蛙叫两声
+  frogHop: () => hit(1500, 1.4, 0.014, 0.05),
+  plop: v => { tone(520, 140, 0.11 * v, 0.14); hit(900, 0.7, 0.07 * v, 0.2, 'bandpass', 0.03); },                      // 扎进水里
+  skitter: () => { for (let i = 0; i < 5; i++) hit(R2(3200, 4400), 2.5, 0.012, 0.025, 'bandpass', i * 0.045); },        // 蜥蜴窜走
+  wade: () => { hit(R2(1000, 1400), 0.6, 0.06, 0.16); hit(380, 0.7, 0.04, 0.2, 'lowpass'); },                         // 一脚踩进水洼
 });
 function updateAudio(dt, stepNow) {
   if (!AC) return;

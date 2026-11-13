@@ -7,17 +7,23 @@ let ROOT = scene;                                   // 布景板当前挂到哪�
 // 世界范围 [x1,x2]×[y1,y2]，深度 z。draw(g) 里直接以“米”为单位、y 轴向上
 // o: blur 虚焦 / additive 叠加发光 / fog 受不受雾影响 / order 绘制次序 / fadeL、fadeR 左右两端渐隐多少米 /
 //    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）/
-//    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）
-//    side 贴在一面朝 ±x 的竖墙上（比如水渠的内壁）：这时 x1、x2 是 z 的范围，z 那个参数是墙在哪个 x，画的时候横坐标就是 z；-1 朝 -x，+1 朝 +x（要自己给 order）
+//    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）/
+//    side 贴在一面朝 ±x 的竖墙上（比如水渠的内壁）：这时 x1、x2 是 z 的范围，z 那个参数是墙在哪个 x，画的时候横坐标就是 z；-1 朝 -x，+1 朝 +x（要自己给 order）/
+//    blurOnce 先清清楚楚地画在另一张画布上，再整张虚化一次（默认是每一笔各自虚化 —— 笔画成千上万的时候，浏览器的绘图进程会撑不住，整个画面都丢掉）
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
   const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined, side = o.side ?? 0;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
-  const place = () => flat ? g.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : side > 0 ? g.setTransform(-s, 0, 0, -s, x2 * s, y2 * s) : g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处；朝 +x 的那面，画布从左到右是 z 从大到小
+  const place = (gg = g) => flat ? gg.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : side > 0 ? gg.setTransform(-s, 0, 0, -s, x2 * s, y2 * s) : gg.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处；朝 +x 的那面，画布从左到右是 z 从大到小
   g.save();
-  if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
-  place();
-  draw(g);
+  if (o.blur && o.blurOnce) {
+    const [c2, g2] = mkCanvas(c.width, c.height); place(g2); draw(g2);
+    if ('filter' in g) g.filter = `blur(${o.blur}px)`; g.drawImage(c2, 0, 0);
+  } else {
+    if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
+    place();
+    draw(g);
+  }
   g.restore(); place();
   g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {     // 两端渐隐：和相邻章节的远景接上时看不出边

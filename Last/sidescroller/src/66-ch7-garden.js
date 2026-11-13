@@ -149,14 +149,7 @@ const CH7 = (() => {
       else { disc(g, x + l, h - r, r); g.fillStyle = t < 0.6 ? '#f6d24a' : mix(c, '#000000', 0.35); disc(g, x + l, h - r, r * 0.38); }
     }
   }
-  // 受光照的布景板：用 backdrop 的 lit（吃灯光、接得住影子），再把法线改成朝上，明暗就和地面一致（草、花用）
-  function litBoard(x1, x2, y1, y2, z, ppm, draw, o = {}) {
-    const m = backdrop(x1, x2, y1, y2, z, ppm, draw, { ...o, lit: true }), n = m.geometry.attributes.normal;
-    for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-    return m;
-  }
-  // 把一块板子的原点挪到底边：之后缩放就是“从地里长出来”
-  function rooted(m) { const h = m.geometry.parameters.height; m.geometry.translate(0, h / 2, 0); m.position.y -= h / 2; return m; }
+  // （立在草地上、受光照的板子 litBoard，和“从地里长出来”的 rooted，在 46-ground.js 里，各章共用）
 
   // ---- 鸟 ----
   // 落着的小鸟：flee 是主角走到多近它就飞走（0 = 不怕人），飞远了、主角也走远了再落回来；wait = true 的先不出现，等野地长好了才飞来

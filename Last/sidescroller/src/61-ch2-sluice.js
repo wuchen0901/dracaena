@@ -47,6 +47,151 @@ const CH2 = (() => {
   const farLamp = pointLight({ p: [X + 139, 8.6, -22], c: 0xcfeaff, i: 30, d: 30, dec: 1.4, on: 0 });
 
   let V = null;
+  // ---------------- 地上的东西：林子里，水闸那一屏的两边各一段 ----------------
+  // 每一样一组，各自挂在自己的节点下（v.gd.stones……），可以一组一组开关（出效果图用）。每一段、每一样用自己的种子，不动这一章别处的随机数。
+  // layers 是近处、中间、远处三排树的布景板：水洼里映的就是它们
+  const GD_KINDS = ['mud', 'water', 'leaves', 'stones', 'sticks', 'grass', 'fore', 'animals'];
+  const pathZ = x => 0.2 * Math.sin(x * 0.33) + 0.1 * Math.sin(x * 0.9 + 1);                        // 踩出来的那条路：在前后方向上弯弯曲曲
+  const offPath = (x, z, w = 0.55) => 1 - Math.exp(-(((z - pathZ(x)) / w) ** 2));                   // 离路越近越接近 0
+  // 林地里的颜色（植物的图集是灰白的，摆的时候染上）。这一章的林子是枯褐的：干黄的草，蕨大半已经枯成锈褐色，剩下一些暗橄榄绿
+  const GREEN = { grass: 0x857a4a, dry: 0x9c8c5a, fern: 0x6e5232, fern2: 0x55553a, reed: 0x807449 };
+  const FROG = [0x76703e, 0x8a7c46];                                                                // 青蛙：橄榄褐、黄褐（这片林子里没有鲜绿的东西）
+  const ROWZ = [-8.3, -7.4, -6.6, -5.8, -5.1, -4.4, -3.8, -3.2, -2.7, -2.2, -1.75, -1.35, -1.0, -0.68, -0.4, 0.3, 0.6, 0.95, 1.35, 1.8, 2.3, 2.85, 3.45, 4.1, 4.8, 5.6, 6.5, 7.5, 8.6];
+  // 林子里的一段：从 A0 到 A1。S 是这一段自己的布置：水洼和它们占的那一块地、近处那排大树干、蕨丛、泥地、石头、倒木、树桩、大一些的树枝、不长草的地方、小动物
+  function* woods(v, layers, A0, A1, S, seed) {
+    const gd = v.gd, life = v.life, gy = groundY, ends = x => sstep(A0 - 0.5, A0 + 2.5, x) * sstep(A1 + 0.5, A1 - 4, x);   // 两头慢慢稀下去
+    // 水：每一摊是一个大椭圆，边上再叠一圈小的，轮廓才不规整
+    const POOLS = withSeed(seed, () => S.pools.flatMap(([x, z, rx, rz]) => {
+      const out = [[x, z, rx * 0.82, rz * 0.85]]; for (let i = 0; i < 7; i++) { const a = i / 7 * 6.2832 + rr(-0.3, 0.3); out.push([x + Math.cos(a) * rx * rr(0.5, 0.78), z + Math.sin(a) * rz * rr(0.4, 0.7), rx * rr(0.22, 0.42), rz * rr(0.3, 0.55)]); }
+      return out;
+    }));
+    const inPool = (x, z, m = 0) => POOLS.some(([px, pz, rx, rz]) => ((x - px) / (rx + m)) ** 2 + ((z - pz) / (rz + m)) ** 2 < 1);
+    const litter = (x, z) => {                                                                      // 落叶有多密：树下厚，镜头跟前被风扫成一道，路上被踩散了
+      let d = 0.12; for (const t of S.trunks) d = Math.max(d, 0.95 * Math.exp(-(((x - t - 0.6) / 3.0) ** 2) - ((z + 3.0) / 3.2) ** 2));
+      d = Math.max(d, 0.8 * Math.exp(-(((z - 4.6 - 0.9 * Math.sin(x * 0.37)) / 1.3) ** 2)) * (0.55 + 0.45 * Math.sin(x * 0.71 + 2)));
+      return d * (0.35 + 0.65 * offPath(x, z, 0.5)) * ends(x);
+    };
+    // 泥：踩出来的一条湿路，水洼周围和镜头跟前各一片泥地
+    withSeed(seed + 1, () => mudPath(gd.mud, life, layers, A0 + 1, A1 - 0.2, pathZ, { patches: S.mud }));
+    yield;
+    // 水洼
+    const pud = puddles(gd.water, life, ...S.poolBox, POOLS, layers);
+    yield;
+    // 落叶：铺在地上的一层 + 镜头跟前和路边翘起来的一些 + 飘下来的几片
+    withSeed(seed + 2, () => {
+      leafLitter(gd.leaves, A0, A1, -6, 10, litter);
+      const pts = []; for (let i = 0; i < (A1 - A0) * 85 && pts.length < (A1 - A0) * 17; i++) { const x = rr(A0 + 0.5, A1 - 0.5), z = rr(-3.2, 9.4); if (rnd() < litter(x, z) * (z > 2 ? 1 : 0.6)) pts.push([x, z]); }
+      leaves3d(gd.leaves, pts);
+    });
+    fallingLeaves(gd.leaves, life, [A0 + 2, A1 - 1]);
+    yield;
+    // 石头：几块半埋的大石头，路边和大石头脚下散着小石子
+    const rocks = withSeed(seed + 3, () => {
+      const out = S.rocks.map(([x, z, sz, o]) => rock(gd.stones, x, z, sz, o)), pts = [];
+      for (let i = 0; i < (A1 - A0) * 5.5; i++) {
+        const t = rnd(), x = rr(A0 + 0.5, A1 - 0.4); let z;
+        if (t < 0.55) z = pathZ(x) + (rnd() < 0.5 ? -1 : 1) * rr(0.45, 1.5); else if (t < 0.8) z = rr(2, 9); else z = rr(-5, -1);
+        if (!inPool(x, z, 0.05) && rnd() < ends(x)) pts.push([x, z, rnd() < 0.12 ? rr(0.07, 0.11) : rr(0.02, 0.055)]);
+      }
+      for (const [rx, rz, sz] of S.rocks) if (sz > 0.35) for (let i = 0, n = Math.round(sz * 16); i < n; i++) { const a = rr(0, 6.28), d = rr(0.45, 0.95); pts.push([rx + Math.cos(a) * d, rz + Math.sin(a) * d * 0.7, rr(0.02, 0.06)]); }
+      pebbles(gd.stones, pts);
+      return out;
+    });
+    yield;
+    // 树枝：倒木、树桩，四处掉着的枯枝
+    const onLog = (x, z) => S.logs.some(([lx, lz, len, r]) => Math.abs(x - lx) < len / 2 + 0.1 && Math.abs(z - lz) < r * 1.7);
+    withSeed(seed + 4, () => {
+      for (const a of S.logs) fallenLog(gd.sticks, ...a); for (const a of S.stumps) stump(gd.sticks, ...a);
+      for (let i = 0, n = Math.round((A1 - A0) * 1.1); i < n; i++) {
+        const x = rr(A0 + 0.6, A1 - 1), z = rnd() < 0.5 ? rr(-5, -0.7) : rr(0.8, 8.6), len = rr(0.3, 1.25), yaw = rr(0, 3.14);
+        if (offPath(x, z, 0.6) > 0.6 && !inPool(x, z, 0.4) && !onLog(x, z) && !S.bare(x, z)) stick(gd.sticks, x, z, len, yaw);
+      }
+      for (const [x, z, len, yaw] of S.bigSticks) stick(gd.sticks, x, z, len, yaw, { r: 0.032 });
+    });
+    yield;
+    // 草和蕨：一丛一丛的，前后错开 —— 合起来是一片一片的，看不出是一排一排。
+    // 蕨成片地长在几个地方（倒木后面、大石头后面、树根下、镜头跟前的两角）；草也是一片片的；路上踩秃了，只剩贴地的几根；靠镜头的高一些，靠路的矮
+    const fernK = (x, z) => { let k = 0; for (const [fx, fz, rx, rz] of S.ferns) k = Math.max(k, Math.exp(-(((x - fx) / rx) ** 2) - ((z - fz) / rz) ** 2)); return k; };
+    const veg = (x, z) => clamp((0.5 + 0.3 * Math.sin(x * 0.83 + 1.4 * Math.sin(z * 0.7 + 1)) + 0.26 * Math.sin(x * 0.31 - z * 0.9 + 2.2) - 0.44) * 2.4, 0, 1);   // 这里草有多密（0..1）
+    const bare = (x, z) => inPool(x, z, 0.1) || onLog(x, z) || S.bare(x, z);
+    const col = (hex, a = 0.9, b = 1.1) => new THREE.Color(hex).multiplyScalar(rr(a, b)), list = [];
+    withSeed(seed + 5, () => {
+      for (const z0 of ROWZ) {
+        const hM = z0 < -0.9 ? Math.min(0.72, 0.24 + 0.075 * -z0) : z0 < 0.8 ? 0.1 : Math.min(0.6, 0.07 + 0.062 * z0);
+        for (let x = A0 + 0.3; x < A1 - 0.3; x += rr(0.1, 0.3)) {
+          const z = z0 + rr(-0.12, 0.12), y = gy(x) - 0.012 + rr(0, 0.028), fk = fernK(x, z), vk = veg(x, z) * (0.12 + 0.88 * offPath(x, z, 0.75)), t = rnd(), u = rnd() / ends(x), hh = hM * rr(0.45, 1);
+          if (bare(x, z)) continue;
+          if (hM >= 0.26 && u < fk * 0.42) list.push([x, y, z, 'fern', hM * rr(0.8, 1.35), col(rnd() < 0.65 ? GREEN.fern : GREEN.fern2)]);
+          else if (u < vk * 0.5) {
+            if (t > 0.965 && hM > 0.14) list.push([x, y, z, 'seed', hh * 1.2, col(GREEN.dry)]);       // 一两根结了籽的草茎
+            else list.push([x, y, z, t > 0.86 ? 'dry' : 'grass', hh, col(t > 0.86 ? GREEN.dry : GREEN.grass)]);
+          }
+          if (z < -2.5 && rnd() < (0.012 + 0.03 * fk) * ends(x)) list.push([x + rr(-0.2, 0.2), y, z, 'mush', rr(0.08, 0.11), rnd() < 0.5 ? 0xcfc4a8 : 0xa88258]);   // 蕨丛里的几朵蘑菇
+        }
+      }
+      for (const [px, pz, rx, rz] of S.pools) for (let x = px - rx * 0.85; x < px + rx * 0.85; x += rr(0.16, 0.38)) if (rnd() < 0.5) list.push([x, gy(x) - 0.01, pz - rz * rr(0.8, 1.05), 'reed', rr(0.18, 0.42), col(GREEN.reed)]);   // 水洼后沿的一排水草
+    });
+    withSeed(seed + 6, () => plants(gd.grass, list));
+    yield;
+    // 小动物
+    S.animals(gd.animals, life, pud, rocks);
+    yield;
+  }
+  // 从镜头这边水平地看过去，石头朝镜头的那一面在哪里、朝哪边（蜥蜴贴在这一面上）
+  const face = (m, x, y) => {
+    m.updateMatrixWorld(true); const hit = new THREE.Raycaster(V3(x, y, 9), V3(0, 0, -1)).intersectObject(m)[0];
+    return hit ? { p: hit.point, n: hit.face.normal.clone().transformDirection(m.matrixWorld) } : { p: V3(x, y, m.position.z), n: V3(0, 0, 1) };
+  };
+  // 水渠这一边：从林子边到水闸那一屏。水一摊在路的外侧（青蛙蹲在它边上），一摊横在路上（走过去要踩进去），一摊在远处的树下，
+  // 一摊在镜头跟前 —— 水洼离主角越远（越靠近镜头），里面映出来的东西越高：这一摊映得出后面的树干和走过去的主角的上半身
+  const NEAR_SIDE = {
+    pools: [[194.8, 1.55, 1.3, 0.42], [198.7, 0.18, 0.9, 0.36], [189.9, -3.7, 1.35, 0.4], [191.2, 5.5, 1.9, 0.62]], poolBox: [186.4, 201, -4.5, 6.6],
+    trunks: [178, 186.5, 193, 199.5],
+    ferns: [[186.6, -4.0, 2.2, 1.4], [192.7, -6.4, 1.7, 1.0], [196.9, -4.5, 1.6, 1.1], [180.5, -4.2, 2.2, 1.2], [184.6, 5.6, 2.6, 1.8], [197.6, 6.6, 3.0, 1.7]],
+    mud: [[198.7, 0.2, 2.2, 0.9], [194.6, 1.5, 2.0, 0.8], [191.4, 5.5, 3.0, 1.2]],
+    rocks: [[191.9, -1.5, 0.5, { seed: 11, flat: 0.82, sink: 0.28, sx: 1.15, sz: 0.9, yaw: 0.4 }], [191.05, -2.05, 0.22, { seed: 12, flat: 0.8 }], [196.5, -2.9, 0.62, { seed: 13, flat: 0.95, sink: 0.3, sx: 1.0, sz: 0.85, yaw: 1.3 }],
+      [188.3, 3.3, 0.36, { seed: 14, flat: 0.75 }], [199.6, 4.6, 0.5, { seed: 15, flat: 0.7, sx: 1.3 }], [181.6, -3.1, 0.55, { seed: 16, flat: 0.85 }], [183.2, 1.9, 0.24, { seed: 17 }],
+      [196.0, 5.9, 0.3, { seed: 20, flat: 0.7 }]],
+    logs: [[186.9, -2.6, 3.0, 0.21, 0.1]], stumps: [[184.0, -1.9, 0.3, 0.34]],
+    bigSticks: [[198.4, -3.3, 1.6, 0.3], [199.0, -3.0, 1.1, 1.2], [192.6, 2.9, 1.3, 2.7], [185.3, 4.8, 1.5, 0.5]],
+    bare: () => false,
+    animals(g, life, pud, rocks) {
+      mkFrog(g, life, 193.25, 1.3, { yaw: 0.5, water: [194.75, 1.6, pud.y + 0.014], pool: pud, col: FROG[0] });
+      mkFrog(g, life, 197.55, 0.62, { yaw: -2.6, water: [198.7, 0.2, pud.y + 0.014], pool: pud, s: 1.25, col: FROG[1] });
+      mkFrog(g, life, 205.7, 1.15, { yaw: 2.4, flee: 2.1, water: () => [209.0, 0.95, W.level + 0.02], via: [[206.8, 1.1], [207.6, 1.05]], col: FROG[0] });   // 渠边的这一只：两下跳到岸沿，再一头扎进渠里
+      const perch = face(rocks[0], 191.85, 0.17);                                                    // 贴在大石头朝镜头的那一面上，头朝右上
+      mkLizard(g, life, perch.p.x, perch.p.y, perch.p.z + 0.004, { yaw: 0.75, normal: perch.n, path: [[192.45, 0.03, -0.9], [193.0, 0.012, -1.9], [193.3, 0.012, -3.0], [193.5, 0.012, -3.9]], path2: [[191.3, 0.03, -0.95], [190.7, 0.012, -2.0], [190.3, 0.012, -3.2]] });
+      mkBugs(g, life, 195.75, -0.78, 6, { s: 2.2 });
+    } };
+  // 水渠那一边：从水闸那一屏往右到这一章的尽头。同一片林子，换一种摆法；对岸渠沿上蹲着一只青蛙，主角踩着木梁过来时它跳进渠里
+  const FAR_SIDE = {
+    pools: [[229.6, 0.12, 0.95, 0.36], [223.6, 5.3, 1.75, 0.6], [241.2, -3.8, 1.3, 0.4], [250.6, 1.5, 0.8, 0.3]], poolBox: [221, 252.5, -4.6, 6.4],
+    trunks: [220.5, 227, 236, 247, 256],
+    ferns: [[220.6, -4.3, 2.2, 1.3], [226.4, -6.0, 2.0, 1.1], [233.9, -4.7, 1.8, 1.1], [238.2, -6.6, 2.4, 1.2], [245.5, -4.8, 2.2, 1.3], [252.6, -5.4, 2.0, 1.2], [231.6, 6.5, 2.8, 1.7], [247.9, 5.7, 2.6, 1.7]],
+    mud: [[229.6, 0.2, 2.2, 0.9], [223.6, 5.4, 2.8, 1.2], [250.6, 1.5, 1.6, 0.7], [245.0, 3.4, 1.4, 0.7]],
+    rocks: [[233.2, -1.65, 0.55, { seed: 31, flat: 0.85, sink: 0.28, sx: 1.1, sz: 0.9, yaw: 0.9 }], [232.25, -2.2, 0.22, { seed: 32, flat: 0.8 }], [240.6, 4.3, 0.45, { seed: 33, flat: 0.72 }], [221.0, -2.9, 0.5, { seed: 34, flat: 0.9 }],
+      [249.9, -2.3, 0.62, { seed: 35, flat: 0.95, sx: 1.05, sz: 0.85 }], [226.3, 2.5, 0.26, { seed: 36 }], [254.3, 2.0, 0.3, { seed: 37, flat: 0.8 }], [244.0, 6.6, 0.34, { seed: 38, flat: 0.7 }]],
+    logs: [[244.6, -3.4, 3.4, 0.24, -0.15]], stumps: [[251.4, -1.7, 0.34, 0.4], [221.4, -3.7, 0.26, 0.28]],
+    bigSticks: [[236.4, 3.2, 1.5, 0.5], [242.2, -2.9, 1.3, 2.2], [256.0, 2.6, 1.4, 1.0], [227.8, -3.4, 1.2, 0.9]],
+    bare: () => false,
+    animals(g, life, pud, rocks) {
+      mkFrog(g, life, 214.9, 1.35, { yaw: 2.8, flee: 2.2, water: () => [212.3, 1.0, W.level + 0.02], via: [[214.35, 1.3]], col: FROG[1] });   // 对岸的这一只：跳到岸沿，扎进渠里
+      mkFrog(g, life, 228.35, 0.85, { yaw: 0.4, water: [229.4, 0.15, pud.y + 0.014], pool: pud, col: FROG[0] });
+      mkFrog(g, life, 222.1, 4.75, { yaw: -0.6, water: [223.4, 5.3, pud.y + 0.014], pool: pud, s: 1.3, col: FROG[1] });
+      const perch = face(rocks[0], 233.1, 0.17);
+      mkLizard(g, life, perch.p.x, perch.p.y, perch.p.z + 0.004, { yaw: 0.6, normal: perch.n, path: [[233.75, 0.03, -1.0], [234.3, 0.012, -2.0], [234.6, 0.012, -3.1], [234.8, 0.012, -4.0]], path2: [[232.5, 0.03, -1.05], [231.9, 0.012, -2.1], [231.5, 0.012, -3.3]] });
+      mkBugs(g, life, 237.4, -0.72, 6, { s: 2.2 });
+    } };
+  function* groundDetails(R, v, layers) {
+    v.gd = {}; v.life = groundLife(R, 2);
+    for (const k of GD_KINDS) { const g = new THREE.Group(); g.name = k; R.add(g); v.gd[k] = g; }
+    // 水闸那一屏（x 约 200.5 到 219.5）不铺：那里的枯草、落叶、小石头、碎光斑是水闸标杆画面第三步定下来的（见上面）。两段在这两头慢慢淡进去
+    yield* woods(v, layers, 176, 200.5, NEAR_SIDE, 2100);
+    yield* woods(v, layers, 219.5, 257.5, FAR_SIDE, 2300);
+    // 前景：贴着画面下沿的几丛草和蕨，深色、略微虚焦。从林子边一直到这一章的尽头（渠上没有：那里的地面低下去，这几丛落到画面外了）
+    ROOT = v.gd.fore; withSeed(2105, () => foreTufts(165, 262, 9.7, { skip: [[202, 216.5]] }));          // 水闸那一屏的四个角已经有设计好的前景（枯枝、芦苇），这里不再画
+    yield;
+  }
   function* build(R) {
     const S = 14, gy = groundY;                          // 这些室外布景原来是按“大门在 x = 90”画的，整体往右挪 14 米
     // 地平线上的巨像：一台跪坐着停机的巨型机器人，只剩一只眼睛还亮着
@@ -121,18 +266,18 @@ const CH2 = (() => {
     yield;
 
     // ---------------- 林地 ----------------
-    backdrop(166, 322, -3, 34, -40, 13, g => {            // 远处的一排树
+    const far40 = backdrop(166, 322, -3, 34, -40, 13, g => {            // 远处的一排树（水洼里映着它，所以留个名字）
       setInk(g, '#6b7a62'); ridge(g, 166, 322, -3, x => 12.5 + 2.5 * Math.sin(x / 6.3) + rr(-1.2, 1.6), 1.3);       // 连成一片的树冠，后面的东西透不出来。颜色淡：隔着雾，它快融进后面的亮光里了
       for (let x = 168; x < 320; x += rr(2.2, 4.6)) tree(g, x, 0.6, rr(15, 24), rnd() < 0.3 ? 'pine' : 'round');
     }, { fadeL: 16, fadeR: 30 });
     yield;
-    backdrop(170, 300, -3, 26, -22, 17, g => {            // 再近一排
+    const far22 = backdrop(170, 300, -3, 26, -22, 17, g => {            // 再近一排
       setInk(g, '#262b20'); ridge(g, 170, 300, -3, x => 1.6 + 0.8 * Math.sin(x / 3.7) + rr(0, 0.9), 1.1);
       for (let x = 174; x < 298; x += rr(3.6, 7.5)) if (x < 203 || x > 218) tree(g, x, 0.4, rr(10, 17), rnd() < 0.25 ? 'pine' : 'round');
       for (let i = 0; i < 40; i++) { const x = rr(172, 298); for (let k = 0; k < 3; k++) disc(g, x + rr(-0.9, 0.9), 1.6 + rr(0, 0.9), rr(0.6, 1.3)); }   // 灌木
     }, { fadeL: 12, fadeR: 30 });
     yield;
-    backdrop(174, 282, -3, 18, -9, 25, g => {             // 近处的大树干：一直伸出画面上沿，只看得见树干和最低的几根枝
+    const near9 = backdrop(174, 282, -3, 18, -9, 25, g => {             // 近处的大树干：一直伸出画面上沿，只看得见树干和最低的几根枝
       setInk(g, '#0e120c'); ridge(g, 174, 282, -3, x => gy(x) - 0.25 + rr(-0.1, 0.25), 0.8);
       for (const [x, w] of [[178, 0.8], [186.5, 1.1], [193, 0.7], [199.5, 0.9], [220.5, 1.0], [227, 0.75], [236, 1.15], [247, 0.8], [256, 1.0], [268, 0.9], [277, 0.7]]) {
         poly(g, [[x - w * 0.75, gy(x) - 0.3], [x + w * 0.75, gy(x) - 0.3], [x + w * 0.42, 18], [x - w * 0.42, 18]]);
@@ -538,6 +683,8 @@ const CH2 = (() => {
       backdrop(186.5, 225, -3.6, 2.6, 0, 40, g => { g.fillStyle = 'rgba(255,236,196,.14)'; for (const [x, z, rx, rz, a] of spots) oval(g, x, z, rx * 0.8, rz * 0.8, a); },
         { floor: 0.017, additive: true, fog: false, blur: 2, order: -18 });
     }
+    yield;
+    yield* groundDetails(R, v, [near9, far22, far40]);                 // 地上的东西（石头、落叶、草、树枝、泥、水洼、小动物）
     V = v;
   }
 
@@ -579,6 +726,7 @@ const CH2 = (() => {
     v.flowTex.offset.y += dt * 1.4;
     v.foam.position.y = W.level + 0.035; v.floatLeaves.position.y = W.level + 0.02;
     placeMirror(v);
+    v.life.step(dt);                                                                               // 地上会动的那些：落叶、水洼、小动物
   }
   // 闸门里那片亮光在近处水面上的倒影，照镜子的道理：把亮着的那一段（闸板上沿到横梁底；闸板升起来以后是水面到闸板下沿，哪段大用哪段）
   // 按水面翻到水下，从镜头看过去，视线穿过水面的地方就是倒影落的地方。四个角各算一次；镜头偏左，倒影也就偏左、比闸门窄
@@ -594,7 +742,7 @@ const CH2 = (() => {
     });
     p.needsUpdate = true;
   }
-  function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); }
+  function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); if (V) V.life.reset(); }
   function solve() { Object.assign(W, { open: true, t: 7, k: 1, level: HIGH, lamp: 1, flown: 99, bank: 1 }); placeTimber(); }
-  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.extraTex ?? []) t.dispose(); V = null; }, W, timber });
+  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.extraTex ?? []) t.dispose(); V = null; }, W, timber, view: () => V });
 })();

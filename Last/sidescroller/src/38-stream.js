@@ -6,6 +6,7 @@
 function disposeTree(root) {
   root.traverse(o => {
     if (o.geometry) o.geometry.dispose();
+    if (o.isInstancedMesh) o.dispose();                  // 实例的位置、颜色是另外几块缓冲区
     const m = o.material; if (m && m.userData && m.userData.own) { if (m.map) m.map.dispose(); m.dispose(); }
   });
   if (root.parent) root.parent.remove(root);
