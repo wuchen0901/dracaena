@@ -65,6 +65,8 @@ function stepPlayer(dt) {
     return;
   }
 
+  if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+
   // ---- 普通状态 ----
   const speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK;
   P.vx = damp(P.vx, d * speed, P.grounded ? (d ? 9 : 14) : 3.5, dt);
@@ -85,6 +87,7 @@ function stepPlayer(dt) {
     if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6 && !hit.noclimb) { P.x = nx; startMantle(hit, side); return; }
     P.vx = 0;
   }
+  if (ceilY(nx) < P.y + P.hh && ceilY(nx) < ceilY(P.x)) { nx = P.x; P.vx = 0; }      // 洞顶压下来，挡在前面
   P.x = nx;
 
   // 垂直方向：贴地行走，或者受重力下落
@@ -97,6 +100,8 @@ function stepPlayer(dt) {
     if (P.vy <= 0 && ny <= f) { P.y = f; P.impact = -P.vy; P.vy = 0; P.grounded = true; fx('land', P.impact); }
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
+  const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
+  const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
 
   // 抓住可以推拉的东西 / 操作机关
   if (ctl && P.grounded && keys.has('E')) {
@@ -126,7 +131,7 @@ function stepFade(dt) {
   const f = fadeThen; fadeThen = null; state = 'play'; ctl = true; $('fade').style.opacity = 0; if (f) f();
 }
 function placePlayer(x, y) {
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1 });
+  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath });
   P.y = y ?? floorY(x, 60); P.gy = P.y;
 }
 function respawn() {
@@ -146,4 +151,78 @@ function stepPits() {                              // 掉进水里或者坑里�
       if (CAT.state === 'follow') catPlace(P.x - 0.8, floorY(P.x - 0.8, P.y + 0.1)); snapCamera(); }, 0.9);
     return;
   }
+}
+
+// ============================================================
+//  游泳：掉进登记过的水（water()）里就游起来
+//  ← → 游，空格 / ↑ 往上，↓ 往下潜，斜着按就斜着游；什么都不按就慢慢浮上去，浮到水面上头露出来、踩着水。
+//  在水面上往岸边游（或者按空格），岸不太高就撑上去。憋气有限：在水下待太久，画面暗下去，回到存档点
+// ============================================================
+// v / vTop 水下 / 水面上游多快，rise 不按键时往上浮多快，r 身体当成多大的圆，c 身体中点离脚底多高，top 浮在水面上时中点在水面下多深，
+// enter 脚比水面低这么多就算掉进水里，reach 岸比水面高多少还撑得上去，breath 一口气能憋多少秒
+const SWIM = { v: 1.7, vTop: 1.3, acc: 3.2, stop: 2.4, rise: 0.3, r: 0.3, c: 0.6, top: 0.5, enter: 0.85, reach: 1.05, breath: 24 };
+function swimHit(x, cy) {                            // 身体中点在 (x, cy) 时会不会碰到地面、洞顶、方块
+  const r = SWIM.r;
+  for (const dx of [-0.8 * r, 0, 0.8 * r]) { if (groundY(x + dx) > cy - r) return true; if (ceilY(x + dx) < cy + 0.7 * r) return true; }
+  for (const s of SOLIDS) if (!s.off && x + r > s.x1 && x - r < s.x2 && cy + r > s.y1 && cy - r < s.y2) return true;
+  return false;
+}
+function enterSwim(w) {
+  const vy = P.vy;
+  Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55 });
+  P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
+  fx(vy < -4 ? 'splash' : 'plop', 1); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+}
+// 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
+function climbOut(w, side, cx) {
+  for (let k = 0.1; k <= 0.75; k += 0.05) {
+    const x = cx + side * k; if (groundY(x) <= w.y + 0.02) continue;
+    let top = -Infinity; for (let j = 0; j <= 0.6; j += 0.05) top = Math.max(top, groundY(x + side * j));
+    if (top - w.y > SWIM.reach || ceilY(x + side * 0.45) < top + P.H + 0.05) return false;
+    let e = x; for (let n = 0; n < 80 && groundY(e) < top - 0.04; n++) e += side * 0.01;
+    P.water = null; startMantle(side > 0 ? { x1: e, x2: e + 1, y2: top } : { x1: e - 1, x2: e, y2: top }, side); P.mantle.T = 0.9;
+    fx('wade'); splashAt(cx + side * 0.2, w.y, 0.35);
+    return true;
+  }
+  return false;
+}
+function stepSwim(dt, d) {
+  const w = P.water, dy = ctl ? (keys.has('J') ? 1 : 0) - (keys.has('DOWN') ? 1 : 0) : 0, topY = w.y - SWIM.top;
+  if (swimHit(P.x, P.y + SWIM.c)) {                  // 卡进了岩石（刚掉进水里时贴着岸边）：挪到最近的空处
+    const c0 = P.y + SWIM.c; let ok = false;
+    for (let r = 0.05; r <= 1.2 && !ok; r += 0.05) for (const [dx, dy_] of [[r, 0], [-r, 0], [0, -r], [0.7 * r, -0.7 * r], [-0.7 * r, -0.7 * r], [0, r]]) {
+      const ny = Math.min(c0 + dy_, topY); if (!swimHit(P.x + dx, ny)) { P.x += dx; P.y = ny - SWIM.c; ok = true; break; }
+    }
+  }
+  const cx = P.x, cy = P.y + SWIM.c, atTop = cy > topY - 0.06;
+  let tx = d, ty = dy; const n = Math.hypot(tx, ty); if (n > 1) { tx /= n; ty /= n; }
+  const sp = atTop && dy <= 0 ? SWIM.vTop : SWIM.v, surge = 0.75 + 0.5 * sstep(0.35, 0.5, P.stroke) * (1 - sstep(0.6, 0.95, P.stroke));   // 蹬腿的那一下往前冲
+  P.vx = damp(P.vx, tx * sp * surge, d ? SWIM.acc : SWIM.stop, dt);
+  P.vy = damp(P.vy, dy ? ty * sp * surge : SWIM.rise, dy ? SWIM.acc : 1.3, dt);
+  if (d) P.facing = d;
+  const moving = Math.abs(P.vx) + Math.abs(P.vy) > 0.3, panic = sstep(0.55, 1, 1 - P.air / SWIM.breath);
+  P.stroke = (P.stroke + dt * (moving ? 0.8 : atTop ? 0.65 : 0.4) * (1 + 0.8 * panic)) % 1;
+  // 先横着走，再竖着走，各自碰到东西就停
+  let nx = cx + P.vx * dt;
+  if (swimHit(nx, cy)) { if (atTop && d && climbOut(w, d, cx)) return; nx = cx; P.vx = 0; }
+  let ny = Math.min(cy + P.vy * dt, topY);
+  if (swimHit(nx, ny)) { ny = cy; P.vy = 0; }
+  if (ny >= topY - 1e-4 && P.vy > 0) P.vy = 0;
+  P.x = nx; P.y = ny - SWIM.c;
+  if (atTop && ctl && pressed.has('J') && climbOut(w, P.facing, nx)) return;
+  // 憋气：头在水下就一点点用掉，露出水面很快就缓过来
+  P.under = ny < topY - 0.15;
+  P.air = P.under ? P.air - dt : Math.min(SWIM.breath, P.air + dt * 6);
+  if (P.air <= 0 && state === 'play') drown();
+}
+function drown() {                                   // 憋不住了：黑下去，回到最近的存档点（解开的东西都保留）
+  fx('fall');
+  fadeOut(() => { const c = CPS[P.cp]; placePlayer(c.x, c.y); for (const z of ZONES) if (z.respawn) z.respawn(c); snapCamera(); }, 1.0);
+}
+// 憋气快到头了：画面一点点暗下去（借用黑场那一层）
+let breathDark = 0;
+function stepBreath() {
+  if (state !== 'play') { breathDark = 0; return; }
+  const k = P.mode === 'swim' ? sstep(0.6, 1, 1 - P.air / SWIM.breath) : 0;
+  if (Math.abs(k - breathDark) > 0.01 || (k === 0 && breathDark > 0)) { breathDark = k; $('fade').style.opacity = (0.75 * k).toFixed(3); }
 }

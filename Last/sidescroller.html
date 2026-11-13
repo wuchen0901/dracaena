@@ -72,9 +72,9 @@
 </div>
 <div id="title" class="ov hide">
   <h1>铁锈与微光</h1>
-  <div class="sub">横版原型 · 八章</div>
+  <div class="sub">横版原型 · 九章</div>
   <div class="keys">
-    <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关<br>
+    <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关　　在水里按 <b>↓</b> 潜下去<br>
     <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
   </div>
   <div class="go" id="go">按任意键开始</div>
@@ -214,6 +214,25 @@ const groundSlope = x => (groundY(x + 0.15) - groundY(x - 0.15)) / 0.3;
 // 地面往远处铺到哪里：平时一直铺到看不见的地方；登记过的一段 [x1, x2] 只铺到 z 为止 —— 后面是低下去的谷地，由布景板来画
 const GROUND_BACK = [];
 function groundBack(x1, x2, z) { GROUND_BACK.push([x1, x2, z]); }
+// 地面往镜头这边铺到哪里：登记过的一段 [x1, x2] 只铺到 z 为止；z 写 null 就整段不铺（山洞自己搭地面，前面是岩石的剖面）
+const GROUND_FRONT = [];
+function groundFront(x1, x2, z) { GROUND_FRONT.push([x1, x2, z]); }
+// ---- 洞顶：一条折线（只在有顶的地方登记）。头顶碰到它就停；压下来挡在人身边的那一段就是一面墙 ----
+const CEIL = [];
+function ceiling(...pts) { for (const p of pts) CEIL.push(p); }
+let _ci = 1;
+function ceilY(x) {                                  // 头顶的岩石有多低；没有洞顶的地方是无穷高
+  const n = CEIL.length; if (n < 2 || x < CEIL[0][0] || x > CEIL[n - 1][0]) return Infinity;
+  let i = clamp(_ci, 1, n - 1);
+  while (i > 1 && x < CEIL[i - 1][0]) i--;
+  while (i < n - 1 && x > CEIL[i][0]) i++;
+  _ci = i; const a = CEIL[i - 1], b = CEIL[i];
+  return a[1] + (b[1] - a[1]) * clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
+}
+// ---- 能游泳的水：{ x1, x2, y 水面的高度 }。掉进去不再回到岸上，而是游起来（见 50-player.js）----
+const WATERS = [];
+function water(o) { WATERS.push(o); return o; }
+const waterAt = x => { for (const w of WATERS) if (x > w.x1 && x < w.x2) return w; return null; };
 const GROUND = [];                                   // 地面颜色的关键点 [x, 颜色]，中间线性过渡
 function ground(x, hex) { GROUND.push([x, new THREE.Color(hex)]); }
 function groundColor(x, out) {
@@ -456,7 +475,9 @@ function buildGround() {
   pts.push(TERRAIN[TERRAIN.length - 1]);
   for (let i = 1; i < pts.length; i++) {
     const [ax, ay] = pts[i - 1], [bxx, by] = pts[i], mid = (ax + bxx) / 2, cut = GROUND_BACK.find(c => mid >= c[0] && mid <= c[1]), zb = cut ? cut[2] : Z0;
-    pos.push(ax, ay, Z1, bxx, by, Z1, bxx, by, zb, ax, ay, Z1, bxx, by, zb, ax, ay, zb);
+    const front = GROUND_FRONT.find(c => mid >= c[0] && mid <= c[1]), zf = front ? front[2] : Z1;
+    if (zf === null) continue;                           // 这一段的地面由章节自己搭
+    pos.push(ax, ay, zf, bxx, by, zf, bxx, by, zb, ax, ay, zf, bxx, by, zb, ax, ay, zb);
     groundColor(ax, ca); groundColor(bxx, cb);
     for (const c of [ca, cb, cb, ca, cb, ca]) col.push(c.r, c.g, c.b);
   }
@@ -1329,6 +1350,7 @@ function makeCharacter(kind, prev, o = {}) {
   // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
   A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
+  A.swim ??= 0; A.pitch ??= 0;                                              // 游泳：在水里的程度、身子放平了多少（0 竖着，π/2 平躺）
   (o.parent ?? scene).add(root);
 
   function update(dt, s) {
@@ -1345,6 +1367,8 @@ function makeCharacter(kind, prev, o = {}) {
     A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
     A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
+    A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
+    if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
     const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u;
@@ -1367,6 +1391,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
+    leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
@@ -1430,6 +1455,34 @@ function makeCharacter(kind, prev, o = {}) {
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
     head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
+    // ---- 游泳：在水下身子放平，蛙泳 —— 两手往前伸直、往两边划回胸前，两腿收起来再往后一蹬，然后滑一下；
+    //      浮在水面上身子竖起来，两手在身前一前一后地拨水，两腿像蹬自行车一样踩水；在水下停着不动就斜着身子慢慢划 ----
+    if (A.swim > 0.002) {
+      const k = A.swim, w = s.swim || A.lastSwim || { ph: 0, vx: 0, vy: 0, c: 0.6, top: 0, panic: 0 }; if (s.swim) A.lastSwim = s.swim;
+      const p = w.ph, mv = sstep(0.15, 0.9, Math.hypot(w.vx, w.vy)), top = w.top, still = (1 - mv) * (1 - top), tread = top * (1 - mv);
+      const flat = clamp(Math.PI / 2 - 0.9 * Math.atan2(w.vy, Math.abs(w.vx) + 0.12), 0.35, 2.3);         // 往上游时抬起身子，往下潜时头朝下
+      if (s.mode === 'swim') A.pitch = damp(A.pitch, lerp(lerp(0.75, flat, mv), lerp(0.18, 1.0, mv), top), 4.5, dt);
+      // 蛙泳的一圈：0–0.32 两手划回胸前（手肘弯起来），0.32–0.48 两手往前伸直；0.18–0.42 收腿，0.42–0.56 往后蹬；剩下的滑行
+      const pull = p < 0.32 ? sstep(0, 0.32, p) : 1 - sstep(0.32, 0.48, p), bend = p < 0.32 ? sstep(0.05, 0.3, p) : 1 - sstep(0.38, 0.48, p);
+      const tuck = p < 0.18 ? 0 : p < 0.42 ? sstep(0.18, 0.42, p) : 1 - sstep(0.42, 0.56, p);
+      for (let i = 0; i < 2; i++) {
+        const R = arms[i], L = legs[i], o = i ? 1 : -1, ph = p * 6.2832 + i * Math.PI;
+        let a = lerp(3.0, 1.15, pull) + o * 0.03, b = lerp(0.1, 1.75, bend);
+        a = lerp(a, 1.15 + 0.32 * Math.sin(ph), tread); b = lerp(b, 1.05 + 0.3 * Math.sin(ph + 1.2), tread);
+        a = lerp(a, 1.8 + 0.4 * Math.sin(ph), still * 0.7); b = lerp(b, 0.9, still * 0.7);
+        if (w.panic > 0) { a += w.panic * 0.45 * Math.sin(t * 9 + i * 2); b += w.panic * 0.3 * Math.sin(t * 11 + i); }      // 憋不住了：手乱划
+        R.sh.rotation.z = lerp(R.sh.rotation.z, a, k); R.el.rotation.z = lerp(R.el.rotation.z, b, k); R.sh.rotation.x = lerp(R.sh.rotation.x, o * 0.12 * (1 - pull), k); R.sh.rotation.y = lerp(R.sh.rotation.y, 0, k);
+        let th = lerp(-0.05, 0.6, tuck) + o * 0.04, kn = lerp(-0.05, -1.95, tuck), ft = lerp(-1.2, 0.05, tuck);
+        th = lerp(th, 0.5 + 0.35 * Math.sin(ph), tread); kn = lerp(kn, -1.05 - 0.5 * Math.sin(ph + 0.7), tread); ft = lerp(ft, -0.5, tread);
+        th = lerp(th, 0.15 + 0.15 * Math.sin(ph * 0.7), still * 0.7); kn = lerp(kn, -0.5 - 0.3 * Math.sin(ph * 0.7 + 1), still * 0.7);
+        L.hip.rotation.z = lerp(L.hip.rotation.z, th, k); L.knee.rotation.z = lerp(L.knee.rotation.z, kn, k); L.foot.rotation.z = lerp(L.foot.rotation.z, ft, k);
+      }
+      spine.rotation.z = lerp(spine.rotation.z, (0.25 + 0.2 * Math.sin(p * 6.2832) * mv) * clamp(A.pitch / 1.5, 0, 1), k);   // 背微微拱起来
+      head.rotation.z = lerp(head.rotation.z, 0.8 * A.pitch, k); head.rotation.y = lerp(head.rotation.y, 0, k);                // 抬着头往前看
+    }
+    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）
+    root.rotation.z = -A.pitch;
+    if (A.pitch > 1e-4) { const c = s.swim?.c ?? A.lastSwim?.c ?? 0.6, sp = Math.sin(A.pitch) * c; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(A.pitch) * c; }
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
@@ -1465,8 +1518,8 @@ function makeCharacter(kind, prev, o = {}) {
         entry.node.updateWorldMatrix(false, true);
       };
       poseBone('Spine', spine.rotation.z * .35);
-      poseBone('neck', 0, head.rotation.y * .35);                 // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的
-      poseBone('Head', head.rotation.z, head.rotation.y * .65);
+      poseBone('neck', head.rotation.z * .35 * A.swim, head.rotation.y * .35);   // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的（游泳时抬头也分给脖子三成）
+      poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
         poseBone(side + 'UpLeg', legs[i].hip.rotation.z);
@@ -2128,6 +2181,248 @@ function mkBugs(parent, L, x, z, n, o = {}) {
 }
 
 // ============================================================
+//  山洞的布景套件（第九章用）：横着剖开的一条山洞
+//  最前面是岩石的剖面（一整块黑，z = 2.4）；洞顶的底面和脚下的地面是真的三维面，从剖面一直伸到后墙，受灯光；
+//  后墙（z = -7）是画出来的石头；中间一层是石笋、石柱、潭底的大石头的剪影；
+//  水：主角前面一层水色（越深越浓）、水面那一道会闪的亮线、潭底的焦散；光：光柱、水下的光线、光晕、水里悬着的颗粒。
+//  形状全由洞顶（ceiling()）和地面（terrain()）两条折线决定，碰撞也是它们，所以画出来的岩石和挡住人的岩石是同一个
+// ============================================================
+const CZ = { cut: 2.4, front: 2.2, surf: 2.25, mid: -3.4, wall: -7, back: -7.4 };
+const rockNoise = (x, y) => { const w = x * 1.7 + y * 2.3; return 0.9 * Math.sin(w * 2.1 + 1.3) + 0.6 * Math.sin(w * 5.3 + 0.4) + 0.35 * Math.sin(w * 11.7) + 0.2 * Math.sin(w * 23.1 + 2.0); };
+
+// 一条折线（地面或洞顶）在 [x1, x2] 里的那一段：切细，按法线方向抖一抖（两头不抖，和相邻的一段接得上）
+function roughLine(pts, f, x1, x2, amp, step = 0.08) {
+  const src = [[x1, f(x1)], ...pts.filter(p => p[0] > x1 + 1e-6 && p[0] < x2 - 1e-6), [x2, f(x2)]], out = [];
+  for (let i = 0; i < src.length - 1; i++) {
+    const [ax, ay] = src[i], [bx, by] = src[i + 1], L = Math.hypot(bx - ax, by - ay) || 1e-6, n = Math.max(1, Math.round(L / step)), nx = -(by - ay) / L, ny = (bx - ax) / L;
+    for (let k = 0; k < n; k++) { const t = k / n, px = lerp(ax, bx, t), py = lerp(ay, by, t), j = i === 0 && k === 0 ? 0 : amp * rockNoise(px, py) * 0.5; out.push([px + nx * j, py + ny * j]); }
+  }
+  out.push(src[src.length - 1]); return out;
+}
+
+// ---- 1 岩石的剖面：洞顶以上、地面以下各一整块黑 ----
+function caveCut(R, x1, x2, o = {}) {
+  const mat = new THREE.MeshBasicMaterial({ color: o.color ?? 0x030506, fog: false }); mat.userData.own = true;
+  const V = (x, y) => new THREE.Vector2(x, y);
+  const top = roughLine(CEIL, ceilY, x1, x2, 0.07), bot = roughLine(TERRAIN, groundY, x1, x2, 0.05);
+  for (const pts of [[V(x1, 40), ...top.map(([x, y]) => V(x, y)), V(x2, 40)], [V(x1, -40), ...bot.map(([x, y]) => V(x, y)), V(x2, -40)]]) {
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts)), mat); m.position.z = CZ.cut; m.renderOrder = 900; R.add(m);
+  }
+  // 剖面上挂着的钟乳石、岸边冒出来的小石笋（也是一整块黑）
+  const tri = [];
+  for (let x = x1 + rr(0.3, 1.2); x < x2 - 0.3; x += rr(0.5, 1.7)) {
+    const y = ceilY(x); if (y - groundY(x) < 2.4 || Math.abs(ceilY(x + 0.3) - ceilY(x - 0.3)) > 0.25 || (o.skip && o.skip(x))) continue;
+    const h = rr(0.15, 0.7), w = rr(0.12, 0.34); tri.push([[x - w / 2, y + 0.15], [x + w / 2, y + 0.15], [x + w * 0.08, y - h], [x - w * 0.05, y - h * 0.9]]);
+  }
+  for (let x = x1 + rr(0.5, 2); x < x2 - 0.3; x += rr(0.8, 2.4)) {
+    const y = groundY(x); if (waterAt(x) || Math.abs(groundY(x + 0.3) - groundY(x - 0.3)) > 0.1 || ceilY(x) - y < 2.6) continue;
+    const h = rr(0.05, 0.28), w = rr(0.2, 0.5); tri.push([[x - w / 2, y - 0.1], [x + w / 2, y - 0.1], [x + w * 0.1, y + h], [x - w * 0.1, y + h]]);
+  }
+  for (const t of tri) { const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(t.map(([x, y]) => V(x, y)))), mat); m.position.z = CZ.cut; m.renderOrder = 900; R.add(m); }
+}
+
+// ---- 2 洞顶的底面、脚下的地面：顺着折线拉成一条，从剖面伸到后墙后面一点。颜色 col(x, y, z) 给（水下的部分沉进水色里）----
+let CAVE_TILE = null;
+function caveTile() {                                    // 一小块能平铺的石头地：明暗斑驳、碎石、细裂缝（乘在顶点颜色上）
+  if (CAVE_TILE) return CAVE_TILE;
+  const [c, g] = mkCanvas(256, 256); g.fillStyle = '#b4b4b4'; g.fillRect(0, 0, 256, 256);
+  const s0 = _seed; _seed = 4242;
+  for (let i = 0; i < 90; i++) { const x = rr(0, 256), y = rr(0, 256), r = rr(10, 60), v = rr(120, 235) | 0; for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gr.addColorStop(0, `rgba(${v},${v},${v},.45)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`); g.fillStyle = gr; g.fillRect(x + ox - r, y + oy - r, 2 * r, 2 * r); } }
+  for (let i = 0; i < 260; i++) { const x = rr(0, 256), y = rr(0, 256), r = rr(1.5, 6), v = rnd() < 0.5 ? rr(50, 100) | 0 : rr(200, 255) | 0; g.fillStyle = `rgba(${v},${v},${v},${rr(0.3, 0.6)})`; g.beginPath(); g.ellipse(x, y, r * 1.3, r, rr(0, 3), 0, 6.283); g.fill(); }
+  g.strokeStyle = 'rgba(40,40,40,.45)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = rr(0, 256), y = rr(0, 256); g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += rr(-14, 14); y += rr(4, 16); g.lineTo(x, y); } g.stroke(); }
+  _seed = s0;
+  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return CAVE_TILE = t;
+}
+function caveSurface(R, pts, f, x1, x2, col, down) {
+  const xs = []; for (const p of pts) if (p[0] > x1 && p[0] < x2) xs.push(p[0]);
+  for (let x = x1; x < x2; x += 0.5) xs.push(x); xs.push(x2); xs.sort((a, b) => a - b);
+  const X = xs.filter((x, i) => i === 0 || x - xs[i - 1] > 0.02), Zs = [CZ.cut, 1.4, 0.2, -1.2, -2.8, -4.6, CZ.back];
+  const pos = [], cl = [], uv = [], idx = [], nz = Zs.length, c = new THREE.Color();
+  for (const x of X) {
+    const y = f(x), st = clamp((Math.abs(f(x + 0.08) - f(x - 0.08)) / 0.16 - 0.8) / 2.5, 0, 1), dk = 1 - 0.72 * st;   // 陡的地方（潭壁、压进水里的岩石的侧面）是背光的岩壁，暗下去
+    for (const z of Zs) { pos.push(x, y, z); const k = col(x, y, z); c.setRGB(k[0] * dk, k[1] * dk, k[2] * dk, THREE.SRGBColorSpace); cl.push(c.r, c.g, c.b); uv.push(x * 0.45, z * 0.45); }
+  }
+  for (let i = 0; i < X.length - 1; i++) for (let j = 0; j < nz - 1; j++) {
+    if (Math.abs(f(X[i + 1]) - f(X[i])) > 2.2 * (X[i + 1] - X[i])) continue;   // 陡的一段（潭壁、压进水里的岩石的侧面）不往里拉：只留最前面的剖面，后面直接看见后墙，和剖面图一样
+    if (down) { const w = waterAt((X[i] + X[i + 1]) / 2); if (w && Math.max(f(X[i]), f(X[i + 1])) < w.y + 0.8) continue; }   // 压到水面附近的洞顶（要潜过去的那块岩石）也一样，只留剖面
+    const a = i * nz + j, b = a + 1, d = a + nz, e = d + 1;
+    if (down) idx.push(a, b, d, b, e, d); else idx.push(a, d, b, b, d, e);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: caveTile() })); m.material.userData.own = true; m.receiveShadow = true; m.frustumCulled = false; R.add(m); return m;
+}
+
+// ---- 3 后墙：画在画布上的石头。光斑铺底、乘上石头的纹理，再加各种东西（draw 由章节给），水面以下沉进水色里；左边一段渐隐，和前一段的后墙接上 ----
+function rockTexInto(g, w, h, ppm) {                     // 往一张画布上乘一层石头的纹理（灰度）：大块明暗、有棱角的岩面、断断续续的岩层、裂缝、小坑
+  const [c, t] = mkCanvas(w, h); t.fillStyle = '#ababab'; t.fillRect(0, 0, w, h);
+  for (let i = 0, n = w * h / (ppm * ppm) * 0.9; i < n; i++) { const x = rr(0, w), y = rr(0, h), r = rr(0.5, 2.6) * ppm, v = rr(90, 245) | 0, gr = t.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${v},${v},${v},.42)`); gr.addColorStop(0.45, `rgba(${v},${v},${v},.19)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`); t.fillStyle = gr; t.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  for (let i = 0, n = w * h / (ppm * ppm) * 0.5; i < n; i++) {
+    const x = rr(0, w), y = rr(0, h), r = rr(0.35, 1.5) * ppm, k = rr(4, 7) | 0, a0 = rr(0, 6.28), v = rnd() < 0.5 ? rr(70, 130) | 0 : rr(185, 250) | 0;
+    t.beginPath(); for (let j = 0; j < k; j++) { const a = a0 + j / k * 6.283 + rr(-0.3, 0.3), rj = r * rr(0.55, 1); t[j ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rj, y + Math.sin(a) * rj * rr(0.45, 0.8)); } t.closePath();
+    t.fillStyle = `rgba(${v},${v},${v},${rr(0.16, 0.34)})`; t.fill(); if (rnd() < 0.5) { t.strokeStyle = `rgba(30,30,30,${rr(0.2, 0.45)})`; t.lineWidth = rr(0.8, 1.8) * ppm / 90; t.stroke(); }
+  }
+  t.lineCap = 'round';
+  for (let i = 0, n = h / ppm * 2.4; i < n; i++) {
+    const v = rr(45, 110) | 0, a = rr(-0.18, 0.1), al = rr(0.18, 0.45); t.lineWidth = rr(0.8, 2.6) * ppm / 90;
+    let x = rr(-0.2, 0.9) * w, y = rr(0, h); const len = rr(0.05, 0.3) * w, ph = rr(0, 6);
+    for (let k = 0; k < len; k += ppm * 0.2) { const nx = x + ppm * 0.2, ny = y + a * ppm * 0.2 + Math.sin(k / ppm * 0.9 + ph) * ppm * 0.03; if (Math.sin(k / ppm * 1.3 + ph * 3) > -0.35) { t.strokeStyle = `rgba(${v},${v},${v},${al})`; t.beginPath(); t.moveTo(x, y); t.lineTo(nx, ny); t.stroke(); } x = nx; y = ny; }
+  }
+  for (let i = 0, n = w / ppm * 0.5; i < n; i++) { t.strokeStyle = `rgba(20,20,20,${rr(0.3, 0.6)})`; t.lineWidth = rr(0.8, 2) * ppm / 90; let x = rr(0, w), y = rr(0, h); t.beginPath(); t.moveTo(x, y); for (let k = 0, m = rr(3, 9); k < m; k++) { x += rr(-0.3, 0.3) * ppm; y += rr(0.08, 0.35) * ppm; t.lineTo(x, y); } t.stroke(); }
+  for (let i = 0, n = w * h / 700; i < n; i++) { const v = rnd() < 0.5 ? rr(40, 90) | 0 : rr(200, 255) | 0; t.fillStyle = `rgba(${v},${v},${v},${rr(0.2, 0.5)})`; t.fillRect(rr(0, w), rr(0, h), rr(1, 3), rr(1, 3)); }
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'multiply'; g.drawImage(c, 0, 0); g.restore();
+}
+function caveBlob(g, x, y, r, c, a) { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(0.45, `rgba(${c},${a * 0.45})`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r); }
+// S：{ x1, x2 这一段的范围, y1, y2 后墙画多高, ppm, amb 岩石在空气里的底色, ambW 水下的底色, lights 光斑 [[x, y, 半径, 'r,g,b', 强度]], tint2 七米深处的水色 [[水面处 r,g,b,不透明度], [潭底]], fadeL 左边渐隐多宽, order, draw(g) 再加的东西 }
+function caveWall(R, S) {
+  const x1 = S.x1 - 7, x2 = S.x2 + 7, y1 = S.y1 ?? -7, y2 = S.y2 ?? 7, ppm = S.ppm ?? 52;
+  return backdrop(x1, x2, y1, y2, CZ.wall, ppm, g => {
+    g.fillStyle = S.amb; g.fillRect(x1, y1, x2 - x1, y2 - y1);
+    for (const w of S.waters) { g.fillStyle = S.ambW; g.fillRect(w.x1 - 4, y1, w.x2 - w.x1 + 8, w.y - y1); }
+    g.globalCompositeOperation = 'lighter'; for (const [x, y, r, c, a] of S.lights) caveBlob(g, x, y, r, c, a); g.globalCompositeOperation = 'source-over';
+    rockTexInto(g, g.canvas.width, g.canvas.height, g.canvas.width / (x2 - x1));
+    for (const w of S.waters) {                         // 水线上一道湿的、颜色深一些的岩石
+      const gr = g.createLinearGradient(0, w.y + 0.6, 0, w.y); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.35)'); g.fillStyle = gr; g.fillRect(w.x1 - 4, w.y, w.x2 - w.x1 + 8, 0.6);
+    }
+    if (S.draw) S.draw(g);
+    for (const [a, b] of [[S.x1 - 7, S.x1 + 5], [S.x2 + 7, S.x2 - 5]]) {   // 两头暗下去：和相邻一段的后墙在暗处交接，看不出接缝
+      const gr = g.createLinearGradient(a, 0, b, 0); gr.addColorStop(0, 'rgba(0,0,0,.82)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(Math.min(a, b), y1, Math.abs(b - a), y2 - y1);
+    }
+    // 水面以下：七米深的水把石头盖得只剩一点影子
+    const [s, d] = S.tint2;
+    for (const w of S.waters) {
+      g.save(); g.globalCompositeOperation = 'source-atop';
+      const gr = g.createLinearGradient(0, w.y, 0, w.y - 4.5); gr.addColorStop(0, `rgba(${s[0]},${s[1]},${s[2]},${s[3]})`); gr.addColorStop(1, `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`);
+      const ex = 4;
+      g.fillStyle = gr; g.beginPath(); g.rect(w.x1 - ex, y1, w.x2 - w.x1 + 2 * ex, w.y - y1); g.fill(); g.restore();
+    }
+  }, { fog: false, order: S.order ?? -2800, fadeL: S.fadeL ?? 0 });
+}
+
+// ---- 4 中间一层的剪影：石笋、石柱、大石头。shapes: [[点...], 颜色(可选)]，朝光的那边亮一道边 ----
+function caveShapes(R, shapes, o) {
+  const mk = (pts, col, z, order) => { const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)))), new THREE.MeshBasicMaterial({ color: col, fog: false })); m.material.userData.own = true; m.position.z = z; m.renderOrder = order; R.add(m); return m; };
+  for (const [pts, col] of shapes) {
+    const under = o.waterTint && pts.every(([x, y]) => { const w = waterAt(x); return w && y < w.y; });
+    const body = new THREE.Color(col ?? o.col); if (under) body.lerp(new THREE.Color(o.waterTint), o.waterK ?? 0.55);
+    if (o.rim) { const rc = new THREE.Color(o.rim).lerp(body, 0.55); if (under) rc.lerp(new THREE.Color(o.waterTint), 0.6); mk(pts.map(([x, y]) => [x + (o.rimDx ?? -0.035), y + 0.02]), rc, (o.z ?? CZ.mid) - 0.02, -1410); }
+    mk(pts, body, o.z ?? CZ.mid, -1400);
+  }
+}
+function spikeShape(x, y0, h, w, up) {                   // 一根石笋（up）或钟乳石
+  const pts = []; for (let i = 0; i <= 7; i++) { const t = i / 7, hh = h * Math.pow(1 - Math.abs(t * 2 - 1), 1.7) * rr(0.85, 1.1); pts.push([x - w / 2 + w * t, y0 + (up ? hh : -hh)]); }
+  pts.push([x + w / 2, y0 + (up ? -0.4 : 0.4)], [x - w / 2, y0 + (up ? -0.4 : 0.4)]); return pts;
+}
+function boulderShape(x, y0, w, h) { const pts = []; for (let a = 0; a <= Math.PI + 1e-3; a += Math.PI / 12) pts.push([x + Math.cos(a) * w / 2 * rr(0.9, 1.05), y0 - 0.3 + Math.sin(a) * h * rr(0.85, 1.05)]); return pts; }
+
+// ---- 5 水：主角前面一层水色（顶点颜色带透明度，越深越浓；有光的地方淡、亮一些）----
+function waterFront(R, w, o) {
+  const xs = []; for (let x = w.x1 - 0.4; x < w.x2 + 0.4; x += 0.5) xs.push(x); xs.push(w.x2 + 0.4);
+  const bot = w.bot ?? -6, ys = [w.y, w.y - 0.5, w.y - 1.3, w.y - 2.3, w.y - 3.5, bot - 1];
+  const [s, d] = o.tint, k = o.frontK ?? 0.62, pos = [], cl = [], idx = [], n = ys.length;
+  for (const x of xs) for (const y of ys) {
+    const t = clamp((w.y - y) / 4.2, 0, 1), L = o.lum ? o.lum(x, y) : 0;
+    const r = lerp(s[0], d[0], t), g = lerp(s[1], d[1], t), b = lerp(s[2], d[2], t), a = lerp(s[3], d[3], t) * k * (1 - 0.35 * clamp(L, 0, 1));
+    const lc = o.scat ?? [0, 0, 0]; pos.push(x, y, CZ.front); cl.push(Math.min(1, (r + lc[0] * L) / 255), Math.min(1, (g + lc[1] * L) / 255), Math.min(1, (b + lc[2] * L) / 255), a);
+  }
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < n - 1; j++) { const a = i * n + j; idx.push(a, a + n, a + 1, a + 1, a + n, a + n + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const ca = new THREE.Float32BufferAttribute(cl, 4); g.setAttribute('color', ca); g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  m.material.userData.own = true; m.renderOrder = 880; m.frustumCulled = false; R.add(m); return m;
+}
+// 水面：一整张水的颜色，从剖面一直铺到后墙（镜头在水面上方时看得见它，透过它看见的水下的东西都蒙上一层水色）
+function waterSheet(R, w, o) {
+  // 左右正好到潭壁和水面相交的地方（再往外就伸到岸底下去了）
+  let xa = w.x1, xb = w.x2; for (let n = 0; n < 200 && groundY(xa) > w.y; n++) xa += 0.01; for (let n = 0; n < 200 && groundY(xb) > w.y; n++) xb -= 0.01;
+  const [r, g, b] = o.col, m = new THREE.Mesh(new THREE.PlaneGeometry(xb - xa, CZ.front - CZ.back), new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace), transparent: true, opacity: o.a ?? 0.6, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  m.material.userData.own = true; m.rotation.x = -Math.PI / 2; m.position.set((xa + xb) / 2, w.y + 0.004, (CZ.front + CZ.back) / 2); m.renderOrder = 870; R.add(m);
+  m.material.side = THREE.FrontSide;                     // 从上面看：暗的水面；从水下往上看：水面像一面镜子，是亮一些的（另一张，只朝下）
+  const u = o.under ?? [150, 190, 190], m2 = new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(u[0] / 255, u[1] / 255, u[2] / 255, THREE.SRGBColorSpace), transparent: true, opacity: o.ua ?? 0.22, depthWrite: false, fog: false, side: THREE.BackSide }));
+  m2.material.userData.own = true; m2.rotation.copy(m.rotation); m2.position.copy(m.position); m2.renderOrder = 871; R.add(m2); return m;
+}
+// 水面那一道亮线，和它下面一窄条反光（从水下看水面像一面镜子）。亮度 o.surf(x)（0..1），会慢慢地闪
+const SURF_U = { uT: { value: 0 } };
+let SURF_MAT = null;
+function surfMat() {
+  if (SURF_MAT) return SURF_MAT;
+  return SURF_MAT = new THREE.ShaderMaterial({ uniforms: SURF_U, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    vertexShader: 'attribute vec4 aC; varying vec4 vC; varying float vX; void main() { vC = aC; vX = position.x; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform float uT; varying vec4 vC; varying float vX; void main() { float s = 0.7 + 0.3 * sin(vX * 3.1 + uT * 1.7) * sin(vX * 7.3 - uT * 2.3); gl_FragColor = vec4(vC.rgb, vC.a * s); }' });
+}
+function waterSurface(R, w, o) {
+  const xs = []; for (let x = w.x1 - 0.2; x < w.x2 + 0.2; x += 0.2) xs.push(x); xs.push(w.x2 + 0.2);
+  const rows = [[0.014, 1], [-0.014, 1], [-0.018, 0.3], [-0.3, 0]], col = o.surfC.map(v => v / 255), pos = [], cl = [], idx = [], n = rows.length;
+  for (const x of xs) { const k = clamp(o.surf(x), 0, 1) * 0.85; for (const [dy, a] of rows) { pos.push(x, w.y + dy, CZ.surf); cl.push(...col, k * a); } }
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < n - 1; j++) { const a = i * n + j; idx.push(a, a + n, a + 1, a + 1, a + n, a + n + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aC', new THREE.Float32BufferAttribute(cl, 4)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, surfMat()); m.renderOrder = 890; m.frustumCulled = false; R.add(m); return m;
+}
+
+// ---- 6 光：光柱 / 水下的光线（一块梯形，贴一张两边虚、往下渐淡的贴图）、焦散 ----
+let BEAM_TEX = null;
+function beamTex() {
+  if (BEAM_TEX) return BEAM_TEX;
+  const [c, g] = mkCanvas(64, 256), im = g.createImageData(64, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) { const u = (x + 0.5) / 64 * 2 - 1, v = y / 255, a = Math.exp(-u * u * 3.2) * (1 - v) * (0.75 + 0.25 * (1 - v)), i = (y * 64 + x) * 4; im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.round(255 * a); }
+  g.putImageData(im, 0, 0); return BEAM_TEX = canvasTex(c);
+}
+// top / bot: [中心 x, y, 宽]；v1：贴图用到多下面（1 = 一直淡到没有，0.6 = 到底还剩四成亮）
+function lightBeam(R, top, bot, col, a, z, v1 = 1, order = 60) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([top[0] - top[2] / 2, top[1], z, top[0] + top[2] / 2, top[1], z, bot[0] - bot[2] / 2, bot[1], z, bot[0] + bot[2] / 2, bot[1], z], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 1 - v1, 1, 1 - v1], 2)); g.setIndex([0, 2, 1, 1, 2, 3]);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: beamTex(), color: col, transparent: true, opacity: a, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  m.material.userData.own = true; m.renderOrder = order; m.frustumCulled = false; m.userData.a = a; R.add(m); return m;
+}
+// 焦散：一张能平铺的亮线网（两个最近的随机点距离差很小的地方就是亮线），慢慢地挪，像水面在晃
+let CAUSTIC_TEX = null;
+function causticTex() {
+  if (CAUSTIC_TEX) return CAUSTIC_TEX;
+  const N = 256, cell = 32, [c, g] = mkCanvas(N, N), im = g.createImageData(N, N), m = N / cell, pts = [];
+  const s0 = _seed; _seed = 777; for (let j = 0; j < m; j++) for (let i = 0; i < m; i++) pts.push([(i + rr(0.1, 0.9)) * cell, (j + rr(0.1, 0.9)) * cell]); _seed = s0;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const ci = Math.floor(x / cell), cj = Math.floor(y / cell); let f1 = 1e9, f2 = 1e9;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = (ci + di + m) % m, jj = (cj + dj + m) % m, p = pts[jj * m + ii], px = p[0] + (ci + di - ii) * cell, py = p[1] + (cj + dj - jj) * cell, d = Math.hypot(x - px, y - py); if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d; }
+    const v = Math.pow(1 - clamp((f2 - f1) / (cell * 0.12), 0, 1), 2), i = (y * N + x) * 4; im.data[i] = im.data[i + 1] = im.data[i + 2] = 255; im.data[i + 3] = Math.round(255 * v);
+  }
+  g.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return CAUSTIC_TEX = t;
+}
+// 一块焦散：平铺在地上（flat）或者贴在后墙上；中心 (x, y)、半径 rx、ry，颜色、亮度；每一块自己一张贴图（共用画布），自己挪
+function causticPatch(R, x, y, rx, ry, col, a, o = {}) {
+  const tex = causticTex().clone(); tex.needsUpdate = true; tex.repeat.set(rx * 2 / (o.cell ?? 1.3), ry * 2 / (o.cell ?? 1.3) * (o.squash ?? 1));
+  const seg = 12, pos = [], uv = [], cl = [], idx = [];
+  for (let j = 0; j <= seg; j++) for (let i = 0; i <= seg; i++) {
+    const u = i / seg * 2 - 1, v = j / seg * 2 - 1, f = Math.max(0, 1 - (u * u + v * v)) ** 1.5;
+    if (o.flat) pos.push(x + u * rx, y, (o.z ?? -2.5) + v * ry); else pos.push(x + u * rx, y + v * ry, o.z ?? CZ.wall + 0.1);
+    uv.push(i / seg, j / seg); cl.push(1, 1, 1, f);
+  }
+  for (let j = 0; j < seg; j++) for (let i = 0; i < seg; i++) { const a0 = j * (seg + 1) + i; idx.push(a0, a0 + 1, a0 + seg + 1, a0 + 1, a0 + seg + 2, a0 + seg + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 4)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, color: col, vertexColors: true, transparent: true, opacity: a, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  m.material.userData.own = true; m.renderOrder = o.order ?? -1300; m.frustumCulled = false; m.userData.drift = [o.dx ?? 0.025, o.dy ?? 0.018]; R.add(m);
+  return m;
+}
+function stepCaustics(list, dt) { for (const m of list) { const t = m.material.map; t.offset.x += m.userData.drift[0] * dt; t.offset.y += m.userData.drift[1] * dt; } }
+
+// ---- 7 水里悬着的颗粒（也可以是自己发光的小虫）：一团慢慢漂的点，在光里亮、暗处几乎看不见 ----
+// box: [x1, x2, y1, y2, z1, z2]；lum(x, y) 这里有多亮（0..1）；o.glow：自己发光（一明一灭）；o.c 颜色；o.size
+function caveSpecks(R, n, box, lum, o = {}) {
+  const [x1, x2, y1, y2, z1, z2] = box, col = airCol(o.c ?? 0xcfe6e6);
+  return airCloud(R, n, { add: true, order: o.order ?? 48, name: o.name ?? 'specks',
+    init(s) { s.x = rr(x1, x2); s.y = rr(y1, y2); s.z = rr(z1, z2); s.ph = rr(0, 6.28); s.tw = rr(0.6, 2.2); s.b = rr(0.3, 1); s.size = rr(0.6, 1.4) * (o.size ?? 0.03); s.tile = 0; s.c = col;
+      s.k = Math.pow(clamp(lum(s.x, s.y), 0, 1.4), o.glow ? 0 : 1.5); },
+    step(s, dt) {
+      s.x += 0.04 * Math.sin(T * 0.3 + s.ph) * dt; s.y += (0.025 * Math.sin(T * 0.45 + s.ph * 1.7) - (o.sink ?? 0.004)) * dt;
+      if (s.y < y1) s.y = y2; if (s.y > y2) s.y = y1;
+      if (Math.random() < 0.002) s.k = Math.pow(clamp(lum(s.x, s.y), 0, 1.4), o.glow ? 0 : 1.5);
+      s.a = (o.a ?? 0.6) * s.b * s.k * (o.glow ? 0.35 + 0.65 * Math.max(0, Math.sin(T * s.tw + s.ph)) : 0.75 + 0.25 * Math.sin(T * s.tw + s.ph));
+    } });
+}
+// 光斑（[x, y, 半径, 'r,g,b', 强度]）合起来在 (x, y) 这里有多亮
+const lumOf = lights => (x, y) => { let s = 0; for (const [lx, ly, r, , a] of lights) s += a * Math.exp(-((x - lx) ** 2 + (y - ly) ** 2) / (r * r * 0.35)); return s; };
+
+// ============================================================
 //  玩家控制：移动 / 跳跃 / 攀爬 / 推拉 / 操作机关 / 回到存档点
 // ============================================================
 const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
@@ -2193,6 +2488,8 @@ function stepPlayer(dt) {
     return;
   }
 
+  if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+
   // ---- 普通状态 ----
   const speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK;
   P.vx = damp(P.vx, d * speed, P.grounded ? (d ? 9 : 14) : 3.5, dt);
@@ -2213,6 +2510,7 @@ function stepPlayer(dt) {
     if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6 && !hit.noclimb) { P.x = nx; startMantle(hit, side); return; }
     P.vx = 0;
   }
+  if (ceilY(nx) < P.y + P.hh && ceilY(nx) < ceilY(P.x)) { nx = P.x; P.vx = 0; }      // 洞顶压下来，挡在前面
   P.x = nx;
 
   // 垂直方向：贴地行走，或者受重力下落
@@ -2225,6 +2523,8 @@ function stepPlayer(dt) {
     if (P.vy <= 0 && ny <= f) { P.y = f; P.impact = -P.vy; P.vy = 0; P.grounded = true; fx('land', P.impact); }
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
+  const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
+  const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
 
   // 抓住可以推拉的东西 / 操作机关
   if (ctl && P.grounded && keys.has('E')) {
@@ -2254,7 +2554,7 @@ function stepFade(dt) {
   const f = fadeThen; fadeThen = null; state = 'play'; ctl = true; $('fade').style.opacity = 0; if (f) f();
 }
 function placePlayer(x, y) {
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1 });
+  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath });
   P.y = y ?? floorY(x, 60); P.gy = P.y;
 }
 function respawn() {
@@ -2274,6 +2574,80 @@ function stepPits() {                              // 掉进水里或者坑里�
       if (CAT.state === 'follow') catPlace(P.x - 0.8, floorY(P.x - 0.8, P.y + 0.1)); snapCamera(); }, 0.9);
     return;
   }
+}
+
+// ============================================================
+//  游泳：掉进登记过的水（water()）里就游起来
+//  ← → 游，空格 / ↑ 往上，↓ 往下潜，斜着按就斜着游；什么都不按就慢慢浮上去，浮到水面上头露出来、踩着水。
+//  在水面上往岸边游（或者按空格），岸不太高就撑上去。憋气有限：在水下待太久，画面暗下去，回到存档点
+// ============================================================
+// v / vTop 水下 / 水面上游多快，rise 不按键时往上浮多快，r 身体当成多大的圆，c 身体中点离脚底多高，top 浮在水面上时中点在水面下多深，
+// enter 脚比水面低这么多就算掉进水里，reach 岸比水面高多少还撑得上去，breath 一口气能憋多少秒
+const SWIM = { v: 1.7, vTop: 1.3, acc: 3.2, stop: 2.4, rise: 0.3, r: 0.3, c: 0.6, top: 0.5, enter: 0.85, reach: 1.05, breath: 24 };
+function swimHit(x, cy) {                            // 身体中点在 (x, cy) 时会不会碰到地面、洞顶、方块
+  const r = SWIM.r;
+  for (const dx of [-0.8 * r, 0, 0.8 * r]) { if (groundY(x + dx) > cy - r) return true; if (ceilY(x + dx) < cy + 0.7 * r) return true; }
+  for (const s of SOLIDS) if (!s.off && x + r > s.x1 && x - r < s.x2 && cy + r > s.y1 && cy - r < s.y2) return true;
+  return false;
+}
+function enterSwim(w) {
+  const vy = P.vy;
+  Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55 });
+  P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
+  fx(vy < -4 ? 'splash' : 'plop', 1); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+}
+// 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
+function climbOut(w, side, cx) {
+  for (let k = 0.1; k <= 0.75; k += 0.05) {
+    const x = cx + side * k; if (groundY(x) <= w.y + 0.02) continue;
+    let top = -Infinity; for (let j = 0; j <= 0.6; j += 0.05) top = Math.max(top, groundY(x + side * j));
+    if (top - w.y > SWIM.reach || ceilY(x + side * 0.45) < top + P.H + 0.05) return false;
+    let e = x; for (let n = 0; n < 80 && groundY(e) < top - 0.04; n++) e += side * 0.01;
+    P.water = null; startMantle(side > 0 ? { x1: e, x2: e + 1, y2: top } : { x1: e - 1, x2: e, y2: top }, side); P.mantle.T = 0.9;
+    fx('wade'); splashAt(cx + side * 0.2, w.y, 0.35);
+    return true;
+  }
+  return false;
+}
+function stepSwim(dt, d) {
+  const w = P.water, dy = ctl ? (keys.has('J') ? 1 : 0) - (keys.has('DOWN') ? 1 : 0) : 0, topY = w.y - SWIM.top;
+  if (swimHit(P.x, P.y + SWIM.c)) {                  // 卡进了岩石（刚掉进水里时贴着岸边）：挪到最近的空处
+    const c0 = P.y + SWIM.c; let ok = false;
+    for (let r = 0.05; r <= 1.2 && !ok; r += 0.05) for (const [dx, dy_] of [[r, 0], [-r, 0], [0, -r], [0.7 * r, -0.7 * r], [-0.7 * r, -0.7 * r], [0, r]]) {
+      const ny = Math.min(c0 + dy_, topY); if (!swimHit(P.x + dx, ny)) { P.x += dx; P.y = ny - SWIM.c; ok = true; break; }
+    }
+  }
+  const cx = P.x, cy = P.y + SWIM.c, atTop = cy > topY - 0.06;
+  let tx = d, ty = dy; const n = Math.hypot(tx, ty); if (n > 1) { tx /= n; ty /= n; }
+  const sp = atTop && dy <= 0 ? SWIM.vTop : SWIM.v, surge = 0.75 + 0.5 * sstep(0.35, 0.5, P.stroke) * (1 - sstep(0.6, 0.95, P.stroke));   // 蹬腿的那一下往前冲
+  P.vx = damp(P.vx, tx * sp * surge, d ? SWIM.acc : SWIM.stop, dt);
+  P.vy = damp(P.vy, dy ? ty * sp * surge : SWIM.rise, dy ? SWIM.acc : 1.3, dt);
+  if (d) P.facing = d;
+  const moving = Math.abs(P.vx) + Math.abs(P.vy) > 0.3, panic = sstep(0.55, 1, 1 - P.air / SWIM.breath);
+  P.stroke = (P.stroke + dt * (moving ? 0.8 : atTop ? 0.65 : 0.4) * (1 + 0.8 * panic)) % 1;
+  // 先横着走，再竖着走，各自碰到东西就停
+  let nx = cx + P.vx * dt;
+  if (swimHit(nx, cy)) { if (atTop && d && climbOut(w, d, cx)) return; nx = cx; P.vx = 0; }
+  let ny = Math.min(cy + P.vy * dt, topY);
+  if (swimHit(nx, ny)) { ny = cy; P.vy = 0; }
+  if (ny >= topY - 1e-4 && P.vy > 0) P.vy = 0;
+  P.x = nx; P.y = ny - SWIM.c;
+  if (atTop && ctl && pressed.has('J') && climbOut(w, P.facing, nx)) return;
+  // 憋气：头在水下就一点点用掉，露出水面很快就缓过来
+  P.under = ny < topY - 0.15;
+  P.air = P.under ? P.air - dt : Math.min(SWIM.breath, P.air + dt * 6);
+  if (P.air <= 0 && state === 'play') drown();
+}
+function drown() {                                   // 憋不住了：黑下去，回到最近的存档点（解开的东西都保留）
+  fx('fall');
+  fadeOut(() => { const c = CPS[P.cp]; placePlayer(c.x, c.y); for (const z of ZONES) if (z.respawn) z.respawn(c); snapCamera(); }, 1.0);
+}
+// 憋气快到头了：画面一点点暗下去（借用黑场那一层）
+let breathDark = 0;
+function stepBreath() {
+  if (state !== 'play') { breathDark = 0; return; }
+  const k = P.mode === 'swim' ? sstep(0.6, 1, 1 - P.air / SWIM.breath) : 0;
+  if (Math.abs(k - breathDark) > 0.01 || (k === 0 && breathDark > 0)) { breathDark = k; $('fade').style.opacity = (0.75 * k).toFixed(3); }
 }
 
 // ============================================================
@@ -5463,6 +5837,272 @@ const CH8 = (() => {
 function retryEnding() { CH8.retry(); }
 
 // ============================================================
+//  第九章 · 山洞与暗河：一条横着剖开的长山洞，一路有水，要跳下去游过去，潜到岩石底下钻过去，再从另一边浮上来、爬上岸
+//  （故事还在重写，这一章先单独放在最后，从章节菜单进；以后按剧情挪到该放的地方，也可以删掉其中几段）
+//  八段，每段一种光和颜色（山洞画面图 generated_images/scene-cave-01-looks.png 的八格，用户说“都做，连在一起”）：
+//    一 冷青的雾（洞口，第一个水潭在水面上游过去）  二 别人留下的灯（一串旧灯泡通到水边，第一次潜水）
+//    三 天窗 + 沉在水底的灯（画面图第 8 格）        四 天窗（高高的洞厅，一束光落进水潭）
+//    五 浑浊的绿水（一段长长的、看不清的潜水）       六 铁锈水（旧矿洞：锈痕、木头支架）
+//    七 发光的水（最深最黑的地方，两段潜水，中间一口气） 八 洞口的天光（水被外面的光照成绿的，走出山洞）
+//  形状全由地面（terrain）和洞顶（ceiling）两条折线决定：画出来的岩石就是挡住人的岩石
+// ============================================================
+const X9 = 1100;
+const CH9 = (() => {
+  const X = X9;
+  const C = chapter({ n: 9, x0: X + 0.5, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
+    intro() { CAT.state = 'none'; } });                    // 小猫不进山洞（它怕水）
+  const A = (pts) => pts.map(([x, y]) => [X + x, y]);
+  // ---- 地面（脚下的岩石、潭底）----
+  terrain(...A([[-30, 0], [9.5, 0], [9.9, -0.6], [10.3, -2.4], [11.2, -3.1], [16, -3.3], [21.5, -3.1], [22.6, -2.2], [23.1, -0.7], [23.35, 0.3], [30, 0.3], [34, 0.2],
+    [40, 0], [47, 0], [47.4, -0.6], [47.8, -2.8], [48.6, -3.9], [55, -4.2], [60, -4.0], [61.2, -3.1], [61.7, -1.4], [62.0, -0.5], [62.25, 0.3], [70, 0.3],
+    [80, 0.1], [85.2, 0], [85.55, -0.8], [85.75, -2.4], [86.1, -3.6], [86.8, -4.3], [89, -4.5], [92, -4.6], [95, -4.45], [96.8, -4.3], [97.6, -3.9], [98.15, -3.0], [98.4, -1.8], [98.55, -0.6], [98.65, 0.3], [104, 0.3], [110, 0.35],
+    [118, 0.3], [122, 0.3], [122.4, -0.5], [123, -2.6], [124, -3.5], [130, -3.8], [136, -3.6], [137.4, -2.5], [137.9, -0.9], [138.2, 0.6], [146, 0.6],
+    [150, 0.5], [155, 0.4], [155.4, -0.5], [155.9, -2.6], [156.8, -3.8], [160, -4.2], [164, -5.0], [168, -5.1], [171, -4.6], [174, -4.0], [175.3, -3.0], [175.8, -1.5], [176.1, -0.4], [176.35, 0.3], [184, 0.3],
+    [192, 0.2], [197, 0.2], [197.4, -0.5], [197.8, -2.2], [198.6, -3.2], [204, -3.4], [208, -3.3], [209.2, -2.4], [209.7, -0.8], [210.0, 0.4], [216, 0.4], [224, 0.3],
+    [232, 0.2], [236, 0], [236.4, -0.6], [236.9, -2.8], [237.8, -4.0], [242, -4.6], [247, -4.8], [252, -4.7], [257, -4.9], [262, -4.6], [266, -4.2], [267.3, -3.2], [267.8, -1.6], [268.1, -0.4], [268.35, 0.3], [274, 0.3],
+    [280, 0.2], [285, 0.2], [285.4, -0.5], [285.9, -2.4], [286.8, -3.3], [292, -3.6], [298, -3.4], [299.4, -2.4], [299.9, -0.8], [300.2, 0.3], [306, 0.4], [312, 0.8], [318, 1.3], [324, 1.6], [360, 1.6]]));
+  // ---- 洞顶：往下压进水里的地方就是要潜过去的岩石；第七段中间抬起来一点，是一个能换气的小气室 ----
+  ceiling(...A([[-30, 14], [-10, 10], [-7, 6.5], [-5, 4.6], [-2.5, 3.9], [1, 3.6], [6, 3.4], [9, 3.9], [13, 4.4], [17, 4.6], [21, 4.0], [25, 3.5], [29, 3.2], [33, 3.0], [36.5, 3.1],
+    [40, 3.3], [44, 3.2], [46.5, 3.1], [49.5, 2.95], [50.6, 2.1], [51.2, 0.7], [51.6, -0.8], [52.1, -1.7], [53, -1.95], [55.5, -2.05], [56.6, -1.8], [57.2, -1.0], [57.6, 0.3], [58.2, 1.9], [59, 2.9], [62, 3.3], [66, 3.4], [72, 3.2],
+    [80, 3.3], [85, 2.9], [87.2, 2.85], [88.1, 2.6], [88.6, 1.8], [88.9, 0.6], [89.2, -0.6], [89.55, -1.45], [90.1, -1.9], [91.3, -2.0], [92.6, -2.05], [93.3, -1.85], [93.75, -1.3], [94.1, -0.3], [94.4, 0.9], [94.8, 2.0], [95.4, 2.9], [96.4, 3.3], [98, 3.45], [104, 3.6], [110, 3.5],
+    [118, 3.6], [121, 4.2], [124, 5.5], [127, 6.4], [129.5, 6.7], [131.5, 6.6], [134, 6.0], [137, 4.8], [140, 3.9], [145, 3.4],
+    [150, 3.2], [154, 3.0], [157.5, 2.8], [158.4, 1.6], [158.9, 0.2], [159.4, -1.3], [160.2, -2.4], [163, -2.9], [166, -3.0], [169, -2.8], [171.5, -2.2], [172.6, -1.4], [173.2, -0.2], [173.8, 1.4], [174.6, 2.6], [176, 3.2], [184, 3.3],
+    [192, 3.1], [197, 3.0], [200.5, 2.9], [201.3, 1.4], [201.7, -0.4], [202.1, -1.5], [203.5, -1.65], [204.6, -1.5], [205.1, -0.5], [205.5, 1.2], [206.2, 2.6], [208, 3.0], [214, 3.1], [222, 3.0],
+    [232, 3.0], [236, 3.2], [238.5, 3.0], [239.3, 1.6], [239.8, 0.0], [240.3, -1.4], [241.2, -2.2], [244, -2.4], [246.5, -2.3], [247.3, -1.5], [247.8, -0.6], [248.2, 0.8], [249.5, 1.2], [251, 0.9], [251.5, -0.5], [252.1, -1.6], [253, -2.3], [257, -2.5], [261, -2.3], [262.5, -1.6], [263.1, -0.4], [263.6, 1.2], [264.5, 2.6], [266, 3.2], [272, 3.3],
+    [280, 3.1], [285, 3.3], [288.5, 3.0], [289.3, 1.5], [289.8, -0.2], [290.3, -1.4], [291.2, -1.9], [293.5, -2.0], [294.4, -1.5], [294.9, -0.3], [295.4, 1.4], [296.2, 2.8], [298, 3.6], [303, 4.6], [308, 5.8], [312, 7.6], [316, 10], [320, 14], [330, 20], [360, 24]]));
+  const W = [[9.62, 23.3, -3.3], [47.12, 62.2, -4.2], [85.35, 98.6, -4.6], [122.15, 138.15, -3.8], [155.1, 176.3, -5.1], [197.12, 209.95, -3.4], [236.12, 268.3, -4.9], [285.12, 300.15, -3.6]]
+    .map(([a, b, bot]) => water({ x1: X + a, x2: X + b, y: -0.35, bot }));
+  groundFront(X - 30, X + 360, null);                     // 共用的地面这一段不铺：山洞自己搭（前面是岩石的剖面）
+  solid({ x1: X + 338, x2: X + 340, y1: -2, y2: 30, noclimb: true });   // 走出山洞以后先到这里为止
+  solid({ x1: X - 7.5, x2: X - 6.5, y1: -2, y2: 30, noclimb: true });   // 身后是进来的洞口，不往回走
+  ground(X - 30, 0x1c2224); ground(X + 360, 0x1c2224);
+  for (const x of [3, 25.5, 41, 63.5, 81, 100, 119, 139.5, 151, 177.5, 193, 211, 233, 269.5, 281, 301.5, 320]) checkpoint(X + x);
+  // 镜头压到和主角的头差不多高、平着看（抬高量是负的：眼睛往下挪，看的还是同一点），水面、地面、洞顶都只是窄窄的一条，和剖面图一样
+  camKeys([X - 20, 20, 1.3, 0.5, -1.0], [X + 116, 20, 1.3, 0.5, -1.0], [X + 124, 21.5, 1.9, 0.5, -0.9], [X + 140, 21.5, 1.9, 0.5, -0.9], [X + 148, 20, 1.3, 0.5, -1.0],
+    [X + 304, 20.5, 1.4, 0.8, -1.0], [X + 314, 22, 2.0, 1.5, -0.6], [X + 360, 22, 2.0, 1.5, -0.6]);
+
+  hint(() => P.x > X + 5.5 && P.x < X + 9.6 && P.grounded && P.cp <= 1, '跳下去，<b>← →</b> 游泳');
+  hint(() => P.mode === 'swim' && P.x > X + 10 && P.x < X + 23.3 && !P.under, '游到对岸，往岸边一推，就撑上去了');
+  hint(() => P.mode === 'swim' && P.x > X + 47.2 && P.x < X + 51.6 && !P.under, '按住 <b>↓</b> 潜下去，从岩石底下游过去');
+  hint(() => P.mode === 'swim' && P.x > X + 50 && P.x < X + 58 && P.under, '<b>空格</b> 往上，<b>↓</b> 往下；什么都不按，人会慢慢浮上去');
+  hint(() => P.mode === 'swim' && P.x > X + 244 && P.x < X + 248.2 && P.under && P.air < 15, '前面头顶上有一口气');
+
+  // ============================================================
+  //  八段的光和颜色（数值来自 Last/tools/cave-sheet.html 的八格；位置换成了这一章的坐标）
+  //  amb / ambW 后墙在水上、水下的底色；lights 后墙上的光斑 [x, y, 半径, 'r,g,b', 强度]；tint / tint2 主角前面的水 / 七米深处的水 [r,g,b,不透明度]（水面处 → 潭底）；
+  //  surf(x) 水面那道亮线多亮；floorC / ceilC 地面、洞顶的颜色（0..1）；mid / rim 中间一层剪影的颜色和亮边；fill 跟着主角的补光；env 这一段的环境；pts 照主角的灯
+  // ============================================================
+  const exp2 = (x, c, w) => Math.exp(-((x - c) ** 2) / w);
+  const SEC = [
+    { x1: -16, x2: 40, name: '冷青的雾', amb: '#2a393d', ambW: '#22302f', mid: '#141d20', rim: '#5c7074', fill: 0xa9c2c4,
+      lights: [[-9, 3, 9, '125,155,160', 0.6], [5, 2, 9, '80,100,104', 0.3], [17, 2.5, 10, '75,95,98', 0.26], [32, 2, 8, '60,78,80', 0.22]],
+      tint: [[62, 86, 88, 0.42], [30, 44, 47, 0.68]], tint2: [[58, 80, 82, 0.58], [28, 40, 43, 0.88]], surf: () => 0.5, surfC: [200, 220, 222],
+      floorC: [0.36, 0.4, 0.4], ceilC: [0.26, 0.3, 0.31], mist: ['150,176,178', 0.26], specks: { n: 220, c: 0xbfd6d6, a: 0.4 }, mouthL: true,
+      env: { fog: 0x2a3a3e, fogD: 0.012, hemiS: 0x9fb6bd, hemiG: 0x1c2224, hemiI: 0.6, keyC: 0xd4e6ec, keyI: 0.35, keyDir: [-0.5, 1, 0.45], rimI: 0.25 } },
+    { x1: 40, x2: 80, name: '别人留下的灯', amb: '#0a0e11', ambW: '#080e10', mid: '#05080a', rim: '#7a5434', fill: 0xc8a07a,
+      lights: [[42.7, 1.9, 2.6, '255,165,90', 0.34], [46, 1.85, 2.6, '255,165,90', 0.34], [48.6, 2.05, 2.6, '255,165,90', 0.34], [50, 0.95, 2.8, '255,170,95', 0.5], [62, 1.5, 6, '40,55,60', 0.1], [73, 1.5, 6, '40,55,60', 0.1]],
+      tint: [[22, 42, 42, 0.38], [6, 14, 16, 0.68]], tint2: [[16, 32, 32, 0.52], [5, 10, 12, 0.88]], surf: x => 0.15 + 0.7 * exp2(x, 50, 2), surfC: [255, 205, 150],
+      floorC: [0.2, 0.18, 0.16], ceilC: [0.15, 0.13, 0.12], specks: { n: 200, c: 0xffcf96, a: 0.4 }, lamps: true,
+      env: { fog: 0x07090b, hemiS: 0x1a2a30, hemiG: 0x07090a, hemiI: 0.3, keyI: 0.05, keyDir: [0.2, 1, 0.3], rimI: 0 },
+      pts: [[42.7, 1.85, -4.6, 0xffa860, 2.2, 6], [46, 1.8, -4.6, 0xffa860, 2.2, 6], [48.6, 2.0, -3.7, 0xffa860, 2.2, 6], [50, 0.9, -2.2, 0xffb46a, 2.8, 7]] },
+    { x1: 80, x2: 118, name: '天窗与沉灯', amb: '#0c1215', ambW: '#0b1517', mid: '#070b0d', rim: '#90b4b4', fill: 0x8fc6c4,
+      lights: [[96.6, 1.4, 5.5, '120,160,165', 0.55], [96.6, 3.1, 1.8, '210,235,235', 0.65], [94.9, -4.0, 3.0, '230,150,70', 0.5], [83, 1.6, 7, '40,55,60', 0.12], [96.4, -2.6, 4.5, '50,130,130', 0.42], [108, 1.6, 7, '50,70,74', 0.15]],
+      tint: [[34, 88, 90, 0.32], [5, 20, 24, 0.66]], tint2: [[24, 70, 72, 0.42], [4, 15, 18, 0.86]], surf: x => 0.25 + 0.75 * exp2(x, 96.6, 6), surfC: [220, 245, 245],
+      floorC: [0.22, 0.24, 0.24], ceilC: [0.15, 0.17, 0.17], specks: { n: 300, c: 0xafe1e1, a: 0.5 }, sky: { x: 96.6, w0: 0.75, w1: 2.0, rays: 7, spread: [93, 100.3] }, sunk: [94.9, -0.9],
+      env: { fog: 0x0b1214, hemiS: 0x2a4246, hemiG: 0x080c0e, hemiI: 0.35, keyI: 0.08, keyDir: [0.1, 1, 0.2], rimI: 0 },
+      pts: [[94.9, -4.05, -0.5, 0xffa850, 3.6, 7], [96, -2.0, 1.6, 0x63bcb8, 2.2, 8]] },
+    { x1: 118, x2: 150, name: '天窗', amb: '#0c1215', ambW: '#0b1517', mid: '#070b0d', rim: '#96bebe', fill: 0x8fc6c4,
+      lights: [[130.6, 2.5, 7, '120,160,165', 0.6], [130.6, 6.2, 2.4, '210,235,235', 0.7], [121, 1.6, 6, '60,82,88', 0.18], [130.4, -2.4, 6, '50,130,130', 0.5], [143, 1.5, 6, '60,82,88', 0.2]],
+      tint: [[34, 88, 90, 0.32], [5, 20, 24, 0.66]], tint2: [[24, 70, 72, 0.42], [4, 15, 18, 0.86]], surf: x => 0.25 + 0.75 * exp2(x, 130.6, 8), surfC: [220, 245, 245],
+      floorC: [0.24, 0.26, 0.26], ceilC: [0.16, 0.18, 0.18], specks: { n: 380, c: 0xafe1e1, a: 0.5 }, sky: { x: 130.6, w0: 1.0, w1: 2.7, rays: 9, spread: [125.5, 136] },
+      env: { fog: 0x0c1416, hemiS: 0x355458, hemiG: 0x0a1012, hemiI: 0.42, keyI: 0.12, keyDir: [0.1, 1, 0.2], rimI: 0 },
+      pts: [[129.5, -2.2, 1.6, 0x63bcb8, 2.6, 8]] },
+    { x1: 150, x2: 192, name: '浑浊的绿水', amb: '#1d1e17', ambW: '#1a1d12', mid: '#0d0e0a', rim: '#6e6e50', fill: 0xb4bc8c,
+      lights: [[150, 3.5, 9, '120,120,95', 0.3], [166, 2.5, 9, '110,112,88', 0.25], [183, 3, 8, '110,112,88', 0.25]],
+      tint: [[60, 72, 38, 0.5], [22, 30, 14, 0.82]], tint2: [[52, 62, 32, 0.86], [20, 26, 12, 0.97]], frontK: 0.55, surf: () => 0.4, surfC: [200, 210, 160], murk: [90, 105, 60, 0.2],
+      floorC: [0.3, 0.29, 0.22], ceilC: [0.2, 0.2, 0.15], specks: { n: 650, c: 0xaab978, a: 0.4, size: 0.022 },
+      env: { fog: 0x1d1f16, hemiS: 0x7a8a5a, hemiG: 0x1a1c12, hemiI: 0.5, keyI: 0.08, keyDir: [-0.2, 1, 0.3], rimI: 0 } },
+    { x1: 192, x2: 232, name: '铁锈水', amb: '#1a1a19', ambW: '#1d1611', mid: '#0b0a09', rim: '#7a8488', fill: 0xc49c80,
+      lights: [[200, 3.0, 6, '140,160,165', 0.35], [214, 2.5, 7, '95,100,102', 0.25], [204, -2.5, 7, '120,60,25', 0.3], [226, 2, 7, '95,100,102', 0.2]],
+      tint: [[84, 48, 28, 0.42], [34, 18, 10, 0.76]], tint2: [[74, 40, 22, 0.62], [28, 14, 7, 0.92]], surf: () => 0.45, surfC: [230, 190, 150],
+      floorC: [0.3, 0.24, 0.2], ceilC: [0.22, 0.2, 0.19], specks: { n: 300, c: 0xdca06e, a: 0.35 }, rust: true, timbers: [203, 212, 216.5, 221, 225.5, 230],
+      env: { fog: 0x1a1512, hemiS: 0x8a6a50, hemiG: 0x1a0f08, hemiI: 0.42, keyI: 0.1, keyDir: [-0.3, 1, 0.3], rimI: 0 },
+      pts: [[200, 2.6, 0.5, 0xa8bcc0, 2.0, 10]] },
+    { x1: 232, x2: 280, name: '发光的水', amb: '#05080b', ambW: '#04090d', mid: '#04070a', rim: '#2a6c80', fill: 0x5fc8ee,
+      lights: [[244, -0.2, 9, '25,90,115', 0.4], [258, -0.2, 9, '25,90,115', 0.4], [244, -4.2, 9, '15,105,135', 0.55], [258, -4.2, 9, '15,105,135', 0.55], [249.5, 0.6, 2.5, '40,140,170', 0.4], [235, 1.5, 6, '20,50,65', 0.12], [274, 1.5, 6, '20,50,65', 0.12]],
+      tint: [[6, 30, 46, 0.3], [4, 42, 62, 0.45]], tint2: [[4, 24, 40, 0.5], [5, 48, 70, 0.62]], surf: () => 0.55, surfC: [120, 220, 255],
+      floorC: [0.07, 0.17, 0.21], ceilC: [0.05, 0.09, 0.11], specks: { n: 900, c: 0x78ebff, a: 0.85, glow: true, size: 0.035 }, algae: true,
+      env: { fog: 0x04080b, hemiS: 0x0d2630, hemiG: 0x050a0c, hemiI: 0.28, keyI: 0.02, keyDir: [0, 1, 0.3], rimI: 0 },
+      pts: [[242, -4.4, 0.5, 0x3fd2ff, 2.6, 6], [249.5, -1.0, 0.5, 0x3fd2ff, 2.2, 5], [257, -4.5, 0.5, 0x3fd2ff, 2.6, 6], [264, -4.2, 0.5, 0x3fd2ff, 2.4, 6]] },
+    { x1: 280, x2: 350, name: '洞口的天光', amb: '#10171a', ambW: '#0d1a19', mid: '#080c0d', rim: '#90b4a8', fill: 0x9cd0bc,
+      lights: [[314, 2.5, 8, '115,145,145', 0.5], [305, 1.5, 8, '90,120,118', 0.4], [296, -2.4, 9, '45,120,100', 0.55], [282, 1.5, 6, '45,60,64', 0.15]],
+      tint: [[42, 100, 88, 0.36], [7, 26, 24, 0.66]], tint2: [[34, 90, 78, 0.45], [6, 22, 20, 0.85]], surf: x => 0.22 + 0.78 * sstep(286, 299, x), surfC: [200, 232, 220], scat: [60, 160, 130],
+      floorC: [0.28, 0.31, 0.3], ceilC: [0.18, 0.21, 0.21], specks: { n: 300, c: 0xaae1cd, a: 0.45 }, mouthR: true, glowW: [[298, -1.6, 8, 0x3ca082, 0.3]],
+      env: { fog: 0x1a2524, hemiS: 0x40605a, hemiG: 0x0b1210, hemiI: 0.45, keyI: 0.2, keyDir: [0.6, 1, 0.3], rimI: 0 },
+      pts: [[296.5, -2.4, 1.5, 0x5aa890, 3.2, 9], [312, 3, 0, 0xb8cccc, 3, 16]] },
+  ];
+  // 环境：每一段一组，段与段之间几米里慢慢换过去
+  const ENVC = { dustO: 0, wind: 0, ext: 0, sky: [0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a, 0x05080a], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1, rimC: 0x9fb6bd };
+  for (const S of SEC) { env(X + S.x1 + (S.x1 > 0 ? 2 : 0), { ...ENVC, ...S.env }); env(X + Math.min(S.x2 - 2, 304), {}); }
+  env(X + 316, { fog: 0x6a7c7a, hemiS: 0xc8d6d4, hemiG: 0x2a3433, hemiI: 0.85, keyI: 0.45 });   // 洞口外面亮起来
+  // 照主角的灯（各段登记好，离镜头近的几盏才真的亮）；另有一盏跟着主角走的补光，颜色跟着段落换
+  for (const S of SEC) for (const [x, y, z, c, i, d] of S.pts || []) pointLight({ p: [X + x, y, z], c, i, d });
+  const skyL = SEC.filter(S => S.sky).map(S => spotLight({ p: [X + S.sky.x, 9, 0.5], t: [X + S.sky.x - 0.4, -3.5, 0], c: 0xd8eef0, i: 6, d: 16, a: 0.32, pen: 0.8 }));
+  spotLight({ p: [X + 324, 9, -3], t: [X + 300, -1, 0], c: 0xc0d6d0, i: 4.5, d: 34, a: 0.45, pen: 0.9 });
+  const fillL = pointLight({ p: [X, 0, 3.2], c: 0x9fc4c4, i: 1.5, d: 7 });
+  const secAt = x => { for (const S of SEC) if (x < X + S.x2) return S; return SEC[SEC.length - 1]; };
+  // 地面、洞顶的颜色在两段交界前后各 4 米里慢慢换过去；照在上面的光斑用全章的（相邻一段的光也照得过来）
+  const ALL_LIGHTS = SEC.flatMap(S => S.lights.map(([x, y, r, c, a]) => [X + x, y, r, c, a])), lumAll = lumOf(ALL_LIGHTS);
+  const secCol = (x, key) => {
+    const i = SEC.indexOf(secAt(x)), S = SEC[i], a = S[key], d1 = x - (X + S.x1), d2 = X + S.x2 - x;
+    const N = d1 < 4 && i > 0 ? SEC[i - 1] : d2 < 4 && i < SEC.length - 1 ? SEC[i + 1] : null; if (!N) return a;
+    const t = 0.5 * (1 - Math.min(d1, d2) / 4), b = N[key]; return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+  };
+
+  // ============================================================
+  //  搭一段
+  // ============================================================
+  function* buildSec(R, S, k) {
+    const x1 = X + S.x1, x2 = X + S.x2, ws = W.filter(w => w.x2 > x1 && w.x1 < x2);
+    const lights = S.lights.map(([x, y, r, c, a]) => [X + x, y, r, c, a]), lum = lumAll;
+    const hex = c => '#' + c.toString(16).padStart(6, '0');
+    // 1 岩石的剖面、地面、洞顶
+    caveCut(R, x1, x2, { skip: x => ws.some(w => x > w.x1 - 0.5 && x < w.x2 + 0.5 && ceilY(x) < 2) });
+    const wfog = (x, y, z, base) => {                         // 水下的地面沉进水色里：越深、越往里越看不清
+      const w = waterAt(x); if (!w || y > w.y) return base;
+      const d = S.tint2[1], f = clamp(1 - Math.exp(-(Math.max(0, -z) * 0.32 + (w.y - y) * 0.12)), 0, 0.92);
+      return [lerp(base[0], d[0] / 255, f), lerp(base[1], d[1] / 255, f), lerp(base[2], d[2] / 255, f)];
+    };
+    caveSurface(R, TERRAIN, groundY, x1, x2, (x, y, z) => { const fc = secCol(x, 'floorC'), L = clamp(lum(x, y + 0.8), 0, 1.2), b = [fc[0] * (0.7 + 0.5 * L), fc[1] * (0.7 + 0.5 * L), fc[2] * (0.7 + 0.5 * L)]; return wfog(x, y, z, b.map(v => v * (z < -5 ? 0.8 : 1))); }, false);
+    caveSurface(R, CEIL, ceilY, x1, x2, (x, y) => { const cc = secCol(x, 'ceilC'), L = clamp(lum(x, y - 0.8), 0, 1.2); return [cc[0] * (0.6 + 0.6 * L), cc[1] * (0.6 + 0.6 * L), cc[2] * (0.6 + 0.6 * L)]; }, true);
+    yield;
+    // 2 后墙
+    caveWall(R, { x1, x2, y1: -7, y2: S.mouthR ? 16 : 8, ppm: 50, amb: S.amb, ambW: S.ambW, lights, tint2: S.tint2, waters: ws, fadeL: k ? 6 : 0, order: -2800 + k,
+      draw(g) {
+        if (S.mouthL) {                                       // 洞口：左边透进来外面的雾
+          g.save(); g.filter = 'blur(6px)'; const gr = g.createLinearGradient(X - 4, 0, X - 12, 0); gr.addColorStop(0, 'rgba(170,196,198,0)'); gr.addColorStop(1, 'rgba(176,200,202,.95)'); g.fillStyle = gr;
+          g.beginPath(); g.moveTo(X - 3, -1); g.quadraticCurveTo(X - 5, 3, X - 4, 8); g.lineTo(X - 22, 8); g.lineTo(X - 22, -1); g.closePath(); g.fill(); g.restore();
+        }
+        if (S.mouthR) {                                       // 出口：岩壁上开着一个大洞口，外面是阴天：灰白的天，雾里两层山，近处几棵树的影子；洞口边上的岩石是暗的
+          const mouth = () => { g.beginPath(); g.moveTo(X + 309.5, 0.5); g.bezierCurveTo(X + 310.3, 3.6, X + 312.4, 6.6, X + 316.5, 8.4); g.bezierCurveTo(X + 321, 10.2, X + 330, 11.2, X + 358, 11.6); g.lineTo(X + 358, 0.5); g.closePath(); };
+          g.save(); g.filter = 'blur(14px)'; g.fillStyle = 'rgba(120,145,142,.55)'; mouth(); g.fill(); g.restore();          // 洞口周围的岩石被外面的光照亮一圈
+          g.save(); mouth(); g.clip();
+          const sky = g.createLinearGradient(0, 11.6, 0, 0.5); sky.addColorStop(0, '#8b9fa2'); sky.addColorStop(0.55, '#aebcbb'); sky.addColorStop(1, '#c3ccc8'); g.fillStyle = sky; g.fillRect(X + 305, 0, 56, 12);
+          g.filter = 'blur(3px)';
+          for (const [h, a, f, col] of [[3.6, 1.3, 0.13, 'rgba(146,162,160,.75)'], [2.3, 0.9, 0.29, 'rgba(118,136,132,.85)']]) {
+            g.fillStyle = col; g.beginPath(); g.moveTo(X + 306, 0.4); for (let x = X + 306; x <= X + 358; x += 0.4) g.lineTo(x, h + a * Math.sin(x * f + h) + 0.35 * a * Math.sin(x * f * 2.7)); g.lineTo(X + 358, 0.4); g.closePath(); g.fill();
+          }
+          g.fillStyle = 'rgba(70,86,82,.9)';                    // 近处的几棵树和灌木
+          for (const [x, h] of [[314.2, 2.6], [316.8, 3.4], [318.1, 2.2], [323.5, 3.8], [326.4, 2.7], [331, 3.2], [335.5, 2.4]]) { g.fillRect(X + x - 0.06, 0.4, 0.12, h * 0.55); for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28; g.beginPath(); g.ellipse(X + x + Math.cos(a) * h * 0.18, 0.4 + h * 0.62 + Math.sin(a) * h * 0.16, h * 0.2, h * 0.17, 0, 0, 6.283); g.fill(); } }
+          g.restore();
+          g.save(); g.filter = 'blur(5px)'; g.strokeStyle = 'rgba(10,14,15,.85)'; g.lineWidth = 0.6; mouth(); g.stroke(); g.restore();   // 洞口的边：一圈暗的岩石
+        }
+        if (S.rust) {                                         // 锈：岩石上一片片发红，水线上一圈沉积，几道细细往下渗的锈水
+          for (let i = 0; i < 60; i++) { const x = rr(x1 - 6, x2 + 6), y = rr(0, 3.2); g.save(); g.globalCompositeOperation = 'multiply'; caveBlob(g, x, y, rr(0.6, 1.8), '200,120,80', rr(0.35, 0.7)); g.restore(); }
+          for (const w of ws) { g.save(); g.globalCompositeOperation = 'multiply'; const b = g.createLinearGradient(0, w.y + 0.9, 0, w.y); b.addColorStop(0, 'rgba(210,130,90,0)'); b.addColorStop(1, 'rgba(190,105,60,.85)'); g.fillStyle = b; g.fillRect(w.x1 - 4, w.y, w.x2 - w.x1 + 8, 0.9); g.restore(); }
+          g.save(); g.filter = 'blur(0.8px)'; for (let i = 0; i < 24; i++) { const x = rr(x1 - 6, x2 + 6), y0 = rr(1.2, 3.0), y1 = rr(-0.2, 0.6), sw = rr(-0.08, 0.08); g.strokeStyle = `rgba(120,56,22,${rr(0.18, 0.35)})`; g.lineWidth = rr(0.025, 0.06); g.beginPath(); g.moveTo(x, y0); g.quadraticCurveTo(x + sw, (y0 + y1) / 2, x + sw * 2, y1); g.stroke(); } g.restore();
+        }
+        if (S.sky) {                                          // 天窗下面：水面把光反射到岩壁上，一道道晃动的细亮线
+          const cx = X + S.sky.x; g.save(); g.globalCompositeOperation = 'lighter'; g.filter = 'blur(1.3px)';
+          for (let i = 0; i < 110; i++) { const y0 = -0.35 + rr(0.1, 2.2), x0 = cx + rr(-4, 4), len = rr(0.25, 1.1), f = Math.exp(-(((x0 - cx) / 3.6) ** 2) * 2 - (((y0 - 0.7) / 1.1) ** 2) * 2); if (f < 0.05) continue;
+            g.strokeStyle = `rgba(170,235,225,${0.5 * f * rr(0.35, 1)})`; g.lineWidth = rr(0.012, 0.03); g.beginPath(); for (let t = 0; t <= 1.001; t += 0.1) { const x = x0 + len * t, y = y0 + 0.035 * Math.sin(t * 8 + i * 1.7) * Math.sin(t * 3.14); t ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+          g.restore();
+        }
+      } });
+    yield;
+    // 3 中间一层：岸上的石笋、洞顶的钟乳石、石柱、潭底的大石头、旧矿洞的木头支架
+    const shapes = [];
+    for (let x = x1 + rr(1, 3); x < x2 - 1; x += rr(2.5, 6)) {
+      const g0 = groundY(x), c0 = ceilY(x); if (c0 - g0 < 2.2) continue;
+      if (waterAt(x)) { if (rnd() < 0.6) shapes.push([boulderShape(x, g0, rr(0.8, 2.2), rr(0.35, 1.0))]); }
+      else if (rnd() < 0.4 && x < X + 306 && Math.abs(groundY(x + 0.5) - groundY(x - 0.5)) < 0.15) shapes.push([spikeShape(x, g0, rr(0.3, 1.0), rr(0.35, 0.7), true)]);
+      if (c0 - g0 > 2.6 && rnd() < 0.6 && Math.abs(ceilY(x + 0.5) - ceilY(x - 0.5)) < 0.3) shapes.push([spikeShape(x + rr(-1, 1), ceilY(x) + 0.1, rr(0.4, 1.2), rr(0.3, 0.6), false)]);
+    }
+    if (S.timbers) for (const t of S.timbers) {                   // 旧矿洞的支架：两根立柱、一根横梁（有的歪了）
+      const x = X + t, g0 = groundY(x), c0 = Math.min(ceilY(x), 3.2), lean = rr(-0.08, 0.08), col = '#1d140d';
+      if (waterAt(x)) { shapes.push([[[x - 0.12, g0 - 0.3], [x + 0.1, g0 - 0.3], [x + 0.35, c0 - 0.6], [x + 0.13, c0 - 0.55]], col]); continue; }   // 断在水里的一根
+      for (const dx of [-0.75, 0.75]) shapes.push([[[x + dx - 0.11, g0 - 0.3], [x + dx + 0.11, g0 - 0.3], [x + dx + 0.11 + lean, c0 - 0.15], [x + dx - 0.11 + lean, c0 - 0.15]], col]);
+      shapes.push([[[x - 1.05 + lean, c0 - 0.42], [x + 1.05 + lean, c0 - 0.38], [x + 1.05 + lean, c0 - 0.15], [x - 1.05 + lean, c0 - 0.19]], col]);
+    }
+    caveShapes(R, shapes, { col: S.mid, rim: S.rim, rimDx: -0.035, waterTint: hex((S.tint2[1][0] << 16) | (S.tint2[1][1] << 8) | S.tint2[1][2]), waterK: 0.6 });
+    yield;
+    // 4 水
+    const V = { caus: [], beams: [], glows: [], clouds: [] };
+    for (const w of ws) {
+      waterFront(R, w, { tint: S.tint, frontK: S.frontK, lum: (x, y) => 0.6 * lum(x, y), scat: S.scat ?? [30, 60, 60] });
+      waterSheet(R, w, { col: S.tint2[0].slice(0, 3).map(v => v * 0.7), a: 0.55, under: S.surfC.map((v, i) => lerp(v, S.tint[0][i], 0.5)), ua: 0.2 });
+      waterSurface(R, w, { surf: x => S.surf(x - X), surfC: S.surfC });
+      V.clouds.push(caveSpecks(R, S.specks.n, [w.x1, w.x2, w.bot + 0.1, w.y - 0.05, -3, 1.6], (x, y) => 0.15 + lum(x, y), { c: S.specks.c, a: S.specks.a, glow: S.specks.glow, size: S.specks.size }));
+      if (S.murk) { const [r, g, b, a] = S.murk; V.glows.push(bandMesh(R, w.x1 - 0.4, w.x2 + 0.4, w.y, w.y - 2.2, [r, g, b, a], [r, g, b, 0], CZ.front + 0.01, 885, true)); }
+    }
+    if (S.mist) V.glows.push(bandMesh(R, x1 - 2, x2 - 1, 1.4, -0.4, [...S.mist[0].split(',').map(Number), 0], S.mist[0].split(',').map(Number).concat(S.mist[1]), 1.4, 300, false, 6));
+    yield;
+    // 5 光
+    if (S.sky) {                                              // 天窗：洞顶一道亮的裂缝、一束光柱落进水里，水下散成一根根光线，潭底和岩壁上晃着焦散
+      const sx = X + S.sky.x, top = ceilY(sx), w = waterAt(sx);
+      glow(R, 0xe6f6f6, 3.2, 0.55, sx, top - 0.05, -2.2, GLOW_SOFT); glow(R, 0xffffff, 0.9, 0.85, sx, top - 0.02, -2.2);
+      V.beams.push(lightBeam(R, [sx, top, S.sky.w0], [sx + 0.3, w.y, S.sky.w1], 0xc8e8e8, 0.34, -0.6, 0.55));
+      V.beams.push(lightBeam(R, [sx, top, S.sky.w0 * 0.6], [sx + 0.25, w.y, S.sky.w1 * 0.6], 0xe6f6f6, 0.2, 1.0, 0.5, 61));
+      for (let i = 0; i < S.sky.rays; i++) {
+        const f = (i + 0.5) / S.sky.rays, x0 = sx + 0.3 + lerp(-S.sky.w1 * 0.42, S.sky.w1 * 0.42, f), xb = X + lerp(S.sky.spread[0], S.sky.spread[1], f) + rr(-0.25, 0.25);
+        V.beams.push(lightBeam(R, [x0, w.y, rr(0.12, 0.32)], [xb, w.bot, rr(0.5, 1.1)], 0xc8e8e8, 0.11 * rr(0.6, 1.2), i % 3 === 1 ? 0.9 : -0.9, 1));
+      }
+      V.caus.push(causticPatch(R, sx + 0.3, groundY(sx) + 0.03, 3.4, 3.2, 0xaee8e0, 0.42, { flat: true, z: -2.4 }));
+      V.caus.push(causticPatch(R, sx + 0.2, w.y + 1.1, 4.2, 1.2, 0xaee8e0, 0.32, { squash: 3, dx: 0.04, dy: 0.012 }));
+      V.clouds.push(caveSpecks(R, 120, [sx - 1.4, sx + 1.4, w.y + 0.1, top - 0.2, -2.5, 1.5], (x, y) => Math.exp(-((x - sx - 0.3 * (1 - (y - w.y) / (top - w.y))) ** 2) / 0.5), { c: 0xdff2f2, a: 0.7, size: 0.022, sink: 0.04 }));
+    }
+    if (S.sunk) {                                             // 沉在水底的工作灯：躺倒的灯身、铁丝罩子、还亮着的灯泡
+      const [lx, lz] = S.sunk, x = X + lx, y = groundY(x) + 0.09, gL = grp(R, x, y, lz);
+      add(gL, cy(0.065, 0.075, 0.2, 10), MAT.dark, -0.12, 0, 0).rotation.z = Math.PI / 2;
+      add(gL, new THREE.SphereGeometry(0.07, 12, 10), unlit(0xffe9c4), 0.04, 0, 0, false);
+      for (const a of [0, 1.05, 2.1]) { const r = add(gL, new THREE.TorusGeometry(0.09, 0.006, 4, 18), MAT.dark, 0.04, 0, 0, false); r.rotation.set(0, Math.PI / 2, a); }
+      add(gL, new THREE.TorusGeometry(0.09, 0.006, 4, 18), MAT.dark, 0.13, 0, 0, false).rotation.y = Math.PI / 2;
+      tube(R, [[x - 0.2, y - 0.04, lz], [x - 0.6, y - 0.08, lz - 0.3], [x - 1.4, y - 0.08, lz - 0.2]], 0.012, MAT.dark, 12);
+      V.glows.push(glow(R, 0xffb060, 2.6, 0.5, x + 0.05, y + 0.1, lz + 0.05, GLOW_SOFT), glow(R, 0xffe2b0, 0.5, 0.95, x + 0.05, y, lz + 0.1));
+    }
+    if (S.lamps) {                                            // 一串旧灯泡：电线挂在钉进岩壁的钩子上，最后一只吊在水面上方
+      const hooks = [[41, 2.7, -5], [44.4, 2.35, -5], [47.6, 2.5, -4.5], [49.6, 2.75, -3.2]].map(([x, y, z]) => [X + x, y, z]), pts = [];
+      for (let i = 0; i < hooks.length - 1; i++) { const [a, b, c] = hooks[i], [d, e, f] = hooks[i + 1]; for (let t = 0; t < 1; t += 0.125) pts.push([lerp(a, d, t), lerp(b, e, t) - 0.55 * 4 * t * (1 - t), lerp(c, f, t)]); }
+      pts.push(hooks[hooks.length - 1]); tube(R, pts, 0.012, MAT.dark, 80);
+      tube(R, [hooks[3], [X + 49.9, 1.9, -2.6], [X + 50, 1.0, -2.2]], 0.01, MAT.dark, 16);
+      for (const [x, y, z] of [[42.7, 1.92, -5], [46, 1.86, -5], [48.6, 2.03, -3.85], [50, 0.95, -2.2]]) {
+        add(R, new THREE.SphereGeometry(0.05, 10, 8), unlit(0xffd9a0), X + x, y - 0.06, z, false);
+        V.glows.push(glow(R, 0xffb46a, 1.6, 0.42, X + x, y - 0.06, z + 0.05, GLOW_SOFT), glow(R, 0xffe0b8, 0.32, 0.85, X + x, y - 0.06, z + 0.06));
+      }
+    }
+    if (S.algae) {                                            // 发光的藻：贴在潭底和水下的岩壁上，一点一点的蓝光，一明一灭
+      for (const w of ws) V.clouds.push(airCloud(R, 420, { add: true, order: 47, name: 'algae',
+        init(s) { s.x = rr(w.x1 + 0.3, w.x2 - 0.3); if (rnd() < 0.6) { s.z = rr(-6.6, 1.8); s.y = groundY(s.x) + 0.03; } else { s.z = CZ.wall + 0.2; s.y = rr(w.bot - 0.5, w.y - 0.6); }
+          s.size = rr(0.03, 0.1); s.ph = rr(0, 6.28); s.tw = rr(0.3, 1.2); s.b = rr(0.3, 1); s.tile = 0; s.c = airCol(rnd() < 0.8 ? 0x45d8ff : 0x7affd8); },
+        step(s) { s.a = s.b * (0.35 + 0.65 * Math.max(0, Math.sin(T * s.tw + s.ph))); } }));
+    }
+    for (const [gx, gy, r, c, a] of S.glowW || []) V.glows.push(glow(R, c, r, a, X + gx, gy, -1.5, GLOW_SOFT));
+    S.V = V;
+  }
+  // 一条上下渐变的带子（雾、浑水里光散开的那一层）：colTop / colBot 是 [r, g, b, 不透明度]；左右两头各有 fade 米慢慢淡掉
+  function bandMesh(R, x1, x2, yTop, yBot, cT, cB, z, order, additive, fade = 3) {
+    const xs = [x1, x1 + fade, x2 - fade, x2], ka = [0, 1, 1, 0], pos = [], cl = [], idx = [], c = (v, i) => i < 3 ? v / 255 : v;
+    xs.forEach((x, i) => { pos.push(x, yTop, z, x, yBot, z); const t = cT.map(c), b = cB.map(c); t[3] *= ka[i]; b[3] *= ka[i]; cl.push(...t, ...b); });
+    for (let i = 0; i < 3; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 4)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending }));
+    m.material.userData.own = true; m.renderOrder = order; m.frustumCulled = false; R.add(m); return m;
+  }
+  SEC.forEach((S, k) => defZone({ n: 9, vis: [X + S.x1, X + S.x2], *build(R) { yield* buildSec(R, S, k); },
+    update(dt) { const V = S.V; if (!V) return; stepCaustics(V.caus, dt); for (const c of V.clouds) c.step(dt); for (const b of V.beams) b.material.opacity = b.userData.a * (0.85 + 0.15 * Math.sin(T * 0.7 + b.id)); },
+    reset() {}, solve() {}, unbuild() { S.V = null; } }));
+  // 整章：补光跟着主角走、颜色跟着段落换；水面亮线闪动的时间
+  const fillC = new THREE.Color();
+  defZone({ n: 9, vis: [X - 16, X + 350], *build() {}, reset() {}, solve() {},
+    update(dt) {
+      SURF_U.uT.value = T;
+      const S = secAt(P.x); fillC.setHex(S.fill); fillL.c.lerp(fillC, 1 - Math.exp(-3 * dt));
+      fillL.p[0] = P.x; fillL.p[1] = P.y + 0.9; fillL.p[2] = 3.2; fillL.i = P.mode === 'swim' ? 1.8 : 1.3;
+    } });
+  return { X, SEC, W, skyL };
+})();
+
+// ============================================================
 //  空中的细节（一）：画法和公用的几种东西
 //  飞落的尘埃、飘荡的落叶、风沙、纸片和塑料袋、蠓虫、飞蛾、苍蝇、蜻蜓、蝴蝶、远处的鸟群、萤火虫。
 //  这些小东西都用“点”来画：一个点就是一张面朝镜头的小贴图，一整团只占一次绘制。
@@ -6077,6 +6717,76 @@ airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
 });
 
 // ============================================================
+//  水里的小东西：主角嘴边冒出的气泡、跳进水里溅起的水花和一团气泡、浮在水面上时身边一道道散开的波纹
+//  用的是空中细节那一套点（70-air.js 的 airCloud），第一次用到时才建，挂在场景上，所有能游泳的水共用
+// ============================================================
+let WFX = null;
+const _headP = new THREE.Vector3();
+function heroHead() {                                    // 主角头的位置（模型还没加载出来就按身体中点估一下）
+  const b = hero.B.traveler?.bones?.get('Head');
+  if (b) { b.node.getWorldPosition(_headP); return _headP; }
+  return _headP.set(P.x + P.facing * 0.45, P.y + SWIM.c + 0.15, 0);
+}
+function waterFx() {
+  if (WFX) return WFX;
+  const N = 260;
+  const C = airCloud(scene, N, { add: true, order: 52, name: 'water',
+    init(s) { s.kind = 0; s.a = 0; s.y = -999; s.tile = 0; s.c = airCol(0xdfeff0); },
+    step(s, dt) {
+      if (!s.kind) { s.a = 0; return; }
+      s.age += dt;
+      if (s.kind === 1) {                                // 气泡：一边晃一边往上冒，碰到水面（或者头顶的岩石）就没了
+        s.vy = Math.min(s.vy + 1.8 * dt, s.vmax); s.y += s.vy * dt; s.x += (Math.sin(T * s.f + s.ph) * 0.14 + s.vx) * dt; s.vx *= 1 - 2 * dt;
+        if (s.y > Math.min(s.top, ceilY(s.x)) - 0.03) s.kind = 0;
+        s.a = s.b * sstep(0, 0.06, s.age);
+      } else if (s.kind === 2) {                         // 水花：往上一溅，落回水面就没了
+        s.vy -= 9.8 * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+        if (s.vy < 0 && s.y < s.y0) s.kind = 0;
+        s.a = s.b;
+      } else {                                           // 波纹：贴着水面往两边散开，越来越淡
+        s.size = s.s0 + s.age * 0.85; s.a = s.b * (1 - sstep(0, s.life, s.age));
+        if (s.age > s.life) s.kind = 0;
+      }
+      if (!s.kind) s.a = 0;
+    } });
+  let next = 0;
+  const take = () => { for (let i = 0; i < N; i++) { const s = C.list[(next + i) % N]; if (!s.kind) { next = (next + i + 1) % N; return s; } } return null; };
+  return WFX = { C, take, live: 0 };
+}
+function bubbleAt(x, y, top, r) {
+  const s = waterFx().take(); if (!s) return;
+  Object.assign(s, { kind: 1, age: 0, x, y, z: ar(-0.15, 0.25), vx: ar(-0.25, 0.25), vy: ar(-0.3, 0.1), vmax: 0.4 + r * 7, f: ar(5, 9), ph: ar(0, 6.28), size: r, b: ar(0.4, 0.8), tile: 0, rot: 0, flip: 1, top, c: airCol(0xd8ecee) });
+  WFX.live = 3;
+}
+function rippleAt(x, y, k) {
+  const s = waterFx().take(); if (!s) return;
+  Object.assign(s, { kind: 3, age: 0, x, y: y + 0.012, z: 0.35, s0: 0.25, size: 0.25, life: 0.8 + 0.6 * k, b: 0.32 * k, tile: 1, rot: 0, flip: 1, c: airCol(0xe0f0f0) });
+  WFX.live = 3;
+}
+function splashAt(x, y, k = 1) {                         // 跳进水里：溅起一把水花，水下翻起一团气泡，水面散开一道波纹
+  for (let i = 0, n = Math.round(14 + 26 * k); i < n; i++) {
+    const s = waterFx().take(); if (!s) break;
+    Object.assign(s, { kind: 2, age: 0, x: x + ar(-0.35, 0.35), y: y + 0.02, y0: y, z: ar(-0.4, 0.5), vx: ar(-1.3, 1.3), vy: ar(1.4, 4.0) * (0.45 + 0.65 * k), size: ar(0.025, 0.06), b: ar(0.35, 0.8), tile: 0, rot: 0, flip: 1, c: airCol(0xe6f2f2) });
+  }
+  for (let i = 0, n = Math.round(8 + 30 * k); i < n; i++) bubbleAt(x + ar(-0.45, 0.45), y - ar(0.15, 0.3 + 1.3 * k), y, ar(0.02, 0.07));
+  rippleAt(x, y, 0.8);
+  WFX.live = 3;
+}
+let bubT = 0, ripT = 0;
+function stepWaterFx(dt) {
+  if (P.mode === 'swim' && P.water && state === 'play') {
+    const w = P.water;
+    if (P.under) {                                       // 在水下：隔一会儿从嘴边冒一两个气泡；憋不住了冒得更勤
+      bubT -= dt * (1 + 3 * sstep(0.55, 1, 1 - P.air / SWIM.breath));
+      if (bubT <= 0) { const h = heroHead(); bubT = ar(0.3, 1.0); for (let i = 0, n = Math.random() < 0.3 ? 3 : 1; i < n; i++) bubbleAt(h.x + P.facing * 0.1, h.y + i * 0.05, w.y, ar(0.015, 0.04)); }
+    } else {                                             // 浮在水面上：身边一道道波纹
+      ripT -= dt * (0.6 + Math.min(1.5, Math.abs(P.vx))); if (ripT <= 0) { ripT = 0.55; rippleAt(P.x + ar(-0.2, 0.2), w.y, 0.6); }
+    }
+  }
+  if (WFX && WFX.live > 0) { WFX.C.step(dt); if (!WFX.C.list.some(s => s.kind)) WFX.live -= dt; }
+}
+
+// ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局
 // ============================================================
 const SAVE_KEY = 'rust-glimmer-save-v1';
@@ -6092,7 +6802,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -6108,7 +6818,7 @@ function soundNote(first) {
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
 const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
@@ -6175,7 +6885,7 @@ function updateCamera(dt) {
   const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo] : camKey(P.x);
   cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
   cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
-  const ty = (P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;      // 跳起来时镜头只跟一小半
+  const ty = (P.mode === 'swim' ? P.y + SWIM.c - 0.45 : P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;   // 跳起来时镜头只跟一小半；游泳时整个跟着下去
   cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt); cam.lift = damp(cam.lift, lift, 1.6, dt);
   placeCamera();
 }
@@ -6199,7 +6909,7 @@ function sim(dt) {
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
-  stepGates(dt);
+  stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepPits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
@@ -6207,7 +6917,8 @@ function sim(dt) {
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose,
-    hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null });
+    hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
+    swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
   stepCat(dt);
 
@@ -6219,7 +6930,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角

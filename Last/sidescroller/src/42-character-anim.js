@@ -18,6 +18,7 @@ function makeCharacter(kind, prev, o = {}) {
   // 动画的内部状态（换外形时沿用上一个角色的，避免跳变）
   const A = prev ? prev.A : { ph: 0, yaw: 0, run: 0, mv: 0, air: 0, lean: 0, sq: 0, sqv: 0, pvx: 0, acc: 0, grip: 0, tuck: 0, ta: -0.5, tv: 0, look: 0 };
   A.cover ??= 0; A.dip ??= 0;                                               // 07 专用：捂灯的程度、落地时灯被震暗的程度
+  A.swim ??= 0; A.pitch ??= 0;                                              // 游泳：在水里的程度、身子放平了多少（0 竖着，π/2 平躺）
   (o.parent ?? scene).add(root);
 
   function update(dt, s) {
@@ -34,6 +35,8 @@ function makeCharacter(kind, prev, o = {}) {
     A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
     A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
+    A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
+    if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
     const duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u;
@@ -56,6 +59,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp;
+    leanT *= 1 - A.swim;
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -A.lean;
     spine.position.y = 0.004 * u * Math.sin(t * 1.7) * (1 - A.mv) * (1 - limp);   // 站着时的呼吸
@@ -119,6 +123,34 @@ function makeCharacter(kind, prev, o = {}) {
     // 头：保持水平；站着时偶尔左右看看；被灯照到时扭头看向光源
     A.look = damp(A.look, q.look !== undefined ? q.look : s.alert > 0.05 ? dir * 1.0 : A.cover > 0.3 ? dir * 0.5 : 0.3 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1) * (1 - A.mv) * (1 - limp), 6, dt);
     head.rotation.set(0, A.look, A.lean * 0.62 + 0.03 * bobPh * A.mv - (B.S.robot ? 0.10 : B.S.slouch ? 1.4 * B.S.slouch * (1 - A.run) : 0) - 0.12 * A.cover - 0.5 * limp + (q.nod || 0));
+    // ---- 游泳：在水下身子放平，蛙泳 —— 两手往前伸直、往两边划回胸前，两腿收起来再往后一蹬，然后滑一下；
+    //      浮在水面上身子竖起来，两手在身前一前一后地拨水，两腿像蹬自行车一样踩水；在水下停着不动就斜着身子慢慢划 ----
+    if (A.swim > 0.002) {
+      const k = A.swim, w = s.swim || A.lastSwim || { ph: 0, vx: 0, vy: 0, c: 0.6, top: 0, panic: 0 }; if (s.swim) A.lastSwim = s.swim;
+      const p = w.ph, mv = sstep(0.15, 0.9, Math.hypot(w.vx, w.vy)), top = w.top, still = (1 - mv) * (1 - top), tread = top * (1 - mv);
+      const flat = clamp(Math.PI / 2 - 0.9 * Math.atan2(w.vy, Math.abs(w.vx) + 0.12), 0.35, 2.3);         // 往上游时抬起身子，往下潜时头朝下
+      if (s.mode === 'swim') A.pitch = damp(A.pitch, lerp(lerp(0.75, flat, mv), lerp(0.18, 1.0, mv), top), 4.5, dt);
+      // 蛙泳的一圈：0–0.32 两手划回胸前（手肘弯起来），0.32–0.48 两手往前伸直；0.18–0.42 收腿，0.42–0.56 往后蹬；剩下的滑行
+      const pull = p < 0.32 ? sstep(0, 0.32, p) : 1 - sstep(0.32, 0.48, p), bend = p < 0.32 ? sstep(0.05, 0.3, p) : 1 - sstep(0.38, 0.48, p);
+      const tuck = p < 0.18 ? 0 : p < 0.42 ? sstep(0.18, 0.42, p) : 1 - sstep(0.42, 0.56, p);
+      for (let i = 0; i < 2; i++) {
+        const R = arms[i], L = legs[i], o = i ? 1 : -1, ph = p * 6.2832 + i * Math.PI;
+        let a = lerp(3.0, 1.15, pull) + o * 0.03, b = lerp(0.1, 1.75, bend);
+        a = lerp(a, 1.15 + 0.32 * Math.sin(ph), tread); b = lerp(b, 1.05 + 0.3 * Math.sin(ph + 1.2), tread);
+        a = lerp(a, 1.8 + 0.4 * Math.sin(ph), still * 0.7); b = lerp(b, 0.9, still * 0.7);
+        if (w.panic > 0) { a += w.panic * 0.45 * Math.sin(t * 9 + i * 2); b += w.panic * 0.3 * Math.sin(t * 11 + i); }      // 憋不住了：手乱划
+        R.sh.rotation.z = lerp(R.sh.rotation.z, a, k); R.el.rotation.z = lerp(R.el.rotation.z, b, k); R.sh.rotation.x = lerp(R.sh.rotation.x, o * 0.12 * (1 - pull), k); R.sh.rotation.y = lerp(R.sh.rotation.y, 0, k);
+        let th = lerp(-0.05, 0.6, tuck) + o * 0.04, kn = lerp(-0.05, -1.95, tuck), ft = lerp(-1.2, 0.05, tuck);
+        th = lerp(th, 0.5 + 0.35 * Math.sin(ph), tread); kn = lerp(kn, -1.05 - 0.5 * Math.sin(ph + 0.7), tread); ft = lerp(ft, -0.5, tread);
+        th = lerp(th, 0.15 + 0.15 * Math.sin(ph * 0.7), still * 0.7); kn = lerp(kn, -0.5 - 0.3 * Math.sin(ph * 0.7 + 1), still * 0.7);
+        L.hip.rotation.z = lerp(L.hip.rotation.z, th, k); L.knee.rotation.z = lerp(L.knee.rotation.z, kn, k); L.foot.rotation.z = lerp(L.foot.rotation.z, ft, k);
+      }
+      spine.rotation.z = lerp(spine.rotation.z, (0.25 + 0.2 * Math.sin(p * 6.2832) * mv) * clamp(A.pitch / 1.5, 0, 1), k);   // 背微微拱起来
+      head.rotation.z = lerp(head.rotation.z, 0.8 * A.pitch, k); head.rotation.y = lerp(head.rotation.y, 0, k);                // 抬着头往前看
+    }
+    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）
+    root.rotation.z = -A.pitch;
+    if (A.pitch > 1e-4) { const c = s.swim?.c ?? A.lastSwim?.c ?? 0.6, sp = Math.sin(A.pitch) * c; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(A.pitch) * c; }
     if (tail) {                                                              // 马尾：一个小弹簧，跑起来向后飘，下落时扬起
       const target = -0.5 - clamp(fwd * 0.2, -0.3, 0.75) + clamp(s.vy * 0.07, -0.6, 0.5) + 0.18 * bobPh * A.mv;
       A.tv += ((target - A.ta) * 70 - A.tv * 8) * dt; A.ta = clamp(A.ta + A.tv * dt, -2.2, 0.4);
@@ -154,8 +186,8 @@ function makeCharacter(kind, prev, o = {}) {
         entry.node.updateWorldMatrix(false, true);
       };
       poseBone('Spine', spine.rotation.z * .35);
-      poseBone('neck', 0, head.rotation.y * .35);                 // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的
-      poseBone('Head', head.rotation.z, head.rotation.y * .65);
+      poseBone('neck', head.rotation.z * .35 * A.swim, head.rotation.y * .35);   // 站着张望、被灯照到时扭头：脖子先带三成，头转剩下的（游泳时抬头也分给脖子三成）
+      poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
         poseBone(side + 'UpLeg', legs[i].hip.rotation.z);

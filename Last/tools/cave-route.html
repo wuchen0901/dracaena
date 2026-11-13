@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第九章 · 沿路的画面</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  #game{position:fixed;left:0;top:1080px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1920" height="1080"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 第九章（山洞与暗河）沿路的画面：把横版原型装进一个看不见的窗口，摆到这一章的各处（站在岸上，或者游在水里的某个深度），把整幅画面抄到图上。
+// 画面全部来自游戏本身的渲染。要通过本地服务器打开：http://127.0.0.1:8767/tools/cave-route.html?layout=route&part=1
+// 导出：node Last/tools/shot.mjs "<网址>" generated_images/xxx.png 1920 <高>
+// 网址参数：layout —— route 一组画面排在一起（part=1 前四段、2 后四段，或者 shots=1,5,9 挑几屏），每格是整幅画面缩小一半 /
+//   full 一屏的整幅画面（shot=5）/ film 一段连续的画面排成一张图，拿去切成动图（clip=dive 等，见 CLIPS；n 几格、dt 每格隔几秒、w 每格多宽、cols 一行几格）/
+//   check 让一个自动玩家从头游到尾，报出每个水潭进出水的时间、在水下最长待了多久（结果写在图上和控制台里）；fx=0 不加暗角、颗粒和上下黑边
+const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'route';
+const num = (k, d) => q.get(k) === null ? d : +q.get(k);
+const sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+const FW = 1920, FH = 1080, FX = q.get('fx') !== '0', X = 1100;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+let G = null;
+
+// ---- 摆法：站在岸上 / 游在水里（y 是身体中点的高度；keys 摆好以后按住哪几个键走一小会儿，好让动作和镜头都稳下来）----
+function stand(x, sec = 1.0, facing = 1) { G.tp(X + x); G.P.facing = facing; G.step(sec); }
+function swim(x, y, o = {}) {
+  const sx = X + x - (o.lead ?? 1.4), w = G.WATERS.find(w => sx > w.x1 && sx < w.x2);
+  G.tp(sx); Object.assign(G.P, { mode: 'swim', water: w, grounded: false, y: Math.min(y, w.y - G.SWIM.top) - G.SWIM.c, vx: 0, vy: 0, stroke: o.ph ?? 0.6, air: G.SWIM.breath, facing: 1 });
+  const rise = G.SWIM.rise; if (y < w.y - 0.7) G.SWIM.rise = 0;           // 摆在水下的：先不让他往上浮
+  G.hold(o.keys ?? ['R'], o.sec ?? 1.6); G.SWIM.rise = rise;
+}
+const SHOTS = {
+  1: ['一 · 洞口，冷青的雾', () => stand(4)],
+  2: ['一 · 第一个水潭：在水面上游过去', () => swim(15.5, 0)],
+  3: ['二 · 一串旧灯泡通到水边', () => stand(45.2)],
+  4: ['二 · 第一次潜水：从岩石底下游过去', () => swim(54.2, -3.1)],
+  5: ['三 · 通道尽头沉着一盏灯', () => swim(92.3, -3.3)],
+  6: ['三 · 在天窗下面浮上来', () => swim(97.4, 0, { keys: [], sec: 1.2, lead: 0 })],
+  7: ['四 · 天窗', () => swim(129.6, 0)],
+  8: ['四 · 天窗下的岸', () => stand(141)],
+  9: ['五 · 浑浊的绿水，一段长长的潜水', () => swim(165.5, -4.1)],
+  10: ['六 · 铁锈水', () => swim(203.4, -2.55)],
+  11: ['六 · 旧矿洞的支架', () => stand(218.5)],
+  12: ['七 · 发光的水', () => swim(243.6, -3.7)],
+  13: ['七 · 中间换一口气的小气室', () => swim(249.7, 0, { keys: [], sec: 1.2, lead: 0 })],
+  14: ['七 · 第二段潜水', () => swim(257, -3.9)],
+  15: ['八 · 水被外面的光照成绿的', () => swim(293.4, -2.7)],
+  16: ['八 · 走出山洞', () => stand(318)],
+};
+// ---- 动图用的几段：从哪里开始、按什么键、按多久 ----
+const CLIPS = {
+  jump: { title: '跳下水、游过去、爬上岸（第一段）', start: () => stand(7.2, 0.4), plan: t => t < 0.25 ? [] : ['R'] },
+  dive: { title: '潜到岩石底下游过去（第二段）', start: () => swim(48.6, 0, { sec: 0.3, lead: 0 }), plan: (t, P) => { const cy = P.y + 0.6; return t < 1.4 ? ['R', 'DOWN'] : cy < -2.6 || P.x > X + 57.2 ? ['R', ...(P.x > X + 57.4 ? ['J'] : [])] : ['R', 'DOWN']; } },
+  tread: { title: '浮在水面上踩水', start: () => swim(16, 0, { keys: [], sec: 0.4, lead: 0 }), plan: () => [] },
+  glow: { title: '发光的水里游', start: () => swim(242, -3.7, { sec: 0.4 }), plan: () => ['R'] },
+};
+
+// ---- 抄画面 ----
+const stage = document.createElement('canvas'); stage.width = FW; stage.height = FH; const sctx = stage.getContext('2d');
+let GRAIN = null;
+function overlays(vig = 1) {
+  const c = sctx;
+  c.save(); c.translate(FW * 0.5, FH * 0.46); c.scale(FW * 0.5 * Math.SQRT2, FH * 0.54 * Math.SQRT2);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.44, 'rgba(0,0,0,0)'); g.addColorStop(0.78, `rgba(0,0,0,${0.3 * vig})`); g.addColorStop(1, `rgba(0,0,0,${0.7 * vig})`);
+  c.fillStyle = g; c.fillRect(-2, -2, 4, 4); c.restore();
+  if (!GRAIN) {
+    GRAIN = document.createElement('canvas'); GRAIN.width = GRAIN.height = 256;
+    const gg = GRAIN.getContext('2d'), im = gg.createImageData(256, 256); let s = 12345;
+    for (let i = 0; i < im.data.length; i += 4) { s = (s * 16807) % 2147483647; const n = s / 2147483647 * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = n; im.data[i + 3] = 255; }
+    gg.putImageData(im, 0, 0);
+  }
+  if (q.get('grain') !== '0') { c.save(); c.globalAlpha = 0.075; c.globalCompositeOperation = 'overlay'; c.fillStyle = c.createPattern(GRAIN, 'repeat'); c.fillRect(0, 0, FW, FH); c.restore(); }   // 做动图时可以不加颗粒（每一帧的颗粒都不一样，动图会很大）
+  c.fillStyle = '#040607'; c.fillRect(0, 0, FW, FH * 0.06); c.fillRect(0, FH * 0.94, FW, FH * 0.06);
+}
+function render() {
+  G.renderer.render(G.scene, G.camera); sctx.drawImage(G.renderer.domElement, 0, 0, FW, FH);
+  const f = +(frame.contentDocument.getElementById('fade').style.opacity || 0); if (f > 0) { sctx.fillStyle = `rgba(4,6,7,${f})`; sctx.fillRect(0, 0, FW, FH); }   // 憋气时暗下去的那一层
+  if (FX) overlays(G.E.vig ?? 1);
+}
+function label(text, x, y, o = {}) {
+  ctx.save(); ctx.font = `${o.weight ?? 500} ${o.size ?? 15}px ${FONT}`; ctx.fillStyle = o.color ?? '#c3cfce'; ctx.textAlign = o.align ?? 'left';
+  if (o.shadow !== false) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 8; }
+  ctx.fillText(text, x, y); ctx.restore();
+}
+function tag(n, text, x, y) {
+  ctx.save(); ctx.font = `600 16px ${FONT}`; const w = ctx.measureText(text).width;
+  ctx.fillStyle = 'rgba(6,10,12,.55)'; ctx.beginPath(); ctx.roundRect(x + 14, y + 12, w + (n ? 56 : 24), 40, 9); ctx.fill(); ctx.restore();
+  if (n) label(n, x + 26, y + 42, { size: 26, weight: 600, color: '#f1f5f4' });
+  label(text, x + (n ? 56 : 26), y + 38, { size: 16, weight: 600, color: '#f1f5f4' });
+}
+const HEAD = 104;
+function header(title, lines) {
+  ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, sheet.width, HEAD);
+  label(title, 70, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+  lines.forEach((t, i) => label(t, 70, 70 + i * 19, { size: 13.5, weight: 400, color: '#8fa0a0', shadow: false }));
+}
+function size(w, h) { sheet.width = w; sheet.height = h; frame.style.top = h + 'px'; ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, w, h); }
+
+const LAYOUTS = {
+  route() {
+    const part = num('part', 1), list = q.get('shots') ? q.get('shots').split(',') : Object.keys(SHOTS).filter(k => (+k <= 8) === (part === 1));
+    const cols = 2, rows = Math.ceil(list.length / cols), cw = FW / cols, ch = cw * FH / FW;
+    size(FW, HEAD + rows * ch);
+    header(q.get('title') || `第九章 · 山洞与暗河 · 沿路的画面（${part === 1 ? '一到四段' : '五到八段'}）`, ['游戏里原样的画面（每格是 1080p 整幅画面缩小一半）。游在水里的几格是让主角在那个深度往右游了一小会儿再截的。',
+      '一 冷青的雾 · 二 别人留下的灯 · 三 天窗和沉灯 · 四 天窗 · 五 浑浊的绿水 · 六 铁锈水 · 七 发光的水 · 八 洞口的天光']);
+    list.forEach((k, i) => {
+      SHOTS[k][1](); render();
+      const cx = (i % cols) * cw, cy = HEAD + Math.floor(i / cols) * ch;
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(stage, 0, 0, FW, FH, cx, cy, cw, ch); tag(k, SHOTS[k][0], cx, cy + ch * 0.06);
+    });
+    ctx.fillStyle = '#0b0f11'; ctx.fillRect(cw - 1, HEAD, 2, rows * ch); for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
+  full() { size(FW, FH); SHOTS[q.get('shot') || '1'][1](); render(); ctx.drawImage(stage, 0, 0); },
+  film() {
+    const C = CLIPS[q.get('clip') || 'dive'], n = num('n', 60), cols = num('cols', 6), w = num('w', 640), h = Math.round(w * 9 / 16), dt = num('dt', 0.08), zoom = num('zoom', 1);
+    size(cols * w, Math.ceil(n / cols) * h); C.start(); let t = 0; if (q.get('close')) G.closeUp(true);
+    for (let i = 0; i < n; i++) {
+      const sub = Math.max(1, Math.round(dt * 60)); for (let j = 0; j < sub; j++) { G.hold(C.plan(t, G.P), dt / sub); t += dt / sub; }
+      render();
+      const cw = FW / zoom, chh = FH / zoom, p = new G.THREE.Vector3(G.P.x, G.P.y + 0.6, 0).project(G.camera);
+      const cx = zoom > 1 ? clamp((p.x * 0.5 + 0.5) * FW - cw / 2, 0, FW - cw) : 0, cy = zoom > 1 ? clamp((0.5 - p.y * 0.5) * FH - chh / 2, 0, FH - chh) : 0;
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(stage, cx, cy, cw, chh, (i % cols) * w, Math.floor(i / cols) * h, w, h);
+    }
+  },
+  // 自动玩家：一直往右走；在水里时，前面不远处洞顶压到水面以下就潜到它下面，头顶是空的而且气用掉了一大半就先浮上去换气，别的时候浮在水面上
+  check() {
+    size(FW, 900); G.ch(9); G.step(0.5);
+    const P = G.P, log = []; let mode = P.mode, t = 0, drown = 0, under = 0, maxUnder = 0, minAir = 99, enterT = 0, pool = 0;
+    const res = [];
+    for (let i = 0; i < 60 * 420 && P.x < X + 336; i++) {
+      const ks = ['R'];
+      if (P.mode === 'swim') {
+        const w = P.water, cy = P.y + G.SWIM.c; let m = 1e9; for (let d = -0.3; d <= 2.8; d += 0.1) m = Math.min(m, G.ceilY(P.x + d));
+        const open = G.ceilY(P.x) > w.y + 0.3 && G.ceilY(P.x + 0.6) > w.y + 0.3, gasp = open && P.air < G.SWIM.breath * 0.55;
+        const target = gasp ? w.y : m < w.y - 0.1 ? m - 0.65 : w.y;
+        if (gasp) { ks.length = 0; ks.push('J'); } else if (cy > target + 0.1) ks.push('DOWN'); else if (target === w.y) ks.push('J');
+      }
+      G.hold(ks, 1 / 60); t += 1 / 60;
+      if (P.mode !== mode) { if (P.mode === 'swim') { pool++; enterT = t; maxUnder = 0; minAir = 99; } if (mode === 'swim') res.push([pool, (P.x - X).toFixed(1), (t - enterT).toFixed(1), maxUnder.toFixed(1), minAir.toFixed(1)]); mode = P.mode; }
+      if (G.state() === 'fade') { drown++; log.push(`憋不住了：x=${(P.x - X).toFixed(1)}`); G.step(2.5); }
+      if (P.mode === 'swim') { minAir = Math.min(minAir, P.air); if (P.under) { under += 1 / 60; maxUnder = Math.max(maxUnder, under); } else under = 0; }
+    }
+    header('第九章 · 自动玩家从头游到尾', [`走到 x = ${(P.x - X).toFixed(1)}（终点 336），用了 ${t.toFixed(0)} 秒，憋不住回存档点 ${drown} 次。一口气能憋 ${G.SWIM.breath} 秒。`]);
+    res.forEach((r, i) => label(`第 ${r[0]} 个水潭：在 x = ${r[1]} 上岸，在水里 ${r[2]} 秒，最长一口气在水下 ${r[3]} 秒，最少还剩 ${r[4]} 秒的气`, 70, 160 + i * 34, { size: 20, shadow: false }));
+    log.forEach((s, i) => label(s, 70, 160 + (res.length + i + 1) * 34, { size: 20, color: '#ffb0a0', shadow: false }));
+    console.log(JSON.stringify({ end: P.x - X, t, drown, res, log }));
+  },
+};
+
+// ---- 装游戏 ----
+function load() {
+  return new Promise(done => {
+    const t0 = performance.now();
+    frame.onload = function wait() {
+      const w = frame.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+      const modelIn = hero && (hero.kind !== 'R' || hero.B.traveler?.model);
+      if (hero && (modelIn || performance.now() - t0 > 20000)) { G = w.__g; G.begin(); G.paused = true; G.ch(9); G.step(0.3); done(); }
+      else setTimeout(wait, 100);
+    };
+    frame.src = '../' + (q.get('game') || 'sidescroller.html') + '?ch=9&sheet=' + Date.now();
+  });
+}
+(async () => {
+  try { await load(); (LAYOUTS[LAYOUT] || LAYOUTS.route)(); } catch (e) { console.error('没画完：' + (e && e.stack || e)); }
+  window.__sheetDone = true;
+})();
+</script>
+</body>
+</html>

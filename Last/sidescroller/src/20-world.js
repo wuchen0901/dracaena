@@ -30,6 +30,25 @@ const groundSlope = x => (groundY(x + 0.15) - groundY(x - 0.15)) / 0.3;
 // 地面往远处铺到哪里：平时一直铺到看不见的地方；登记过的一段 [x1, x2] 只铺到 z 为止 —— 后面是低下去的谷地，由布景板来画
 const GROUND_BACK = [];
 function groundBack(x1, x2, z) { GROUND_BACK.push([x1, x2, z]); }
+// 地面往镜头这边铺到哪里：登记过的一段 [x1, x2] 只铺到 z 为止；z 写 null 就整段不铺（山洞自己搭地面，前面是岩石的剖面）
+const GROUND_FRONT = [];
+function groundFront(x1, x2, z) { GROUND_FRONT.push([x1, x2, z]); }
+// ---- 洞顶：一条折线（只在有顶的地方登记）。头顶碰到它就停；压下来挡在人身边的那一段就是一面墙 ----
+const CEIL = [];
+function ceiling(...pts) { for (const p of pts) CEIL.push(p); }
+let _ci = 1;
+function ceilY(x) {                                  // 头顶的岩石有多低；没有洞顶的地方是无穷高
+  const n = CEIL.length; if (n < 2 || x < CEIL[0][0] || x > CEIL[n - 1][0]) return Infinity;
+  let i = clamp(_ci, 1, n - 1);
+  while (i > 1 && x < CEIL[i - 1][0]) i--;
+  while (i < n - 1 && x > CEIL[i][0]) i++;
+  _ci = i; const a = CEIL[i - 1], b = CEIL[i];
+  return a[1] + (b[1] - a[1]) * clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
+}
+// ---- 能游泳的水：{ x1, x2, y 水面的高度 }。掉进去不再回到岸上，而是游起来（见 50-player.js）----
+const WATERS = [];
+function water(o) { WATERS.push(o); return o; }
+const waterAt = x => { for (const w of WATERS) if (x > w.x1 && x < w.x2) return w; return null; };
 const GROUND = [];                                   // 地面颜色的关键点 [x, 颜色]，中间线性过渡
 function ground(x, hex) { GROUND.push([x, new THREE.Color(hex)]); }
 function groundColor(x, out) {
