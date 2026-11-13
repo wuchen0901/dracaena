@@ -134,6 +134,7 @@ function stepPlayer(dt) {
   if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
   // ---- 普通状态 ----
+  const y0 = P.y;                                 // 这一步开始时脚的高度：下面入水的时候，要看这一步实际降了多少
   // 从高处落地以后的一小会儿：lh 被拖住多少（蹲着走不快、跳不起来），lp 被惯性带着往前的速度，lc 这时按键能管几成
   let lh = 0, lp = null, lc = 1;
   if (P.land) { const L = P.land; L.t += dt * (d && L.t > 0.15 && L.style < 3 ? 1.35 : 1); const l = landAt(L); if (l.done) P.land = null; else { lh = l.hold; lp = l.push; lc = l.ctl; } }   // 按着方向键就起身快一些
@@ -176,7 +177,12 @@ function stepPlayer(dt) {
   } else { P.vy = 0; P.gy = P.y; }
   const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
   if (!P.grounded && ROPES.length) { const g = findRope(); if (g) { enterRope(...g); return; } }   // 跳起来手碰到绳子：抓住
-  const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
+  const wt = waterAt(P.x);
+  if (wt) {                                       // 能游泳的水：脚一碰到水面就溅起水花；再沉下去一截就游起来
+    const vIn = Math.min(P.vy, Math.max((P.y - y0) / dt, -7));   // 是多快下来的（顺着陡岸滑下去时 P.vy 是 0，按这一步实际降了多快算，最多算 7 米/秒）
+    if (y0 >= wt.y && P.y < wt.y) hitWater(wt, vIn);
+    if (P.y < wt.y - SWIM.enter) { enterSwim(wt, vIn); return; }
+  }
 
   // 抓住可以推拉的东西 / 操作机关
   if (ctl && P.grounded && keys.has('E')) {
@@ -242,11 +248,13 @@ function swimHit(x, cy) {                            // 身体中点在 (x, cy) 
   for (const s of SOLIDS) if (!s.off && x + r > s.x1 && x - r < s.x2 && cy + r > s.y1 && cy - r < s.y2) return true;
   return false;
 }
-function enterSwim(w) {
-  const vy = P.vy;
+// vy：是多快掉进来的。掉得越猛，水花越大，人沉得越深，带下去的气泡越多
+function hitWater(w, vy) { P.wetT = T; fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(w, P.x, clamp(-vy / 9, 0.25, 1)); }   // 脚碰到水面的那一下
+function enterSwim(w, vy = P.vy) {
+  if (!(T - P.wetT < 0.6)) hitWater(w, vy);         // 没经过水面就到了水里（比如被直接放进水里）：水花补在这里
   Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55, land: null });
   P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
-  fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+  plungeAt(w, clamp(-vy / 9, 0.25, 1));
 }
 // 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
 function climbOut(w, side, cx) {
@@ -256,7 +264,7 @@ function climbOut(w, side, cx) {
     if (top - w.y > SWIM.reach || ceilY(x + side * 0.45) < top + P.H + 0.05) return false;
     let e = x; for (let n = 0; n < 80 && groundY(e) < top - 0.04; n++) e += side * 0.01;
     P.water = null; startMantle(side > 0 ? { x1: e, x2: e + 1, y2: top } : { x1: e - 1, x2: e, y2: top }, side); P.mantle.T = 0.9;
-    fx('wade'); splashAt(cx + side * 0.2, w.y, 0.35);
+    fx('wade'); splashAt(w, cx + side * 0.2, 0.35, 8);
     return true;
   }
   return false;
