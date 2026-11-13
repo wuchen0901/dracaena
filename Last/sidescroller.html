@@ -40,6 +40,12 @@
   #chap i{display:block;font-style:normal;font-size:12px;letter-spacing:.5em;margin-left:.5em;color:#a9b8b8}
   #chap b{display:block;font-weight:300;font-size:clamp(20px,2.6vw,30px);letter-spacing:.4em;margin:8px 0 0 .4em}
   #chap span{display:block;font-size:12.5px;letter-spacing:.3em;margin:8px 0 0 .3em;color:#ffc56e}
+  /* 声音开关的提示：右上角的黑边里出现一会儿就淡掉 */
+  #snd{position:fixed;right:22px;top:3vh;transform:translateY(-50%);font-size:12px;letter-spacing:.2em;color:#9aabab;
+    opacity:0;transition:opacity .6s ease;pointer-events:none;white-space:nowrap}
+  #snd.on{opacity:.85}
+  #snd b{display:inline-block;padding:0 .45em;margin:0 .35em;border:1px solid rgba(255,255,255,.3);border-radius:4px;
+    font-weight:500;color:#dfe7e5;line-height:1.5;letter-spacing:0}
   /* 章节菜单 */
   #menu{background:rgba(4,6,7,.84);transition:opacity .25s ease}
   #menu h1{font-size:clamp(20px,2.8vw,30px)}
@@ -61,6 +67,7 @@
 <div id="bars" class="fx"></div>
 <div id="hint"></div>
 <div id="chap"></div>
+<div id="snd"></div>
 <div id="skins">
 </div>
 <div id="title" class="ov hide">
@@ -68,7 +75,7 @@
   <div class="sub">横版原型 · 八章</div>
   <div class="keys">
     <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关<br>
-    <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 静音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
+    <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
   </div>
   <div class="go" id="go">按任意键开始</div>
 </div>
@@ -1754,14 +1761,15 @@ function stepPits() {                              // 掉进水里或者坑里�
 // ============================================================
 //  声音：全部用 WebAudio 现场合成，不加载任何音频文件
 // ============================================================
-let AC = null, master = null, noiseBuf = null, muted = false;
+let AC = null, master = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
 const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0 };
 function initAudio() {
+  if (muted) return;                                // 静音的时候不建立 WebAudio，第一次打开声音时再建
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-  master = AC.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(AC.destination);
+  master = AC.createGain(); master.gain.value = 0.6; master.connect(AC.destination);
   noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   const loopNoise = (type, freq, q) => {            // 一直循环的滤波噪声，音量由游戏状态控制
@@ -1787,16 +1795,20 @@ function initAudio() {
   loops.drone = loopOsc('sine', 41, 400);
 }
 const setGain = (l, v, k = 0.08) => { if (AC && loops[l]) loops[l].g.gain.setTargetAtTime(v, AC.currentTime, k); };
+function setMuted(m) {                              // M 键：打开 / 关掉声音；总音量淡入淡出一下，不会“咔”的一声
+  muted = m; initAudio();
+  if (master) master.gain.setTargetAtTime(m ? 0 : 0.6, AC.currentTime, 0.05);
+}
 
 function hit(freq, q, vol, dur, type = 'bandpass', delay = 0) { // 一下短促的噪声：脚步、落地、碰撞
-  if (!AC || vol <= 0) return;
+  if (!AC || muted || vol <= 0) return;
   const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), t = AC.currentTime + delay;
   src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
   src.connect(f).connect(g).connect(master); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.02);
 }
 function tone(f0, f1, vol, dur, type = 'sine', delay = 0) {
-  if (!AC || vol <= 0) return;
+  if (!AC || muted || vol <= 0) return;
   const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + delay;
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(0.0008, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
@@ -4419,6 +4431,13 @@ const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
 
+// ---- 声音开关的提示：右上角的黑边里淡淡地出现一会儿（现阶段默认静音，开始游戏时提醒一次按 M 打开）----
+const sndEl = $('snd'); let sndTO = 0;
+function soundNote(first) {
+  sndEl.innerHTML = !muted ? '声音 开' : first ? '声音关着　按 <b>M</b> 打开' : '声音 关';
+  sndEl.classList.add('on'); clearTimeout(sndTO); sndTO = setTimeout(() => sndEl.classList.remove('on'), first ? 5000 : 1800);
+}
+
 // ---- 从某一章的开头开始 ----
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
@@ -4450,7 +4469,7 @@ function toggleMenu(on = !menuOpen) {
 }
 function menuGo(i) {
   toggleMenu(false);
-  if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); }
+  if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); if (muted) soundNote(true); }
   startChapter(i + 1);
 }
 function menuInput() {
@@ -4463,7 +4482,7 @@ menuList.addEventListener('click', e => { const it = e.target.closest('.it'); if
 
 function begin() {
   if (state !== 'title') return;
-  $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); startChapter(STORY.ch);
+  $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); if (muted) soundNote(true); startChapter(STORY.ch);
 }
 function showEnd(sub, txt) {
   $('endsub').textContent = sub; $('endtxt').innerHTML = txt; $('end').classList.remove('hide'); $('fade').style.opacity = 0.5;
@@ -4505,7 +4524,7 @@ function sim(dt) {
   if (pressed.has('TINT') && hero.B.tint) hero.B.tint();                 // 小孩：换一块连帽衫的颜色看看
   if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
-  if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
+  if (pressed.has('MUTE')) { setMuted(!muted); soundNote(); }
   if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
 
   // 这些每一帧都清零，由走到的那一章重新填写

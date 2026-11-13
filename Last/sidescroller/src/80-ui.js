@@ -20,6 +20,13 @@ const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
 
+// ---- 声音开关的提示：右上角的黑边里淡淡地出现一会儿（现阶段默认静音，开始游戏时提醒一次按 M 打开）----
+const sndEl = $('snd'); let sndTO = 0;
+function soundNote(first) {
+  sndEl.innerHTML = !muted ? '声音 开' : first ? '声音关着　按 <b>M</b> 打开' : '声音 关';
+  sndEl.classList.add('on'); clearTimeout(sndTO); sndTO = setTimeout(() => sndEl.classList.remove('on'), first ? 5000 : 1800);
+}
+
 // ---- 从某一章的开头开始 ----
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
@@ -51,7 +58,7 @@ function toggleMenu(on = !menuOpen) {
 }
 function menuGo(i) {
   toggleMenu(false);
-  if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); }
+  if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); if (muted) soundNote(true); }
   startChapter(i + 1);
 }
 function menuInput() {
@@ -64,7 +71,7 @@ menuList.addEventListener('click', e => { const it = e.target.closest('.it'); if
 
 function begin() {
   if (state !== 'title') return;
-  $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); startChapter(STORY.ch);
+  $('title').classList.add('hide'); $('skins').classList.add('on'); initAudio(); if (muted) soundNote(true); startChapter(STORY.ch);
 }
 function showEnd(sub, txt) {
   $('endsub').textContent = sub; $('endtxt').innerHTML = txt; $('end').classList.remove('hide'); $('fade').style.opacity = 0.5;

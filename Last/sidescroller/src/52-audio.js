@@ -2,14 +2,15 @@
 // ============================================================
 //  声音：全部用 WebAudio 现场合成，不加载任何音频文件
 // ============================================================
-let AC = null, master = null, noiseBuf = null, muted = false;
+let AC = null, master = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
 const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0 };
 function initAudio() {
+  if (muted) return;                                // 静音的时候不建立 WebAudio，第一次打开声音时再建
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-  master = AC.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(AC.destination);
+  master = AC.createGain(); master.gain.value = 0.6; master.connect(AC.destination);
   noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   const loopNoise = (type, freq, q) => {            // 一直循环的滤波噪声，音量由游戏状态控制
@@ -35,16 +36,20 @@ function initAudio() {
   loops.drone = loopOsc('sine', 41, 400);
 }
 const setGain = (l, v, k = 0.08) => { if (AC && loops[l]) loops[l].g.gain.setTargetAtTime(v, AC.currentTime, k); };
+function setMuted(m) {                              // M 键：打开 / 关掉声音；总音量淡入淡出一下，不会“咔”的一声
+  muted = m; initAudio();
+  if (master) master.gain.setTargetAtTime(m ? 0 : 0.6, AC.currentTime, 0.05);
+}
 
 function hit(freq, q, vol, dur, type = 'bandpass', delay = 0) { // 一下短促的噪声：脚步、落地、碰撞
-  if (!AC || vol <= 0) return;
+  if (!AC || muted || vol <= 0) return;
   const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(), t = AC.currentTime + delay;
   src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
   src.connect(f).connect(g).connect(master); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.02);
 }
 function tone(f0, f1, vol, dur, type = 'sine', delay = 0) {
-  if (!AC || vol <= 0) return;
+  if (!AC || muted || vol <= 0) return;
   const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + delay;
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(0.0008, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);

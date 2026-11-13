@@ -29,7 +29,7 @@ function sim(dt) {
   if (pressed.has('TINT') && hero.B.tint) hero.B.tint();                 // 小孩：换一块连帽衫的颜色看看
   if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
-  if (pressed.has('MUTE')) { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.6; }
+  if (pressed.has('MUTE')) { setMuted(!muted); soundNote(); }
   if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
 
   // 这些每一帧都清零，由走到的那一章重新填写
