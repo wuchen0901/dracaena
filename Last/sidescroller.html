@@ -718,28 +718,7 @@ function updateDust(dt, t, camX, camY, wind) {
   }
   dustGeo.attributes.position.needsUpdate = true;
 }
-// ---- 萤火虫：两组错开明灭的光点，只在夜里出现 ----
-const flies = [0, 1].map(k => {
-  const n = 46, pos = new Float32Array(n * 3), ph = [];
-  for (let i = 0; i < n; i++) { pos.set([rr(-20, 20), rr(0.2, 4.5), rr(-9, 4)], i * 3); ph.push([rr(0, 6.28), rr(0.3, 0.9), rr(0.2, 0.7)]); }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const mat = new THREE.PointsMaterial({ map: GLOW, color: 0xd9f08a, size: 0.2, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 46; pts.visible = false; scene.add(pts);
-  return { pos, ph, geo, mat, pts, k };
-});
-function updateFlies(dt, t, camX, baseY, amount) {
-  for (const F of flies) {
-    F.pts.visible = amount > 0.01; if (!F.pts.visible) continue;
-    F.mat.opacity = amount * (0.35 + 0.65 * Math.max(0, Math.sin(t * 1.3 + F.k * Math.PI)));
-    for (let i = 0; i < F.ph.length; i++) {
-      const p = F.ph[i], j = i * 3;
-      let x = F.pos[j] + Math.sin(t * p[1] + p[0]) * p[2] * dt, y = F.pos[j + 1] + Math.cos(t * p[1] * 1.3 + p[0]) * 0.3 * dt;
-      if (x < camX - 20) x += 40; else if (x > camX + 20) x -= 40;
-      F.pos[j] = x; F.pos[j + 1] = clamp(y, baseY + 0.2, baseY + 5);
-    }
-    F.geo.attributes.position.needsUpdate = true;
-  }
-}
+// 萤火虫在 70-air.js 里（updateFlies）：每一只自己一明一灭
 
 // ============================================================
 //  分区加载：每一章的布景只在走近时才搭建，走远了就释放
@@ -4305,9 +4284,8 @@ const CH6 = (() => {
     for (const sz of [-1, 1]) add(v.lid, bx(0.04, 0.6, 0.04), MAT.steel, -0.42, 0.48, sz * 0.26); add(v.lid, bx(0.04, 0.04, 0.56), MAT.steel, -0.42, 0.78, 0, false);
     // 小猫蹲的那摞箱子、幸存者、他守着的那点东西
     add(R, bx(0.9, 0.6, 0.8), MAT.wood, PERCH, 0.3, -0.95); add(R, bx(0.7, 0.45, 0.7), MAT.wood2, PERCH + 0.05, 0.825, -0.95);
-    add(R, new THREE.SphereGeometry(0.42, 10, 8), lam(0x4a3f3a), MAN + 1.15, 0.2, -0.7).scale.set(1.5, 0.6, 0.9);                      // 一头死猪的残躯
+    add(R, new THREE.SphereGeometry(0.42, 10, 8), lam(0x4a3f3a), MAN + 1.15, 0.2, -0.7).scale.set(1.5, 0.6, 0.9);                      // 一头死猪的残躯（围着它飞的苍蝇在 72-air-chapters.js 里）
     for (const dx of [-0.3, 0.4]) add(R, cy(0.05, 0.04, 0.3, 6), lam(0x4a3f3a), MAN + 1.15 + dx, 0.36, -0.55).rotation.z = dx;
-    v.flies = [0, 1, 2, 3, 4].map(() => add(R, new THREE.SphereGeometry(0.018, 5, 4), unlit(0x0a0c0c), 0, 0, 0, false));
     v.morsel = add(R, bx(0.12, 0.07, 0.09), lam(0x8a6a58), MAN, 0.3, -0.5);
     yield;
     v.res = makeNPC('N', R, { x: PUMP + 1.55, z: -1.1, facing: -1 }); yield;
@@ -4356,7 +4334,6 @@ const CH6 = (() => {
     v.leak.visible = S.k > 0.3 || (T % 1.3) < 0.12; v.leak.scale.x = v.leak.scale.z = S.k > 0.3 ? 1 : 0.6;
     v.lid.position.x = lid.x; v.lidWater.visible = S.fill > 0.02; v.lidWater.position.y = lerp(0.24, 0.345, S.fill); v.lidWater.scale.setScalar(lerp(0.9, 1.07, S.fill));
     if (!near) return;
-    v.flies.forEach((f, i) => f.position.set(MAN + 1.15 + 0.5 * Math.sin(T * (2.1 + i * 0.37) + i), 0.55 + 0.25 * Math.sin(T * (3.3 + i * 0.5) + i * 2), -0.6 + 0.3 * Math.cos(T * (2.6 + i * 0.3) + i)));
     // 居民：水来了就弯腰接水
     const Rs = v.res; Rs.pose = S.k > 0.5 ? { bow: 0.5, reach: { x: PUMP + 0.75, y: 0.6, k: 0.9 } } : { look: clamp((P.x - Rs.x) / 6, -0.8, 0.8) }; Rs.step(dt);
     // 幸存者：坐在地上守着那点东西。猫靠近就回头挥手；水放好、07 走开以后，他把一小块食物推到盘子边上
@@ -5360,6 +5337,620 @@ const CH8 = (() => {
   return defZone({ n: 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
 function retryEnding() { CH8.retry(); }
+
+// ============================================================
+//  空中的细节（一）：画法和公用的几种东西
+//  飞落的尘埃、飘荡的落叶、风沙、纸片和塑料袋、蠓虫、飞蛾、苍蝇、蜻蜓、蝴蝶、远处的鸟群、萤火虫。
+//  这些小东西都用“点”来画：一个点就是一张面朝镜头的小贴图，一整团只占一次绘制。
+//  每一颗有自己的大小（米）、透明度、转角、翻面（叶子翻过来的时候变窄，负数是左右镜像）、颜色，用贴图集里的哪一格。
+//  近处会被惊飞的鸟是立体的小模型（71-air-birds.js）；每一章摆什么在 72-air-chapters.js 里。
+//  运行时的随机数一律用 Math.random（ar），不碰搭场景用的那一套固定种子
+// ============================================================
+const ar = (a, b) => a + (b - a) * Math.random();
+const AIR_SCALE = { value: 1000 };                       // 一米大的东西放在一米远处，画出来是多少个像素（随画布大小和视角变，每帧更新）
+const TAN_HALF = () => Math.tan(camera.fov * Math.PI / 360);
+const viewTop = z => camera.position.y + (camera.position.z - z) * TAN_HALF();                 // 深度 z 处，画面上沿有多高
+const viewHalfW = z => (camera.position.z - z) * TAN_HALF() * camera.aspect;                   // 深度 z 处，画面有多宽（一半）
+const inView = (x, z, m = 1) => Math.abs(x - camera.position.x) < viewHalfW(z) + m;
+function airTick() { AIR_SCALE.value = renderer.domElement.height / (2 * TAN_HALF()); }
+const _cols = new Map();
+const airCol = h => { if (!_cols.has(h)) _cols.set(h, new THREE.Color(h)); return _cols.get(h); };   // 0xRRGGBB → 线性空间的颜色（同一个颜色只建一次）
+const pickOf = arr => arr[Math.floor(Math.random() * arr.length)];
+
+// ---- 贴图集：4×4 格，每格 64 像素，全是白色的形状（颜色由每一颗自己乘上去）----
+// 0 圆点  1 一道细长的沙痕  2–5 四种叶子  6 纸片  7 塑料袋  8 一朵草籽的绒毛  9 / 10 蜻蜓（翅膀上 / 下）
+// 11 / 12 蝴蝶（张开 / 合上）  13 飞蛾  14 / 15 远处的鸟（翅膀往下 / 往上）
+const AIR_TEX = (() => {
+  const [c, g] = mkCanvas(256, 256);
+  const tile = (i, fn) => { g.save(); g.translate((i % 4) * 64 + 32, Math.floor(i / 4) * 64 + 32); g.scale(32, 32); g.fillStyle = g.strokeStyle = '#fff'; g.lineCap = g.lineJoin = 'round'; fn(); g.restore(); };
+  const ell = (x, y, rx, ry, a = 0) => { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, 6.2832); g.fill(); };
+  const path = (pts, close = true) => { g.beginPath(); pts.forEach(([x, y], k) => g[k ? 'lineTo' : 'moveTo'](x, y)); if (close) g.closePath(); };
+  tile(0, () => { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 0.92); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.85)'); gr.addColorStop(0.6, 'rgba(255,255,255,.28)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); });
+  tile(1, () => { const gr = g.createLinearGradient(-0.9, 0, 0.9, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.3, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; ell(0, 0, 0.9, 0.07); });
+  tile(2, () => { path([[0, -0.82], [0.36, -0.3], [0.32, 0.25], [0, 0.6], [-0.32, 0.25], [-0.36, -0.3]]); g.fill(); g.lineWidth = 0.07; path([[0, -0.6], [0, 0.88]], false); g.stroke(); });
+  tile(3, () => { g.beginPath(); for (let k = 0; k <= 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 0.34 : 0.78; g[k ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r - 0.05); } g.closePath(); g.fill(); g.lineWidth = 0.07; path([[0, 0.2], [0.05, 0.85]], false); g.stroke(); });
+  tile(4, () => { g.beginPath(); g.moveTo(0, -0.86); g.quadraticCurveTo(0.3, 0, 0.02, 0.84); g.quadraticCurveTo(-0.16, 0, 0, -0.86); g.fill(); });
+  tile(5, () => { path([[0, -0.62], [0.3, -0.36], [0.4, 0.05], [0.24, 0.38], [0, 0.46], [-0.24, 0.38], [-0.4, 0.05], [-0.3, -0.36]]); g.fill(); g.lineWidth = 0.06; path([[0, 0.4], [0, 0.8]], false); g.stroke(); });
+  tile(6, () => { path([[-0.62, -0.42], [0.5, -0.6], [0.66, 0.38], [-0.5, 0.56]]); g.fill(); g.fillStyle = 'rgba(150,150,150,1)'; path([[-0.05, -0.52], [0.66, 0.38], [0.1, -0.5]]); g.fill(); });
+  tile(7, () => { g.globalAlpha = 0.72; g.beginPath(); g.moveTo(-0.5, -0.3); g.bezierCurveTo(-0.7, 0.4, -0.2, 0.75, 0.2, 0.62); g.bezierCurveTo(0.7, 0.45, 0.62, -0.2, 0.45, -0.32); g.closePath(); g.fill();
+    g.lineWidth = 0.1; for (const sx of [-1, 1]) { g.beginPath(); g.ellipse(sx * 0.3, -0.48, 0.14, 0.24, 0, 0, 6.2832); g.stroke(); } });
+  tile(8, () => { g.lineWidth = 0.035; for (let k = 0; k < 16; k++) { const a = k / 16 * 6.2832 - Math.PI / 2; g.beginPath(); g.moveTo(0, 0.1); g.lineTo(Math.cos(a) * 0.62, Math.sin(a) * 0.55 - 0.08); g.stroke(); ell(Math.cos(a) * 0.62, Math.sin(a) * 0.55 - 0.08, 0.06, 0.06); } ell(0, 0.12, 0.1, 0.1); g.lineWidth = 0.05; path([[0, 0.12], [0.02, 0.8]], false); g.stroke(); });
+  const dragon = up => { g.globalAlpha = 0.55; for (const [x, rx] of [[0.22, 0.5], [-0.04, 0.46]]) ell(x - 0.12, up ? -0.3 : 0.26, rx * 0.36, 0.11, up ? -0.5 : 0.35); g.globalAlpha = 1; g.lineWidth = 0.09; path([[-0.88, 0.02], [0.62, 0]], false); g.stroke(); ell(0.68, 0, 0.12, 0.1); };
+  tile(9, () => dragon(true)); tile(10, () => dragon(false));
+  tile(11, () => { for (const sx of [-1, 1]) { ell(sx * 0.36, -0.16, 0.36, 0.3, sx * 0.4); ell(sx * 0.26, 0.28, 0.24, 0.2, -sx * 0.3); } g.lineWidth = 0.08; path([[0, -0.36], [0, 0.4]], false); g.stroke(); });
+  tile(12, () => { ell(0.02, -0.32, 0.2, 0.42, 0.15); g.lineWidth = 0.08; path([[-0.42, 0.12], [0.46, 0.1]], false); g.stroke(); });
+  tile(13, () => { if ('filter' in g) g.filter = 'blur(1.2px)'; path([[0, -0.1], [-0.72, -0.42], [-0.62, 0.32], [0, 0.18], [0.62, 0.32], [0.72, -0.42]]); g.fill(); ell(0, 0, 0.1, 0.36); });
+  tile(14, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.84, 0.32); g.quadraticCurveTo(-0.4, -0.12, 0, 0.04); g.quadraticCurveTo(0.4, -0.12, 0.84, 0.32); g.stroke(); ell(0, 0.06, 0.2, 0.12); });
+  tile(15, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.82, -0.5); g.quadraticCurveTo(-0.36, -0.06, 0, 0.12); g.quadraticCurveTo(0.36, -0.06, 0.82, -0.5); g.stroke(); ell(0, 0.12, 0.2, 0.12); });
+  const t = canvasTex(c); t.anisotropy = 1; return t;
+})();
+
+// ---- 画这些点的着色器 ----
+const AIR_VS = `
+  attribute float aSize; attribute float aAlpha; attribute float aRot; attribute float aFlip; attribute float aTile; attribute vec3 aCol;
+  uniform float uScale;
+  varying float vA; varying float vF; varying float vT; varying vec3 vC; varying vec2 vR;
+  #include <fog_pars_vertex>
+  void main() {
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    float px = aSize * uScale / max(-mvPosition.z, 0.1);
+    gl_PointSize = clamp(px, 1.0, 300.0);
+    vA = aAlpha * clamp(px * px, 0.0, 1.0);              // 比一个像素还小的：画成一个像素，但淡下去
+    vF = aFlip; vT = aTile; vC = aCol; vR = vec2(cos(aRot), sin(aRot));
+    #include <fog_vertex>
+  }`;
+const AIR_FS = `
+  uniform sampler2D uTex;
+  varying float vA; varying float vF; varying float vT; varying vec3 vC; varying vec2 vR;
+  #include <fog_pars_fragment>
+  void main() {
+    vec2 p = gl_PointCoord - 0.5;
+    p = vec2(vR.x * p.x + vR.y * p.y, -vR.y * p.x + vR.x * p.y);
+    p.x /= (vF < 0.0 ? -1.0 : 1.0) * max(abs(vF), 0.06);
+    if (abs(p.x) > 0.5 || abs(p.y) > 0.5) discard;
+    vec2 cell = vec2(mod(vT, 4.0), floor(vT / 4.0));
+    vec4 t = texture2D(uTex, vec2((cell.x + p.x + 0.5) / 4.0, 1.0 - (cell.y + p.y + 0.5) / 4.0));
+    float a = t.a * vA; if (a < 0.003) discard;
+    gl_FragColor = vec4(vC * t.rgb, a);
+    #include <fog_fragment>
+    #include <colorspace_fragment>
+  }`;
+
+// ---- 一团点：o.init(s) 出生时摆好，o.step(s, dt) 每帧动一下；o.pre(dt) 每帧先算一次大家共用的东西 ----
+// s 上要填：x y z 位置，size 大小（米），a 透明度，rot 转角，flip 翻面，tile 贴图格，c 颜色（airCol 给的）
+// o.add 叠加发光（尘埃、萤火虫；不受雾影响），否则是普通的半透明、受雾影响；o.order 绘制次序
+function airCloud(R, n, o) {
+  const geo = new THREE.BufferGeometry(), at = {};
+  for (const [k, w] of [['position', 3], ['aSize', 1], ['aAlpha', 1], ['aRot', 1], ['aFlip', 1], ['aTile', 1], ['aCol', 3]]) {
+    at[k] = new THREE.BufferAttribute(new Float32Array(n * w), w); at[k].setUsage(THREE.DynamicDrawUsage); geo.setAttribute(k, at[k]);
+  }
+  const mat = new THREE.ShaderMaterial({ uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTex: { value: AIR_TEX }, uScale: AIR_SCALE },
+    vertexShader: AIR_VS, fragmentShader: AIR_FS, transparent: true, depthWrite: false, fog: !o.add && o.fog !== false, blending: o.add ? THREE.AdditiveBlending : THREE.NormalBlending });
+  mat.userData.own = true;
+  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = o.order ?? 46; R.add(pts);
+  const list = [];
+  for (let i = 0; i < n; i++) { const s = { i, x: 0, y: -60, z: 0, size: 0.05, a: 0, rot: 0, flip: 1, tile: 0, c: airCol(0xffffff) }; o.init(s); list.push(s); }
+  const C = { pts, list, k: 1, name: o.name, step(dt) {
+    if (!pts.visible) return;
+    if (o.pre) o.pre(dt);
+    const P_ = at.position.array, S_ = at.aSize.array, A_ = at.aAlpha.array, Ro = at.aRot.array, F_ = at.aFlip.array, Ti = at.aTile.array, Co = at.aCol.array;
+    for (const s of list) {
+      o.step(s, dt);
+      const i = s.i, j = i * 3; P_[j] = s.x; P_[j + 1] = s.y; P_[j + 2] = s.z; S_[i] = s.size; A_[i] = s.a * C.k; Ro[i] = s.rot; F_[i] = s.flip; Ti[i] = s.tile;
+      Co[j] = s.c.r; Co[j + 1] = s.c.g; Co[j + 2] = s.c.b;
+    }
+    for (const k in at) at[k].needsUpdate = true;
+  } };
+  return C;
+}
+
+// ---- 光里的尘埃：一颗颗在光里出生，慢慢往下落，飘出光就暗了。lights 是一组“光的范围”----
+//   slab 斜着的一道光（天窗、枝叶间漏下来的）{ x0 落地处的中心, x1 顶上的中心, y0, y1, w0 / w1 底下 / 顶上的半宽, z0, z1 }
+//   cone 一束聚光（探照灯、监控、吊灯）{ at() 返回 [灯的位置 [x,y,z], 照向的点 [x,y,z], 亮度 0..1], ang 半张角 }
+//   ball 一团灯光 { p: [x,y,z], r 半径 }
+//   back 逆光：尘埃挡在一面发光的墙前面的时候亮 { z 墙在哪, lum(x, y) 墙上这一点多亮（0..1）, box: [x1, x2, y1, y2, z1, z2] 在哪里出生（x 只在镜头看得见的那一段里取）}
+//   drip 从高处一缕一缕漏下来的灰 { p: [x, y, z], spread 横着散开多宽 }
+//   每一种都可以带 c 颜色、a 亮度、w 分到多少颗（数字或者返回数字的函数）、on() 现在有没有
+function litDust(R, n, lights, o = {}) {
+  const ax = V3(0, 0, 0), u = V3(0, 0, 0), w = V3(0, 0, 0), v = V3(0, 0, 0);
+  const cone = L => { if (!L._f) { const [p, q, k] = L.at(); L._p = p; L._q = q; L._k = k; L._f = true; } return L; };
+  function level(L, s) {
+    if (L.k === 'slab') { const t = (s.y - L.y0) / (L.y1 - L.y0); if (t < 0 || t > 1) return 0; const cx = lerp(L.x0, L.x1, t), hw = lerp(L.w0, L.w1, t);
+      return (1 - sstep(hw * 0.5, hw, Math.abs(s.x - cx))) * (1 - sstep(0, 1, Math.max(L.z0 - s.z, s.z - L.z1))) * lerp(0.45, 1, t); }
+    if (L.k === 'cone') { cone(L); if (L._k <= 0) return 0; const p = L._p, q = L._q; ax.set(q[0] - p[0], q[1] - p[1], q[2] - p[2]); const len = ax.length(); ax.divideScalar(len);
+      v.set(s.x - p[0], s.y - p[1], s.z - p[2]); const d = v.dot(ax); if (d <= 0) return 0; const r = v.addScaledVector(ax, -d).length(), rr_ = d * Math.tan(L.ang);
+      return L._k * (1 - sstep(rr_ * 0.4, rr_ * 1.05, r)) * (1 - sstep(len * 0.92, len * 1.12, d)); }
+    if (L.k === 'ball') return Math.pow(Math.max(0, 1 - Math.hypot(s.x - L.p[0], s.y - L.p[1], s.z - L.p[2]) / L.r), 1.6);
+    if (L.k === 'back') { const c = camera.position, k = (L.z - c.z) / (s.z - c.z); return L.lum(c.x + (s.x - c.x) * k, c.y + (s.y - c.y) * k); }
+    return 1;
+  }
+  function sample(L, s) {                                // 在这道光里找一个出生的地方
+    if (L.k === 'slab') { const t = ar(0.03, 0.95), hw = lerp(L.w0, L.w1, t); s.y = lerp(L.y0, L.y1, t); s.x = lerp(L.x0, L.x1, t) + ar(-hw, hw) * 0.85; s.z = ar(L.z0, L.z1); }
+    else if (L.k === 'cone') { const p = L._p, q = L._q; ax.set(q[0] - p[0], q[1] - p[1], q[2] - p[2]); const len = ax.length(); ax.divideScalar(len);
+      u.set(0, 1, 0).cross(ax); if (u.lengthSq() < 1e-4) u.set(1, 0, 0).cross(ax); u.normalize(); w.crossVectors(ax, u);
+      const d = len * Math.sqrt(ar(0.04, 1.02)), r = d * Math.tan(L.ang) * Math.sqrt(Math.random()) * 0.9, a = ar(0, 6.2832), ca = Math.cos(a) * r, sa = Math.sin(a) * r;
+      s.x = p[0] + ax.x * d + u.x * ca + w.x * sa; s.y = p[1] + ax.y * d + u.y * ca + w.y * sa; s.z = p[2] + ax.z * d + u.z * ca + w.z * sa; }
+    else if (L.k === 'ball') { const a = ar(0, 6.2832), b = Math.acos(ar(-1, 1)), r = L.r * Math.cbrt(Math.random()) * 0.9; s.x = L.p[0] + r * Math.sin(b) * Math.cos(a); s.y = L.p[1] + r * Math.cos(b); s.z = L.p[2] + r * Math.sin(b) * Math.sin(a); }
+    else if (L.k === 'back') { const B = L.box; s.z = ar(B[4], B[5]); s.x = clamp(camera.position.x + ar(-1, 1) * (viewHalfW(s.z) + 1), B[0], B[1]); s.y = ar(B[2], B[3]); }
+    else { s.x = L.p[0] + ar(-1, 1) * (L.spread ?? 0.1); s.y = L.p[1]; s.z = L.p[2] + ar(-0.08, 0.08); }
+  }
+  const wOf = L => (L.on && !L.on()) || (L.k === 'cone' && cone(L)._k <= 0) ? 0 : typeof L.w === 'function' ? L.w() : L.w ?? 1;
+  function born(s) {
+    s.age = 0; s.life = 0.25; s.L = null;
+    let tot = 0; for (const L of lights) tot += L._w = wOf(L);
+    if (tot <= 0) return;
+    let r = Math.random() * tot, L = lights[0]; for (const l of lights) if ((r -= l._w) <= 0) { L = l; break; }
+    sample(L, s);
+    const drip = L.k === 'drip';
+    if (!inView(s.x, s.z, 1.5) || (!drip && (s.y > viewTop(s.z) + 0.5 || s.y < groundY(s.x) + 0.05))) return;   // 落在画面外面的不要，过一会儿再试（漏下来的灰可以从画面上面开始落）
+    s.L = L; s.life = drip ? 9 : ar(3, 7); s.ph = ar(0, 6.28); s.tw = ar(2, 7); s.b = ar(0.45, 1); s.fall = drip ? 0 : ar(0.03, 0.13); s.vy = drip ? ar(-0.4, -0.1) : 0;
+    s.size = (drip ? ar(0.035, 0.06) : ar(0.06, 0.12)) * (o.size ?? 1); s.c = airCol(L.c ?? o.c ?? 0xdfeef2);
+  }
+  return airCloud(R, n, { add: o.add ?? true, order: o.order ?? 47, name: o.name ?? 'dust',   // o.add = false：画成暗色的小点（挡在很亮的东西前面的灰）
+    pre() { for (const L of lights) L._f = false; },
+    init(s) { s.age = 0; s.life = 0; s.tile = 0; },
+    step(s, dt) {
+      s.age += dt; if (s.age >= s.life) born(s);
+      const L = s.L; if (!L) { s.a = 0; return; }
+      if (L.k === 'drip') { s.vy = Math.max(-2.6, s.vy - 3.2 * dt); s.x += 0.05 * Math.sin(T * 3 + s.ph) * dt; s.y += s.vy * dt; if (s.y < groundY(s.x) + 0.05) s.age = s.life; }
+      else { s.x += (0.07 * Math.sin(T * 0.7 + s.ph) + E.wind * 0.25) * dt; s.y += (-s.fall + 0.05 * Math.sin(T * 0.9 + s.ph * 1.3)) * dt; s.z += 0.05 * Math.cos(T * 0.6 + s.ph) * dt; }
+      const life = sstep(0, 0.7, s.age) * (1 - sstep(s.life - 0.9, s.life, s.age));
+      s.a = life * level(L, s) * (L.a ?? 1) * s.b * (0.6 + 0.4 * Math.sin(T * s.tw + s.ph));
+    } });
+}
+
+// ---- 飘落的叶子（也用来画纸片、塑料袋、草籽的绒毛这些被风带着走的东西）----
+// o: n 几片, xs: [[x1, x2], ...] 只在这几段 x 的上空落（树底下）, z: [z1, z2], cols 颜色, tiles 用哪几格贴图, size [小, 大]（米）,
+//    fall [慢, 快]（米/秒）, wind() 风（米/秒，负的往左；不写就跟着环境里的风）, a 透明度, on() 现在有没有新的落下来,
+//    drift: true 不往下落，随风贴着地面飘（纸片、塑料袋、绒毛）：lo / hi 离地多高，lift 被风托起来多少
+function airLeaves(R, o) {
+  const wind = o.wind ?? (() => E.wind * 1.6), xs = o.xs, Z = o.z ?? [-6, 4], fall = o.fall ?? [0.35, 0.8], size = o.size ?? [0.06, 0.11];
+  const okX = x => !xs || xs.some(([a, b]) => x > a && x < b);
+  function born(s, first) {
+    s.a = 0; s.land = 0; s.age = 0; s.wait = 0;
+    if (o.on && !o.on()) { s.wait = ar(0.5, 2); return; }
+    s.z = ar(Z[0], Z[1]); const hw = viewHalfW(s.z) + 1.5, cx = camera.position.x;
+    if (o.drift) s.x = first ? cx + ar(-hw, hw) : cx - Math.sign(wind() || -1) * hw;
+    else { let k = 0; do s.x = cx + ar(-hw, hw); while (!okX(s.x) && ++k < 10); if (!okX(s.x)) { s.wait = ar(0.3, 1); return; } }
+    const g = groundY(s.x);
+    s.y = o.drift ? g + ar(o.lo ?? 0.1, o.hi ?? 1.6) : first ? ar(g + 0.3, viewTop(s.z)) : viewTop(s.z) + ar(0.1, 1.2);
+    s.fall = ar(fall[0], fall[1]); s.f = ar(1.4, 2.6); s.ph = ar(0, 6.28); s.sw = ar(0.25, 0.7); s.spin = Math.random() < 0.3 ? ar(-4, 4) : 0;
+    s.tile = pickOf(o.tiles ?? [2, 3, 4, 5]); s.c = airCol(pickOf(o.cols ?? [0x8a6a3a])); s.size = ar(size[0], size[1]); s.r0 = ar(-1, 1); s.k = ar(0.8, 1.2);
+  }
+  return airCloud(R, o.n ?? 30, { name: o.name ?? 'leaves', order: o.order ?? 45,
+    init(s) { born(s, true); },
+    step(s, dt) {
+      if (s.wait > 0) { s.wait -= dt; s.a = 0; if (s.wait <= 0) born(s); return; }
+      s.age += dt; s.ph += dt * s.f; const sw = Math.sin(s.ph), wnd = wind() * s.k, g = groundY(s.x);
+      if (o.drift) {
+        s.x += (wnd + 0.3 * sw) * dt; s.y += (0.5 * Math.sin(s.ph * 0.37 + s.i) + (o.lift ?? 0.1) * Math.abs(wnd) * Math.sin(T * 0.3 + s.i)) * dt;
+        s.y = clamp(s.y, g + (o.lo ?? 0.05), g + (o.hi ?? 2)); s.rot = s.r0 + s.age * (s.spin || 1.2) * Math.sign(wnd || 1); s.flip = Math.cos(s.ph * 0.8);
+      } else if (s.land > 0) { s.land += dt; s.x += wnd * 0.1 * dt; }
+      else {
+        s.x += (wnd + sw * s.sw) * dt; s.y -= s.fall * (0.45 + 0.55 * sw * sw) * dt; s.rot = s.r0 + 0.55 * Math.cos(s.ph) + s.spin * s.age; s.flip = Math.cos(s.ph * 0.75 + s.i);
+        if (s.y < g + 0.03) { s.y = g + 0.03; s.land = 0.001; s.flip = 0.3; }
+      }
+      s.a = (o.a ?? 1) * (s.land > 0 ? 1 - sstep(0.4, 1.6, s.land) : sstep(0, 0.5, s.age));
+      if (s.land > 1.6 || Math.abs(s.x - camera.position.x) > viewHalfW(s.z) + 2.5) born(s);
+    } });
+}
+
+// ---- 风沙：贴着地面被风吹着走的沙粒（一道道细长的痕），一跳一跳的；刮阵风的时候又多又快 ----
+// o: n, wind 风速（米/秒，负的往左）, gust() 现在风有多大（0..1.5）, z, h 最高吹到离地多高, cols, a
+function airSand(R, o) {
+  const Z = o.z ?? [-7, 6];
+  const born = (s, first) => { s.z = ar(Z[0], Z[1]); const hw = viewHalfW(s.z) + 2, cx = camera.position.x; s.x = first ? cx + ar(-hw, hw) : cx - Math.sign(o.wind) * hw * ar(0.85, 1);
+    s.h = (o.h ?? 1.4) * Math.pow(Math.random(), 2.4); s.k = ar(0.65, 1.35); s.hp = ar(0, 6.28); s.hh = ar(0.02, 0.22); s.a0 = ar(0.15, 0.55); s.len = ar(0.1, 0.32); s.c = airCol(pickOf(o.cols ?? [0xd8c6a0, 0xc9b48c, 0xe6d8b8])); };
+  return airCloud(R, o.n ?? 500, { name: 'sand', order: o.order ?? 44,
+    init(s) { s.tile = 1; born(s, true); },
+    step(s, dt) {
+      const gst = o.gust(), v = o.wind * s.k * (0.45 + 0.7 * gst);
+      s.x += v * dt; s.hp += dt * s.k * (5 + 4 * gst);
+      const up = Math.sin(s.hp); s.y = groundY(s.x) + s.h + Math.abs(up) * s.hh; s.rot = 0.3 * Math.cos(s.hp) * Math.sign(up) * Math.sign(o.wind);
+      s.size = s.len * (0.6 + 0.6 * gst); s.a = s.a0 * clamp(0.2 + 0.8 * gst, 0, 1.2) * (o.a ?? 1);
+      if (Math.abs(s.x - camera.position.x) > viewHalfW(s.z) + 2.5) born(s);
+    } });
+}
+// 地上一片片被风推着流走的沙：一块贴着地面的面，上面是一道道很淡的沙纹，跟着风往一边流
+function sandSheet(R, x1, x2, z1, z2, o) {
+  const [c, g] = mkCanvas(512, 256);
+  for (let i = 0; i < 220; i++) { const x = rr(0, 512), y = rr(0, 256), w = rr(40, 190), h = rr(0.8, 3); g.fillStyle = `rgba(255,255,255,${rr(0.12, 0.55)})`; for (const ox of [-512, 0, 512]) for (const oy of [-256, 0, 256]) { g.beginPath(); g.ellipse(x + ox, y + oy, w / 2, h, 0, 0, 6.2832); g.fill(); } }
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set((x2 - x1) / 8, (z2 - z1) / 4);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, color: o.c ?? 0xe0d0ac, transparent: true, opacity: 0, depthWrite: false }); mat.userData.own = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), mat); m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, (o.y ?? 0) + 0.014, (z1 + z2) / 2); m.renderOrder = 3; R.add(m);
+  return { name: 'sand', pts: m, step(dt) { const gst = o.gust(); tex.offset.x -= o.wind * (0.5 + 0.8 * gst) * dt / 8; mat.opacity = (o.a ?? 0.22) * clamp(gst, 0, 1.2); } };
+}
+
+// ---- 一团团蠓虫：围着一个点乱飞。在逆光里是一粒粒亮点（add），在暗处是小黑点 ----
+// spots: [[x, y, z, 几只], ...]；o: lit(x, y, z) 那里有多亮（0..1）, c 颜色, a, size, on()
+function airGnats(R, spots, o = {}) {
+  const who = []; spots.forEach((sp, k) => { for (let i = 0; i < sp[3]; i++) who.push(k); });
+  return airCloud(R, who.length, { add: o.add ?? true, order: 47, name: o.name ?? 'gnats',
+    init(s) { s.k = who[s.i]; s.p = [ar(0, 6.28), ar(0, 6.28), ar(0, 6.28)]; s.f = [ar(1.5, 3.5), ar(1.2, 3), ar(1, 2.6)]; s.r = ar(0.15, 0.55); s.tile = 0; s.size = ar(0.022, 0.035) * (o.size ?? 1); s.c = airCol(o.c ?? 0xfff0c8); s.b = ar(0.5, 1); },
+    step(s) {
+      const [x, y, z] = spots[s.k], bob = 0.25 * Math.sin(T * 0.4 + s.k * 1.7);
+      s.x = x + s.r * Math.sin(T * s.f[0] + s.p[0]) + 0.08 * Math.sin(T * 13 + s.i); s.y = y + bob + s.r * 0.7 * Math.sin(T * s.f[1] + s.p[1]) + 0.06 * Math.sin(T * 11 + s.i * 3); s.z = z + s.r * 0.6 * Math.cos(T * s.f[2] + s.p[2]);
+      s.a = s.b * (o.a ?? 0.8) * (o.lit ? o.lit(s.x, s.y, s.z) : 1) * (o.on ? o.on() : 1);
+    } });
+}
+// ---- 飞蛾：绕着灯乱转，离灯越近越亮，时不时一头撞向灯罩。lamps: [[x, y, z, 几只], ...]；o.on(k) 第 k 盏灯亮不亮 ----
+function airMoths(R, lamps, o = {}) {
+  const who = []; lamps.forEach((l, k) => { for (let i = 0; i < l[3]; i++) who.push(k); });
+  return airCloud(R, who.length, { add: true, order: 48, name: 'moths',
+    init(s) { s.k = who[s.i]; s.ph = ar(0, 6.28); s.w = ar(2.2, 4.5) * (Math.random() < 0.5 ? -1 : 1); s.r = ar(0.3, 0.85); s.tile = 13; s.size = ar(0.07, 0.1) * (o.size ?? 1); s.c = airCol(o.c ?? 0xffe2b0); s.j = [0, 0, 0]; },
+    step(s, dt) {
+      const [x, y, z] = lamps[s.k], on = o.on ? o.on(s.k) : 1;
+      s.ph += s.w * dt * (0.7 + 0.6 * Math.sin(T * 1.7 + s.i)); const r = s.r * (0.75 + 0.35 * Math.sin(T * 2.3 + s.i * 2)) * (Math.sin(T * 0.9 + s.i * 2.7) > 0.94 ? 0.25 : 1);
+      for (let k = 0; k < 3; k++) s.j[k] = damp(s.j[k], ar(-0.25, 0.25), 6, dt);
+      s.x = x + Math.cos(s.ph) * r + s.j[0]; s.y = y - 0.12 + Math.sin(s.ph * 1.3) * r * 0.5 + s.j[1]; s.z = z + Math.sin(s.ph) * r * 0.8 + s.j[2];
+      s.a = on * (0.35 + 0.65 * (1 - sstep(0.1, 1.2, Math.hypot(s.x - x, s.y - y, s.z - z)))) * ar(0.7, 1); s.flip = Math.cos(T * 37 + s.i) > 0 ? 1 : 0.55; s.rot = 0.4 * Math.sin(s.ph);
+    } });
+}
+// ---- 苍蝇：围着一样东西乱飞，一下一下地冲，有时候落下来停一会儿。box: [x, y, z, 半宽, 半高, 半深]，o.land 落下来停在多高 ----
+function airFlies(R, n, box, o = {}) {
+  return airCloud(R, n, { order: 48, name: o.name ?? 'flies',
+    init(s) { s.x = box[0]; s.y = box[1]; s.z = box[2]; s.t = 0; s.v = [0, 0, 0]; s.rest = 0; s.tile = 0; s.size = ar(0.05, 0.065) * (o.size ?? 1); s.c = airCol(o.c ?? 0x0c0e0e); },
+    step(s, dt) {
+      s.t -= dt;
+      if (s.t <= 0) { s.rest = Math.random() < 0.2 ? ar(0.6, 2.4) : 0; s.t = s.rest || ar(0.15, 0.7);
+        s.tx = box[0] + ar(-1, 1) * box[3]; s.ty = s.rest ? (o.land ?? box[1] - box[4]) : box[1] + ar(-1, 1) * box[4]; s.tz = box[2] + ar(-1, 1) * box[5]; }
+      const k = s.rest ? 5 : 9; s.v[0] = damp(s.v[0], (s.tx - s.x) * k, 10, dt); s.v[1] = damp(s.v[1], (s.ty - s.y) * k, 10, dt); s.v[2] = damp(s.v[2], (s.tz - s.z) * k, 10, dt);
+      s.x += s.v[0] * dt; s.y += s.v[1] * dt; s.z += s.v[2] * dt; s.a = (o.a ?? 0.9) * (o.on ? o.on() : 1);
+    } });
+}
+// ---- 蜻蜓和蝴蝶：在一块地方上空飞。蜻蜓悬停一会儿、猛地一窜；蝴蝶一上一下地扑腾、慢慢挪 ----
+// box: [x1, x2, 离地 y1, 离地 y2, z1, z2]（o.abs 时 y 就是高度，不是离地多高）；o.kind 'dragon' 蜻蜓 / 不写是蝴蝶；cols, size, on()
+function airDarters(R, n, box, o = {}) {
+  const dragon = o.kind === 'dragon';
+  const aim = s => { s.tx = ar(box[0], box[1]); s.ty = ar(box[2], box[3]); s.tz = ar(box[4], box[5]); };
+  return airCloud(R, n, { order: 48, name: dragon ? 'dragonflies' : 'butterflies',
+    init(s) { aim(s); s.x = s.tx; s.y = (o.abs ? 0 : groundY(s.tx)) + s.ty; s.z = s.tz; s.t = ar(0, 2); s.face = 1; s.ph = ar(0, 6.28);
+      s.size = (dragon ? ar(0.2, 0.26) : ar(0.13, 0.18)) * (o.size ?? 1); s.c = airCol(pickOf(o.cols ?? (dragon ? [0x2f6f86, 0x3f6f3a, 0x8a3a2a] : [0xffffff, 0xf4d24a, 0xf0a040]))); },
+    step(s, dt) {
+      s.t -= dt; if (s.t <= 0) { aim(s); s.t = dragon ? ar(0.6, 2.6) : ar(1.5, 4); }
+      const kk = dragon ? 7 : 1.3, nx = damp(s.x, s.tx, kk, dt);
+      if (Math.abs(nx - s.x) > 2e-3) s.face = nx > s.x ? 1 : -1;
+      s.x = nx; s.y = damp(s.y, (o.abs ? 0 : groundY(s.tx)) + s.ty, kk, dt) + (dragon ? 0.015 * Math.sin(T * 9 + s.i) : 0.5 * Math.sin(T * 7 + s.ph) * dt * 4); s.z = damp(s.z, s.tz, kk, dt);
+      s.tile = dragon ? (Math.floor(T * 30 + s.i) % 2 ? 9 : 10) : (Math.sin(T * 13 + s.ph) > -0.2 ? 11 : 12);
+      s.flip = s.tile === 11 ? 0.9 : s.face; s.rot = dragon ? 0 : 0.25 * Math.sin(T * 3 + s.i); s.a = o.on ? o.on() : 1;
+    } });
+}
+// ---- 远处成群飞过的鸟：一个个扇着翅膀的“v”，排成松散的一队 ----
+// routes: [{ x1, x2 从哪飞到哪, y, z, v 速度（米/秒，负的往左）, n 几只, gap 飞完一趟隔几秒再来, t0 错开, s 大小, c 颜色, rise 一边飞一边升多少, a }]
+//   或者在一处上空盘旋：{ orbit: [cx, cy, 半径], z, v, n, s, c }
+function airFlock(R, routes, o = {}) {
+  const who = []; routes.forEach((r, k) => { for (let i = 0; i < r.n; i++) who.push([k, i]); });
+  return airCloud(R, who.length, { order: o.order ?? 45, name: o.name ?? 'flock',
+    init(s) { const [k, i] = who[s.i], r = routes[k], row = Math.ceil(i / 2), side = i % 2 ? 1 : -1, sp = r.sp ?? 1.6; s.r = r;
+      s.dx = -Math.sign(r.v) * row * sp + ar(-0.4, 0.4); s.dy = row * side * sp * 0.45 + ar(-0.3, 0.3); s.ph = ar(0, 6.28); s.size = (r.s ?? 0.9) * ar(0.85, 1.15); s.c = airCol(r.c ?? 0x1a1a1e); },
+    step(s) {
+      const r = s.r;
+      if (r.orbit) { const [cx, cy, rad] = r.orbit, a = T * r.v / rad + s.i * 2.4; s.x = cx + Math.cos(a) * rad * (0.8 + 0.2 * Math.sin(s.ph)); s.y = cy + 0.3 * rad * Math.sin(a * 0.7 + s.ph); s.z = r.z;
+        s.tile = Math.sin(T * 0.4 + s.ph) > 0.75 ? (Math.sin(T * 7 + s.ph) > 0 ? 15 : 14) : 14; s.flip = -Math.sin(a) >= 0 ? 1 : -1; s.a = (o.on ? o.on() : 1) * (r.a ?? 1); return; }
+      const L = Math.abs(r.x2 - r.x1), per = L / Math.abs(r.v) + (r.gap ?? 0), t = (T + (r.t0 ?? 0)) % per, d = t * Math.abs(r.v);
+      s.x = (r.v > 0 ? r.x1 + d : r.x2 - d) + s.dx; s.y = r.y + s.dy + 0.4 * Math.sin(T * 0.8 + s.ph) + (r.rise ?? 0) * d; s.z = r.z;
+      s.tile = Math.sin(T * 0.5 + s.ph) > 0.5 ? 14 : Math.sin(T * (r.flap ?? 7) + s.ph) > 0 ? 15 : 14; s.flip = Math.sign(r.v) || 1;
+      s.a = d > L ? 0 : (o.on ? o.on() : 1) * (r.a ?? 1);
+    } });
+}
+// ---- 燕子：贴着草地兜大圈，忽高忽低，飞得很快 ----
+function airSwallows(R, n, cx, cz, o = {}) {
+  return airCloud(R, n, { order: 48, name: 'swallows',
+    init(s) { s.ph = ar(0, 6.28); s.w = ar(0.45, 0.75) * (s.i % 2 ? 1 : -1); s.rx = ar(6, 10); s.rz = ar(1.5, 3.5); s.size = o.size ?? 0.3; s.c = airCol(o.c ?? 0x1c2030); },
+    step(s, dt) {
+      s.ph += s.w * dt; s.x = cx + Math.cos(s.ph) * s.rx + 2.5 * Math.sin(s.ph * 2.3); s.z = cz + Math.sin(s.ph) * s.rz;
+      s.y = groundY(s.x) + 0.9 + 0.6 * Math.sin(s.ph * 3.1 + s.i) + 0.9 * Math.max(0, Math.sin(s.ph * 1.3));
+      s.tile = Math.sin(T * 15 + s.i) > 0.3 ? 15 : 14; s.flip = -Math.sin(s.ph) * s.w >= 0 ? 1 : -1; s.rot = 0.3 * Math.sin(s.ph * 3.1 + s.i); s.a = o.on ? o.on() : 1;
+    } });
+}
+
+// ---- 萤火虫（环境里的 flies 是多少就有多少）：每一只自己一明一灭，亮的时候慢慢往上飘，暗下去以后换个地方再亮 ----
+// 主循环每帧都会调 updateFlies，所以各种点的“一米画成多少像素”也在这里更新
+let flyAmt = 0, flyCx = 0, flyBase = 0;
+const FIREFLIES = airCloud(scene, 90, { add: true, order: 46, name: 'fireflies',
+  init(s) { s.ph = ar(0, 10); s.per = ar(2.4, 5.5); s.on = ar(0.5, 1.3); s.tile = 0; s.c = airCol(0xd9f08a); s.size = ar(0.12, 0.2); s.x = ar(-20, 20); s.y = ar(0.2, 3); s.z = ar(-9, 4); s.dark = true; },
+  step(s, dt) {
+    s.ph += dt; const c = s.ph % s.per, lit = c < s.on, p = lit ? Math.sin(Math.PI * c / s.on) : 0;
+    if (!lit && !s.dark) { s.dark = true; if (Math.random() < 0.35) { s.x = flyCx + ar(-20, 20); s.y = flyBase + ar(0.15, 2.2); s.z = ar(-9, 4); } }
+    if (lit) s.dark = false;
+    s.x += 0.22 * Math.sin(T * 0.3 + s.i) * dt; s.y += (0.06 + 0.12 * Math.sin(T * 0.7 + s.i * 2)) * dt; s.z += 0.14 * Math.cos(T * 0.25 + s.i) * dt;
+    if (s.x < flyCx - 20) s.x += 40; else if (s.x > flyCx + 20) s.x -= 40;
+    if (s.y > flyBase + 4.2 && !lit) s.y = flyBase + 0.2;
+    s.a = flyAmt * (0.06 + 0.94 * p * p);
+  } });
+function updateFlies(dt, t, camX, baseY, amount) {
+  airTick(); flyAmt = amount; flyCx = camX; flyBase = baseY;
+  FIREFLIES.pts.visible = amount > 0.01; FIREFLIES.step(dt);
+}
+
+// ============================================================
+//  空中的细节（二）：会被惊飞的鸟
+//  落在地上、横梁、电线、墙头、屋檐、树上的鸟。主角走近就飞走 —— 跑着过来，离得远就飞了；慢慢走能凑得更近。
+//  一群里有一只飞了，旁边的就一只接一只跟着飞；附近有大的响动（压机砸下去、狗叫、重重落地、闸门撞到头）也会惊飞。
+//  飞的时候背对着镜头往高处、往远处去；过一阵、主角走远了，再从高处滑翔回来落下
+// ============================================================
+const BIRD_KIND = {                                      // [背, 肚子, 翅膀, 头, 嘴] 的颜色, 身长（米）
+  pigeon: { c: [0x7a848c, 0xa3abb0, 0x5d666e, 0x58626b, 0x2a2626], L: 0.33 },
+  crow: { c: [0x1c1e20, 0x24272a, 0x141618, 0x181a1c, 0x101010], L: 0.44 },
+  sparrow: { c: [0x8a6a48, 0xd2c4a8, 0x5c4630, 0x6e5640, 0x3a3026], L: 0.19 },
+};
+const BIRD_MAT = {}, BIRD_FLAT = {};
+for (const k in BIRD_KIND) BIRD_MAT[k] = BIRD_KIND[k].c.map(c => lam(c, { emissive: c, emissiveIntensity: 0.18 }));
+const birdFlat = c => BIRD_FLAT[c] ??= new THREE.MeshBasicMaterial({ color: c });   // 远处布景板上的鸟：和那块板一样，只是一块颜色
+const BIRD_GEO = { body: new THREE.SphereGeometry(0.5, 9, 7), belly: new THREE.SphereGeometry(0.4, 8, 6), head: new THREE.SphereGeometry(0.17, 8, 6),
+  beak: new THREE.ConeGeometry(0.05, 0.17, 5).rotateZ(-Math.PI / 2), tail: new THREE.BoxGeometry(0.42, 0.035, 0.22),
+  wing: [-1, 1].map(sz => new THREE.BoxGeometry(0.42, 0.03, 0.62).translate(-0.06, 0, sz * 0.31)) };
+const AIR_FLOCKS = new Set();                            // 现在搭好了的几群鸟：大的响动从这里找到附近的鸟
+let lastFlutter = -9;
+
+function mkAirBird(parent, kind, flat) {
+  const K = BIRD_KIND[kind], m = flat ? Array(5).fill(birdFlat(flat)) : BIRD_MAT[kind];
+  const g = grp(parent), body = grp(g, 0, 0.3, 0);
+  add(body, BIRD_GEO.body, m[0], 0, 0, 0, false).scale.set(1, 0.62, 0.56);
+  add(body, BIRD_GEO.belly, m[1], 0.06, -0.08, 0, false).scale.set(1, 0.6, 0.62);
+  const head = grp(body, 0.42, 0.22, 0); add(head, BIRD_GEO.head, m[3], 0, 0, 0, false); add(head, BIRD_GEO.beak, m[4], 0.2, -0.02, 0, false);
+  add(body, BIRD_GEO.tail, m[2], -0.6, 0.04, 0, false).rotation.z = 0.25;
+  const wings = BIRD_GEO.wing.map(geo => { const w = grp(body, 0.02, 0.12, 0); add(w, geo, m[2], 0, 0, 0, false); return w; });
+  g.scale.setScalar(K.L);
+  return { g, body, head, wings };
+}
+const flapTo = (b, up) => b.wings.forEach((w, i) => { w.rotation.x = (i ? -1 : 1) * up; w.scale.z = up < -1 ? 0.6 : 1; });   // up > 0 翅膀抬起；-1.45 收着贴在身子两侧
+
+// 一群鸟。specs: [[种类, x, y（null = 站在地上）, z, { face 朝哪边, flee 主角走到多近就飞（0 = 不怕人）, s 大小, flat 远处的剪影色,
+//                   away 往哪边飞（1 右 / -1 左，不写就背着主角）, toZ 往深处飞多快, back 飞走以后至少过多久才回来, noise 怕不怕响动（0..1）,
+//                   dy 主角在上下多远以内才算走近（停在高处电线上的要大一些）}], ...]
+// 同一群里一只飞了，别的跟着飞
+function airBirds(R, specs, o = {}) {
+  const root = grp(R), birds = specs.map(([kind, x, y, z, b = {}], i) => {
+    const B = mkAirBird(root, kind, b.flat), K = BIRD_KIND[kind];
+    return Object.assign(B, { kind, K, x, y0: y, z, i, face: b.face ?? (i % 2 ? 1 : -1), flee: b.flee ?? 3, s: b.s ?? 1, away: b.away, toZ: b.toZ, back: b.back ?? ar(9, 16),
+      noise: b.noise ?? 1, dy: b.dy ?? 4.5, ground: y === null, seed: x * 0.61 + i * 1.37, st: 'perch', t: 0 });
+  });
+  const F = { name: o.name ?? 'birds', root, birds, on: true };
+  const place = b => { b.y = b.ground ? groundY(b.x) : b.y0; b.g.position.set(b.x, b.y, b.z); b.g.scale.setScalar(b.K.L * b.s); b.g.rotation.y = b.face > 0 ? 0 : Math.PI; b.g.visible = true; b.st = 'perch'; b.t = 0; };
+  F.reset = () => birds.forEach(place); F.reset();
+  // 惊飞一只：dir 往哪边飞，delay 隔多久才起飞（一群里一只接一只）
+  F.off = (b, dir, delay = 0) => {
+    if (b.st !== 'perch') return;
+    b.st = 'go'; b.delay = delay; b.dir = b.away ?? (dir || b.face);
+    for (const q of birds) if (q.st === 'perch' && Math.abs(q.x - b.x) < (o.spread ?? 6) && Math.abs(q.y - b.y) < 2.5 && Math.abs(q.z - b.z) < 6) { q.st = 'go'; q.dir = q.away ?? b.dir; q.delay = delay + ar(0.06, 0.3) + 0.06 * Math.abs(q.x - b.x); }
+  };
+  F.scare = (x, r, p = 1, y = null, ry = 99) => { for (const b of birds) if (b.st === 'perch' && Math.abs(b.x - x) < r && (y === null || Math.abs(b.y - y) < ry) && Math.random() < p * b.noise) F.off(b, Math.sign(b.x - x)); };   // y, ry：只惊动这个高度附近的
+  function launch(b) {
+    b.st = 'fly'; b.t = 0; b.vx = b.dir * 1.2; b.vy = 3; b.vz = 0; b.sp = ar(3.5, 5.5) * (o.speed ?? 1); b.climb = ar(1.8, 3.2); b.tz = b.toZ ?? ar(-3.5, -1.5);
+    if (T - lastFlutter > 0.35 && inView(b.x, b.z, 2)) { lastFlutter = T; fx('flutter'); }
+  }
+  F.step = dt => {
+    if (!root.visible) return;
+    for (const b of birds) {
+      const g = b.g; b.t += dt;
+      if (b.st === 'perch' || b.st === 'go') {               // 落着：每隔一会儿做一件小事 —— 啄一下、蹦一下、扭头看看、抖抖翅膀
+        const q = T * 0.7 + b.seed, n = Math.floor(q), f = q - n, h = hash1(n + b.seed * 7);
+        const peck = b.ground && h < 0.45 ? Math.sin(Math.min(1, f * 2.2) * Math.PI) : 0, hop = b.ground && h > 0.84 ? Math.sin(clamp(f * 3, 0, 1) * Math.PI) : 0;
+        b.body.rotation.z = -0.9 * peck + (b.ground ? 0 : 0.05 * Math.sin(T * 1.1 + b.seed)); b.head.rotation.y = h > 0.5 && h < 0.8 ? 1.0 * sstep(0, 0.2, f) * (1 - sstep(0.7, 0.9, f)) : 0;
+        g.position.set(b.x, b.y + 0.06 * hop, b.z); flapTo(b, -1.45 + (h > 0.96 ? 0.5 * Math.max(0, Math.sin(f * 40)) : 0));
+        if (b.st === 'go') { b.delay -= dt; if (b.delay <= 0) launch(b); }
+        else if (state === 'play' && b.flee > 0) {
+          const r = b.flee * lerp(0.6, 1.35, clamp(Math.abs(P.vx) / RUN, 0, 1));
+          if (Math.abs(P.x - b.x) < r && Math.abs(P.y - b.y) < b.dy) F.off(b, Math.sign(b.x - P.x));
+        }
+      } else if (b.st === 'fly') {                           // 飞走：先猛扑几下拔起来，然后往高处、往深处飞
+        b.vx = damp(b.vx, b.dir * b.sp, 2.5, dt); b.vy = damp(b.vy, b.climb, 1.6, dt); b.vz = damp(b.vz, b.tz, 1.5, dt);
+        g.position.x += b.vx * dt; g.position.y += (b.vy + 0.5 * Math.sin(b.t * 10)) * dt; g.position.z += b.vz * dt;
+        g.rotation.y = Math.atan2(-b.vz, b.vx); b.body.rotation.z = 0.25; b.head.rotation.y = 0;
+        flapTo(b, 0.15 + 1.05 * Math.sin(b.t * (b.t < 0.7 ? 34 : 21) + b.seed));
+        if (b.t > 7 || g.position.y > viewTop(g.position.z) + 2.5 || !inView(g.position.x, g.position.z, 5)) { b.st = 'gone'; b.t = 0; g.visible = false; }
+      } else if (b.st === 'gone') {                          // 主角走远了再回来
+        if (b.t > b.back && Math.abs(P.x - b.x) > (o.backAt ?? 12)) { b.st = 'come'; b.t = 0; b.cdir = Math.random() < 0.5 ? -1 : 1; g.visible = true; }
+      } else if (b.st === 'come') {                          // 从高处滑翔下来，落地前扑几下
+        const k = Math.min(1, b.t / 3), a = (1 - k) * (1 - k);
+        g.position.set(b.x + a * 8 * b.cdir, b.y + a * 5, b.z - a * 6); g.rotation.y = (b.cdir > 0 ? Math.PI : 0) + 0.6 * a * b.cdir;
+        b.body.rotation.z = 0.2 * a; flapTo(b, k > 0.78 ? 0.2 + 0.9 * Math.sin(b.t * 30) : 0.3 + 0.08 * Math.sin(b.t * 3));
+        if (k >= 1) { b.st = 'perch'; g.rotation.y = b.face > 0 ? 0 : Math.PI; }
+      }
+    }
+  };
+  AIR_FLOCKS.add(F); F.dispose = () => AIR_FLOCKS.delete(F);
+  return F;
+}
+
+// 落在一块布景板画出来的东西的顶上（树冠、枯枝、电线、屋檐）：在那块板的画布上，从上往下找这一列第一个不透明的像素。
+// zoneN 哪一章, z 板的深度, x 世界 x, yMax 从多高往下找, solid 多不透明才算（细电线要放低一些）。找不到返回 null
+function boardTop(zoneN, z, x, yMax = 99, solid = 170) {
+  const zone = ZONES.find(q => q.n === zoneN && !q.air), root = zone && zone.root; if (!root) return null;
+  for (const m of root.children) {
+    const img = m.material && m.material.map && m.material.map.image, pr = m.geometry && m.geometry.parameters;
+    if (!img || !img.getContext || !pr || pr.width === undefined || m.rotation.x !== 0 || Math.abs(m.position.z - z) > 0.01) continue;
+    const x1 = m.position.x - pr.width / 2, y2 = m.position.y + pr.height / 2; if (x < x1 || x > x1 + pr.width) continue;
+    const k = img.width / pr.width, col = Math.round((x - x1) * k), y0 = clamp(Math.round((y2 - yMax) * k), 0, img.height - 1);
+    const d = img.getContext('2d').getImageData(col, y0, 1, img.height - y0).data;
+    for (let i = 0; i < d.length / 4; i++) if (d[i * 4 + 3] > solid) return y2 - (y0 + i) / k;
+  }
+  return null;
+}
+
+// 大的响动：几种音效上挂一个钩子，响的时候惊飞附近的鸟（声音关着也照样惊飞）。[离多远的鸟会飞, 每只飞的可能（鸟听惯了的响动就小一些）]
+const AIR_NOISE = { press: [14, 0.45], bark: [9, 0.6], alarm: [12, 1], doorStop: [7, 0.8], splash: [7, 1], powerDown: [9, 1], powerUp: [6, 0.7], lever: [5, 1], clunk: [5, 1], cloth: [6, 1], land: [0, 1] };
+function airNoise(kind, v) {
+  let [r, p] = AIR_NOISE[kind], x = P.x;
+  if (kind === 'land') r = v > 7 ? 5 : 0;
+  if (kind === 'press') x = Math.abs(P.x - 101.9) < Math.abs(P.x - (X3 + 30.6)) ? 101.9 : X3 + 30.6;          // 两台压机：第一章的回收大厅、第三章围墙里
+  if (kind === 'bark' && typeof CH3 !== 'undefined') x = CH3.DOG.x;
+  if (r > 0 && state === 'play') for (const F of AIR_FLOCKS) F.scare(x, r, p);
+}
+for (const k in AIR_NOISE) { const f = sfx[k]; if (f) sfx[k] = (...a) => { airNoise(k, a[0]); return f(...a); }; }
+
+// ============================================================
+//  空中的细节（三）：每一章摆什么
+//  每一章一组，和那一章的画面占同一段 x，跟着那一章一起搭建、释放。组里每样东西有个名字：
+//  dust 光里的尘埃 / leaves 落叶 / seeds 草籽的绒毛 / scraps 纸片和塑料袋 / sand 风沙 / birds 会被惊飞的鸟 / flock 远处的鸟群 /
+//  gnats 蠓虫 / moths 飞蛾 / flies 苍蝇 / dragonflies 蜻蜓 / butterflies 蝴蝶 / swallows 燕子。
+//  看图工具（Last/tools/air-sheet.html）可以整组关掉，或者只留其中几样来比较
+// ============================================================
+// show：镜头在这一段 x 里才显示（每一章的出入口有一面黑墙，镜头穿过它的时候换成下一章的光，空中的东西也跟着换）
+function airZone(n, vis, show, make) {
+  const S = { sys: [], on: true, keep: null };
+  const apply = () => { for (const s of S.sys) { const v = S.on && (!S.keep || S.keep.includes(s.name)); if (s.pts) s.pts.visible = v; if (s.root) s.root.visible = v; } };
+  const z = defZone({ n, vis, air: true,
+    *build(R) { S.sys = []; yield* make(R, S.sys); apply(); },
+    update(dt) { if (!z.root) return; z.root.visible = camera.position.x > show[0] && camera.position.x < show[1]; if (z.root.visible) for (const s of S.sys) s.step(dt); },
+    reset() { for (const s of S.sys) if (s.reset) s.reset(); }, solve() { z.reset(); },
+    unbuild() { for (const s of S.sys) if (s.dispose) s.dispose(); S.sys = []; },
+    show(on) { S.on = on; apply(); }, only(names) { S.keep = names; apply(); } });
+  return z;
+}
+// 停在布景板上画出来的东西顶上的一排鸟（剪影）。o.near：在 x 左右这么宽的范围里找最高的那一处（树枝的梢）；o.minY 比这还低的就不放
+function flat(zoneN, z, xs, o = {}) {
+  const top = x => boardTop(zoneN, z, x, o.yMax ?? 99, o.solid ?? 170);
+  return xs.map(x0 => {
+    let x = x0, y = top(x0);
+    if (o.near) for (let d = -o.near; d <= o.near; d += 0.08) { const yy = top(x0 + d); if (yy !== null && (y === null || yy > y + 0.02)) { x = x0 + d; y = yy; } }
+    return [o.kind ?? 'crow', x, y, z + 0.08, { flat: o.c, s: o.s ?? 1.3, flee: o.flee ?? 4, dy: o.dy ?? 30, toZ: o.toZ ?? -4, face: x0 % 2 > 1 ? 1 : -1 }];
+  }).filter(b => b[2] !== null && b[2] > (o.minY ?? -99));
+}
+
+// ---- 第一章 · 工厂 ----
+// 天窗漏下来的光里、探照灯扫过的光束里，飘着慢慢往下落的灰；天花板上几处一直漏着细细的一缕灰；压机砸下去，上面震下一阵灰。
+// 推车上那盏暖色吊灯边绕着几只飞蛾。鸽子停在行车梁上、上层通道的栏杆上（机器人跑过去就飞）、输送带的罩子上（压机一砸就飞几只）、
+// 探照灯场地后面高高的桁架上（警报一响就飞）
+airZone(1, [-40, 105], [-60, 104.6], function* (R, sys) {
+  const L = [];
+  for (const [x, w, a] of [[3.5, 3.4, 0.2], [30.5, 3.8, 0.17], [44.5, 3.4, 0.15], [18.5, 2.6, 0.1], [89.4, 3.2, 0.13]])        // 和天窗光柱那块布景板上的五道光对齐
+    L.push({ k: 'slab', x0: x + 0.1, x1: x + 1.65, y0: 0, y1: 9, w0: w / 2 + 0.1, w1: lerp(w / 2 + 0.1, 0.45, 0.56), z0: -2.6, z1: 2.2, c: 0xcfe2e6, a: a * 4 });
+  L.push({ k: 'cone', at: () => [beam.position.toArray(), beam.target.position.toArray(), beam.intensity > 0 ? 1 : 0], ang: 0.125, c: 0xe8f3f5, a: 1.2, w: 4 });
+  L.push({ k: 'ball', p: [33, 5.3, -2.8], r: 2.6, c: 0xffc27a, a: 0.9, w: 0.6 });
+  for (const [x, y, z] of [[12.4, 7, -1.4], [38.6, 7.5, -2.2], [69.2, 8, -7], [74.6, 8, -4], [96.6, 8, -3]]) L.push({ k: 'drip', p: [x, y, z], spread: 0.06, c: 0xb8c8cc, a: 0.55, w: 0.3 });
+  const slam = () => CH1.LINE.phase === 'slam' || (CH1.LINE.phase === 'rise' && CH1.LINE.t < 1);
+  for (const dx of [-1, 0, 1]) L.push({ k: 'drip', p: [101.9 + dx, 8.2, -5.2], spread: 0.55, c: 0xc4ccc8, a: 0.7, w: 4, on: slam });
+  sys.push(litDust(R, 520, L)); yield;
+  sys.push(airMoths(R, [[33, 5.55, -3.05, 5]], { c: 0xffd29a }));
+  const B = [];
+  for (const [x, f] of [[14.6, 1], [15.2, -1], [23.0, 1], [23.6, -1], [24.3, 1], [36.4, -1], [37.1, 1]]) B.push(['pigeon', x, 5.76, -3.12, { face: f, dy: 7, toZ: -3 }]);        // 行车梁
+  for (const [x, f] of [[6.5, 1], [7.2, -1], [28.1, -1], [28.8, 1]]) B.push(['pigeon', x, 4.43, -5.0, { face: f }]);                                          // 上层通道的栏杆
+  for (const x of [82.7, 83.4, 84.1]) B.push(['pigeon', x, 7.1, -5.2, { dy: 8, flee: 2.5 }]);                                                               // 输送带的罩子
+  for (const x of [64.2, 64.9, 65.5, 76.4, 77.2]) B.push(['pigeon', x, 9.55, -24.9, { flee: 0, flat: 0x0a1012, s: 1.4, toZ: -2 }]);                         // 高处的行车桁架
+  const birds = airBirds(R, B, { spread: 5 }); sys.push(birds);
+  sys.push({ name: 'birds', step() { if (state === 'play') for (const r of CH1.RUN1.list) if (r.live) birds.scare(r.x, 1.8, 1, 4.4, 1); } });   // 机器人从栏杆边跑过去：只惊动栏杆上的
+});
+
+// ---- 第二章 · 林地水闸 ----
+// 坡上：清晨的逆光里飘着草籽的绒毛；一群乌鸦远远地朝巨像那边飞；近处电线杆的横担上、远处的高压线上停着乌鸦，走近了就飞起来。
+// 林子里：叶子一片片往下落（大半是地上那一层自己飘的）；枝叶间漏下来的光里有灰、有一团团发亮的蠓虫；林子边上枯树上停着乌鸦，地上几只麻雀在啄食。
+// 水闸：水面上几只蜻蜓，悬停一下、猛地一窜
+airZone(2, [X2, X3 + 4], [X2 + 0.7, X3 + 2], function* (R, sys) {
+  const cx = () => camera.position.x;
+  sys.push(airLeaves(R, { name: 'seeds', n: 18, drift: true, tiles: [8], cols: [0xfff3df, 0xffe8c8], size: [0.08, 0.13], z: [-4, 5], lo: 0.3, hi: 3.2, lift: 0.25, wind: () => -1.1, on: () => cx() < X2 + 74, a: 0.9 }));
+  sys.push(airFlock(R, [{ x1: X2 + 10, x2: X2 + 160, y: 24, z: -95, v: 2.6, n: 7, gap: 18, s: 1.7, c: 0x2e2a28 }], { on: () => 1 - sstep(X2 + 70, X2 + 82, cx()) }));
+  sys.push(airLeaves(R, { n: 18, xs: [[199, 221], [256, 284]], cols: [0x9a7a3c, 0x7a5e2e, 0xb08a48, 0x6a5a30], z: [-5, 5] })); yield;   // 林子里另外两段的落叶是地上那一层自己飘的（46-ground.js 的 fallingLeaves），这里只补水闸那一屏和更远的一段
+  const L = [];
+  for (const [x, w, a] of [[188, 3.2, 0.16], [201, 4.4, 0.2], [216, 3.6, 0.15], [231, 2.8, 0.12], [246, 4, 0.14]])                                       // 林间的光柱（z = -2.6 那块板）
+    L.push({ k: 'slab', x0: x, x1: x + 2.28, y0: 0, y1: 9, w0: w / 2, w1: lerp(w / 2, 0.7, 0.53), z0: -3.6, z1: -1.6, c: 0xfff0d0, a: a * 5 });
+  for (const [x, w, a] of [[202.6, 2.6, 0.5], [206.3, 1.3, 0.26], [210.4, 2.8, 0.38], [214.2, 1.1, 0.22], [217.4, 2.2, 0.32]])                             // 水闸那一屏的五束光（z = -1.6）
+    L.push({ k: 'slab', x0: x, x1: x - 4.05, y0: 0, y1: 9, w0: w / 2, w1: lerp(w / 2, w * 0.2, 0.56), z0: -2.6, z1: -0.6, c: 0xffeccc, a: a * 2.6 });
+  sys.push(litDust(R, 340, L, { c: 0xfff0d0 }));
+  sys.push(airGnats(R, [[187.4, 2.4, -2.4, 14], [201.6, 1.9, -1.4, 16], [209.4, 2.2, -1.8, 14], [216.5, 1.6, -1.1, 12], [231.6, 2.1, -2.2, 12]], { add: false, c: 0x2a2620, a: 0.8, size: 1.5 }));   // 背后是发白的雾：画成小黑点才看得见
+  sys.push(airDarters(R, 4, [206.4, 215.5, 0.25, 1.4, -9, -0.5], { kind: 'dragon', abs: true, cols: [0x2f6f86, 0x3f6f3a, 0x8a3a2a] })); yield;
+  const B = [];
+  for (const [xc, k] of [[116.66, [0.5]], [126.72, [-0.55, 0.5]], [147.56, [-0.5, 0.55]]]) for (const d of k) B.push(...flat(2, -11, [xc + d], { c: 0x151516, s: 1.25, flee: 4.5, yMax: 14 }));   // 电线杆的横担
+  B.push(...flat(2, -52, [128, 129.2, 130.1, 136.5, 137.4], { c: 0x1e1d1f, s: 1.6, flee: 7, yMax: 30, solid: 60, toZ: -6 }));                                // 高压线
+  B.push(...flat(2, -11, [166.2, 172.2, 174.0, 181.0], { c: 0x151516, s: 1.3, flee: 4.5, yMax: 14, near: 0.7, minY: 3 }));                                                       // 林子边上的枯树
+  for (const [x, z] of [[181.2, 1.2], [181.8, 0.9], [182.6, 1.5], [189.7, -0.8], [190.3, -0.5]]) B.push(['sparrow', x, null, z, { flee: 3, s: 1.25 }]);   // 地上啄食的麻雀
+  sys.push(airBirds(R, B, { spread: 5 }));
+});
+
+// ---- 第三章 · 围墙与废料场 ----
+// 出了林子，风大起来：贴着地面一阵阵刮过去的沙，地上一片片流动的沙纹，刮阵风的时候更密更快；纸片和塑料袋顺着风翻滚。
+// 残墙顶上停着两只乌鸦，翻上墙头就飞；墙外枯树上也有几只；废料场上空几只乌鸦在慢慢盘旋
+airZone(3, [X3 - 6, X4 + 6], [X3 - 4, X4 + 1], function* (R, sys) {
+  const where = () => sstep(X3 + 16, X3 + 34, camera.position.x) * (1 - sstep(X4 - 16, X4 - 3, camera.position.x));   // 风沙从林子外面开始，进旧城以前停下
+  const gust = () => where() * clamp(0.55 + 0.25 * Math.sin(T * 0.37) + 0.2 * Math.sin(T * 1.13 + 1) + 0.7 * Math.pow(Math.max(0, Math.sin(T * 0.19)), 8), 0, 1.5);
+  const wind = { wind: -3.8, gust };
+  sys.push(airSand(R, { n: 520, ...wind }));
+  sys.push(sandSheet(R, X3 + 10, X3 + 56.3, -8, 9, wind), sandSheet(R, X3 + 58.9, X4, -8, 9, wind)); yield;
+  sys.push(airLeaves(R, { name: 'scraps', n: 4, drift: true, tiles: [6, 6, 7], cols: [0xe8e2d4, 0xd8d0c0, 0xcfd6d0], size: [0.22, 0.4], z: [-5, 4], lo: 0.05, hi: 2.4, lift: 0.3, wind: () => -2.4 * (0.4 + gust()), on: () => where() > 0.5 }));
+  sys.push(airFlock(R, [{ orbit: [X3 + 86, 15, 9], z: -38, v: 3.2, n: 3, s: 1.5, c: 0x2a2622 }], { on: where }));
+  const W = X3 + 44, B = [['crow', W + 3.6, 2.3, -0.9, { flee: 2.6, noise: 0, face: -1 }], ['crow', W + 4.3, 2.3, -0.4, { flee: 2.6, noise: 0, face: 1 }]];   // 残墙顶上（追犬一直在叫，它们听惯了）
+  B.push(...flat(3, -13, [X3 + 63.5, X3 + 64.6, X3 + 71.1], { c: 0x39352f, s: 1.3, flee: 5, yMax: 16, near: 0.6, minY: 2.5 }));
+  sys.push(airBirds(R, B, { spread: 3 }));
+});
+
+// ---- 第四章 · 配给街 ----
+// 街上一群群鸽子在啄食，走近了呼啦一下飞上楼（慢慢走能凑得更近）；监控连到卷帘的那根线上也停着几只，遮阳布一落下来就飞；
+// 纸片顺着街吹过来；监控的光束扫到哪，哪里的灰就亮起来
+airZone(4, [X4 - 6, X5 + 6], [X4 - 4, X5 + 1], function* (R, sys) {
+  const POLE = X4 + 24, BARR = X4 + 37;
+  const camL = LIGHTS.find(l => l.spot && Math.abs(l.p[0] - (POLE - 0.85)) < 0.01 && Math.abs(l.p[1] - 4.9) < 0.01);
+  if (camL) sys.push(litDust(R, 150, [{ k: 'cone', at: () => [camL.p, camL.t, camL.on], ang: 0.15, c: 0xe2eef2, a: 1.1 }]));
+  sys.push(airLeaves(R, { name: 'scraps', n: 3, drift: true, tiles: [6], cols: [0xe6e8e4, 0xd8dcd8], size: [0.2, 0.32], z: [-4, 4], lo: 0.02, hi: 1.4, lift: 0.2, wind: () => -1.3 }));
+  const wire = new THREE.CatmullRomCurve3([[POLE, 5.2, -1.6], [POLE + 4, 6.6, -1.7], [POLE + 9, 6.2, -1.7], [BARR + 0.3, 6.5, -1.2]].map(p => V3(...p)), false, 'catmullrom', 0.2);   // 和那一章的那根线一样
+  const B = [];
+  for (const [x, z] of [[5.4, 1.4], [6.1, 0.9], [6.6, 1.9], [7.4, 1.2], [8.3, 1.6], [8.9, 0.8], [27.6, 1.0], [28.3, 1.6], [29.0, 0.7], [46, 1.2], [46.8, 0.6], [47.5, 1.7], [52, 1.0], [52.7, 1.5]])
+    B.push(['pigeon', X4 + x, null, z, { flee: 2.8, face: x % 1.4 > 0.7 ? 1 : -1 }]);
+  for (const t of [0.24, 0.29, 0.34, 0.58, 0.63]) { const p = wire.getPoint(t); B.push(['pigeon', p.x, p.y + 0.035, p.z, { dy: 8, flee: 2.4, face: t > 0.5 ? -1 : 1 }]); }
+  sys.push(airBirds(R, B, { spread: 4 }));
+});
+
+// ---- 第五章 · 维修巷 ----
+// 三盏吊灯的光里飘着灰，每盏灯边绕着几只飞蛾；后墙的管子上停着几只鸽子
+airZone(5, [X5 - 4, X6 + 4], [X5 - 3, X6 + 1], function* (R, sys) {
+  const LAMPS = [X5 + 10, X5 + 24, X5 + 34];                                              // 和那一章的吊灯一样
+  sys.push(litDust(R, 140, LAMPS.map(x => ({ k: 'cone', at: () => [[x, 5.6, 0.6], [x, 0, -0.5], 1], ang: 0.45, c: 0xcfe2ea, a: 0.65 })), { size: 0.7 }));   // 灯就在主角头顶：灰离镜头近，画小一点、少一点
+  sys.push(airMoths(R, LAMPS.map(x => [x, 5.5, 0.2, 4]), { c: 0xe6f0f4 }));
+  sys.push(airBirds(R, [['pigeon', X5 + 12.4, 3.89, -4.3, { dy: 6, face: -1 }], ['pigeon', X5 + 13.0, 3.89, -4.3, { dy: 6, face: 1 }], ['pigeon', X5 + 28.6, 3.89, -4.3, { dy: 6 }],
+    ['pigeon', X5 + 41.5, 6.83, -4.3, { dy: 9 }], ['pigeon', X5 + 42.1, 6.83, -4.3, { dy: 9, face: 1 }]], { spread: 3 }));
+});
+
+// ---- 第六章 · 供水街区 ----
+// 两只监控的光束里有灰；死猪上空一团苍蝇乱冲，时不时落下来；漏水的管子边一团小黑虫；长管子上停着一排麻雀，街上几只鸽子。
+// 走到城市的边缘：草籽的绒毛和几片叶子飘起来，草上有了蝴蝶，一群鸟朝花园那边飞
+airZone(6, [X6 - 6, X7 + 6], [X6 - 4, X7 + 1.1], function* (R, sys) {
+  const MAN = X6 + 61.6, LEAK = X6 + 50, cx = () => camera.position.x;
+  const cams = [X6 + 27, X6 + 35].map(x => LIGHTS.find(l => l.spot && Math.abs(l.p[0] - (x - 0.85)) < 0.01 && Math.abs(l.p[1] - 4.7) < 0.01)).filter(Boolean);
+  sys.push(litDust(R, 200, cams.map(l => ({ k: 'cone', at: () => [l.p, l.t, l.on], ang: 0.16, c: 0xe2eef2, a: 1.1 }))));
+  sys.push(airFlies(R, 10, [MAN + 1.15, 0.66, -0.62, 0.6, 0.3, 0.35], { land: 0.47, size: 1.6 }));   // 真的苍蝇在这个距离上不到一个像素：放大到看得见
+  sys.push(airGnats(R, [[LEAK + 0.7, 1.1, -0.3, 16]], { add: false, c: 0x161818, a: 0.85, size: 1.3 }));
+  sys.push(airLeaves(R, { name: 'seeds', n: 12, drift: true, tiles: [8], cols: [0xfff6e6], size: [0.08, 0.12], z: [-4, 4], lo: 0.4, hi: 3, lift: 0.2, wind: () => -0.8, on: () => cx() > X6 + 72, a: 0.9 }));
+  sys.push(airLeaves(R, { n: 14, xs: [[X6 + 80, X7 - 2]], cols: [0x9ab04a, 0xc8b04a, 0x7a9a3a], z: [-5, 3] }));
+  sys.push(airDarters(R, 5, [X6 + 84, X7 - 3, 0.3, 1.2, -2.5, 2.5], { cols: [0xffffff, 0xf4d24a, 0xffffff, 0xf0a040], size: 1.5 }));
+  sys.push(airFlock(R, [{ x1: X6 + 50, x2: X7 + 30, y: 17, z: -70, v: 2.4, n: 6, gap: 22, s: 1.5, c: 0x3a3a3c }]));
+  const B = [];
+  for (const [x, f] of [[44.6, 1], [45.1, -1], [45.7, 1], [53.4, -1], [54.0, 1]]) B.push(['sparrow', X6 + x, 3.19, -0.7, { dy: 5, face: f, s: 1.3 }]);   // 长管子上
+  for (const [x, z] of [[23.2, 1.2], [23.9, 0.8], [24.6, 1.7], [25.4, 1.1]]) B.push(['pigeon', X6 + x, null, z, { flee: 2.8 }]);
+  sys.push(airBirds(R, B, { spread: 3 }));
+});
+
+// ---- 第七章 · 管理花园 ----
+// 白天：花垄上飞着蝴蝶，阳光里飘着草籽的绒毛，几只燕子贴着草坪兜圈子，树篱前面有蜻蜓。
+// 黄昏：野林子里的叶子往下落，低低的阳光里一团团发亮的蠓虫（萤火虫在环境里，天一暗就出来）
+airZone(7, [X7 - 6, X8 + 4], [X7 - 3, X8 + 1], function* (R, sys) {
+  const cx = () => camera.position.x, day = () => 1 - sstep(X7 + 66, X7 + 86, cx()), dusk = () => sstep(X7 + 58, X7 + 72, cx());
+  sys.push(airDarters(R, 8, [X7 + 3, X7 + 43, 0.7, 1.5, -7.6, -3.3], { cols: [0xffffff, 0xfff3a0, 0xffd84a, 0xf0a040, 0xffffff], size: 1.6 }));   // 飞得比花高一点，衬在深绿的树篱前面
+  sys.push(airLeaves(R, { name: 'seeds', n: 14, drift: true, tiles: [8], cols: [0xffffff], size: [0.09, 0.13], z: [-6, 5], lo: 0.3, hi: 1.8, lift: 0.2, wind: () => -0.5, on: () => day() > 0.5, a: 0.95 }));   // 低一些：衬在树篱和草地前面才看得见（天是亮的）
+  sys.push(airSwallows(R, 3, X7 + 22, -4.5, { on: day }));
+  sys.push(airDarters(R, 3, [X7 + 6, X7 + 42, 0.6, 1.6, -5.2, -2.6], { kind: 'dragon', cols: [0x2f7fa0, 0x3a8a4a] }));
+  sys.push(airLeaves(R, { n: 26, xs: [[X7 + 62, X8 - 8]], cols: [0xc8a048, 0xd88a3a, 0x8aa040, 0xa86a30], z: [-5, 4], on: () => dusk() > 0.5 }));
+  sys.push(airGnats(R, [[X7 + 70, 1.4, -1.5, 14], [X7 + 88, 1.8, -2.5, 16], [X7 + 101, 1.3, -1.2, 12]], { c: 0xffd9a0, a: 0.85, on: dusk }));
+});
+
+// ---- 第八章 · 生态中枢 ----
+// 中枢里：挡在发光的墙和那盏大圆灯前面的灰，逆着光一粒粒发亮。
+// 出了门：坡顶那棵落光了叶子的老树上停着几只乌鸦，最后几片叶子往下掉；一群乌鸦朝着余晖飞回去（天黑透以前）
+airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
+  const D1 = X8 + 20, D2 = X8 + 44, D3 = X8 + 70, EX = X8 + 96, SUNX = X8 + 85.5, SUNR = 7.9, ROOMS = [[X8 - 2, D1, 0.3], [D1, D2, 0.42], [D2, D3, 0.56]];   // 和那一章一样
+  const lum = (x, y) => {                                 // 后墙上这一点有多亮：核心是那盏圆灯（下半个圆在地面以下），前三间是一整面光墙
+    if (y < -0.3) return 0;
+    if (x > D3) { const d = Math.hypot(x - SUNX, y) / SUNR; return d < 0.97 ? 0 : 0.9 * (1 - sstep(0.97, 1.9, d)); }       // 灯面本身已经白透了，亮的灰只在它边上的那一圈
+    for (const [a, b, k] of ROOMS) if (x > a && x < b) return k * 1.6 * lerp(1, 0.15, clamp(y / 20, 0, 1));
+    return 0;
+  };
+  sys.push(litDust(R, 260, [{ k: 'back', z: -25.9, lum, box: [X8 + 1, EX - 0.8, 0.05, 6.5, -5, 3], c: 0xeefafd, a: 1, on: () => camera.position.x < EX + 1 }]));
+  const disc = (x, y) => y > -0.3 && Math.hypot(x - SUNX, y) < SUNR * 0.97 ? 1 : 0;                                         // 挡在圆灯前面的灰：逆着白光是一粒粒暗点
+  sys.push(litDust(R, 120, [{ k: 'back', z: -25.9, lum: disc, box: [D3 + 2, EX - 1, 0.05, 6.5, -5, 3], c: 0x22323a, a: 1.4, on: () => camera.position.x > D3 - 6 && camera.position.x < EX + 1 }], { add: false, size: 0.8 }));
+  sys.push(airLeaves(R, { n: 5, xs: [[X8 + 129, X8 + 140]], cols: [0x5a4430, 0x6e5236, 0x3e3024], fall: [0.3, 0.55], z: [-3.8, -2.9], size: [0.07, 0.1], wind: () => -0.35 }));
+  sys.push(airFlock(R, [{ x1: X8 + 70, x2: X8 + 230, y: 19, z: -85, v: -3, n: 9, gap: 20, s: 1.5, c: 0x1c1a24 }], { on: () => 1 - CH8.END.deep }));
+  sys.push(airBirds(R, flat(8, -3.4, [X8 + 131.6, X8 + 133.2, X8 + 136.0, X8 + 137.8], { c: 0x0a0b0a, s: 1.15, flee: 3, dy: 12, yMax: 14, toZ: -3, near: 0.6, minY: 6 }).map(b => (b[4].back = 25, b))));
+});
 
 // ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局

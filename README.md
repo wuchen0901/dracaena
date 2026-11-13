@@ -29,10 +29,10 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 
 ## 目录
 
-- `Last/sidescroller/src/`：原型的源码，按文件名顺序分段（核心、世界、布景、灯光、角色、地上的东西、玩家、声音、八个章节、界面、主循环）。`46-ground.js` 是各章共用的地上的东西：石头、落叶、草和蕨（一张共用的图集）、树枝和倒木、泥、会映出画面的水洼，还有走近了会逃开的青蛙、蜥蜴和虫子。
+- `Last/sidescroller/src/`：原型的源码，按文件名顺序分段（核心、世界、布景、灯光、角色、地上的东西、玩家、声音、八个章节、空中的细节、界面、主循环）。`46-ground.js` 是各章共用的地上的东西：石头、落叶、草和蕨（一张共用的图集）、树枝和倒木、泥、会映出画面的水洼，还有走近了会逃开的青蛙、蜥蜴和虫子。空中的细节在 `70-air.js`（光里的尘埃、落叶、风沙、虫子、远处的鸟群、萤火虫）、`71-air-birds.js`（会被惊飞的鸟）、`72-air-chapters.js`（每一章摆什么）。
 - `Last/sidescroller/build.sh`：把 `src/` 拼成 `Last/sidescroller.html`。改完源码后运行 `bash Last/sidescroller/build.sh`。
 - `Last/sidescroller.html`：拼好的成品，浏览器打开的就是它。
 - `Last/models/hero.glb`：主角模型。
-- `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`look-sheet.html` 是场景画面的对比图页面（同一屏换几套光色或布景，也能沿路截一遍游戏原样的画面），`look-sheet-ch7.html` 是第七章用的同一种页面（另外能把这一章的机关自动走一遍、截一小段连续的画面做动图），`ground-sheet.html` 是地上的东西的选项图页面（一格只开一样，也能把小动物逃开的样子截成动图、把一章地上会动的东西自动走一遍），`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。
+- `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`look-sheet.html` 是场景画面的对比图页面（同一屏换几套光色或布景，也能沿路截一遍游戏原样的画面），`look-sheet-ch7.html` 是第七章用的同一种页面（另外能把这一章的机关自动走一遍、截一小段连续的画面做动图），`ground-sheet.html` 是地上的东西的选项图页面（一格只开一样，也能把小动物逃开的样子截成动图、把一章地上会动的东西自动走一遍），`air-sheet.html` 是空中细节的画面页面（同一屏关掉和打开对比，也能截一小段连续的画面做动图），`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。
 - `design/`：故事、关卡和角色的设计文档与设定图。较早的文档写的是已删除的 Cocos 版本，里面提到的 `assets/`、`preview/` 路径和音效生成脚本都已经不存在。
 - `generated_images/`：导出的效果图。

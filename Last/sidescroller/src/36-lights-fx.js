@@ -155,25 +155,4 @@ function updateDust(dt, t, camX, camY, wind) {
   }
   dustGeo.attributes.position.needsUpdate = true;
 }
-// ---- 萤火虫：两组错开明灭的光点，只在夜里出现 ----
-const flies = [0, 1].map(k => {
-  const n = 46, pos = new Float32Array(n * 3), ph = [];
-  for (let i = 0; i < n; i++) { pos.set([rr(-20, 20), rr(0.2, 4.5), rr(-9, 4)], i * 3); ph.push([rr(0, 6.28), rr(0.3, 0.9), rr(0.2, 0.7)]); }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const mat = new THREE.PointsMaterial({ map: GLOW, color: 0xd9f08a, size: 0.2, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 46; pts.visible = false; scene.add(pts);
-  return { pos, ph, geo, mat, pts, k };
-});
-function updateFlies(dt, t, camX, baseY, amount) {
-  for (const F of flies) {
-    F.pts.visible = amount > 0.01; if (!F.pts.visible) continue;
-    F.mat.opacity = amount * (0.35 + 0.65 * Math.max(0, Math.sin(t * 1.3 + F.k * Math.PI)));
-    for (let i = 0; i < F.ph.length; i++) {
-      const p = F.ph[i], j = i * 3;
-      let x = F.pos[j] + Math.sin(t * p[1] + p[0]) * p[2] * dt, y = F.pos[j + 1] + Math.cos(t * p[1] * 1.3 + p[0]) * 0.3 * dt;
-      if (x < camX - 20) x += 40; else if (x > camX + 20) x -= 40;
-      F.pos[j] = x; F.pos[j + 1] = clamp(y, baseY + 0.2, baseY + 5);
-    }
-    F.geo.attributes.position.needsUpdate = true;
-  }
-}
+// 萤火虫在 70-air.js 里（updateFlies）：每一只自己一明一灭

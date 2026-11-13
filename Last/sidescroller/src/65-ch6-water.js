@@ -117,9 +117,8 @@ const CH6 = (() => {
     for (const sz of [-1, 1]) add(v.lid, bx(0.04, 0.6, 0.04), MAT.steel, -0.42, 0.48, sz * 0.26); add(v.lid, bx(0.04, 0.04, 0.56), MAT.steel, -0.42, 0.78, 0, false);
     // 小猫蹲的那摞箱子、幸存者、他守着的那点东西
     add(R, bx(0.9, 0.6, 0.8), MAT.wood, PERCH, 0.3, -0.95); add(R, bx(0.7, 0.45, 0.7), MAT.wood2, PERCH + 0.05, 0.825, -0.95);
-    add(R, new THREE.SphereGeometry(0.42, 10, 8), lam(0x4a3f3a), MAN + 1.15, 0.2, -0.7).scale.set(1.5, 0.6, 0.9);                      // 一头死猪的残躯
+    add(R, new THREE.SphereGeometry(0.42, 10, 8), lam(0x4a3f3a), MAN + 1.15, 0.2, -0.7).scale.set(1.5, 0.6, 0.9);                      // 一头死猪的残躯（围着它飞的苍蝇在 72-air-chapters.js 里）
     for (const dx of [-0.3, 0.4]) add(R, cy(0.05, 0.04, 0.3, 6), lam(0x4a3f3a), MAN + 1.15 + dx, 0.36, -0.55).rotation.z = dx;
-    v.flies = [0, 1, 2, 3, 4].map(() => add(R, new THREE.SphereGeometry(0.018, 5, 4), unlit(0x0a0c0c), 0, 0, 0, false));
     v.morsel = add(R, bx(0.12, 0.07, 0.09), lam(0x8a6a58), MAN, 0.3, -0.5);
     yield;
     v.res = makeNPC('N', R, { x: PUMP + 1.55, z: -1.1, facing: -1 }); yield;
@@ -168,7 +167,6 @@ const CH6 = (() => {
     v.leak.visible = S.k > 0.3 || (T % 1.3) < 0.12; v.leak.scale.x = v.leak.scale.z = S.k > 0.3 ? 1 : 0.6;
     v.lid.position.x = lid.x; v.lidWater.visible = S.fill > 0.02; v.lidWater.position.y = lerp(0.24, 0.345, S.fill); v.lidWater.scale.setScalar(lerp(0.9, 1.07, S.fill));
     if (!near) return;
-    v.flies.forEach((f, i) => f.position.set(MAN + 1.15 + 0.5 * Math.sin(T * (2.1 + i * 0.37) + i), 0.55 + 0.25 * Math.sin(T * (3.3 + i * 0.5) + i * 2), -0.6 + 0.3 * Math.cos(T * (2.6 + i * 0.3) + i)));
     // 居民：水来了就弯腰接水
     const Rs = v.res; Rs.pose = S.k > 0.5 ? { bow: 0.5, reach: { x: PUMP + 0.75, y: 0.6, k: 0.9 } } : { look: clamp((P.x - Rs.x) / 6, -0.8, 0.8) }; Rs.step(dt);
     // 幸存者：坐在地上守着那点东西。猫靠近就回头挥手；水放好、07 走开以后，他把一小块食物推到盘子边上
