@@ -137,6 +137,11 @@ function overlays() {
 }
 function render(L, fx = FX) {
   if (RAW) { /* 原样的游戏画面，什么都不改 */ }
+  else if (CH === 2 && STEP === 2) {                              // 第二章的第二步：光色固定用定下来的那一版，换镜头或者往场景里临时摆东西
+    UNDO.splice(0).forEach(f => f()); clearSet(); applyLook2(PICK2); SET = new G.THREE.Group(); G.scene.add(SET);
+    for (const p of L.parts) { const back = PARTS2[p](); if (back) UNDO.push(back); }
+  }
+  else if (CH === 2) applyLook2(L);
   else if (STEP >= 2) {                                           // 第二、三步：往场景里临时摆东西（第二步还要先换上第一步定的光色；第三步的底图就是游戏现在的样子）
     if (STEP === 2) applyLook(PICK);
     UNDO.splice(0).forEach(f => f()); clearSet(); SET = new G.THREE.Group(); G.scene.add(SET);
@@ -195,8 +200,109 @@ const ALL = [
   { name: '冷暖对比', note: '厂房是冷的，只有尽头的墙和高窗映着暖光',
     fog: 0x1b2a33, fogD: 0.026, layers: { wall: { tint: 0xff6a20, k: 160 }, winGlow: { tint: 0xff8a40 } } },
 ];
+// ================= 第二章：林地水闸 =================
+// ch=2 换成第二章的标杆画面：水闸这一屏（主角站在闸杆旁边，闸门还没开，水位还低）。step=1 整体的光和颜色，step=2 镜头和画面里摆什么。
+// 注意：第一步（“2 + 3 + 8”：逆光、亮雾、枯褐）和第二步（第 8 格：镜头往下看、水塘和木桩、光柱、鸟、四角的枯枝和芦苇）的结果
+//   已经在 2026-11-13 搭进了游戏的第二章。generated_images/scene-ch2-01* 到 scene-ch2-03* 是在那之前导出的；
+//   现在再用 ch=2 的 step=1 / step=2 导出，底图已经变了（会在游戏现有的东西上再叠一遍），结果和当时不一样。
+//   要看游戏现在的样子：ch=2&raw=1&layout=full 是水闸这一屏，ch=2&raw=1&layout=sluice 是这道题从头到尾走一遍。
+// 和第一章不同的地方：这是室外，要调的还有天空（六个颜色，从天顶到地平线以下）和太阳；布景板是几层树
+const CH = num('ch', 1);
+const SHOT2 = { x: num('x', 205.6), settle: 1.2 };
+function setShot2() { G.ch(2); G.tp(SHOT2.x); G.step(SHOT2.settle); }
+function handles2() {
+  const h = { spots: [], layers: {}, lambert: new Set() };
+  for (const o of G.scene.children) {
+    if (o.isHemisphereLight) h.hemi = o;
+    else if (o.isDirectionalLight) { if (o.castShadow) h.key = o; else h.rim = o; }
+    else if (o.isSpotLight) { if (!o.castShadow) h.spots.push(o); }
+    else if (o.isPoints && o.material.size < 0.1) h.dust = o;
+    else if (o.isMesh && o.material.vertexColors && o.material.isMeshLambertMaterial) h.ground = o;
+    else if (o.isMesh && o.material.uniforms && o.material.uniforms.uC) h.sky = o.material.uniforms;
+  }
+  // 第二章的布景板，按深度认：-240 巨像 / -150 天际线和远山 / -52 高压线塔 / -11 近处的杆子 / -40、-22 两排树 / -9 近处的大树干 / -2.6 林间的光柱 / 6 前景
+  const NAME = { '-240': 'giant', '-52': 'mid', '-11': 'near', '-40': 'treesFar', '-22': 'treesMid', '-9': 'trunks', '-2.6': 'shafts', '6': 'fore' };
+  G.zone(2).root.traverse(o => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    if (m.isMeshBasicMaterial && m.map && m.userData.own) { const k = o.position.z === -150 ? (o.position.x < 200 ? 'skyline' : 'hills') : NAME[String(o.position.z)]; if (k) h.layers[k] = o; }
+    else if (m.isMeshLambertMaterial) h.lambert.add(m);
+  });
+  return h;
+}
+const h3 = hex => [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];     // 天空的颜色是直接写进去的，不做色彩空间转换
+function snapshot2() {
+  const u = H.sky, s = { fog: snapC(G.scene.fog.color), bg: snapC(G.scene.background), fogD: G.scene.fog.density,
+    hemiS: snapC(H.hemi.color), hemiG: snapC(H.hemi.groundColor), hemiI: H.hemi.intensity, keyC: snapC(H.key.color), keyI: H.key.intensity,
+    keyDir: H.key.position.clone().sub(H.key.target.position).normalize().toArray(), rimC: snapC(H.rim.color), rimI: H.rim.intensity,
+    dustC: snapC(H.dust.material.color), dustO: H.dust.material.opacity, ground: snapC(H.ground.material.color),
+    spots: H.spots.map(l => [snapC(l.color), l.intensity]), layers: {}, lambert: [...H.lambert].map(m => [m, snapC(m.color)]),
+    sky: u.uC.value.map(v => v.toArray()), sun: u.uSun.value.toArray(), sunC: u.uSunC.value.toArray(), cloud: u.uCloud.value, cloudC: u.uCloudC.value.toArray() };
+  for (const k in H.layers) s.layers[k] = [snapC(H.layers[k].material.color), H.layers[k].material.opacity];
+  return s;
+}
+function applyLook2(L) {
+  const B = BASE, S = G.scene, v = k => L[k] ?? B[k], C = hex => new G.THREE.Color(hex), u = H.sky;
+  S.fog.color.setHex(v('fog')); S.background.setHex(L.bg ?? L.fog ?? B.bg); S.fog.density = v('fogD');
+  H.hemi.color.setHex(v('hemiS')); H.hemi.groundColor.setHex(v('hemiG')); H.hemi.intensity = v('hemiI');
+  H.key.color.setHex(v('keyC')); H.key.intensity = v('keyI'); H.key.position.copy(H.key.target.position).addScaledVector(new G.THREE.Vector3(...v('keyDir')).normalize(), 55);   // 主光从哪边来
+  H.rim.color.setHex(v('rimC')); H.rim.intensity = v('rimI');
+  H.dust.material.color.setHex(v('dustC')); H.dust.material.opacity = v('dustO');
+  if (Array.isArray(L.ground)) H.ground.material.color.setRGB(...L.ground); else H.ground.material.color.setHex(v('ground'));
+  H.spots.forEach((l, i) => { l.color.setHex(L.spotC ?? B.spots[i][0]); l.intensity = B.spots[i][1] * (L.spotK ?? 1); });
+  for (const k in H.layers) {                                     // 布景板：mul 三个通道各乘多少（可以大于 1），k 再整体乘一个亮度，op 不透明度
+    const m = H.layers[k].material, o = (L.layers || {})[k] || {};
+    m.color.setHex(B.layers[k][0]); if (o.mul) m.color.setRGB(...o.mul); if (o.k) m.color.multiplyScalar(o.k); m.opacity = o.op ?? B.layers[k][1];
+    H.layers[k].visible = o.show ?? (k !== 'fore');               // 前景那道黑带每一版都先去掉：它挡住了水渠
+  }
+  for (const [m, hex] of B.lambert) { m.color.setHex(hex); if (L.matTint) m.color.multiply(C(L.matTint)); }
+  (L.sky ? L.sky.map(h3) : B.sky).forEach((c, i) => u.uC.value[i].set(...c));
+  const sun = L.sun ?? B.sun; u.uSun.value.set(sun[0], sun[1], sun[2], B.sun[3]);
+  u.uSunC.value.set(...(L.sunC !== undefined ? h3(L.sunC) : B.sunC)); u.uCloud.value = L.cloud ?? B.cloud; u.uCloudC.value.set(...(L.cloudC !== undefined ? h3(L.cloudC) : B.cloudC));
+}
+// 第一步定下来的：2 逆光的晨雾 + 3 密林深处 + 8 枯褐，三样合成一版 ——
+// 远处照 2：林子后面是一片亮雾，最远一排树淡得快融进雾里；近处照 3：环境光压暗，只有枝叶间漏下来的几束暖光照着闸杆和水闸；颜色照 8：灰褐的树、干黄的草
+const PICK2 = { name: '2 + 3 + 8', note: '远处是逆光的亮雾，近处压暗、只留几束光，颜色是枯褐',
+  fog: 0xd9d2c0, fogD: 0.016, hemiS: 0xd8d0c0, hemiG: 0x2a2620, hemiI: 0.42, keyC: 0xf6ead6, keyI: 1.2, keyDir: [-0.15, 0.45, -0.85], rimI: 1.0,
+  spotK: 2.6, spotC: 0xffe9c0, dustC: 0xe8e0d0, dustO: 0.5, ground: [0.71, 0.6, 0.43], matTint: 0xaca59c,
+  sky: [0x9c9a90, 0xc8c3b2, 0xe6e0cc, 0xf2ecd8, 0xf5efdb, 0xa39a86], sun: [0.05, 0.13, 1], sunC: 0xfff6e0,
+  layers: { treesFar: { mul: [1.12, 1.0, 0.92], k: 1.9 }, treesMid: { mul: [1.22, 1.0, 0.84], k: 0.62 }, trunks: { mul: [1.12, 0.95, 0.84], k: 0.45 }, shafts: { k: 2.6 } } };
+const ALL2 = [
+  // —— 1 到 4 比的是明暗和雾（颜色都是现在的灰绿）——
+  { name: '现在的样子', note: '灰绿的一片，前后几层树深浅差不多' },
+  { name: '逆光的晨雾', note: '光从林子后面透过来，远处亮、近处暗，树一层层成了剪影',
+    fog: 0xdfe5d3, fogD: 0.016, hemiI: 0.5, keyC: 0xfff0d0, keyI: 2.0, keyDir: [-0.15, 0.45, -0.85], rimI: 1.0, ground: [0.56, 0.62, 0.56], matTint: 0xb8bcb4,
+    sky: [0xa9bab2, 0xd2dcca, 0xf0f2dc, 0xfbf8e4, 0xfdfae6, 0xaeb7a0], sun: [0.05, 0.13, 1], sunC: 0xfffbea,
+    layers: { treesFar: { k: 1.9 }, treesMid: { k: 0.8 }, trunks: { k: 0.5 }, shafts: { k: 2.6 } } },
+  { name: '密林深处', note: '四周压暗，只有枝叶间漏下来的几束光照着闸杆和水闸',
+    fog: 0x4c5a4e, fogD: 0.016, hemiS: 0xa9b8a6, hemiG: 0x1c221b, hemiI: 0.45, keyI: 0.5, spotK: 2.6, spotC: 0xfff0c8, dustO: 0.5,
+    sky: [0x26322f, 0x3d4b45, 0x5a6a5c, 0x73806a, 0x7d8870, 0x4a5546],
+    layers: { treesFar: { k: 0.55 }, treesMid: { k: 0.6 }, trunks: { k: 0.6 }, shafts: { k: 2.2 } } },
+  { name: '大雾', note: '浓雾把远处的树吞掉，只剩近处的东西，颜色发白',
+    fog: 0xc9d0c6, fogD: 0.03, hemiI: 1.15, keyI: 0.7, cloud: 0.2,
+    sky: [0xaab5ae, 0xc3cbc2, 0xd6dbd1, 0xdfe2d8, 0xe2e4da, 0xb9c0b6], sun: [0.2, 0.2, 0.2] },
+  // —— 5 到 8 比的是颜色（明暗和“现在的样子”一样）——
+  { name: '冷青', note: '天刚亮的冷色，林子偏蓝',
+    fog: 0x8ea7ad, hemiS: 0xd6e6ee, hemiG: 0x2f3d44, keyC: 0xe8f2ff, keyI: 1.2, dustC: 0xdcecf4, ground: [0.72, 0.95, 1.08], matTint: 0xdfeaf2,
+    sky: [0x4a6272, 0x7f98a4, 0xa9bfc4, 0xc4d4d2, 0xcfdcd6, 0x86979a], sunC: 0xeef6ff,
+    layers: { treesFar: { mul: [0.8, 0.97, 1.22] }, treesMid: { mul: [0.78, 0.96, 1.25] }, trunks: { mul: [0.8, 0.95, 1.25] } } },
+  { name: '暖橙', note: '和刚才山坡上的朝霞一个颜色：橙色的雾，深褐的树',
+    fog: 0xf0c491, fogD: 0.013, hemiS: 0xffe2bc, hemiG: 0x3a2e26, hemiI: 0.8, keyC: 0xffc48a, keyI: 2.1, keyDir: [0.55, 0.38, -0.6], rimC: 0xffd0a0, rimI: 0.7, dustC: 0xffe2b8, dustO: 0.45,
+    ground: [1.35, 1.0, 0.95], spotC: 0xffd08a, spotK: 1.6, matTint: 0xf4dcc4,
+    sky: [0x7d8a86, 0xc9b08c, 0xf0c48c, 0xf8d49a, 0xfbdca6, 0xa37d5c], sun: [0.22, 0.08, 1], sunC: 0xfff0cd,
+    layers: { treesFar: { mul: [2.6, 1.7, 1.25] }, treesMid: { mul: [1.6, 0.93, 0.87] }, trunks: { mul: [1.7, 0.95, 0.9] }, shafts: { k: 2.2 } } },
+  { name: '墨绿', note: '绿得更浓、更湿，像雨后的林子',
+    fog: 0x86ab8c, hemiS: 0xdcf0d6, hemiG: 0x24331f, keyC: 0xf0ffe0, ground: [0.72, 1.12, 0.74], matTint: 0xe0f0dc,
+    sky: [0x4a6a5c, 0x7a9c82, 0xa6c39c, 0xc6d8ac, 0xd2dfb4, 0x86a080],
+    layers: { treesFar: { mul: [0.9, 1.2, 1.0], k: 1.1 }, treesMid: { mul: [0.75, 1.1, 0.8] }, trunks: { mul: [0.7, 1.0, 0.75], k: 0.8 } } },
+  { name: '枯褐', note: '叶子落尽的枯林：灰褐的树、干黄的草，颜色很少',
+    fog: 0xa59d8c, hemiS: 0xe8e2d2, hemiG: 0x3a342c, keyC: 0xf2e8d6, keyI: 1.2, ground: [1.18, 0.96, 0.72], matTint: 0xeee6d8, dustC: 0xe8e0d0,
+    sky: [0x6f706c, 0x9a9688, 0xbcb39c, 0xcfc4a8, 0xd6caac, 0x8f8672],
+    layers: { treesFar: { mul: [1.12, 1.0, 0.92] }, treesMid: { mul: [1.22, 1.0, 0.84] }, trunks: { mul: [1.12, 0.95, 0.84] } } },
+];
+
 // 试数值用：json=[{...}, {...}] 直接从网址给出几版（颜色写成 "0x1b2a33" 这样的字符串），不用改这个文件
-const TRY = q.get('json') ? [].concat(JSON.parse(q.get('json'), (k, v) => typeof v === 'string' && /^0x[0-9a-f]+$/i.test(v) ? parseInt(v, 16) : v)) : null;
+const TRY =q.get('json') ? [].concat(JSON.parse(q.get('json'), (k, v) => typeof v === 'string' && /^0x[0-9a-f]+$/i.test(v) ? parseInt(v, 16) : v)) : null;
 
 // ================= 第二步：画面里摆什么、前后分几层 =================
 // 光和颜色固定用第一步定下来的「3 逆光」（颜色还是原来的冷青灰）。每一版往同一屏里临时摆一样东西，
@@ -483,7 +589,114 @@ const SET3 = [
   { name: '地面 · 积水', note: '一摊摊浅水，把探照灯反射成一道亮光', parts: ['floorWet'], dy: 110 },
 ];
 if (q.get('parts')) (STEP === 3 ? SET3 : SETS).push({ name: q.get('parts'), note: '', parts: q.get('parts').split(','), dy: 30 });   // 试组合用：parts=wallBlock,floorLines
-const SRC = STEP === 3 ? SET3 : STEP === 2 ? SETS : ALL;
+// ================= 第二章 · 第二步：镜头，和画面里摆什么 =================
+// 光和颜色固定用 PICK2。和第一章的第二步一样，每一版往同一屏里临时摆一样东西（粗模），或者只动镜头；游戏本身没有改
+const POSTS = [[197.2, 1.5, 0.04], [199.4, 1.9, -0.03], [201.6, 1.3, 0.06], [203.8, 1.7, 0], [206, 1.1, -0.08], [209.6, 1.2, 0.1], [211.9, 0.9, -0.05],
+  [215.1, 1.6, 0.05], [217.3, 1.2, -0.04], [219.5, 1.8, 0.03], [221.7, 1.4, -0.06]];                // 水塘里的旧木桩：[x, 露出水面多高, 歪多少]
+const PARTS2 = {
+  // 镜头往下看：现在的镜头几乎是平视，对着主角头顶以上，卡在渠底的那根木梁落在画面最下沿以外。
+  // 镜头抬高一点、往下看，水渠就整个进了画面。（只是把镜头放低不行：会看到地面在镜头跟前的那条边）
+  camLow() {
+    const c = G.camera, p0 = c.position.clone(), q0 = c.quaternion.clone();
+    c.position.set(G.cam.x, G.P.y + 3.7, 22); c.lookAt(G.cam.x, G.P.y + 0.3, 0); c.updateMatrixWorld();
+    return () => { c.position.copy(p0); c.quaternion.copy(q0); c.updateMatrixWorld(); };
+  },
+  // 闸后的一片水塘：水闸拦着的不只是一条渠，而是林子里的一片浅水。水面映着雾，是画面里最亮的一条；远岸是树的倒影，水里立着一排旧木桩
+  pond() {
+    const back = [];
+    G.zone(2).root.traverse(o => {                                // 闸门后面那一块深色的“蓄着的水”换成和水塘一样的颜色
+      if (o.isMesh && o.material.isMeshBasicMaterial && o.geometry.parameters && o.geometry.parameters.depth === 34) { const c0 = o.material.color.getHex(); o.material.color.setHex(0xb9b4a4); back.push(() => o.material.color.setHex(c0)); }
+    });
+    board(168, 252, -21.5, -9.4, 0, 22, g => {
+      const gr = g.createLinearGradient(0, -21.5, 0, -9.4), rn = rng(5);
+      gr.addColorStop(0, '#77726a'); gr.addColorStop(0.16, '#aaa596'); gr.addColorStop(0.55, '#c8c2b1'); gr.addColorStop(1, '#b0ab9c');
+      g.fillStyle = gr; g.fillRect(168, -21.5, 84, 12.1);
+      for (let i = 0; i < 26; i++) { const x = 170 + rn() * 80, w = 0.5 + rn() * 1.2, g2 = g.createLinearGradient(0, -21.5, 0, -10); g2.addColorStop(0, `rgba(60,57,50,${(0.3 + 0.2 * rn()).toFixed(2)})`); g2.addColorStop(1, 'rgba(60,57,50,0)'); g.fillStyle = g2; g.fillRect(x, -21.5, w, 11.5); }   // 远岸树干的倒影：一道道朝着镜头淡下去的深色
+      for (let i = 0; i < 160; i++) { g.fillStyle = rn() < 0.5 ? 'rgba(255,255,250,.16)' : 'rgba(70,66,58,.12)'; g.fillRect(168 + rn() * 84, -21 + rn() * 11, 1 + rn() * 5, 0.035 + rn() * 0.05); }   // 水纹
+      for (const [x] of POSTS) { const g2 = g.createLinearGradient(0, -14, 0, -9.4); g2.addColorStop(0, 'rgba(40,38,34,.5)'); g2.addColorStop(1, 'rgba(40,38,34,.08)'); g.fillStyle = g2; g.fillRect(x - 0.11, -14, 0.22, 4.6); }   // 木桩的倒影
+      g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000'; g.beginPath(); g.moveTo(168, -9.3);                    // 近岸不是一条直线：沿岸擦掉一圈高低不平的边
+      for (let x = 168; x <= 252; x += 0.6) g.lineTo(x, -9.75 - 0.35 * rn() - 0.25 * Math.sin(x * 0.9));
+      g.lineTo(252, -9.3); g.closePath(); g.fill();
+    }, { floor: 0.02, order: -44 });
+    const wood = lamb(0x1c1814);
+    for (const [x, h, t] of POSTS) block(0.2, h, 0.2, x, 0, -14, wood).rotation.z = t;
+    return () => back.forEach(f => f());
+  },
+  // 倒在对岸的一棵大树：树根朝着水渠翘在半空，树干往右伸出画面，上面还剩几截断枝。把空着的右半边填上
+  log() {                                                         // 画成一块剪影板（和林子里别的树一个做法），立在对岸靠后一点的地方
+    board(212.5, 227, -0.6, 5.2, -4.4, 40, g => {
+      ink(g, '#17130f'); const rn = rng(17);
+      poly(g, [[215.9, 0.05], [226.8, 0.3], [226.8, 1.2], [221, 1.3], [215.9, 1.5]]);                                   // 树干：靠水渠的一头粗
+      g.beginPath(); g.ellipse(215.55, 1.05, 0.8, 1.45, 0.1, 0, 6.2832); g.fill();                                       // 根盘上带起来的一坨土
+      const root = (a, len, bend, w) => {                                                                                // 一条根：从土里伸出来，越往外越细，带一点弯
+        const x0 = 215.5 + Math.cos(a) * 0.55, y0 = 1.05 + Math.sin(a) * 1.15, x1 = x0 + Math.cos(a + bend) * len, y1 = y0 + Math.sin(a + bend) * len;
+        const mx = (x0 + x1) / 2 + Math.cos(a) * 0.2, my = (y0 + y1) / 2 + Math.sin(a) * 0.2, nx = -Math.sin(a) * w, ny = Math.cos(a) * w;
+        g.beginPath(); g.moveTo(x0 + nx, y0 + ny); g.quadraticCurveTo(mx + nx * 0.5, my + ny * 0.5, x1, y1); g.quadraticCurveTo(mx - nx * 0.5, my - ny * 0.5, x0 - nx, y0 - ny); g.closePath(); g.fill();
+        return [mx, my];
+      };
+      for (const [a, len, bend, w] of [[1.35, 1.0, 0.5, 0.2], [2.0, 1.3, -0.35, 0.24], [2.7, 0.95, 0.4, 0.2], [3.4, 1.2, -0.3, 0.22], [4.1, 0.8, 0.45, 0.18], [4.7, 1.0, -0.2, 0.2]]) {
+        const [mx, my] = root(a, len, bend, w); path(g, [[mx, my], [mx + Math.cos(a - 0.9) * 0.45, my + Math.sin(a - 0.9) * 0.45]], 0.06);   // 每条根上分出一根细须
+      }
+      const stub = (x, a, len, w) => { const x1 = x + Math.sin(a) * len, y1 = 1.2 + Math.cos(a) * len; poly(g, [[x - w, 1.15], [x1 - w * 0.25, y1], [x1 + w * 0.25, y1], [x + w, 1.15]]); return [x1, y1]; };
+      const [bx1, by1] = stub(218.4, -0.35, 1.9, 0.17); path(g, [[bx1, by1 - 0.5], [bx1 + 0.55, by1 + 0.25]], 0.07);
+      const [bx2, by2] = stub(221.3, 0.4, 2.6, 0.2); path(g, [[bx2 - 0.35, by2 - 0.9], [bx2 - 1.0, by2 - 0.3]], 0.08); path(g, [[bx2 - 0.1, by2 - 0.3], [bx2 + 0.5, by2 + 0.3]], 0.06);
+      stub(224.2, -0.6, 1.3, 0.14);
+    });
+  },
+  // 看得见的光柱：三束光从左上方的枝叶间斜着漏下来，落在闸杆、水闸和对岸
+  rays() {
+    const BEAMS = [[202.6, 2.6, 0.5], [206.3, 1.3, 0.26], [210.4, 2.8, 0.38], [214.2, 1.1, 0.22], [217.4, 2.2, 0.32]];   // [落在哪里, 落地时多宽, 多亮]
+    board(190, 228, -1, 16, -1.6, 16, g => {
+      for (const [x, w, a] of BEAMS) {
+        const gr = g.createLinearGradient(0, 16, 0, 0); gr.addColorStop(0, `rgba(255,238,200,${a})`); gr.addColorStop(0.75, `rgba(255,238,200,${a * 0.6})`); gr.addColorStop(1, `rgba(255,238,200,${a * 0.12})`);
+        g.fillStyle = gr; poly(g, [[x - 7.2 - w * 0.2, 16], [x - 7.2 + w * 0.2, 16], [x + w / 2, 0], [x - w / 2, 0]]);
+      }
+    }, { additive: true, fog: false, blur: 4, order: 40 });
+    board(196, 222, -4, 3.5, 0, 14, g => {                        // 光落在地上的那一块
+      for (const [x, w, a] of BEAMS) { g.save(); g.translate(x, -0.4); g.scale(w * 0.62, 1.7); const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(255,236,196,${a * 0.5})`); gr.addColorStop(1, 'rgba(255,236,196,0)'); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); g.restore(); }
+    }, { floor: 0.015, additive: true, fog: false, order: -20 });
+  },
+  // 闸上停着几只鸟：横梁上三只，对岸的灯杆上一只（搭进游戏以后，扳动闸杆时它们会飞走）
+  birds() {
+    const bird = (g, x, y, s, dir) => {
+      g.save(); g.translate(x, y); g.scale(dir * s, s);
+      g.beginPath(); g.ellipse(0, 0.17, 0.2, 0.115, -0.25, 0, 6.2832); g.fill();          // 身子
+      g.beginPath(); g.arc(0.17, 0.3, 0.075, 0, 6.2832); g.fill();                         // 头
+      poly(g, [[0.23, 0.32], [0.36, 0.29], [0.23, 0.26]]);                                 // 喙
+      poly(g, [[-0.14, 0.2], [-0.4, 0.06], [-0.36, 0], [-0.1, 0.1]]);                      // 尾
+      g.lineWidth = 0.022; g.beginPath(); g.moveTo(-0.02, 0.08); g.lineTo(-0.03, 0); g.moveTo(0.05, 0.08); g.lineTo(0.06, 0); g.stroke();   // 腿
+      g.restore();
+    };
+    board(207, 215, 4.2, 5.4, -6.4, 90, g => { ink(g, '#0b0d0c'); bird(g, 210.3, 4.31, 1, 1); bird(g, 210.95, 4.31, 0.92, -1); bird(g, 212.6, 4.31, 1.05, 1); });
+    board(216, 217.4, 2.7, 3.6, -2.0, 90, g => { ink(g, '#0b0d0c'); bird(g, 216.62, 2.84, 1, -1); });
+  },
+  // 前景：离镜头最近的一层，全黑、略微虚焦。上面两角垂下来的枯枝，下面两角几丛芦苇；不做成横贯画面的一条
+  fore2() {
+    board(202, 216.5, -3, 6.3, 9, 60, g => {
+      ink(g, '#060807'); const rn = rng(31);
+      const twigs = (x, y, a, len, w, depth) => {
+        const x2 = x + Math.sin(a) * len, y2 = y - Math.cos(a) * len; path(g, [[x, y], [x2, y2]], w);
+        if (depth > 0) for (let i = 0, n = 2 + (rn() < 0.5 ? 1 : 0); i < n; i++) { const k = 0.35 + 0.6 * rn(); twigs(x + (x2 - x) * k, y + (y2 - y) * k, a + (rn() - 0.5) * 1.6, len * (0.4 + 0.3 * rn()), w * 0.6, depth - 1); }
+      };
+      twigs(203.4, 6.3, 0.5, 2.5, 0.09, 3); twigs(204.7, 6.3, 0.15, 1.4, 0.06, 2);          // 左上角
+      twigs(214.9, 6.3, -0.45, 2.1, 0.08, 3); twigs(213.6, 6.3, -0.1, 1.2, 0.05, 2);        // 右上角
+      const reeds = (x1, x2, hMax) => { for (let i = 0; i < 46; i++) { const x = x1 + rn() * (x2 - x1), h = hMax * (0.45 + 0.55 * rn()), lean = (rn() - 0.5) * 0.5; poly(g, [[x - 0.03, -3], [x + 0.03, -3], [x + lean * h, -0.25 + h]]); if (rn() < 0.25) oval(g, x + lean * h, -0.25 + h, 0.035, 0.13); } };
+      reeds(203.4, 205.6, 1.15); reeds(212.9, 215, 0.95);                                    // 左下角、右下角
+    }, { fog: false, blur: 2.2, order: 4000 });
+  },
+};
+const SETS2 = [
+  { name: '现在的布景', note: '光和颜色是定下来的“2 + 3 + 8”，摆的东西还是原来的', parts: [] },
+  { name: '镜头往下看', note: '抬高一点、往下看：水渠整个进了画面，看得见卡在渠底的木梁', parts: ['camLow'] },
+  { name: '闸后一片水塘', note: '水闸拦着林子里的一片浅水，水面映着雾；水里立着一排旧木桩', parts: ['pond'] },
+  { name: '倒在对岸的大树', note: '树根翘在半空，树干伸出画面，把空着的右半边填上', parts: ['log'] },
+  { name: '看得见的光柱', note: '三束光从枝叶间斜着漏下来，落在闸杆、水闸和对岸', parts: ['rays'] },
+  { name: '闸上的鸟', note: '横梁上三只，灯杆上一只；扳动闸杆时它们会飞走', parts: ['birds'] },
+  { name: '前景的枯枝和芦苇', note: '离镜头最近的一层：上面两角垂下枯枝，下面两角几丛芦苇', parts: ['fore2'] },
+  { name: '几样放在一起', note: '2 + 3 + 5 + 6 + 7 合起来的样子', parts: ['camLow', 'pond', 'rays', 'birds', 'fore2'] },
+];
+if (CH === 2 && q.get('parts')) SETS2.push({ name: q.get('parts'), note: '', parts: q.get('parts').split(',') });
+const SRC = CH === 2 ? (STEP === 2 ? SETS2 : q.get('pick') === '1' ? [PICK2] : ALL2) : STEP === 3 ? SET3 : STEP === 2 ? SETS : ALL;   // ch=2&pick=1：只看第二章定下来的那一版
 const LOOKS = STEP === 1 && TRY ? TRY : q.get('only') ? q.get('only').split(',').map(i => SRC[+i < 0 ? SRC.length + +i : +i]) : SRC;
 
 const LAYOUTS = {
@@ -527,10 +740,44 @@ const LAYOUTS = {
     for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
     for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
   },
+  // 第二章的水闸从头到尾实际操作一遍（配 ch=2&raw=1）：走近、扳闸杆、鸟飞走、水涨、踩着木梁过去。每格是整幅画面缩小一半。
+  // 核对用：这道题还通不通，每一步的画面对不对。每一步主角的位置和水位都打在控制台里
+  sluice() {
+    const P = G.P, Z = G.zone(2), cols = 2, cw = FW / cols, ch = FH / cols;
+    const run = x => { let n = 0; while (P.x < x - 0.4 && n++ < 400) G.hold(['R'], 0.1); while (P.x < x && n++ < 900) G.hold(['R'], 1 / 60); };
+    const jump = () => { G.hold(['R', 'J'], 0.5); let n = 0; while (!P.grounded && n++ < 120) G.hold(['R'], 1 / 60); };      // 按住跳跃键：正常的高跳
+    const steps = [
+      ['走近水闸：镜头慢慢抬高，开始往下看', () => { G.tp(196); G.step(1.2); run(200.6); }],
+      ['站到闸杆旁边：看得到卡在渠底的那根木梁', () => { run(204.3); G.step(1.8); }],
+      ['扳下闸杆：闸上的鸟惊飞', () => { G.tap('E'); G.step(0.85); }],
+      ['闸门升起来，水位在涨，木梁跟着浮起来', () => G.step(2.9)],
+      ['水涨满了，木梁浮到和岸一样高', () => G.step(4.4)],
+      ['跳上木梁', () => { run(207.6); jump(); run(210.7); G.step(0.5); }],
+      ['再跳到对岸', () => { run(211.6); jump(); run(214.4); G.step(0.9); }],
+      ['过了水闸：镜头落回平视', () => { run(221.5); G.step(1.8); }],
+    ];
+    const rows = Math.ceil(steps.length / cols);
+    size(FW, HEAD + rows * ch);
+    header(q.get('title') || '第二章 · 水闸这道题从头到尾', ['游戏里原样的画面，按顺序实际操作一遍：走近、扳闸杆、等水涨、跳上木梁、跳到对岸。']);
+    steps.forEach(([name, act], i) => {
+      act();
+      const cx = (i % cols) * cw, cy = HEAD + Math.floor(i / cols) * ch;
+      drawFull(null, cx, cy, cw, ch);
+      label(`${i + 1}  ${name}`, cx + 26, cy + 68, { size: 17, weight: 600, color: '#f1f5f4' });
+      console.log(`水闸 ${i + 1} ${name}：主角 x ${P.x.toFixed(2)} y ${P.y.toFixed(2)}，水位 ${Z.W.level.toFixed(2)}，鸟飞了 ${Z.W.flown.toFixed(2)} 秒`);
+    });
+    ctx.fillStyle = '#0b0f11';
+    for (let c = 1; c < cols; c++) ctx.fillRect(c * cw - 1, HEAD, 2, rows * ch);
+    for (let r = 1; r < rows; r++) ctx.fillRect(0, HEAD + r * ch - 1, FW, 2);
+  },
   grid() {
     const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = FH / cols;
     size(FW, HEAD + rows * ch);
-    if (STEP === 3) header('标杆画面 · 第三步：细节 —— 矮墙和地面', ['同一屏游戏画面，底图是游戏现在的样子。2 到 4 换的是矮墙，5 到 8 换的是地面。矮墙挑一个，地面可以挑一个或几个，比如“2 + 6”。',
+    if (CH === 2 && STEP === 2) header('第二章标杆画面 · 第二步：镜头，和画面里摆什么', ['同一屏游戏画面（第二章，水闸），光和颜色用第一步定下来的“2 + 3 + 8”。2 只动了镜头，3 到 7 各多摆一样东西，可以挑几样合在一起，比如“2 + 3 + 6”。',
+      '摆进去的都是粗模（方块、圆柱，或者画出来的剪影），只看大的形状和位置，细节以后再做。都在主角走的这条线后面或前面，不影响玩法。游戏本身还没有改。']);
+    else if (CH === 2) header('第二章标杆画面 · 第一步：整体的光和颜色', ['同一屏游戏画面（第二章，水闸：主角站在闸杆旁边，闸门还没开），每格是整幅画面缩小一半。1 到 4 比的是明暗和雾，5 到 8 比的是颜色。可以各挑一个，比如“2 + 6”。',
+      '全是游戏里的实时画面，各版之间只改了雾、天空、灯光和几层树的深浅。每一版都先去掉了原来横在画面下方的那道黑带（前景的草丛）：它把水渠挡住了。']);
+    else if (STEP === 3) header('标杆画面 · 第三步：细节 —— 矮墙和地面', ['同一屏游戏画面，底图是游戏现在的样子。2 到 4 换的是矮墙，5 到 8 换的是地面。矮墙挑一个，地面可以挑一个或几个，比如“2 + 6”。',
       '矮墙只换样子：位置、宽度不变，高度不低于原来，影子和游戏里“躲没躲好”的判定对得上。都是粗模，游戏本身还没有改。下一张图是主角附近的原始大小。']);
     else if (STEP === 2) header('标杆画面 · 第二步：画面里摆什么', ['同一屏游戏画面（第一章，躲探照灯），光和颜色用第一步定下来的“3 逆光”。每格多摆一样东西，可以挑几样合在一起，比如“2 + 5 + 7”。',
       '摆进去的都是粗模（方块，或者画出来的剪影），只看大的形状和位置，细节以后再做。都躲开了探照灯扫过的范围，不影响玩法。游戏本身还没有改。']);
@@ -550,7 +797,7 @@ const LAYOUTS = {
   crops() {
     const cols = 2, rows = Math.ceil(LOOKS.length / cols), cw = FW / cols, ch = STEP === 3 ? 400 : 330;
     size(FW, HEAD + rows * ch);
-    header(`标杆画面 · 第${'一二三'[STEP - 1]}步：原始大小`, [STEP === 3 ? '上一张图里的各版，按 1080p 屏幕上的原始大小各截一块（没有缩小）。矮墙的几格截在主角和矮墙这一带，地面的几格往下挪了一些，多看一点地面。'
+    header(`${CH === 2 ? '第二章' : ''}标杆画面 · 第${'一二三'[STEP - 1]}步：原始大小`, [STEP === 3 ? '上一张图里的各版，按 1080p 屏幕上的原始大小各截一块（没有缩小）。矮墙的几格截在主角和矮墙这一带，地面的几格往下挪了一些，多看一点地面。'
       : '上一张图里的各版，在主角附近按 1080p 屏幕上的原始大小各截一块（没有缩小）。']);
     const [hx, hy] = heroPx();
     LOOKS.forEach((L, i) => {
@@ -566,9 +813,10 @@ const LAYOUTS = {
 
 function start() {
   G = frame.contentWindow.__g; G.begin(); G.paused = true; G.step(0.3);
-  setShot();
+  if (CH === 2) setShot2(); else setShot();
   if (q.get('probe')) console.log('镜头 ' + JSON.stringify(G.camera.position.toArray().map(v => +v.toFixed(3))) + ' 视角 ' + G.camera.fov + ' 主角 x ' + G.P.x.toFixed(2));   // probe=1：报出这一屏的镜头位置
-  if (!RAW && STEP < 3) { H = handles(); BASE = snapshot(); H.halo.material.map = softGlow(); H.halo.material.needsUpdate = true; }
+  if (!RAW && CH === 2) { H = handles2(); BASE = snapshot2(); }
+  else if (!RAW && STEP < 3) { H = handles(); BASE = snapshot(); H.halo.material.map = softGlow(); H.halo.material.needsUpdate = true; }
   (LAYOUTS[LAYOUT] || LAYOUTS.grid)();
   window.__sheetDone = true;
 }
