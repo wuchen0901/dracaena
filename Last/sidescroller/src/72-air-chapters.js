@@ -169,3 +169,19 @@ airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
   sys.push(airFlock(R, [{ x1: X8 + 70, x2: X8 + 230, y: 19, z: -85, v: -3, n: 9, gap: 20, s: 1.5, c: 0x1c1a24 }], { on: () => 1 - CH8.END.deep }));
   sys.push(airBirds(R, flat(8, -3.4, [X8 + 131.6, X8 + 133.2, X8 + 136.0, X8 + 137.8], { c: 0x0a0b0a, s: 1.15, flee: 3, dy: 12, yMax: 14, toZ: -3, near: 0.6, minY: 6 }).map(b => (b[4].back = 25, b))));
 });
+
+// ---- 第十章 · 吊绳与高台 ----
+// 风从右边吹过来：雾里飘着草籽的绒毛；远处一群乌鸦往台阶深处飞。
+// 能爬的那三根吊臂的管头上停着乌鸦：主角在下面走过去不理他，爬到快够着管头了才飞走；往里第一排吊臂上、最高一级尽头的栏杆上也停着几只
+airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
+  sys.push(airLeaves(R, { name: 'seeds', n: 16, drift: true, tiles: [8], cols: [0xe6e8e2, 0xd8dcd4], size: [0.07, 0.11], z: [-4, 5], lo: 0.3, hi: 4, lift: 0.3, wind: () => -1.0, a: 0.85 }));
+  sys.push(airFlock(R, [{ x1: X10 - 20, x2: X10 + 150, y: 26, z: -110, v: 2.2, n: 9, gap: 16, s: 1.8, c: 0x3a4240 }])); yield;
+  const B = [];
+  for (const [r, S] of CH10.NEAR) {                      // 管头上（离滑车不远的那一段平管）
+    const big = r === CH10.R3, k = big ? 1.4 : 1, arm = r.top + 0.38, y = arm + 0.065 * k;
+    for (const d of big ? [0.3, 0.95] : r === CH10.R1 ? [0.5] : [0.32]) B.push(['crow', r.x + d, y, 0, { face: d > 0.5 ? 1 : -1, flee: 2.4, dy: 2.2, toZ: -5 }]);
+  }
+  for (const d of CH10.DECO) if (d.z === -15 && d.S !== CH10.S1) B.push(['crow', d.rx + 0.45, d.arm + 0.065, d.z, { flee: 5, dy: 4, toZ: -12 }]);
+  for (const [dz, f] of [[-3.6, 1], [-5.1, -1]]) B.push(['crow', X10 + 99.9, 11.8 + 1.72 + 0.03, dz, { face: f, flee: 3.5, dy: 3, toZ: -14 }]);   // 尽头的栏杆
+  sys.push(airBirds(R, B, { spread: 3 }));
+});

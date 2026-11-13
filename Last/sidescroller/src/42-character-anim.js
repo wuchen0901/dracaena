@@ -107,6 +107,9 @@ function makeCharacter(kind, prev, o = {}) {
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
     A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
     if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
+    A.rope = damp(A.rope ?? 0, s.mode === 'rope' ? 1 : 0, s.mode === 'rope' ? 16 : 7, dt);   // 抓着绳子的程度
+    if (s.rope) A.lastRope = s.rope;
+    A.tilt = damp(A.tilt ?? 0, s.rope ? s.rope.th : 0, 18, dt);                          // 跟着绳子斜多少
     // 从高处落地（见上面的 landAt）：蹲下去多少、手撑地、踉跄、滚翻时抱成一团
     const ld = s.land && s.mode === 'normal' ? landAt(s.land) : NOLAND; if (ld.style) A.lst = ld.style;
     const LP = LAND_POSE[A.lst ?? 1];
@@ -121,7 +124,7 @@ function makeCharacter(kind, prev, o = {}) {
     } else { A.restT = 0; A.st = -1; A.stNext = 3.5 + 3 * hash1(A.stN * 5.3 + 2); }
     let turnT = npcTurn ?? (A.st < 0 ? TURN.stand : TURN.idle[A.st]);
     turnT = lerp(lerp(turnT, lerp(TURN.walk, TURN.run, A.run), A.mv), TURN.air, A.air);
-    turnT *= (1 - A.grip) * (1 - A.tuck) * (1 - A.cover) * (1 - 0.6 * A.ltuck);
+    turnT *= (1 - A.grip) * (1 - A.tuck) * (1 - A.cover) * (1 - 0.6 * A.ltuck) * (1 - A.rope);   // 抓着绳子也是正侧面
     if (A.swim > 0.002 && sw) turnT = lerp(turnT, TURN.float * sw.top * (1 - sstep(0.15, 0.9, Math.hypot(sw.vx, sw.vy))), A.swim);   // 在水里只有浮在水面上踩水时才转过来
     if (posed) turnT = 0;
     A.turn = damp(A.turn, (q.turn ?? turnT) * TURN.k, rest ? 2.6 : 7, dt);
@@ -159,7 +162,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp + (brush ? brush.bow * (1 - A.air) : 0);
     leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
-    leanT *= 1 - A.swim;
+    leanT *= (1 - A.swim) * (1 - A.rope);
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -(A.lean + bl + landPitch) + hv;
     // 上身绕竖直方向拧多少：走和跑的时候肩跟着同侧的手臂一前一后（胯反着来），再加上朝镜头多转的那一点
@@ -290,8 +293,20 @@ function makeCharacter(kind, prev, o = {}) {
       spine.rotation.z = lerp(spine.rotation.z, (0.25 + 0.2 * Math.sin(p * 6.2832) * mv) * clamp(A.pitch / 1.5, 0, 1), k);   // 背微微拱起来
       head.rotation.z = lerp(head.rotation.z, 0.8 * A.pitch, k); head.rotation.y = lerp(head.rotation.y, 0, k);                // 抬着头往前看
     }
-    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）
-    root.rotation.z = -A.pitch;
+    // ---- 绳子：两手举过头抓着绳子，两腿弯起来夹住，人跟着绳子一起斜。这里只摆出大致的样子；
+    //      手和脚准确地落到绳子上，是下面给主角模型摆骨头时另算的（51-rope.js 的 ropeIK）----
+    if (A.rope > 0.002) {
+      const k = A.rope;
+      for (let i = 0; i < 2; i++) {
+        const R = arms[i], L = legs[i];
+        R.sh.rotation.z = lerp(R.sh.rotation.z, 2.7, k); R.el.rotation.z = lerp(R.el.rotation.z, 0.7, k); R.sh.rotation.x = lerp(R.sh.rotation.x, 0, k); R.sh.rotation.y = lerp(R.sh.rotation.y, 0, k);
+        L.hip.rotation.z = lerp(L.hip.rotation.z, 0.75, k); L.knee.rotation.z = lerp(L.knee.rotation.z, -1.2, k); L.foot.rotation.z = lerp(L.foot.rotation.z, -0.35, k);
+      }
+      spine.rotation.z = lerp(spine.rotation.z, -0.1, k);                                // 身子微微往绳子那边弓
+      head.rotation.z = lerp(head.rotation.z, 0.3 - 0.12 * clamp((A.lastRope?.rv ?? 0) / ROPE.down, 0, 1), k); head.rotation.y = lerp(head.rotation.y, 0, k);   // 抬头往上看；往下滑时低一点
+    }
+    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）；抓着绳子时绕着脚底跟着绳子斜（人的位置已经按斜过的样子算好了）
+    root.rotation.z = -A.pitch + A.tilt * A.rope * Math.cos(A.yaw);
     if (A.pitch > 1e-4) { const c = s.swim?.c ?? A.lastSwim?.c ?? 0.6, sp = Math.sin(A.pitch) * c; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(A.pitch) * c; }
     if (ld.roll > 1e-4 && ld.roll < 1 && !B.traveler?.model) {             // 前滚翻（搭出来的骨架）：抱成一团，绕着胯往前滚一圈。主角的模型在最后单独转
       const a = ld.roll * 6.2832, c = hipY, sp = Math.sin(a) * c;
@@ -390,6 +405,7 @@ function makeCharacter(kind, prev, o = {}) {
         G_.position.x = C.x + dx * cs - dy * sn; G_.position.y = C.y + dx * sn + dy * cs; G_.rotation.z += a; G_.updateMatrixWorld(true);
         G_.position.y -= lowestY(traveler.model) - root.position.y; G_.updateMatrixWorld(true);
       }
+      if (A.rope > 0.01 && A.lastRope) ropeIK(traveler, A.lastRope, A.rope);         // 手抓在绳子上、脚夹在绳子上
     }
   }
   function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry && !o.userData.travelerShared) o.geometry.dispose(); if (o.userData.travelerOwned) { for (const material of (Array.isArray(o.material) ? o.material : [o.material])) material.dispose(); } if (o.isSkinnedMesh) o.skeleton.dispose(); }); }

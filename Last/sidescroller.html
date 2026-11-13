@@ -91,9 +91,9 @@
 </div>
 <div id="title" class="ov hide">
   <h1>铁锈与微光</h1>
-  <div class="sub">横版原型 · 九章</div>
+  <div class="sub">横版原型 · 十章</div>
   <div class="keys">
-    <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关　　在水里按 <b>↓</b> 潜下去<br>
+    <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关　　在水里按 <b>↓</b> 潜下去　　抓着绳子按 <b>↑</b><b>↓</b> 上下爬<br>
     <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
   </div>
   <div class="go" id="go">按任意键开始</div>
@@ -1589,6 +1589,9 @@ function makeCharacter(kind, prev, o = {}) {
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
     A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
     if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
+    A.rope = damp(A.rope ?? 0, s.mode === 'rope' ? 1 : 0, s.mode === 'rope' ? 16 : 7, dt);   // 抓着绳子的程度
+    if (s.rope) A.lastRope = s.rope;
+    A.tilt = damp(A.tilt ?? 0, s.rope ? s.rope.th : 0, 18, dt);                          // 跟着绳子斜多少
     // 从高处落地（见上面的 landAt）：蹲下去多少、手撑地、踉跄、滚翻时抱成一团
     const ld = s.land && s.mode === 'normal' ? landAt(s.land) : NOLAND; if (ld.style) A.lst = ld.style;
     const LP = LAND_POSE[A.lst ?? 1];
@@ -1603,7 +1606,7 @@ function makeCharacter(kind, prev, o = {}) {
     } else { A.restT = 0; A.st = -1; A.stNext = 3.5 + 3 * hash1(A.stN * 5.3 + 2); }
     let turnT = npcTurn ?? (A.st < 0 ? TURN.stand : TURN.idle[A.st]);
     turnT = lerp(lerp(turnT, lerp(TURN.walk, TURN.run, A.run), A.mv), TURN.air, A.air);
-    turnT *= (1 - A.grip) * (1 - A.tuck) * (1 - A.cover) * (1 - 0.6 * A.ltuck);
+    turnT *= (1 - A.grip) * (1 - A.tuck) * (1 - A.cover) * (1 - 0.6 * A.ltuck) * (1 - A.rope);   // 抓着绳子也是正侧面
     if (A.swim > 0.002 && sw) turnT = lerp(turnT, TURN.float * sw.top * (1 - sstep(0.15, 0.9, Math.hypot(sw.vx, sw.vy))), A.swim);   // 在水里只有浮在水面上踩水时才转过来
     if (posed) turnT = 0;
     A.turn = damp(A.turn, (q.turn ?? turnT) * TURN.k, rest ? 2.6 : 7, dt);
@@ -1641,7 +1644,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
     leanT += 0.2 * A.cover + (q.bow || 0) + 0.22 * limp + (brush ? brush.bow * (1 - A.air) : 0);
     leanT += 0.1 * br.ex * (1 - A.run) * (1 - A.air) * (1 - A.grip);       // 累了：站着、走着都微微弓着背
-    leanT *= 1 - A.swim;
+    leanT *= (1 - A.swim) * (1 - A.rope);
     A.lean = damp(A.lean, leanT, 9, dt);
     spine.rotation.z = -(A.lean + bl + landPitch) + hv;
     // 上身绕竖直方向拧多少：走和跑的时候肩跟着同侧的手臂一前一后（胯反着来），再加上朝镜头多转的那一点
@@ -1772,8 +1775,20 @@ function makeCharacter(kind, prev, o = {}) {
       spine.rotation.z = lerp(spine.rotation.z, (0.25 + 0.2 * Math.sin(p * 6.2832) * mv) * clamp(A.pitch / 1.5, 0, 1), k);   // 背微微拱起来
       head.rotation.z = lerp(head.rotation.z, 0.8 * A.pitch, k); head.rotation.y = lerp(head.rotation.y, 0, k);                // 抬着头往前看
     }
-    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）
-    root.rotation.z = -A.pitch;
+    // ---- 绳子：两手举过头抓着绳子，两腿弯起来夹住，人跟着绳子一起斜。这里只摆出大致的样子；
+    //      手和脚准确地落到绳子上，是下面给主角模型摆骨头时另算的（51-rope.js 的 ropeIK）----
+    if (A.rope > 0.002) {
+      const k = A.rope;
+      for (let i = 0; i < 2; i++) {
+        const R = arms[i], L = legs[i];
+        R.sh.rotation.z = lerp(R.sh.rotation.z, 2.7, k); R.el.rotation.z = lerp(R.el.rotation.z, 0.7, k); R.sh.rotation.x = lerp(R.sh.rotation.x, 0, k); R.sh.rotation.y = lerp(R.sh.rotation.y, 0, k);
+        L.hip.rotation.z = lerp(L.hip.rotation.z, 0.75, k); L.knee.rotation.z = lerp(L.knee.rotation.z, -1.2, k); L.foot.rotation.z = lerp(L.foot.rotation.z, -0.35, k);
+      }
+      spine.rotation.z = lerp(spine.rotation.z, -0.1, k);                                // 身子微微往绳子那边弓
+      head.rotation.z = lerp(head.rotation.z, 0.3 - 0.12 * clamp((A.lastRope?.rv ?? 0) / ROPE.down, 0, 1), k); head.rotation.y = lerp(head.rotation.y, 0, k);   // 抬头往上看；往下滑时低一点
+    }
+    // 整个人绕着身体的中点转（不在水里时 A.pitch 回到 0）；抓着绳子时绕着脚底跟着绳子斜（人的位置已经按斜过的样子算好了）
+    root.rotation.z = -A.pitch + A.tilt * A.rope * Math.cos(A.yaw);
     if (A.pitch > 1e-4) { const c = s.swim?.c ?? A.lastSwim?.c ?? 0.6, sp = Math.sin(A.pitch) * c; root.position.x -= sp * Math.cos(A.yaw); root.position.z += sp * Math.sin(A.yaw); root.position.y += c - Math.cos(A.pitch) * c; }
     if (ld.roll > 1e-4 && ld.roll < 1 && !B.traveler?.model) {             // 前滚翻（搭出来的骨架）：抱成一团，绕着胯往前滚一圈。主角的模型在最后单独转
       const a = ld.roll * 6.2832, c = hipY, sp = Math.sin(a) * c;
@@ -1872,6 +1887,7 @@ function makeCharacter(kind, prev, o = {}) {
         G_.position.x = C.x + dx * cs - dy * sn; G_.position.y = C.y + dx * sn + dy * cs; G_.rotation.z += a; G_.updateMatrixWorld(true);
         G_.position.y -= lowestY(traveler.model) - root.position.y; G_.updateMatrixWorld(true);
       }
+      if (A.rope > 0.01 && A.lastRope) ropeIK(traveler, A.lastRope, A.rope);         // 手抓在绳子上、脚夹在绳子上
     }
   }
   function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry && !o.userData.travelerShared) o.geometry.dispose(); if (o.userData.travelerOwned) { for (const material of (Array.isArray(o.material) ? o.material : [o.material])) material.dispose(); } if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
@@ -3816,6 +3832,8 @@ function stepPlayer(dt) {
   P.impact = 0;
   if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
   P.jumpBuf -= dt; P.coyote -= dt;
+  P.ropeCD = Math.max(0, (P.ropeCD || 0) - dt);
+  if (P.mode !== 'rope' && P.rope) { P.rope.held = false; P.rope = null; }      // 回到存档点、换章节时还抓着绳子：放开
 
   if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
     const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
@@ -3839,6 +3857,7 @@ function stepPlayer(dt) {
   }
 
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+  if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
   // ---- 普通状态 ----
   // 从高处落地以后的一小会儿：lh 被拖住多少（蹲着走不快、跳不起来），lp 被惯性带着往前的速度，lc 这时按键能管几成
@@ -3857,7 +3876,7 @@ function stepPlayer(dt) {
   // 水平移动，被方块侧面挡住
   let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
   if (hit) {
-    const side = P.vx > 0 ? 1 : -1;
+    const side = P.x < (hit.x1 + hit.x2) / 2 ? 1 : -1;   // 方块在哪一边：看人在它中线的哪一侧（慢慢走下台阶边时身子还压着台阶的侧面，按速度判断会被推到台阶另一头去）
     nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
     const h = hit.y2 - P.y;                      // 腾空时贴着墙、够得着边缘就攀上去
     if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6 && !hit.noclimb) { P.x = nx; startMantle(hit, side); return; }
@@ -3877,6 +3896,7 @@ function stepPlayer(dt) {
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
   const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
+  if (!P.grounded && ROPES.length) { const g = findRope(); if (g) { enterRope(...g); return; } }   // 跳起来手碰到绳子：抓住
   const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
 
   // 抓住可以推拉的东西 / 操作机关
@@ -4001,6 +4021,284 @@ function stepBreath() {
   if (state !== 'play') { breathDark = 0; return; }
   const k = P.mode === 'swim' ? sstep(0.6, 1, 1 - P.air / SWIM.breath) : 0;
   if (Math.abs(k - breathDark) > 0.01 || (k === 0 && breathDark > 0)) { breathDark = k; $('fade').style.opacity = (0.75 * k).toFixed(3); }
+}
+
+// ============================================================
+//  绳子：从吊臂、横梁上垂下来的一根绳子
+//  跳起来，手碰到绳子就抓住；按住 ↑ / 空格 往上爬（两只手一上一下地倒），↓ 顺着绳子往下滑，← → 转身；
+//  爬到够得着旁边高台边缘的高度，往高台那边按方向，就翻上去；滑到绳子下头还按着 ↓，就松手掉下去。
+//  人抓着绳子的时候，人和绳子当成一个单摆一起晃（跳过来带着的速度变成摆动，撞到墙就弹回来）；
+//  绳子的样子是一串小段（韦尔莱积分）：挂点固定；抓着的时候挂点到手那一段拉直，手往下到两脚夹住的地方跟着人，剩下的一截自己垂着、被风吹着
+// ============================================================
+// reach 手离绳子多近才抓得住 / up 往上爬多快 / down 往下滑多快 / hang 两手中间离脚底多高 / hx 绳子在身子前面多远 / top 两手中间最高到挂点下面多少 /
+// cd 松手以后多久不再抓 / ledge 高台的边离身子最远多少还翻得上去 / g 摆动用的重力 / foot 两脚夹住绳子的地方离两手中间多远（沿着绳子）/
+// hi、lo 抓着的手最高、最低在两手中间的上面、下面多少 / reachT 一只手往上倒一下要多久
+const ROPE = { reach: 0.42, up: 0.95, down: 1.5, hang: 1.12, hx: 0.14, top: 0.3, cd: 0.45, ledge: 1.3, g: 13, foot: 0.95, hi: -0.13, lo: 0.1, reachT: 0.26 };
+const ROPES = [];
+// 登记一根绳子：{ x 挂点, top 挂点的高度, bot 下端的高度, z 离玩法平面多远（默认 0）, deco 只是布景、抓不住, r 粗细, windK 风吹得动多少 }
+function rope(o) {
+  o.z ??= 0; o.len = o.top - o.bot; o.th = 0; o.w = 0; o.held = false; o.r ??= 0.03; o.windK ??= 1; o.kick = 0; o.h = 1 / 120;
+  o.n = Math.max(8, Math.ceil(o.len / 0.1) + 1); o.seg = o.len / (o.n - 1);
+  o.p = new Float32Array(o.n * 2); o.q = new Float32Array(o.n * 2); o.pin = new Uint8Array(o.n);
+  ropeReset(o); ROPES.push(o); return o;
+}
+function ropeReset(r) {
+  for (let i = 0; i < r.n; i++) { r.p[2 * i] = r.q[2 * i] = r.x; r.p[2 * i + 1] = r.q[2 * i + 1] = r.top - i * r.seg; }
+  r.th = r.w = r.kick = 0; r.held = false; r.near = null;
+}
+// 绳子上离挂点 s 米的那一点（顺着那一串小段量）
+function ropeXY(r, s) {
+  const f = clamp(s / r.seg, 0, r.n - 1), i = Math.min(r.n - 2, Math.floor(f)), t = f - i, p = r.p;
+  return [lerp(p[2 * i], p[2 * i + 2], t), lerp(p[2 * i + 1], p[2 * i + 3], t)];
+}
+// 抓着的时候绳子是拉直的：顺着摆的角度量下去
+const ropeLine = (r, s) => [r.x + s * Math.sin(r.th), r.top - s * Math.cos(r.th)];
+// 绳子在高度 y 那里离挂点多远（沿着绳子）；绳子够不到这个高度就是 null
+function ropeArcAt(r, y) {
+  const p = r.p;
+  for (let i = 0; i < r.n - 1; i++) { const y0 = p[2 * i + 1], y1 = p[2 * i + 3]; if ((y0 - y) * (y1 - y) <= 0 && y0 !== y1) return (i + (y0 - y) / (y0 - y1)) * r.seg; }
+  return null;
+}
+
+// ---- 绳子自己的样子：每一帧走几小步 ----
+function ropeSim(r, dt) {
+  const n = r.n, p = r.p, q = r.q, pin = r.pin, seg = r.seg;
+  if (!r.near) r.near = SOLIDS.filter(s => s.x2 > r.x - r.len - 1 && s.x1 < r.x + r.len + 1 && s.y2 > r.bot - r.len - 1 && s.y1 < r.top + 1);
+  const steps = Math.max(1, Math.min(6, Math.round(dt * 120))), h = dt / steps; r.h = h;
+  // 抓着的时候：挂点到下面那只手拉直；两脚夹住的那一点跟着人
+  pin.fill(0); pin[0] = 1;
+  let kLow = 0, kFoot = -1, fx_ = 0, fy_ = 0;
+  if (r.held && P.rope === r && P.hands) {
+    let sLow = P.rs; for (const hd of P.hands) if (hd.t >= 1) sLow = Math.max(sLow, hd.s);
+    kLow = Math.min(n - 1, Math.floor(Math.min(sLow, r.len) / seg)); for (let i = 0; i <= kLow; i++) pin[i] = 1;
+    const sf = P.rs + ROPE.foot + 0.03; if (sf < r.len - seg) { kFoot = Math.round(sf / seg); pin[kFoot] = 1; [fx_, fy_] = ropeLine(r, kFoot * seg); }
+  }
+  const kick = r.kick, dmp = r.held ? 0.972 : r.deco ? 0.992 : 0.994; r.kick = 0;          // 被人抓着时，垂着的那一截跟着人晃、很快就稳住（不会甩起来）
+  for (let k = 0; k < steps; k++) {
+    const tt = T + k * h, wind = (E.wind * 0.5 + 0.32 * Math.sin(tt * 0.53 + r.x * 0.37) + 0.16 * Math.sin(tt * 1.9 + r.x * 1.3)) * r.windK;
+    for (let i = 1; i < n; i++) {
+      if (pin[i]) continue;
+      const j = 2 * i, vx = (p[j] - q[j]) * dmp, vy = (p[j + 1] - q[j + 1]) * dmp;
+      q[j] = p[j]; q[j + 1] = p[j + 1];
+      p[j] += vx + wind * h * h + (k === 0 ? kick * h * i / n : 0); p[j + 1] += vy - 9.8 * h * h;
+    }
+    const setPin = (i, x, y) => { const j = 2 * i; q[j] = p[j]; q[j + 1] = p[j + 1]; p[j] = x; p[j + 1] = y; };
+    setPin(0, r.x, r.top);
+    if (kLow) for (let i = 1; i <= kLow; i++) { const [x, y] = ropeLine(r, i * seg); setPin(i, x, y); }
+    if (kFoot > 0) setPin(kFoot, fx_, fy_);
+    for (let it = 0, its = r.deco ? 6 : 16; it < its; it++) {
+      for (let i = 0; i < n - 1; i++) {
+        const a = 2 * i, b = a + 2, dx = p[b] - p[a], dy = p[b + 1] - p[a + 1], d = Math.sqrt(dx * dx + dy * dy) || 1e-6, e = (d - seg) / d;
+        const wa = pin[i] ? 0 : 1, wb = pin[i + 1] ? 0 : 1, ws = wa + wb; if (!ws) continue;
+        p[a] += dx * e * wa / ws; p[a + 1] += dy * e * wa / ws; p[b] -= dx * e * wb / ws; p[b + 1] -= dy * e * wb / ws;
+      }
+      if (!r.deco) for (let i = 0; i < n - 2; i++) {      // 粗绳子折不过来：隔一个点的两点不许靠得太近
+        const a = 2 * i, b = a + 4, dx = p[b] - p[a], dy = p[b + 1] - p[a + 1], d = Math.sqrt(dx * dx + dy * dy) || 1e-6, mn = seg * 1.85;
+        if (d >= mn) continue;
+        const e = (d - mn) / d * 0.5, wa = pin[i] ? 0 : 1, wb = pin[i + 2] ? 0 : 1, ws = wa + wb; if (!ws) continue;
+        p[a] += dx * e * wa / ws; p[a + 1] += dy * e * wa / ws; p[b] -= dx * e * wb / ws; p[b + 1] -= dy * e * wb / ws;
+      }
+    }
+    for (let i = 1; i < n; i++) if (!pin[i]) for (const s of r.near) {        // 绳子不穿进墙里：推到最近的那一面外头
+      const j = 2 * i, x = p[j], y = p[j + 1]; if (s.off || x <= s.x1 || x >= s.x2 || y <= s.y1 || y >= s.y2) continue;
+      const dl = x - s.x1, dr = s.x2 - x, du = s.y2 - y; if (du < dl && du < dr) p[j + 1] = s.y2 + 0.005; else p[j] = dl < dr ? s.x1 - 0.005 : s.x2 + 0.005;
+      q[j] = lerp(q[j], p[j], 0.5);
+    }
+    for (let i = 1; i < n; i++) if (!pin[i]) { const j = 2 * i, gy = groundY(p[j]) + r.r; if (p[j + 1] < gy) { p[j + 1] = gy; q[j] = lerp(q[j], p[j], 0.3); } }   // 垂到地上的一截堆在地上
+  }
+}
+
+// ---- 绳子的样子：顺着那一串点拉成一根管子，每一帧重新摆一遍顶点 ----
+let ROPE_MAT = null, KNOT_GEO = null;
+function ropeMat() {                                     // 三股拧在一起的旧麻绳：一道道斜着的深缝，几丝起毛
+  if (ROPE_MAT) return ROPE_MAT;
+  const [c, g] = mkCanvas(32, 96), s0 = _seed; _seed = 777;
+  g.fillStyle = '#9b8f7d'; g.fillRect(0, 0, 32, 96);
+  for (let k = -2; k < 8; k++) {
+    const y = k * 16; g.fillStyle = 'rgba(255,245,225,.16)'; g.beginPath(); g.moveTo(0, y + 3); g.lineTo(32, y + 13); g.lineTo(32, y + 19); g.lineTo(0, y + 9); g.fill();
+    g.strokeStyle = 'rgba(28,22,16,.75)'; g.lineWidth = 2.6; g.beginPath(); g.moveTo(0, y); g.lineTo(32, y + 16); g.stroke();
+  }
+  for (let i = 0; i < 70; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(40,32,24,.35)' : 'rgba(230,220,200,.25)'; g.fillRect(rr(0, 32), rr(0, 96), rr(1, 3), 1); }
+  _seed = s0;
+  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return ROPE_MAT = lam(0x8f8474, { map: t });
+}
+function ropeMesh(R, r, o = {}) {
+  const n = r.n, M = 6, V = n * (M + 1), pos = new Float32Array(V * 3), nor = new Float32Array(V * 3), uv = new Float32Array(V * 2), idx = [];
+  for (let i = 0; i < n; i++) for (let j = 0; j <= M; j++) { const v = i * (M + 1) + j; uv[2 * v] = j / M; uv[2 * v + 1] = i * r.seg * 5.5; }
+  for (let i = 0; i < n - 1; i++) for (let j = 0; j < M; j++) { const a = i * (M + 1) + j, b = a + M + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, o.mat ?? ropeMat()); m.frustumCulled = false; m.castShadow = o.shadow !== false; m.receiveShadow = true; R.add(m);
+  KNOT_GEO ??= new THREE.SphereGeometry(1, 10, 8);
+  const knot = new THREE.Mesh(KNOT_GEO, m.material); knot.scale.set(r.r * 1.9, r.r * 2.6, r.r * 1.9); knot.castShadow = m.castShadow; R.add(knot);
+  r.mesh = m; r.knot = knot; ropeDraw(r);
+  return m;
+}
+function ropeDraw(r) {
+  const m = r.mesh; if (!m) return;
+  const n = r.n, M = 6, p = r.p, pos = m.geometry.attributes.position.array, nor = m.geometry.attributes.normal.array, rad = r.r;
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), tx = p[2 * b] - p[2 * a], ty = p[2 * b + 1] - p[2 * a + 1], tl = Math.sqrt(tx * tx + ty * ty) || 1;
+    const nx = -ty / tl, ny = tx / tl, cx = p[2 * i], cy = p[2 * i + 1], taper = i === n - 1 ? 0.85 : 1;
+    for (let j = 0; j <= M; j++) {
+      const f = j / M * 6.2832, c = Math.cos(f), s = Math.sin(f), v = 3 * (i * (M + 1) + j);
+      nor[v] = c * nx; nor[v + 1] = c * ny; nor[v + 2] = s;
+      pos[v] = cx + rad * taper * c * nx; pos[v + 1] = cy + rad * taper * c * ny; pos[v + 2] = r.z + rad * taper * s;
+    }
+  }
+  m.geometry.attributes.position.needsUpdate = true; m.geometry.attributes.normal.needsUpdate = true;
+  const j = 2 * (n - 1), dx = p[j] - p[j - 2], dy = p[j + 1] - p[j - 1];
+  r.knot.position.set(p[j] + dx * 0.2, p[j + 1] + dy * 0.2, r.z); r.knot.rotation.z = Math.atan2(dx, -dy);
+}
+function stepRopes(list, dt) { for (const r of list) { ropeSim(r, dt); ropeDraw(r); } }
+
+// ============================================================
+//  主角抓着绳子
+// ============================================================
+// 空中：手够得着的高度上有没有绳子（从高往低找，找手离得最近的那一根）
+function findRope() {
+  if (P.ropeCD > 0) return null;
+  let best = null, bd = 1e9;
+  for (const r of ROPES) {
+    if (r.deco || Math.abs(r.z) > 0.3 || Math.abs(r.x - P.x) > r.len + 1.5) continue;
+    for (let y = P.y + 1.28; y >= P.y + 0.72; y -= 0.06) {
+      if (y > r.top - ROPE.top) continue;
+      const s = ropeArcAt(r, y); if (s === null || s > r.len - 0.1) continue;
+      const rx = ropeXY(r, s)[0], dx = Math.min(Math.abs(rx - P.x), Math.abs(rx - P.x - P.facing * ROPE.hx));   // 绳子在身前（手伸出去的地方）也算
+      if (dx < ROPE.reach) { if (dx < bd) { best = [r, s]; bd = dx; } break; }
+    }
+  }
+  return best;
+}
+function enterRope(r, s) {
+  const [hx, hy] = ropeXY(r, s), i = Math.min(r.n - 1, Math.round(s / r.seg)), vRope = (r.p[2 * i] - r.q[2 * i]) / r.h;
+  r.th = Math.atan2(hx - r.x, r.top - hy);
+  r.w = clamp((P.vx * 0.3 + vRope * 0.8) / (s + 0.5), -1.1, 1.1);              // 跳过来带着的速度变成摆动
+  if (Math.abs(hx - P.x) > 0.03) P.facing = hx > P.x ? 1 : -1;                     // 面朝绳子
+  const s0 = clamp(s, ROPE.top, r.len - 0.14);
+  Object.assign(P, { mode: 'rope', rope: r, land: null, rs: s0, rv: P.vy < -1.5 ? clamp(-P.vy * 0.4, 0, 2.6) : 0, dropT: 0, grounded: false, coyote: 0, jumpBuf: 0, vx: 0, vy: 0,
+    hands: [{ s: s0 - 0.07, t: 1 }, { s: s0 + 0.07, t: 1 }] });                    // 下落时抓住的：手顺着绳子往下滑一小段才停住
+  r.held = true; fx('grab');
+}
+function releaseRope() {                                 // 松手掉下去：带着绳子摆动的速度
+  const r = P.rope, L = P.rs + 0.5, vx = r ? r.w * L * Math.cos(r.th) : 0;
+  if (r) { r.held = false; r.kick = -vx * 0.5; }
+  Object.assign(P, { mode: 'normal', rope: null, grounded: false, vx, vy: r ? r.w * L * Math.sin(r.th) : 0, ropeCD: ROPE.cd, gy: P.y, coyote: 0 });
+}
+// 两手中间在绳子上 s 处时，人（脚底的中点）在哪里：人顺着绳子垂在手下面，绳子在身子前面一点
+function ropeBody(r, s) {
+  const [hx, hy] = ropeLine(r, s), c = Math.cos(r.th), sn = Math.sin(r.th), f = P.facing * ROPE.hx;
+  return [hx + ROPE.hang * sn - f * c, hy - ROPE.hang * c - f * sn];
+}
+// 往 side 那边，身边够得着的高台：边缘离身子不太远，台面在脚下面一点到肩膀之间，台上站得下
+function ropeLedge(side) {
+  for (const s of SOLIDS) {
+    if (s.off || s.noclimb || s.plat || s.x2 - s.x1 < 0.6) continue;
+    const ex = side > 0 ? s.x1 : s.x2, gap = (ex - P.x) * side, h = s.y2 - P.y;
+    if (gap < P.hw - 0.08 || gap > ROPE.ledge || h < -0.6 || h > 0.95) continue;
+    if (sideHit(ex + side * (P.hw + 0.14), s.y2 + 0.02) || ceilY(ex + side * 0.4) < s.y2 + P.H) continue;
+    return s;
+  }
+  return null;
+}
+// 两只手：抓着的手停在绳子上不动，人往上一提，它就一点点落到胸前；落到胸前、另一只手也抓牢了，它就松开，往上倒到头顶前面再抓住
+function stepRopeHands(dt, s, sPrev, climb) {
+  const H = P.hands, mv = s - sPrev;
+  for (const h of H) if (h.t < 1) { h.t = Math.min(1, h.t + dt / ROPE.reachT); h.s = lerp(h.s0, h.s1, sstep(0, 1, h.t)); }
+  if (P.rv > 0.05) {                                     // 往下滑：两只手都顺着绳子跟着滑，慢慢回到一上一下的样子
+    for (let i = 0; i < 2; i++) { const h = H[i]; if (h.t < 1) h.t = 1; h.s += mv; h.s = damp(h.s, s + (i ? 0.05 : -0.12), 6, dt); }
+    return;
+  }
+  if (climb) {                                           // 要往上爬：下面那只手已经落到胸前、上面那只手抓牢了，就松开下面那只往上倒
+    const [a, b] = H[0].s > H[1].s ? [H[0], H[1]] : [H[1], H[0]];
+    if (a.t >= 1 && b.t >= 1 && a.s - s > ROPE.lo - 0.05) { a.t = 0; a.s0 = a.s; a.s1 = Math.max(ROPE.top + ROPE.hi + 0.02, s + Math.min(P.rv, -0.4) * ROPE.reachT * 0.9 + ROPE.hi); }
+  }
+}
+function stepRope(dt, d) {
+  const r = P.rope, up = ctl && keys.has('J') && !keys.has('DOWN'), dn = ctl && keys.has('DOWN') && !keys.has('J');
+  if (d) P.facing = d;
+  const want = up ? -ROPE.up : dn ? ROPE.down : 0;
+  P.rv = damp(P.rv, want, want ? 9 : 14, dt);
+  let s = P.rs + P.rv * dt;
+  if (P.rv < 0) for (const h of P.hands) if (h.t >= 1) s = Math.max(s, h.s - ROPE.lo - 0.04);   // 抓着的那只手已经拉到胸前：等另一只手抓住再往上
+  const sMin = ROPE.top, sMax = r.len - 0.14;
+  if (s < sMin) { s = sMin; if (P.rv < 0) P.rv = 0; }
+  if (s >= sMax) {                                       // 滑到下头了：还按着 ↓ 就松手
+    s = sMax; if (P.rv > 0) P.rv = 0;
+    P.dropT = dn ? P.dropT + dt : 0; if (P.dropT > 0.16) { releaseRope(); return; }
+  } else P.dropT = 0;
+  // 摆：人越往下，摆得越慢；爬的时候手脚用着力，摆停得快一些
+  r.w += -ROPE.g / (s + 0.5) * Math.sin(r.th) * dt; r.w *= Math.exp(-(want ? 1.1 : 0.5) * dt);
+  const th0 = r.th; r.th = clamp(r.th + r.w * dt, -0.7, 0.7);
+  let [nx, ny] = ropeBody(r, s);
+  if (sideHit(nx, ny)) {                                 // 荡到墙上：弹回来
+    if (Math.abs(r.w) > 0.3) fx('land', 2.5);
+    r.th = th0; r.w = -r.w * 0.3; [nx, ny] = ropeBody(r, s);
+    if (sideHit(nx, ny)) { s = P.rs; P.rv = 0; [nx, ny] = ropeBody(r, s); }
+  }
+  const f = floorY(nx, ny + 0.25);
+  if (ny <= f + 0.02 && P.rv >= 0) {                     // 滑到脚着地了：站住
+    r.held = false; Object.assign(P, { mode: 'normal', rope: null, grounded: true, y: f, x: nx, vx: 0, vy: 0, gy: f, ropeCD: ROPE.cd }); fx('land', 2); return;
+  }
+  stepRopeHands(dt, s, P.rs, want < 0 && s > sMin + 0.01);
+  P.rs = s;
+  const a = 1 - Math.exp(-dt / 0.06); P.x += (nx - P.x) * a; P.y += (ny - P.y) * a;   // 刚抓住、转身时不要一下子跳过去
+  if (ctl && d) {                                        // 往高台那边按：翻上去（脚往绳子上一蹬，绳子荡开）
+    const L = ropeLedge(d);
+    if (L) { r.held = false; r.kick = -d * 1.6; P.rope = null; P.ropeCD = ROPE.cd; startMantle(L, d); P.mantle.T = 0.95; return; }
+  }
+}
+// 交给主角动画：两只手、两只脚在世界里的位置（手正在往上倒的时候离开绳子一点），人斜多少
+function ropeAnim() {
+  const r = P.rope; if (!r) return null;
+  const H = P.hands, f = P.facing, lift = [0, 0];
+  const hands = H.map(h => { const [x, y] = ropeLine(r, h.s); return { x, y, lift: h.t < 1 ? Math.sin(Math.PI * h.t) : 0 }; });
+  for (let i = 0; i < 2; i++) lift[1 - i] = hands[i].lift;               // 一只手往上倒的时候，另一边的膝盖提一下
+  const feet = [0, 1].map(i => { const [x, y] = ropeLine(r, P.rs + ROPE.foot + (i ? 0.05 : -0.03) - 0.24 * lift[i]); return { x, y }; });
+  return { th: r.th, f, z: r.z, hands, feet, rv: P.rv };
+}
+
+// ---- 把主角模型的手脚摆到绳子上：每条胳膊 / 腿两节骨头，三维的两节反向运动学（手肘朝下朝外，膝盖朝前）。k：和原来的姿势混合多少 ----
+const _iv = Array.from({ length: 12 }, () => new THREE.Vector3()), _iq = Array.from({ length: 3 }, () => new THREE.Quaternion());
+function aimBone(node, from, child, to, k) {             // 转动 node，让它下一节的起点 child 转到从 from 看去 to 的方向上
+  const a = _iv[7].subVectors(child, from), b = _iv[8].subVectors(to, from);
+  if (a.lengthSq() < 1e-10 || b.lengthSq() < 1e-10) return;
+  a.normalize(); b.normalize();
+  const qW = _iq[0].setFromUnitVectors(a, b), pq = node.parent.getWorldQuaternion(_iq[1]);
+  const nq = _iq[2].copy(pq).invert().multiply(qW).multiply(pq).multiply(node.quaternion);
+  node.quaternion.slerp(nq, k); node.updateWorldMatrix(false, true);
+}
+function ikLimb(up, lo, end, target, pole, k) {
+  const a = up.getWorldPosition(_iv[0]), b = lo.getWorldPosition(_iv[1]), c = end.getWorldPosition(_iv[2]);
+  const l1 = a.distanceTo(b), l2 = b.distanceTo(c), dir = _iv[3].subVectors(target, a), dist = clamp(dir.length(), Math.abs(l1 - l2) + 1e-3, l1 + l2 - 1e-3);
+  dir.normalize();
+  const pp = _iv[4].subVectors(pole, a); pp.addScaledVector(dir, -pp.dot(dir)); if (pp.lengthSq() < 1e-10) return; pp.normalize();
+  const ca = clamp((l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist), -1, 1);
+  const elbow = _iv[5].copy(a).addScaledVector(dir, l1 * ca).addScaledVector(pp, l1 * Math.sqrt(1 - ca * ca));
+  aimBone(up, a, b, elbow, k);
+  const b2 = lo.getWorldPosition(_iv[1]), c2 = end.getWorldPosition(_iv[2]), tg = _iv[6].copy(a).addScaledVector(dir, dist);
+  aimBone(lo, b2, c2, tg, k);
+}
+function ropeIK(tr, w, k) {
+  const bone = n => tr.bones.get(n)?.node, T_ = _iv[9], Po = _iv[10], J = _iv[11];
+  for (let i = 0; i < 2; i++) {
+    const side = i ? 'Right' : 'Left';
+    const up = bone(side + 'Arm'), lo = bone(side + 'ForeArm'), end = bone(side + 'Hand');
+    if (up && lo && end) {
+      up.getWorldPosition(J); const sz = Math.sign(J.z - w.z) || (i ? 1 : -1), h = w.hands[i];
+      T_.set(h.x - w.f * 0.06 * h.lift, h.y - 0.05, w.z + sz * (0.042 + 0.05 * h.lift));            // 手腕在握住的地方下面一点
+      Po.set(J.x + w.f * 0.12, J.y - 0.5, J.z + sz * 0.6);
+      ikLimb(up, lo, end, T_, Po, k);
+    }
+    const hip = bone(side + 'UpLeg'), knee = bone(side + 'Leg'), foot = bone(side + 'Foot');
+    if (hip && knee && foot) {
+      hip.getWorldPosition(J); const sz = Math.sign(J.z - w.z) || (i ? 1 : -1), ft = w.feet[i];
+      T_.set(ft.x - w.f * 0.03, ft.y + 0.04, w.z + sz * 0.05);
+      Po.set(J.x + w.f * 1.0, J.y + 0.15, J.z + sz * 0.25);
+      ikLimb(hip, knee, foot, T_, Po, k);
+    }
+  }
 }
 // ============================================================
 //  声音的配方：所有声音都是现算出来的波形，不加载任何音频文件
@@ -8259,6 +8557,279 @@ const CH9 = (() => {
 })();
 
 // ============================================================
+//  第十章 · 吊绳与高台：一级比一级高的大水泥台阶，太高了跳不上去；台阶边上一排排旧吊臂，垂下一根根绳子
+//  跳起来抓住绳子 → 往上爬 → 往台阶那边按方向，翻上去。三根能抓的绳子：
+//    一 在平地上跳起来抓住，爬上第一级（3.6 米）
+//    二 第一级和第二级之间是一道很深的水沟，绳子挂在沟的正上方：助跑，从台阶边上跳过去抓住，爬上第二级（6.8 米）。掉进沟里回到沟边
+//    三 一根长绳子，从第三级顶上的吊车一直垂到第二级的台面上方，爬很长一段，上到最高的一级（11.8 米），走到边上，往下看得见走过来的路
+//  往远处去，每一级台阶的边上都还有一排同样的吊臂（布景）：有的绳子还在，有的割断了，有的只剩一只空滑轮
+//  （故事还在重写，这一章先单独放在最后，从章节菜单进；以后按剧情挪到该放的地方）
+// ============================================================
+const X10 = 1500;
+const CH10 = (() => {
+  const X = X10;
+  const C = chapter({ n: 10, x0: X + 0.5, start: X + 3, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
+    intro() { CAT.state = 'none'; } });
+  const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5;
+  terrain([X - 30, 0], [X + 29.9, 0], [X + 30.1, DITCH], [X + 32.85, DITCH], [X + 33.05, 0], [X + 150, 0]);
+  ground(X - 30, 0x2c3231); ground(X + 150, 0x2c3231);
+  solid({ x1: X - 8.4, x2: X - 7, y1: -2, y2: 40, noclimb: true });                   // 身后：一堵塌了半截的墙
+  const S1 = solid({ id: 'step1', x1: X + 14, x2: X + 30, y1: DITCH, y2: H1, snd: 'concrete' });
+  const S2 = solid({ id: 'step2', x1: X + 32.95, x2: X + 60, y1: DITCH, y2: H2, snd: 'concrete' });
+  const S3 = solid({ id: 'step3', x1: X + 60, x2: END, y1: 0, y2: H3, snd: 'concrete' });
+  solid({ x1: END - 1.35, x2: END - 0.9, y1: H3, y2: 40, noclimb: true });             // 最高一级的边上有一道矮墙和栏杆，走到这里为止
+  // 三根能抓的绳子：挂在吊臂顶端的滑轮下面，离台阶的墙一米
+  const R1 = rope({ x: X + 13.0, top: H1 + 1.95, bot: 1.95 });
+  const R2 = rope({ x: X + 31.95, top: H2 + 1.95, bot: 3.35 });
+  const R3 = rope({ x: X + 59.0, top: H3 + 2.6, bot: H2 + 1.85 });
+  const NEAR = [[R1, S1, H1], [R2, S2, H2], [R3, S3, H3]];
+  // 往远处去的那几排吊臂：[离镜头这边多远 z, 绳子多长（0 = 只剩空滑轮，'ground' = 一直垂到底下）]
+  const ROWS = [[-15, 'ground'], [-26, 1.3], [-39, 0], [-55, 2.6], [-74, 'ground']], DECO = [];
+  NEAR.forEach(([, S, top], k) => ROWS.forEach(([z, len], j) => {
+    const arm = top + 2.33, rx = S.x1 - 1.0, L = (k + j) % 3 === 2 && len !== 'ground' ? (len ? len * 0.6 : 1.6) : len;   // 每一级排得不一样
+    const below = (k === 0 ? 0 : k === 1 ? WATER_Y : H2) + 0.4;                         // 垂到底下：落在地上 / 水里 / 下一级的台面上
+    const r = L ? rope({ x: rx, top: arm - 0.38, bot: L === 'ground' ? below - 1.2 : arm - 0.38 - L, z, deco: true, r: 0.034, windK: 1.3 }) : null;
+    DECO.push({ S, top, z, rx, arm, r });
+  }));
+  pit({ x1: X + 30.02, x2: X + 32.93, y: WATER_Y + 0.15, sfx: 'splash' });
+  pointLight({ p: [S3.x1 + 0.3, R3.top - 0.3, 0.1], c: 0xffb46a, i: 3.4, d: 7.5, dec: 1.6 });          // 最高一级吊车上那盏旧工作灯
+  for (const x of [3, 16, 27, 35, 56, 63]) checkpoint(X + x);
+  camKeys([X - 20, 19.5, 2.2, 0.8], [X + 8, 20, 2.3, 1.0], [X + 22, 20, 2.0, 1.6], [X + 31, 20.5, 2.0, 0.6], [X + 40, 21, 2.2, 1.2], [X + 54, 23, 3.5, 0.2],
+    [X + 62, 23, 1.8, 2.5, 0.8], [X + 88, 24, 1.7, 4.0, 1.0], [X + 104, 24, 1.7, 4.0, 1.0]);
+  // 阴天，起了雾。光从右上方、台阶的后面来：台面是亮的，朝着镜头的墙面都背着光
+  env(X - 30, { fog: 0x6f7b78, fogD: 0.016, hemiS: 0xa9b6b3, hemiG: 0x1d2423, hemiI: 0.62, keyC: 0xdfe6df, keyI: 0.55, keyDir: [0.5, 1, -0.6], rimC: 0xbfd0cb, rimI: 0.75,
+    dustC: 0xd2dcd8, dustO: 0.3, wind: 0.45, ext: 1, sky: [0x3a4547, 0x55625f, 0x7a8581, 0x98a19a, 0xa2aaa3, 0x5f6965], sunX: 0.34, sunY: 0.24, sunC: 0xe4e9e2, sunP: 0.32,
+    stars: 0, cloud: 0.6, cloudC: 0xb4bdb8, birds: 0.12, flies: 0, vig: 1 });
+  env(X + 150, {});
+
+  const onRope = r => P.mode === 'rope' && P.rope === r;
+  hint(() => P.mode === 'normal' && P.grounded && P.y < 0.5 && P.x > X + 10.2 && P.x < X + 14, '<b>空格</b> 跳起来，抓住绳子');
+  hint(() => onRope(R1) && P.y < H1 - 0.95, '按住 <b>↑</b> 往上爬');
+  hint(() => onRope(R1) && P.y >= H1 - 0.95, '按 <b>→</b> 爬上台阶');
+  hint(() => P.mode === 'normal' && P.grounded && Math.abs(P.y - H1) < 0.05 && P.x > X + 25.5 && P.x < X + 30, '助跑，跳过去抓住绳子');
+  hint(() => onRope(R2) && P.y < H2 - 0.95, '按住 <b>↑</b> 往上爬，<b>↓</b> 往下滑');
+
+  // ---- 水泥墙面：大块的深浅、模板的拼缝、对拉螺栓的孔、从顶上往下流的水渍、泛白的碱、墙根返潮、顶边磕掉的角、吊臂底下淌下来的锈 ----
+  // a..b 横着的范围（正面是 x，侧面是 z），y1..y2 竖着的范围
+  function concrete(g, a, b, y1, y2, o = {}) {
+    const W = b - a, Hh = y2 - y1, off = o.off ?? 0.4;
+    for (let i = 0; i < W * Hh / 4; i++) caveBlob(g, rr(a, b), rr(y1, y2), rr(0.8, 2.8), rnd() < 0.65 ? '16,22,22' : '205,212,208', rr(0.05, 0.14));
+    for (let x = a + off; x < b - 0.05; x += 1.2) { g.fillStyle = 'rgba(10,14,14,.3)'; g.fillRect(x - 0.008, y1, 0.016, Hh); }
+    for (let y = y2 - 0.9; y > y1 + 0.1; y -= 0.9) { g.fillStyle = 'rgba(10,14,14,.34)'; g.fillRect(a, y, W, 0.018); g.fillStyle = 'rgba(220,226,222,.07)'; g.fillRect(a, y - 0.035, W, 0.028); }
+    g.fillStyle = 'rgba(6,8,8,.6)';
+    for (let x = a + off + 0.6; x < b - 0.1; x += 1.2) for (let y = y2 - 0.45; y > y1 + 0.2; y -= 0.9) { g.beginPath(); g.arc(x + rr(-0.02, 0.02), y + rr(-0.02, 0.02), 0.028, 0, 6.283); g.fill(); }
+    for (let i = 0; i < W * 1.5; i++) {
+      const x = rr(a, b), w = rr(0.03, 0.42), len = rr(0.4, Hh * 0.92), al = rr(0.08, 0.34), gr = g.createLinearGradient(0, y2, 0, y2 - len);
+      gr.addColorStop(0, `rgba(10,14,14,${al})`); gr.addColorStop(1, 'rgba(10,14,14,0)'); g.fillStyle = gr; g.fillRect(x, y2 - len, w, len);
+    }
+    for (let i = 0; i < W * 0.8; i++) {
+      const x = rr(a, b), y0 = y2 - 0.9 * Math.floor(rr(1, Math.max(1.01, Hh / 0.9))), len = rr(0.15, 0.7), gr = g.createLinearGradient(0, y0, 0, y0 - len);
+      gr.addColorStop(0, 'rgba(225,230,224,.2)'); gr.addColorStop(1, 'rgba(225,230,224,0)'); g.fillStyle = gr; g.fillRect(x, y0 - len, rr(0.02, 0.09), len);
+    }
+    if (o.damp) { const gr = g.createLinearGradient(0, o.damp, 0, o.damp + 1.1); gr.addColorStop(0, 'rgba(8,12,12,.6)'); gr.addColorStop(1, 'rgba(8,12,12,0)'); g.fillStyle = gr; g.fillRect(a, y1, W, o.damp + 1.1 - y1); }
+    g.fillStyle = 'rgba(8,10,10,.55)'; for (let x = a; x < b; x += rr(0.3, 1.6)) { const w = rr(0.05, 0.32), h = rr(0.02, 0.12); poly(g, [[x, y2 + 0.01], [x + w, y2 + 0.01], [x + w * 0.6, y2 - h]]); }
+    for (const rx of o.rust ?? []) for (let i = 0; i < 6; i++) {
+      const x = rx + rr(-0.3, 0.3), len = rr(0.6, Math.min(2.6, Hh)), gr = g.createLinearGradient(0, y2, 0, y2 - len);
+      gr.addColorStop(0, 'rgba(118,58,26,.5)'); gr.addColorStop(1, 'rgba(118,58,26,0)'); g.fillStyle = gr; g.fillRect(x, y2 - len, rr(0.02, 0.08), len);
+    }
+  }
+  // ---- 台面：脏的斑块、伸缩缝、裂缝、积着天光的水洼、靠边磨亮的一道；远处慢慢淡掉 ----
+  function deck(g, a, b, z1, z2, o = {}) {
+    g.fillStyle = 'rgba(22,28,27,.3)'; g.fillRect(a, z1, b - a, z2 - z1);
+    for (let i = 0; i < (b - a) * (z2 - z1) / 6; i++) caveBlob(g, rr(a, b), rr(z1, z2), rr(0.6, 3), rnd() < 0.7 ? '18,22,20' : '200,206,198', rr(0.06, 0.2));
+    g.fillStyle = 'rgba(12,16,16,.4)'; for (let x = a + 3; x < b - 1; x += 6) g.fillRect(x, z1, 0.03, z2 - z1);
+    for (let z = z2 - 4.5; z > z1; z -= 6) g.fillRect(a, z, b - a, 0.03);
+    g.strokeStyle = 'rgba(10,12,12,.5)'; g.lineCap = 'round';
+    for (let i = 0; i < (b - a) * 0.5; i++) { let x = rr(a, b), z = rr(z1, z2); g.lineWidth = rr(0.012, 0.03); g.beginPath(); g.moveTo(x, z); for (let k = 0; k < 6; k++) { x += rr(-0.5, 0.5); z += rr(-0.6, 0.6); g.lineTo(x, z); } g.stroke(); }
+    for (const [px, pz, rx, rz] of o.puddles ?? []) {
+      g.fillStyle = 'rgba(178,190,186,.55)'; g.beginPath();
+      for (let k = 0; k <= 24; k++) { const t = k / 24 * 6.283, f = 1 + 0.18 * Math.sin(t * 3 + px) + 0.1 * Math.sin(t * 5 + pz); g[k ? 'lineTo' : 'moveTo'](px + Math.cos(t) * rx * f, pz + Math.sin(t) * rz * f); }
+      g.fill(); g.strokeStyle = 'rgba(30,36,34,.5)'; g.lineWidth = 0.03; g.stroke();
+    }
+    const gr = g.createLinearGradient(0, z2, 0, z2 - 0.5); gr.addColorStop(0, 'rgba(210,216,210,.22)'); gr.addColorStop(1, 'rgba(210,216,210,0)'); g.fillStyle = gr; g.fillRect(a, z2 - 0.5, b - a, 0.5);
+    g.globalCompositeOperation = 'destination-out';
+    const fade = g.createLinearGradient(0, z1, 0, z1 + 14); fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = fade; g.fillRect(a, z1, b - a, 14);
+    g.globalCompositeOperation = 'source-over';
+  }
+  // ---- 吊臂：一根粗铁管从台面上立起来，往台阶外面弯过去（像一根弯脖子的路灯），管头吊着一只滑车，绳子从滑车下面垂下来；
+  //      管脚一只绞盘，绳子的另一头顺着管子绕回来缠在上面。px 立管，top 台面，rx 滑车（绳子），arm 管头的高度，z 在哪一排；big：最高那一级上的大吊臂 ----
+  function hoist(R, M, px, top, rx, arm, z, o = {}) {
+    // back：立管和绞盘往里挪多少（挂着能爬的绳子的那几根：立管站在主角走的那条线后面，管子一边往外弯一边往前伸，滑车正好吊在主角面前）
+    const g = grp(R, 0, 0, z), side = Math.sign(rx - px), k = o.big ? 1.4 : 1, rad = 0.065 * k, Rc = 0.62 * k, tip = rx + side * 0.07, bz = -(o.back ?? 0), pts = [];
+    for (let y = top; y < arm - Rc - 0.01; y += 0.15) pts.push([px, y, bz]);
+    const n0 = pts.length;
+    for (let i = 0; i <= 10; i++) { const t = i / 10 * Math.PI / 2; pts.push([px + side * Rc * (1 - Math.cos(t)), arm - Rc + Rc * Math.sin(t), 0]); }
+    for (let x = px + side * (Rc + 0.15); side * (tip - x) > 0.05; x += side * 0.15) pts.push([x, arm, 0]);
+    pts.push([tip, arm, 0]);
+    const L = pts.length - n0; for (let i = n0; i < pts.length; i++) pts[i][2] = bz * (1 - sstep(0, 1, (i - n0) / (L - 1)));   // 弯过去的那一段从后面慢慢伸到前面
+    const pipe = (r, mat) => add(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(([x, y, zz]) => V3(x, y, zz)), false, 'catmullrom', 0.1), pts.length * 3, r, 8), mat);
+    pipe(rad, M.steel);
+    add(g, new THREE.SphereGeometry(rad * 1.05, 10, 8), M.steel, tip, arm, 0);
+    add(g, cy(rad * 2.5, rad * 2.8, 0.06, 14), M.dark, px, top + 0.03, bz);                // 底座的法兰
+    add(g, cy(rad * 1.3, rad * 1.3, 0.34, 12), M.dark, px, top + 0.22, bz);
+    const bk = grp(g, rx, arm - rad, 0);                                                   // 滑车：一只吊钩挂着两片夹板，中间一只轮子
+    add(bk, cy(0.012, 0.012, 0.09, 5), M.dark, 0, -0.045, 0);
+    add(bk, new THREE.TorusGeometry(0.034, 0.01, 5, 12), M.dark, 0, -0.11, 0);
+    add(bk, bx(0.11, 0.2, 0.1), M.dark, 0, -0.24, 0);
+    const wh = add(bk, cy(0.085, 0.085, 0.05, 14), M.rust, 0, -0.23, 0); wh.rotation.x = Math.PI / 2;
+    const dx = px - side * 0.36, dz = bz - (o.back ? 0.25 : 0), drum = add(g, cy(0.11, 0.11, 0.34, 12), M.rust2, dx, top + 0.34, dz); drum.rotation.x = Math.PI / 2;   // 绞盘
+    for (const s of [-1, 1]) add(g, bx(0.04, 0.44, 0.05), M.dark, dx, top + 0.22, dz + s * 0.2);
+    const cr = add(g, bx(0.03, 0.22, 0.03), M.dark, dx, top + 0.42, dz + 0.24); cr.rotation.z = 0.6;
+    if (o.big) {                                                                          // 大吊臂：后面一根拉杆、一块配重
+      const ax = px - side * 1.0, ay = top + 0.5, bx_ = px + side * Rc * 0.3, by_ = arm - Rc * 0.25, len = Math.hypot(bx_ - ax, by_ - ay);
+      const st = add(g, cy(0.025, 0.025, len, 6), M.steel, (ax + bx_) / 2, (ay + by_) / 2, bz); st.rotation.z = -Math.atan2(bx_ - ax, by_ - ay);
+      add(g, bx(0.6, 0.55, 0.5), M.rust2, ax, top + 0.27, bz - 0.2);
+    }
+    if (!o.empty) {                                                                       // 绳子的另一头：从绞盘顺着管子上去，绕过管头，进滑车
+      const rp = [[dx + side * 0.05, top + 0.45, dz + 0.02], [px - side * 0.02, top + 0.9, bz + rad + 0.025], ...pts.filter(([x, y]) => y > top + 1.0).map(([x, y, zz]) => [x, y + rad + 0.02, zz + rad * 0.6]), [tip + side * 0.04, arm - 0.02, 0.02], [rx, arm - 0.16, 0]];
+      tube(g, rp, 0.02, ropeMat(), rp.length * 3);
+    }
+    return g;
+  }
+
+  let V = null;
+  function* build(R) {
+    const v = { ropes: [R1, R2, R3, ...DECO.map(d => d.r).filter(Boolean)], lamp: null };
+    const M = { conc: lam(0x5f6766), steel: lam(0x2b3132), rust: lam(0x5e4535), rust2: lam(0x483629), dark: lam(0x151a1b), wall: lam(0x3c4342), wood: lam(0x4b463d), wood2: lam(0x343029) };
+    for (const m of Object.values(M)) m.userData.own = true;
+
+    // ---------------- 远景：雾里一级级更大的台阶，往右上方一直升进云里；台阶的边上细细的吊臂 ----------------
+    backdrop(X - 150, X + 320, -30, 120, -230, 3.2, g => {
+      let x = X - 150, h = 3; const st = [];
+      while (x < X + 320) { const w = rr(32, 46); st.push([x, x + w, h]); x += w; h += rr(4.5, 7.5); }
+      const sil = vgrad(g, 70, 0, '#7a847e', '#6c7671');
+      setInk(g, sil); poly(g, [[X - 150, -30], ...st.flatMap(([a, b, hh]) => [[a, hh], [b, hh]]), [X + 320, -30]]);
+      g.fillStyle = 'rgba(214,220,212,.4)'; for (const [a, b, hh] of st) g.fillRect(a, hh - 0.5, b - a, 0.5);          // 台面的边沿着天光亮一线
+      setInk(g, '#636d68');
+      for (const [a, b, hh] of st) for (let xx = a + rr(1, 4); xx < b - 2; xx += rr(4, 9)) { line(g, [[xx, hh], [xx, hh + 1.6]], 0.16); line(g, [[xx - 0.1, hh + 1.6], [xx - 0.9, hh + 1.6]], 0.12); line(g, [[xx - 0.85, hh + 1.6], [xx - 0.85, hh + 0.4]], 0.05); }
+      g.globalCompositeOperation = 'source-atop';                                         // 越往上越淡，钻进云里
+      const cl = g.createLinearGradient(0, 34, 0, 92); cl.addColorStop(0, 'rgba(176,186,181,0)'); cl.addColorStop(1, 'rgba(176,186,181,.95)'); g.fillStyle = cl; g.fillRect(X - 150, 28, 470, 92);
+      const hz = g.createLinearGradient(0, -30, 0, 6); hz.addColorStop(0, 'rgba(160,170,165,.9)'); hz.addColorStop(1, 'rgba(160,170,165,0)'); g.fillStyle = hz; g.fillRect(X - 150, -30, 470, 36);
+      g.globalCompositeOperation = 'source-over';
+      for (let i = 0; i < 18; i++) caveBlob(g, rr(X - 150, X + 320), rr(30, 90), rr(10, 26), '190,198,193', rr(0.12, 0.3));   // 云
+    }, { fog: false, order: -2600 });
+    yield;
+    // ---------------- 中景：雾里几座更近的吊塔、一根烟囱、高压线 ----------------
+    backdrop(X - 90, X + 220, -20, 60, -125, 5, g => {
+      setInk(g, '#68736f');
+      for (const [x, h, arm] of [[X - 38, 30, 16], [X + 74, 36, 20], [X + 168, 33, 14]]) {   // 格构的吊塔：细细的塔身上一道道斜撑、一条长臂、臂上垂下来的钩子
+        const w = 0.9; line(g, [[x - w / 2, -2], [x - w / 2, h]], 0.14); line(g, [[x + w / 2, -2], [x + w / 2, h]], 0.14);
+        for (let y = -2; y < h - 1; y += 1.4) { line(g, [[x - w / 2, y], [x + w / 2, y + 1.4]], 0.07); line(g, [[x + w / 2, y], [x - w / 2, y + 1.4]], 0.07); }
+        truss(g, x - 4, x + arm, h, 0.9, 0.08); line(g, [[x, h + 4], [x - 4, h + 0.9]], 0.06); line(g, [[x, h + 4], [x + arm, h + 0.9]], 0.06); box(g, x - 0.3, h, 0.6, 4);
+        line(g, [[x + arm * 0.7, h], [x + arm * 0.7, h - rr(5, 12)]], 0.05);
+      }
+      box(g, X + 22, -2, 1.6, 40); box(g, X + 21.8, 37, 2.0, 0.8);                          // 烟囱
+      for (const [x, h] of [[X - 70, 18], [X - 5, 18], [X + 60, 18], [X + 125, 18], [X + 190, 18]]) { line(g, [[x - 2, -2], [x, h], [x + 2, -2]], 0.3); line(g, [[x - 3.5, h - 2], [x + 3.5, h - 2]], 0.25); }
+      g.strokeStyle = '#68736f'; for (let x = X - 70; x < X + 190; x += 65) for (const dy of [-2, -1.2]) cable(g, x - 3.2, 18 + dy, x + 61.8, 18 + dy, 3, 0.06);
+      g.globalCompositeOperation = 'source-atop';
+      const hz = g.createLinearGradient(0, -20, 0, 14); hz.addColorStop(0, 'rgba(140,150,146,.95)'); hz.addColorStop(1, 'rgba(140,150,146,0)'); g.fillStyle = hz; g.fillRect(X - 90, -20, 310, 34);
+      g.globalCompositeOperation = 'source-over';
+    }, { fog: false, order: -2400 });
+    yield;
+    // ---------------- 台阶：三大块水泥，一直伸进远处的雾里 ----------------
+    for (const [S, y1] of [[S1, DITCH], [S2, DITCH], [S3, 0]]) {
+      const w = S.x2 - S.x1, h = S.y2 - y1;
+      add(R, bx(w, h, DEEP), M.conc, (S.x1 + S.x2) / 2, y1 + h / 2, ZF - DEEP / 2);
+    }
+    for (const [S, y1, rows] of [[S1, -0.4, 0], [S2, DITCH, 1], [S3, -0.3, 2]]) {
+      backdrop(S.x1, S.x2, y1, S.y2, ZF + 0.012, 34, g => concrete(g, S.x1, S.x2, y1, S.y2, { off: 0.3 + rows * 0.37, damp: S === S1 ? 0 : S === S2 ? WATER_Y : H2 }), { lit: true, order: 6 });
+      yield;
+      backdrop(-60, ZF, (S === S1 ? 0 : S === S2 ? WATER_Y - 0.3 : H2) - 0.2, S.y2, S.x1 - 0.012, 24, g => concrete(g, -60, ZF, (S === S1 ? 0 : S === S2 ? WATER_Y - 0.3 : H2) - 0.2, S.y2,
+        { off: 0.2, damp: S === S1 ? 0 : S === S2 ? WATER_Y : H2, rust: [0, ...ROWS.map(([z]) => z)] }), { side: -1, lit: true, order: 5, fadeL: 20 });
+      yield;
+      const pud = S === S1 ? [[X + 19.5, -1.4, 1.3, 0.5], [X + 25.2, -6, 2.4, 0.8]] : S === S2 ? [[X + 41, -2.2, 1.6, 0.6], [X + 50.5, -9, 3, 1]] : [[X + 70, -3, 2, 0.7], [X + 84, -1.6, 1.4, 0.5], [X + 92, -10, 3, 1.1]];
+      backdrop(S.x1, S.x2, -46, ZF, 0, 20, g => deck(g, S.x1, S.x2, -46, ZF, { puddles: pud }), { floor: S.y2 + 0.006, lit: true, order: 4 });
+      yield;
+    }
+    // 第一级和第二级之间那道沟的右壁（朝 +x 的那面：从第二级上看得见）
+    backdrop(-60, ZF, DITCH, H1, S1.x2 + 0.012, 24, g => { concrete(g, -60, ZF, DITCH, H1, { off: 0.5, damp: WATER_Y }); const d = g.createLinearGradient(0, H1, 0, DITCH); d.addColorStop(0, 'rgba(8,12,12,.25)'); d.addColorStop(1, 'rgba(8,12,12,.85)'); g.fillStyle = d; g.fillRect(-60, DITCH, 61.6, H1 - DITCH); }, { side: 1, lit: true, order: 5, fadeL: 20 });
+    yield;
+    // 沟往里几米，一道横着的水泥墙和一扇锈死的闸门把沟截断：往沟里看是黑的，不是一直通到远处的雾里
+    {
+      const zw = -9, w = S2.x1 - S1.x2;
+      add(R, bx(w + 0.1, H1 - DITCH, 1.2), M.wall, (S1.x2 + S2.x1) / 2, (H1 + DITCH) / 2, zw);
+      add(R, bx(w - 0.5, 2.2, 0.16), M.rust2, (S1.x2 + S2.x1) / 2, WATER_Y + 0.9, zw + 0.66);
+      for (const dx of [-0.9, 0, 0.9]) add(R, bx(0.08, 2.3, 0.08), M.rust, (S1.x2 + S2.x1) / 2 + dx, WATER_Y + 0.95, zw + 0.76);
+      backdrop(S1.x2, S2.x1, DITCH, H1, zw + 0.61, 30, g => { concrete(g, S1.x2, S2.x1, DITCH, H1, { damp: WATER_Y }); g.fillStyle = 'rgba(6,9,9,.55)'; g.fillRect(S1.x2, DITCH, w, H1 - DITCH); }, { lit: true, order: 5 });
+    }
+    // ---------------- 沟里的水：深色，映着一线天光 ----------------
+    {
+      const [c, g] = mkCanvas(64, 512), gr = g.createLinearGradient(0, 0, 0, 512);
+      gr.addColorStop(0, '#46514f'); gr.addColorStop(0.5, '#1d2525'); gr.addColorStop(1, '#0e1414'); g.fillStyle = gr; g.fillRect(0, 0, 64, 512);
+      g.fillStyle = 'rgba(150,162,158,.16)'; g.fillRect(29, 0, 6, 512);
+      const wm = new THREE.MeshBasicMaterial({ map: canvasTex(c) }); wm.userData.own = true;
+      const water = add(R, new THREE.PlaneGeometry(S2.x1 - S1.x2 + 0.3, DEEP + 12), wm, (S1.x2 + S2.x1) / 2, WATER_Y, ZF + 6 - (DEEP + 12) / 2, false); water.rotation.x = -Math.PI / 2;
+    }
+    yield;
+    // ---------------- 吊臂和绳子 ----------------
+    for (const [r, S, top] of NEAR) {
+      const big = r === R3, arm = r.top + 0.38;
+      hoist(R, M, S.x1 + (big ? 0.62 : 0.45), top, r.x, arm, 0, { big, back: big ? 0.95 : 0.75 });
+    }
+    for (const d of DECO) hoist(R, M, d.S.x1 + 0.45, d.top, d.rx, d.arm, d.z, { empty: !d.r });
+    // 台面上的东西（都在主角走的那条线后面）：几只旧木箱、盘成一卷的绳子
+    for (const [x, top, z, w, h] of [[X + 21.5, H1, -2.6, 1.1, 0.9], [X + 22.6, H1, -3.4, 0.8, 0.7], [X + 45.2, H2, -2.2, 1.2, 1.0], [X + 78, H3, -2.8, 1.1, 0.9], [X + 79.1, H3, -2.0, 0.7, 0.6]])
+      { const c = mkCrate(R, { x, y1: top, w, h }, 'wood'); c.position.z = z; c.rotation.y = rr(-0.25, 0.25); c.traverse(o => { if (o.isMesh) o.material = o.material === MAT.wood ? M.wood : M.wood2; }); }
+    for (const [x, top, z] of [[X + 15.6, H1, -1.1], [X + 34.4, H2, -1.3], [X + 62.3, H3, -1.4], [X + 87, H3, -3.5]]) {
+      for (let i = 0; i < 4; i++) { const t = add(R, new THREE.TorusGeometry(0.26 - i * 0.035, 0.032, 6, 20), ropeMat(), x + rr(-0.03, 0.03), top + 0.035 + i * 0.05, z); t.rotation.x = Math.PI / 2; t.scale.set(1, 1.15, 1); }
+    }
+    yield;
+    for (const r of v.ropes) { ropeReset(r); ropeMesh(R, r, { shadow: Math.abs(r.z) < 20 }); }
+    for (let i = 0; i < 50; i++) for (const r of v.ropes) if (r.deco) ropeSim(r, 1 / 30);   // 垂到底下的那几根：先让它们落好、堆在地上
+    for (const r of v.ropes) ropeDraw(r);
+    yield;
+    // 最高那一级吊车上挂着一盏旧工作灯，还亮着
+    {
+      const lx = S3.x1 + 0.62 - 0.32, ly = R3.top + 0.38 - 0.62, lz = -0.66, g = grp(R, lx, ly, lz);
+      add(g, cy(0.008, 0.008, 0.42, 4), M.dark, 0, 0.23, 0, false);
+      add(g, cy(0.06, 0.09, 0.1, 10), M.dark, 0, 0, 0);
+      add(g, new THREE.SphereGeometry(0.05, 10, 8), unlit(0xffe2b4), 0, -0.07, 0, false);
+      for (let a = 0; a < 6; a++) { const s = add(g, bx(0.006, 0.13, 0.006), M.dark, Math.cos(a) * 0.065, -0.1, Math.sin(a) * 0.065, false); s.rotation.z = Math.cos(a) * 0.3; }
+      v.lampG = [glow(R, 0xffb066, 2.4, 0.42, lx, ly - 0.07, lz + 0.1, GLOW_SOFT), glow(R, 0xffe0b0, 0.42, 0.9, lx, ly - 0.07, lz + 0.12)];
+    }
+    // ---------------- 开头：身后半截塌了的墙；地上的石头、草 ----------------
+    {
+      add(R, bx(1.4, 2.7, 2.6), M.wall, X - 7.7, 1.35, -0.4); add(R, bx(1.4, 1.1, 2.0), M.wall, X - 7.7, 3.1, -0.9).rotation.z = 0.12;
+      add(R, bx(1.3, 4.2, 2.2), M.wall, X - 8.3, 2.1, -5); for (let i = 0; i < 5; i++) add(R, cy(0.012, 0.012, rr(0.4, 0.9), 4), M.rust2, X - 7.7 + rr(-0.5, 0.5), 2.95 + rr(0, 0.6), rr(-1, 0.6), false).rotation.z = rr(-0.6, 0.6);
+      for (const [x, z, s] of [[X - 4, 0.6, 0.35], [X + 1.5, -2.6, 0.5], [X + 5.6, 1.4, 0.22], [X + 8.8, -1.2, 0.3], [X + 11.6, 1.1, 0.18]]) rock(R, x, z, s, { moss: 0.2, col: 0x6e716b });
+      pebbles(R, Array.from({ length: 50 }, () => [X + rr(-6, 13.6), rr(-4, 1.8), rr(0.03, 0.08)]));
+      const P_ = [];
+      for (let i = 0; i < 70; i++) { const x = X + rr(-6.5, 13.8), z = rr(-6, 1.8); P_.push([x, 0, z, rnd() < 0.6 ? 'dry' : 'grass', rr(0.25, 0.6), rnd() < 0.6 ? 0x6a6753 : 0x4c5540]); }
+      for (const [S, top] of [[S1, H1], [S2, H2], [S3, H3]]) for (let i = 0; i < 26; i++) { const x = rr(S.x1 + 1, Math.min(S.x2, END - 1.5) - 1), z = rnd() < 0.5 ? rr(-1.2, 1.4) : rr(-12, -2); P_.push([x, top, z, 'dry', rr(0.18, 0.45), 0x66644f]); }
+      plants(R, P_);
+    }
+    yield;
+    // ---------------- 最高一级的尽头：一道矮墙、上面一道锈栏杆 ----------------
+    {
+      const x0 = END - 0.9; add(R, bx(0.9, 0.85, DEEP), M.conc, x0 + 0.45, H3 + 0.42, ZF - DEEP / 2);
+      for (let z = ZF - 0.3; z > -40; z -= 2.2) add(R, cy(0.025, 0.025, 0.9, 6), M.rust2, x0 + 0.3, H3 + 1.3, z);
+      for (const y of [H3 + 1.72, H3 + 1.3]) add(R, bx(0.05, 0.05, 42), M.rust2, x0 + 0.3, y, ZF - 21.3);
+    }
+    // ---------------- 前景：最近处的枯草（在地上）、斜着穿过画面上方的几根电线（在高处） ----------------
+    backdrop(X - 24, X + 116, -1.5, 24, 7.5, 26, g => {
+      setInk(g, '#0b0f0f');
+      for (let x = X - 22; x < X + 114; x += rr(1.4, 4.5)) { const y = -0.3; for (let k = 0; k < 9; k++) blade(g, x + rr(-0.4, 0.4), y, rr(0.5, 1.4), rr(-0.4, 0.4), 0.04); }
+      g.strokeStyle = '#0b0f0f'; cable(g, X + 44, 24.5, X + 92, 20.5, 1.6, 0.045);
+    }, { fog: false, blur: 2.4, blurOnce: true, order: 4000, fadeL: 6, fadeR: 6 });
+    // ---------------- 雾：贴着地面、沟里、台阶脚下的一层低雾 ----------------
+    backdrop(X - 40, X + 160, -3, 5, -26, 8, g => {
+      for (let i = 0; i < 40; i++) caveBlob(g, rr(X - 40, X + 160), rr(-1, 2.2), rr(3, 9), '178,188,184', rr(0.15, 0.35));
+    }, { fog: false, order: -900, fadeL: 10, fadeR: 10, opacity: 0.8 });
+    yield;
+    V = v;
+  }
+  function update(dt) {
+    if (!V) return;
+    stepRopes(V.ropes, dt);
+    const f = 0.9 + 0.1 * Math.sin(T * 13) * Math.sin(T * 5.3);                       // 旧灯泡：微微地抖
+    for (const s of V.lampG) s.material.opacity = s.userData.a0 * f;
+  }
+  function reset() { for (const r of [R1, R2, R3]) ropeReset(r); }
+  return defZone({ n: 10, vis: [X - 10, END + 4], build: function* (R) { yield* build(R); for (const s of V.lampG) s.userData.a0 = s.material.opacity; }, update, reset, solve() {},
+    unbuild() { V = null; }, R1, R2, R3, S1, S2, S3, DECO, NEAR });
+})();
+
+// ============================================================
 //  空中的细节（一）：画法和公用的几种东西
 //  飞落的尘埃、飘荡的落叶、风沙、纸片和塑料袋、蠓虫、飞蛾、苍蝇、蜻蜓、蝴蝶、远处的鸟群、萤火虫。
 //  这些小东西都用“点”来画：一个点就是一张面朝镜头的小贴图，一整团只占一次绘制。
@@ -8872,6 +9443,22 @@ airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
   sys.push(airBirds(R, flat(8, -3.4, [X8 + 131.6, X8 + 133.2, X8 + 136.0, X8 + 137.8], { c: 0x0a0b0a, s: 1.15, flee: 3, dy: 12, yMax: 14, toZ: -3, near: 0.6, minY: 6 }).map(b => (b[4].back = 25, b))));
 });
 
+// ---- 第十章 · 吊绳与高台 ----
+// 风从右边吹过来：雾里飘着草籽的绒毛；远处一群乌鸦往台阶深处飞。
+// 能爬的那三根吊臂的管头上停着乌鸦：主角在下面走过去不理他，爬到快够着管头了才飞走；往里第一排吊臂上、最高一级尽头的栏杆上也停着几只
+airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
+  sys.push(airLeaves(R, { name: 'seeds', n: 16, drift: true, tiles: [8], cols: [0xe6e8e2, 0xd8dcd4], size: [0.07, 0.11], z: [-4, 5], lo: 0.3, hi: 4, lift: 0.3, wind: () => -1.0, a: 0.85 }));
+  sys.push(airFlock(R, [{ x1: X10 - 20, x2: X10 + 150, y: 26, z: -110, v: 2.2, n: 9, gap: 16, s: 1.8, c: 0x3a4240 }])); yield;
+  const B = [];
+  for (const [r, S] of CH10.NEAR) {                      // 管头上（离滑车不远的那一段平管）
+    const big = r === CH10.R3, k = big ? 1.4 : 1, arm = r.top + 0.38, y = arm + 0.065 * k;
+    for (const d of big ? [0.3, 0.95] : r === CH10.R1 ? [0.5] : [0.32]) B.push(['crow', r.x + d, y, 0, { face: d > 0.5 ? 1 : -1, flee: 2.4, dy: 2.2, toZ: -5 }]);
+  }
+  for (const d of CH10.DECO) if (d.z === -15 && d.S !== CH10.S1) B.push(['crow', d.rx + 0.45, d.arm + 0.065, d.z, { flee: 5, dy: 4, toZ: -12 }]);
+  for (const [dz, f] of [[-3.6, 1], [-5.1, -1]]) B.push(['crow', X10 + 99.9, 11.8 + 1.72 + 0.03, dz, { face: f, flee: 3.5, dy: 3, toZ: -14 }]);   // 尽头的栏杆
+  sys.push(airBirds(R, B, { spread: 3 }));
+});
+
 // ============================================================
 //  主角脚边的东西（三）：每一章摆什么
 //  每一章四组，都在主角走的那条线（z = 0）前后两三米以内：
@@ -9452,7 +10039,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -9468,7 +10055,7 @@ function soundNote(first) {
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
 const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
@@ -9569,7 +10156,7 @@ function touchClear() { TOUCHES.clear(); for (const k of tHeld) keys.delete(k); 
 // 每一帧开头：把手指折算成按住了哪些键
 function touchInput(dt) {
   if (!TOUCHES.size && !tHeld.size && !touchJump && !touchTap && jHold <= 0) return;
-  const u = tUnit(), now = tNow(), want = new Set(), swim = P.mode === 'swim';
+  const u = tUnit(), now = tNow(), want = new Set(), swim = P.mode === 'swim' || P.mode === 'rope';   // 抓着绳子和在水里一样：手指往上滑按住就往上爬，往下滑就往下滑
   if (swim !== swimWas) { swimWas = swim; for (const t of TOUCHES.values()) t.oy = t.y; }   // 掉进水里 / 爬上岸：上下从手指现在的位置重新算
   let mx = null, my = null;                          // 最新的、滑出了死区的那根手指说了算
   for (const t of TOUCHES.values()) {
@@ -9762,7 +10349,7 @@ function updateCamera(dt) {
   const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo] : camKey(P.x);
   cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
   cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
-  const ty = (P.mode === 'swim' ? P.y + SWIM.c - 0.45 : P.grounded || P.mode === 'mantle' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;   // 跳起来时镜头只跟一小半；游泳时整个跟着下去
+  const ty = (P.mode === 'swim' ? P.y + SWIM.c - 0.45 : P.grounded || P.mode === 'mantle' || P.mode === 'rope' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;   // 跳起来时镜头只跟一小半；游泳、爬绳子时整个跟着
   cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt); cam.lift = damp(cam.lift, lift, 1.6, dt);
   placeCamera();
 }
@@ -9798,7 +10385,8 @@ function sim(dt) {
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
-    swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null });
+    swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null,
+    rope: P.mode === 'rope' ? ropeAnim() : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
   stepCat(dt);
 
@@ -9810,7 +10398,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, groundY, ceilY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, ROPES, ROPE, enterRope, groundY, ceilY, floorY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角

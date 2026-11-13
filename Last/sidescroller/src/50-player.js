@@ -47,6 +47,8 @@ function stepPlayer(dt) {
   P.impact = 0;
   if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
   P.jumpBuf -= dt; P.coyote -= dt;
+  P.ropeCD = Math.max(0, (P.ropeCD || 0) - dt);
+  if (P.mode !== 'rope' && P.rope) { P.rope.held = false; P.rope = null; }      // 回到存档点、换章节时还抓着绳子：放开
 
   if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
     const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
@@ -70,6 +72,7 @@ function stepPlayer(dt) {
   }
 
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+  if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
   // ---- 普通状态 ----
   // 从高处落地以后的一小会儿：lh 被拖住多少（蹲着走不快、跳不起来），lp 被惯性带着往前的速度，lc 这时按键能管几成
@@ -88,7 +91,7 @@ function stepPlayer(dt) {
   // 水平移动，被方块侧面挡住
   let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
   if (hit) {
-    const side = P.vx > 0 ? 1 : -1;
+    const side = P.x < (hit.x1 + hit.x2) / 2 ? 1 : -1;   // 方块在哪一边：看人在它中线的哪一侧（慢慢走下台阶边时身子还压着台阶的侧面，按速度判断会被推到台阶另一头去）
     nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
     const h = hit.y2 - P.y;                      // 腾空时贴着墙、够得着边缘就攀上去
     if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6 && !hit.noclimb) { P.x = nx; startMantle(hit, side); return; }
@@ -108,6 +111,7 @@ function stepPlayer(dt) {
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
   const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
+  if (!P.grounded && ROPES.length) { const g = findRope(); if (g) { enterRope(...g); return; } }   // 跳起来手碰到绳子：抓住
   const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
 
   // 抓住可以推拉的东西 / 操作机关

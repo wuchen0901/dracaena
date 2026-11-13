@@ -48,7 +48,7 @@ function touchClear() { TOUCHES.clear(); for (const k of tHeld) keys.delete(k); 
 // 每一帧开头：把手指折算成按住了哪些键
 function touchInput(dt) {
   if (!TOUCHES.size && !tHeld.size && !touchJump && !touchTap && jHold <= 0) return;
-  const u = tUnit(), now = tNow(), want = new Set(), swim = P.mode === 'swim';
+  const u = tUnit(), now = tNow(), want = new Set(), swim = P.mode === 'swim' || P.mode === 'rope';   // 抓着绳子和在水里一样：手指往上滑按住就往上爬，往下滑就往下滑
   if (swim !== swimWas) { swimWas = swim; for (const t of TOUCHES.values()) t.oy = t.y; }   // 掉进水里 / 爬上岸：上下从手指现在的位置重新算
   let mx = null, my = null;                          // 最新的、滑出了死区的那根手指说了算
   for (const t of TOUCHES.values()) {
