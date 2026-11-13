@@ -145,33 +145,34 @@ const CH9 = (() => {
     // 2 后墙
     caveWall(R, { x1, x2, y1: -7, y2: S.mouthR ? 16 : 8, ppm: 50, amb: S.amb, ambW: S.ambW, lights, tint2: S.tint2, waters: ws, fadeL: k ? 6 : 0, order: -2800 + k,
       draw(g) {
-        if (S.mouthL) {                                       // 洞口：左边透进来外面的雾
-          g.save(); g.filter = 'blur(6px)'; const gr = g.createLinearGradient(X - 4, 0, X - 12, 0); gr.addColorStop(0, 'rgba(170,196,198,0)'); gr.addColorStop(1, 'rgba(176,200,202,.95)'); g.fillStyle = gr;
-          g.beginPath(); g.moveTo(X - 3, -1); g.quadraticCurveTo(X - 5, 3, X - 4, 8); g.lineTo(X - 22, 8); g.lineTo(X - 22, -1); g.closePath(); g.fill(); g.restore();
-        }
+        if (S.mouthL) blurDraw(g, 6, g => {                   // 洞口：左边透进来外面的雾（渐变两头同一种颜色，只是浓淡不同：虚化用的影子只能是一种颜色）
+          const gr = g.createLinearGradient(X - 4, 0, X - 12, 0); gr.addColorStop(0, 'rgba(176,200,202,0)'); gr.addColorStop(1, 'rgba(176,200,202,.95)'); g.fillStyle = gr;
+          g.beginPath(); g.moveTo(X - 3, -1); g.quadraticCurveTo(X - 5, 3, X - 4, 8); g.lineTo(X - 22, 8); g.lineTo(X - 22, -1); g.closePath(); g.fill();
+        });
         if (S.mouthR) {                                       // 出口：岩壁上开着一个大洞口，外面是阴天：灰白的天，雾里两层山，近处几棵树的影子；洞口边上的岩石是暗的
           const mouth = () => { g.beginPath(); g.moveTo(X + 309.5, 0.5); g.bezierCurveTo(X + 310.3, 3.6, X + 312.4, 6.6, X + 316.5, 8.4); g.bezierCurveTo(X + 321, 10.2, X + 330, 11.2, X + 358, 11.6); g.lineTo(X + 358, 0.5); g.closePath(); };
-          g.save(); g.filter = 'blur(14px)'; g.fillStyle = 'rgba(120,145,142,.55)'; mouth(); g.fill(); g.restore();          // 洞口周围的岩石被外面的光照亮一圈
+          blurDraw(g, 14, g => { g.fillStyle = 'rgba(120,145,142,.55)'; mouth(); g.fill(); });           // 洞口周围的岩石被外面的光照亮一圈
           g.save(); mouth(); g.clip();
           const sky = g.createLinearGradient(0, 11.6, 0, 0.5); sky.addColorStop(0, '#8b9fa2'); sky.addColorStop(0.55, '#aebcbb'); sky.addColorStop(1, '#c3ccc8'); g.fillStyle = sky; g.fillRect(X + 305, 0, 56, 12);
-          g.filter = 'blur(3px)';
-          for (const [h, a, f, col] of [[3.6, 1.3, 0.13, 'rgba(146,162,160,.75)'], [2.3, 0.9, 0.29, 'rgba(118,136,132,.85)']]) {
-            g.fillStyle = col; g.beginPath(); g.moveTo(X + 306, 0.4); for (let x = X + 306; x <= X + 358; x += 0.4) g.lineTo(x, h + a * Math.sin(x * f + h) + 0.35 * a * Math.sin(x * f * 2.7)); g.lineTo(X + 358, 0.4); g.closePath(); g.fill();
-          }
-          g.fillStyle = 'rgba(70,86,82,.9)';                    // 近处的几棵树和灌木
-          for (const [x, h] of [[314.2, 2.6], [316.8, 3.4], [318.1, 2.2], [323.5, 3.8], [326.4, 2.7], [331, 3.2], [335.5, 2.4]]) { g.fillRect(X + x - 0.06, 0.4, 0.12, h * 0.55); for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28; g.beginPath(); g.ellipse(X + x + Math.cos(a) * h * 0.18, 0.4 + h * 0.62 + Math.sin(a) * h * 0.16, h * 0.2, h * 0.17, 0, 0, 6.283); g.fill(); } }
+          blurDraw(g, 3, g => {                                 // 雾里的两层山和近处的树都虚一点（裁剪框在外面设好：落回原处的影子照样只露在洞口里）
+            for (const [h, a, f, col] of [[3.6, 1.3, 0.13, 'rgba(146,162,160,.75)'], [2.3, 0.9, 0.29, 'rgba(118,136,132,.85)']]) {
+              g.fillStyle = col; g.beginPath(); g.moveTo(X + 306, 0.4); for (let x = X + 306; x <= X + 358; x += 0.4) g.lineTo(x, h + a * Math.sin(x * f + h) + 0.35 * a * Math.sin(x * f * 2.7)); g.lineTo(X + 358, 0.4); g.closePath(); g.fill();
+            }
+            g.fillStyle = 'rgba(70,86,82,.9)';                  // 近处的几棵树和灌木
+            for (const [x, h] of [[314.2, 2.6], [316.8, 3.4], [318.1, 2.2], [323.5, 3.8], [326.4, 2.7], [331, 3.2], [335.5, 2.4]]) { g.fillRect(X + x - 0.06, 0.4, 0.12, h * 0.55); for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28; g.beginPath(); g.ellipse(X + x + Math.cos(a) * h * 0.18, 0.4 + h * 0.62 + Math.sin(a) * h * 0.16, h * 0.2, h * 0.17, 0, 0, 6.283); g.fill(); } }
+          });
           g.restore();
-          g.save(); g.filter = 'blur(5px)'; g.strokeStyle = 'rgba(10,14,15,.85)'; g.lineWidth = 0.6; mouth(); g.stroke(); g.restore();   // 洞口的边：一圈暗的岩石
+          blurDraw(g, 5, g => { g.strokeStyle = 'rgba(10,14,15,.85)'; g.lineWidth = 0.6; mouth(); g.stroke(); });   // 洞口的边：一圈暗的岩石
         }
         if (S.rust) {                                         // 锈：岩石上一片片发红，水线上一圈沉积，几道细细往下渗的锈水
           for (let i = 0; i < 60; i++) { const x = rr(x1 - 6, x2 + 6), y = rr(0, 3.2); g.save(); g.globalCompositeOperation = 'multiply'; caveBlob(g, x, y, rr(0.6, 1.8), '200,120,80', rr(0.35, 0.7)); g.restore(); }
           for (const w of ws) { g.save(); g.globalCompositeOperation = 'multiply'; const b = g.createLinearGradient(0, w.y + 0.9, 0, w.y); b.addColorStop(0, 'rgba(210,130,90,0)'); b.addColorStop(1, 'rgba(190,105,60,.85)'); g.fillStyle = b; g.fillRect(w.x1 - 4, w.y, w.x2 - w.x1 + 8, 0.9); g.restore(); }
-          g.save(); g.filter = 'blur(0.8px)'; for (let i = 0; i < 24; i++) { const x = rr(x1 - 6, x2 + 6), y0 = rr(1.2, 3.0), y1 = rr(-0.2, 0.6), sw = rr(-0.08, 0.08); g.strokeStyle = `rgba(120,56,22,${rr(0.18, 0.35)})`; g.lineWidth = rr(0.025, 0.06); g.beginPath(); g.moveTo(x, y0); g.quadraticCurveTo(x + sw, (y0 + y1) / 2, x + sw * 2, y1); g.stroke(); } g.restore();
+          blurDraw(g, 0.8, g => { for (let i = 0; i < 24; i++) { const x = rr(x1 - 6, x2 + 6), y0 = rr(1.2, 3.0), y1 = rr(-0.2, 0.6), sw = rr(-0.08, 0.08); g.strokeStyle = `rgba(120,56,22,${rr(0.18, 0.35)})`; g.lineWidth = rr(0.025, 0.06); g.beginPath(); g.moveTo(x, y0); g.quadraticCurveTo(x + sw, (y0 + y1) / 2, x + sw * 2, y1); g.stroke(); } });
         }
         if (S.sky) {                                          // 天窗下面：水面把光反射到岩壁上，一道道晃动的细亮线
-          const cx = X + S.sky.x; g.save(); g.globalCompositeOperation = 'lighter'; g.filter = 'blur(1.3px)';
-          for (let i = 0; i < 110; i++) { const y0 = -0.35 + rr(0.1, 2.2), x0 = cx + rr(-4, 4), len = rr(0.25, 1.1), f = Math.exp(-(((x0 - cx) / 3.6) ** 2) * 2 - (((y0 - 0.7) / 1.1) ** 2) * 2); if (f < 0.05) continue;
-            g.strokeStyle = `rgba(170,235,225,${0.5 * f * rr(0.35, 1)})`; g.lineWidth = rr(0.012, 0.03); g.beginPath(); for (let t = 0; t <= 1.001; t += 0.1) { const x = x0 + len * t, y = y0 + 0.035 * Math.sin(t * 8 + i * 1.7) * Math.sin(t * 3.14); t ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+          const cx = X + S.sky.x; g.save(); g.globalCompositeOperation = 'lighter';
+          blurDraw(g, 1.3, g => { for (let i = 0; i < 110; i++) { const y0 = -0.35 + rr(0.1, 2.2), x0 = cx + rr(-4, 4), len = rr(0.25, 1.1), f = Math.exp(-(((x0 - cx) / 3.6) ** 2) * 2 - (((y0 - 0.7) / 1.1) ** 2) * 2); if (f < 0.05) continue;
+            g.strokeStyle = `rgba(170,235,225,${0.5 * f * rr(0.35, 1)})`; g.lineWidth = rr(0.012, 0.03); g.beginPath(); for (let t = 0; t <= 1.001; t += 0.1) { const x = x0 + len * t, y = y0 + 0.035 * Math.sin(t * 8 + i * 1.7) * Math.sin(t * 3.14); t ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); } });
           g.restore();
         }
       } });
