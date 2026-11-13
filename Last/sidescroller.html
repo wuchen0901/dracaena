@@ -2700,6 +2700,664 @@ function caveSpecks(R, n, box, lum, o = {}) {
 const lumOf = lights => (x, y) => { let s = 0; for (const [lx, ly, r, , a] of lights) s += a * Math.exp(-((x - lx) ** 2 + (y - ly) ** 2) / (r * r * 0.35)); return s; };
 
 // ============================================================
+//  主角脚边的东西（一）：道具
+//  以前摆的东西不是贴着画面下沿（前景），就是在十几米外的布景板上；主角走的那条线前后一两米是空的。
+//  这里是摆在那一带的小道具：电缆、螺母、纸箱、托盘、油桶、水桶、椅子、轮胎、管子、沙袋、隔离桩……
+//  都是很多小零件拼起来的，再“烘”成一个网格（每个零件的颜色写在顶点上），一组东西只画一次，手机上也吃得消。
+//  各章摆什么、摆在哪里在 73-feet-chapters.js
+// ============================================================
+const FEET_MAT = lam(0xffffff, { vertexColors: true });
+
+// 把很多小零件烘成一个网格。用法：B.at(x, y, z, 朝向) 定好一件东西的原点，再往上加零件（坐标都相对这个原点），
+// 最后 B.mesh(父节点) 把攒下来的零件做成一个网格（攒的东西清空，可以接着攒下一批）
+function baker() {
+  let P = [], N = [], C = [];
+  const base = new THREE.Matrix4(), m4 = new THREE.Matrix4(), n3 = new THREE.Matrix3(), v = V3(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ'), sc = V3(), col = new THREE.Color(), vc = new THREE.Color();
+  const B = {
+    vary: 0.08,                                          // 每个零件的颜色深浅随机差多少
+    // 原点放在 (x, y, z)，绕竖轴转 yaw；rx、rz 是整件东西先倾斜多少（倒在地上的桶、歪着的牌子）
+    at(x, y, z, yaw = 0, rx = 0, rz = 0) { e.set(rx, yaw, rz); base.compose(v.set(x, y, z), q.setFromEuler(e), sc.set(1, 1, 1)); return B; },
+    // 一个零件：g 用完就释放；s 是一个数或 [sx, sy, sz]
+    part(g, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) {
+      e.set(rx, ry, rz); q.setFromEuler(e); if (Array.isArray(s)) sc.set(s[0], s[1], s[2]); else sc.set(s, s, s);
+      m4.compose(v.set(x, y, z), q, sc).premultiply(base); n3.getNormalMatrix(m4);
+      const gg = g.index ? g.toNonIndexed() : g, p = gg.attributes.position, n = gg.attributes.normal, gc = gg.attributes.color;
+      col.set(hex); if (B.vary) col.multiplyScalar(1 + B.vary * (rnd() * 2 - 1));
+      for (let i = 0; i < p.count; i++) {
+        v.fromBufferAttribute(p, i).applyMatrix4(m4); P.push(v.x, v.y, v.z);
+        v.fromBufferAttribute(n, i).applyMatrix3(n3).normalize(); N.push(v.x, v.y, v.z);
+        if (gc) { vc.fromBufferAttribute(gc, i).multiply(col); C.push(vc.r, vc.g, vc.b); } else C.push(col.r, col.g, col.b);
+      }
+      if (gg !== g) gg.dispose(); g.dispose(); return B;
+    },
+    box(w, h, d, hex, x, y, z, rx, ry, rz) { return B.part(new THREE.BoxGeometry(w, h, d), hex, x, y, z, rx, ry, rz); },
+    cyl(rt, rb, h, seg, hex, x, y, z, rx, ry, rz) { return B.part(new THREE.CylinderGeometry(rt, rb, h, seg), hex, x, y, z, rx, ry, rz); },
+    ball(r, hex, x, y, z, s = 1, det = 1) { return B.part(new THREE.IcosahedronGeometry(r, det), hex, x, y, z, 0, rnd() * 6.28, 0, s); },
+    torus(R, r, hex, x, y, z, rx, ry, rz, arc = 6.2832, seg = 16) { return B.part(new THREE.TorusGeometry(R, r, 6, seg, arc), hex, x, y, z, rx, ry, rz); },
+    // 一根沿着几个点弯过去的管子 / 缆线（点是相对原点的）
+    tube(pts, r, hex, seg = 0, rad = 6) { const c = new THREE.CatmullRomCurve3(pts.map(p => V3(p[0], p[1], p[2])), false, 'catmullrom', 0.3); return B.part(new THREE.TubeGeometry(c, seg || Math.max(4, Math.round(c.getLength() * 6)), r, rad, false), hex); },
+    // 一根直杆：从 a 到 b（相对原点），半径 r
+    rod(a, b, r, hex, seg = 6) {
+      const d = V3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = d.length(), g = new THREE.CylinderGeometry(r, r, L, seg);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V3(0, 1, 0), d.normalize())); g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+      return B.part(g, hex);
+    },
+    count: () => P.length / 9,
+    mesh(parent, o = {}) {
+      if (!P.length) return null;
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+      g.computeBoundingSphere(); P = []; N = []; C = [];
+      const m = new THREE.Mesh(g, o.mat ?? FEET_MAT); m.castShadow = o.shadow !== false; m.receiveShadow = true; parent.add(m); return m;
+    },
+  };
+  return B;
+}
+
+// ---- 地上的线：电缆、水管 ----
+// 贴着地面从 x1 拐到 x2 的一根线：z 在 z1、z2 之间慢慢摆动。r 粗细；loops 中途盘一圈；o.lift 某几段离地（搭在别的东西上）
+function floorLine(B, x1, z1, x2, z2, r, hex, o = {}) {
+  const n = Math.max(3, Math.round(Math.abs(x2 - x1) / 0.45)), pts = [], wob = o.wob ?? 0.25, ph = rnd() * 6.28, f = rr(1.2, 2.2);
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, x = lerp(x1, x2, t), z = lerp(z1, z2, sstep(0, 1, t)) + Math.sin(t * f * 3.14 + ph) * wob * Math.sin(t * 3.14);
+    pts.push([x, groundY(x) + r * 0.95 + (o.lift ? o.lift(t) : 0), z]);
+  }
+  B.at(0, 0, 0).tube(pts, r, hex);
+  if (o.loop) { const [lx, , lz] = pts[Math.floor(n * o.loop)], y = groundY(lx) + r; B.at(lx, y, lz).torus(o.loopR ?? 0.22, r, hex, 0, 0, 0, Math.PI / 2, 0, 0); B.at(lx + 0.06, y + r * 2, lz - 0.03).torus((o.loopR ?? 0.22) * 0.85, r, hex, 0, 0, 0, Math.PI / 2, 0, 0); }
+  return pts;
+}
+
+// ---- 散在地上的小东西：螺母、短铁条、瓶盖、碎玻璃……一把一把撒 ----
+// kinds：nut 螺母 / bar 短铁条 / chip 碎片 / butt 烟头 / cap 瓶盖。cols 几种颜色
+function scatter(B, x, z, n, rad, kinds, cols) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * 6.28, d = Math.sqrt(rnd()) * rad, xx = x + Math.cos(a) * d, zz = z + Math.sin(a) * d * 0.8, y = groundY(xx), k = pick(kinds), c = pick(cols);
+    B.at(xx, y, zz, rnd() * 6.28);
+    if (k === 'nut') B.cyl(0.035, 0.035, 0.03, 6, c, 0, 0.015, 0);
+    else if (k === 'bar') B.box(rr(0.18, 0.4), 0.025, 0.03, c, 0, 0.0125, 0);
+    else if (k === 'chip') B.box(rr(0.05, 0.12), 0.012, rr(0.04, 0.09), c, 0, 0.006, 0);
+    else if (k === 'cap') B.cyl(0.03, 0.03, 0.015, 8, c, 0, 0.008, 0);
+    else if (k === 'stone') B.ball(rr(0.025, 0.06), c, 0, 0.012, 0, [1.2, 0.6, 1], 0);
+  }
+}
+
+// ---- 平躺在地上的一张：纸板、胶合板、铁皮、纸。中间折一下，不是一块死平的板 ----
+function flatSheet(B, x, z, w, d, yaw, hex, o = {}) {
+  const y = groundY(x) + 0.006, bend = o.bend ?? rr(0.05, 0.22), t = o.t ?? 0.012;
+  B.at(x, y, z, yaw);
+  B.box(w * 0.55, t, d, hex, -w * 0.225, t / 2, 0);
+  B.box(w * 0.47, t, d, hex, w * 0.26 - 0.01, t / 2 + Math.sin(bend) * w * 0.2, 0, 0, 0, bend);
+}
+
+// ---- 纸箱：带一圈胶带；open 盖子翻开；crush 被压瘪了一点 ----
+function cardBox(B, x, z, w, h, d, yaw, o = {}) {
+  const y = (o.y ?? groundY(x)), c = o.col ?? 0x8a7354, tape = o.tape ?? 0x6f5c42, k = o.crush ?? 0;
+  B.at(x, y, z, yaw, 0, k * 0.15);
+  B.box(w, h * (1 - k * 0.3), d, c, 0, h * (1 - k * 0.3) / 2, 0);
+  B.box(w + 0.004, 0.05, d * 0.25, tape, 0, h * (1 - k * 0.3) - 0.02, 0);
+  if (o.open) for (const s of [-1, 1]) B.box(w * 0.98, 0.01, d * 0.5, c, 0, h * (1 - k * 0.3) + Math.sin(o.open) * d * 0.25, s * (d / 2 + Math.cos(o.open) * d * 0.25 - d * 0.25), s * o.open * -1, 0, 0);
+}
+
+// ---- 托盘：五块面板 + 三根垫木；n 摞几层；tilt 靠在什么上面斜着 ----
+function pallet(B, x, z, yaw, n = 1, o = {}) {
+  const c = o.col ?? 0x6b5a44, c2 = o.col2 ?? 0x54473a, y0 = o.y ?? groundY(x);
+  for (let k = 0; k < n; k++) {
+    B.at(x + rr(-0.04, 0.04), y0 + k * 0.145, z + rr(-0.03, 0.03), yaw + rr(-0.06, 0.06));
+    for (let i = 0; i < 5; i++) B.box(1.2, 0.022, 0.13, c, 0, 0.134, -0.34 + i * 0.17);
+    for (const sz of [-0.34, 0, 0.34]) B.box(1.2, 0.1, 0.09, c2, 0, 0.073, sz);
+    for (const sz of [-0.34, 0.34]) B.box(1.2, 0.022, 0.12, c, 0, 0.011, sz);
+  }
+}
+
+// ---- 铁皮油桶：两道箍、桶盖和小盖；tip 倒在地上（滚的方向 yaw）；dent 凹了一块 ----
+function drum(B, x, z, o = {}) {
+  const c = o.col ?? 0x4a5458, r = 0.29, h = 0.88, rib = o.rib ?? 0x3b4447, top = o.top ?? 0x2d3437, y = o.y ?? groundY(x);
+  if (o.tip) { B.at(x, y + r, z, o.yaw ?? 0, 0, Math.PI / 2); }
+  else B.at(x, y, z, o.yaw ?? rnd() * 6.28);
+  const oy = o.tip ? -h / 2 : 0;
+  B.cyl(r, r, h, 16, c, 0, oy + h / 2, 0);
+  for (const k of [0.33, 0.66]) B.cyl(r + 0.012, r + 0.012, 0.03, 16, rib, 0, oy + h * k, 0);
+  for (const k of [0.015, 0.985]) B.cyl(r + 0.008, r + 0.008, 0.03, 16, rib, 0, oy + h * k, 0);
+  B.cyl(r - 0.01, r - 0.01, 0.012, 16, top, 0, oy + h + 0.004, 0);
+  B.cyl(0.035, 0.035, 0.02, 8, rib, r * 0.55, oy + h + 0.012, 0.05);
+}
+
+// ---- 水桶：上口敞着（里面暗一点）、一根提手；tip 倒着 ----
+function bucket(B, x, z, o = {}) {
+  const c = o.col ?? 0x6e787a, s = o.s ?? 1, y = o.y ?? groundY(x), h = 0.3 * s, rt = 0.155 * s, rb = 0.12 * s;
+  if (o.tip) B.at(x, y + rt * 0.92, z, o.yaw ?? 0, 0, Math.PI / 2 - 0.12); else B.at(x, y, z, o.yaw ?? rnd() * 6.28);
+  const oy = o.tip ? -h / 2 : 0;
+  B.part(new THREE.CylinderGeometry(rt, rb, h, 14, 1, true), c, 0, oy + h / 2, 0);
+  B.cyl(rb, rb, 0.01, 14, c, 0, oy + 0.005, 0);
+  B.cyl(rt - 0.008, rt - 0.008, 0.008, 14, o.inside ?? 0x1c2224, 0, oy + h - 0.03 * s, 0);     // 里面看下去的暗处
+  B.torus(rt * 0.95, 0.006 * s, o.handle ?? 0x2a3133, 0, oy + h, 0, o.tip ? 0 : 0.5, 0, 0, Math.PI);
+}
+
+// ---- 椅子：四条腿、座面、靠背；tip 倒在地上（侧躺） ----
+function chair(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x4b3f33, m = o.leg ?? 0x2f3436, y = o.y ?? groundY(x);
+  if (o.tip) B.at(x, y + 0.21, z, yaw, Math.PI / 2 * 0.98, 0); else B.at(x, y, z, yaw);
+  const oz = o.tip ? -0.2 : 0;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) B.box(0.03, 0.45, 0.03, m, sx * 0.19, 0.225, oz + sz * 0.18);
+  B.box(0.44, 0.03, 0.42, c, 0, 0.46, oz);
+  for (const sx of [-1, 1]) B.box(0.03, 0.46, 0.03, m, sx * 0.19, 0.69, oz - 0.18);
+  B.box(0.42, 0.16, 0.02, c, 0, 0.84, oz - 0.19);
+}
+
+// ---- 轮胎：flat 平躺 / 竖着半埋在土里（bury 埋多深）/ stack 摞几只 ----
+function tire(B, x, z, o = {}) {
+  const c = o.col ?? 0x1e2122, R = (o.R ?? 0.3), r = R * 0.38, y = o.y ?? groundY(x);
+  if (o.stand) { B.at(x, y + R + r - (o.bury ?? 0), z, o.yaw ?? 0); B.torus(R, r, c, 0, 0, 0, 0, 0, 0); B.cyl(R - r * 0.6, R - r * 0.6, r * 1.4, 14, o.hub ?? 0x15181a, 0, 0, 0, Math.PI / 2, 0, 0); return; }
+  for (let k = 0; k < (o.stack ?? 1); k++) { B.at(x + rr(-0.05, 0.05), y + r + k * r * 1.9, z + rr(-0.05, 0.05), rnd() * 6.28, rr(-0.05, 0.05)); B.torus(R, r, c, 0, 0, 0, Math.PI / 2, 0, 0); }
+}
+
+// ---- 一段贴地的管道：几只矮支架托着，两头和中间有法兰；valve 中间装一只阀门手轮 ----
+function pipeRun(B, x1, x2, z, h, r, o = {}) {
+  const c = o.col ?? 0x3d474b, cs = o.stand ?? 0x2a3133, step = o.step ?? 2.2;
+  const xs = []; for (let x = x1 + (o.dive ? 0.9 : 0.3); x < x2 - (o.dive ? 0.7 : 0.2); x += step) xs.push(x);
+  const yA = groundY(x1) + h, yB = groundY(x2) + h, e = o.dive ? Math.min(0.16, h * 0.6) : 0;
+  B.at(0, 0, 0).rod([x1 + e, yA, z], [x2 - e, yB, z], r, c, 12);
+  if (o.dive) for (const [x, s] of [[x1, 1], [x2, -1]]) {        // 两头拐个弯钻进地里，地面上一圈法兰
+    const y = groundY(x); B.at(x + s * e, y, z).torus(e, r, c, 0, h - e, 0, 0, 0, s > 0 ? Math.PI / 2 : 0, Math.PI / 2, 8);
+    B.at(x, y, z); B.cyl(r, r, h - e + 0.05, 12, c, 0, (h - e) / 2 - 0.025, 0); B.cyl(r * 1.7, r * 1.8, 0.04, 12, cs, 0, 0.02, 0);
+  }
+  for (const x of xs) { const y = groundY(x); B.at(x, y, z); B.box(0.08, h - r * 0.6, 0.08, cs, 0, (h - r * 0.6) / 2, 0); B.box(0.3, 0.03, 0.2, cs, 0, 0.015, 0); B.torus(r + 0.004, 0.012, cs, 0, h, 0, 0, Math.PI / 2, 0); }
+  for (const x of o.dive ? [(x1 + x2) / 2] : [x1 + 0.05, (x1 + x2) / 2, x2 - 0.05]) { const y = lerp(yA, yB, (x - x1) / (x2 - x1)); B.at(x, y, z).cyl(r * 1.5, r * 1.5, 0.05, 12, cs, 0, 0, 0, 0, 0, Math.PI / 2); }
+  if (o.valve) { const x = o.valve, y = lerp(yA, yB, (x - x1) / (x2 - x1)); B.at(x, y, z); B.cyl(r * 1.3, r * 1.3, 0.14, 10, cs, 0, 0, 0, 0, 0, Math.PI / 2); B.box(0.03, 0.22, 0.03, cs, 0, 0.12, 0); B.torus(0.11, 0.012, o.wheel ?? 0x7a3a2a, 0, 0.24, 0, Math.PI / 2, 0, 0); B.box(0.2, 0.012, 0.012, o.wheel ?? 0x7a3a2a, 0, 0.24, 0); B.box(0.012, 0.012, 0.2, o.wheel ?? 0x7a3a2a, 0, 0.24, 0); }
+}
+
+// ---- 黑色的垃圾袋：鼓鼓囊囊的一包，顶上扎着口；n 只堆在一起 ----
+function bags(B, x, z, n, o = {}) {
+  const cols = o.cols ?? [0x1b1f21, 0x22282b, 0x2b3236];
+  for (let i = 0; i < n; i++) {
+    const s = rr(0.2, 0.3), xx = x + rr(-0.45, 0.45), zz = z + rr(-0.3, 0.3), y = groundY(xx) + (i > 2 ? 0.3 : 0), c = pick(cols);
+    B.at(xx, y, zz, rnd() * 6.28, rr(-0.2, 0.2), rr(-0.2, 0.2)); B.ball(s, c, 0, s * 0.72, 0, [1.05, 0.82, 0.92]); B.ball(s * 0.2, c, 0, s * 1.4, 0, [0.8, 1.3, 0.8], 0);
+  }
+}
+
+// ---- 铁皮水壶（方形的油壶）----
+function jerrycan(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x5a6b4a, y = o.y ?? groundY(x);
+  if (o.tip) B.at(x, y + 0.085, z, yaw, Math.PI / 2, 0); else B.at(x, y, z, yaw);
+  const oz = o.tip ? -0.22 : 0;
+  B.box(0.34, 0.45, 0.17, c, 0, 0.225, oz); B.box(0.3, 0.02, 0.19, c, 0, 0.3, oz);
+  for (const sx of [-0.1, 0, 0.1]) B.box(0.025, 0.07, 0.03, c, sx, 0.48, oz); B.box(0.24, 0.025, 0.03, c, 0, 0.51, oz);
+  B.cyl(0.03, 0.03, 0.06, 8, o.cap ?? 0x2b2f2a, 0.13, 0.47, oz, 0, 0, -0.5);
+}
+
+// ---- 交通锥 ----
+function trafficCone(B, x, z, o = {}) {
+  const c = o.col ?? 0xc0562a, y = o.y ?? groundY(x);
+  if (o.tip) B.at(x, y + 0.1, z, o.yaw ?? 0, 0, Math.PI / 2 - 0.2); else B.at(x, y, z, rnd() * 6.28);
+  B.box(0.34, 0.03, 0.34, 0x1e2223, 0, 0.015, 0);
+  B.cyl(0.03, 0.14, 0.5, 12, c, 0, 0.28, 0); B.cyl(0.075, 0.098, 0.08, 12, o.band ?? 0xd8dad2, 0, 0.3, 0);
+}
+
+// ---- 沙袋：一排一排垒起来 ----
+function sandbags(B, x, z, n, rows, yaw = 0, o = {}) {
+  const c = o.col ?? 0x8a7d62, y = groundY(x);
+  for (let r = 0; r < rows; r++) for (let i = 0; i < n - r; i++) {
+    B.at(x, y, z, yaw); B.part(new THREE.CapsuleGeometry(0.11, 0.32, 3, 8), c, (i - (n - r - 1) / 2) * 0.52 + rr(-0.03, 0.03), 0.1 + r * 0.17, rr(-0.04, 0.04), 0, rr(-0.1, 0.1), Math.PI / 2, [1, 1, 0.75]);
+  }
+}
+
+// ---- 打碎的水泥块，露着几根钢筋 ----
+const CHUNK_GEOS = [];
+function chunk(B, x, z, s, o = {}) {
+  if (!CHUNK_GEOS.length) for (let i = 0; i < 4; i++) CHUNK_GEOS.push(rockGeo(37 + i * 11, { detail: 0, amp: 0.3, flat: 0.62, moss: 0, col: 0xffffff }));
+  const y = groundY(x) - s * 0.12, c = o.col ?? 0x7d7b74;
+  B.at(x, y, z, rnd() * 6.28); B.part(pick(CHUNK_GEOS).clone(), c, 0, s * 0.45, 0, rr(-0.2, 0.2), 0, rr(-0.2, 0.2), [s * rr(1, 1.4), s, s * rr(0.8, 1.1)]);
+  if (o.rebar !== false) for (let i = 0, n = 1 + Math.floor(rnd() * 3); i < n; i++) { const a = rnd() * 6.28, L = rr(0.25, 0.7) * s / 0.3; B.rod([Math.cos(a) * s * 0.4, s * 0.55, Math.sin(a) * s * 0.3], [Math.cos(a) * (s * 0.4 + L * 0.7), s * 0.55 + rr(0.05, 0.45) * L, Math.sin(a) * (s * 0.3 + L * 0.4)], 0.009, o.bar ?? 0x5a3e30, 4); }
+}
+
+// ---- 一摞木条 / 钢管（横着堆在地上）----
+function stickPile(B, x, z, n, len, r, hex, yaw = 0) {
+  const y = groundY(x);
+  for (let i = 0; i < n; i++) { const row = i < n * 0.6 ? 0 : 1, k = row ? i - Math.ceil(n * 0.6) : i; B.at(x + rr(-0.15, 0.15), y, z, yaw + rr(-0.05, 0.05)); B.cyl(r, r, len * rr(0.85, 1), 8, hex, 0, r + row * r * 1.8, (k - (row ? n * 0.2 : n * 0.3)) * r * 2.05, 0, 0, Math.PI / 2); }
+}
+
+// ---- 地沟的铁箅子：黑洞洞的一格，上面是一根根铁条 ----
+function grate(B, x, z, w, d, yaw = 0, o = {}) {
+  const c = o.col ?? 0x2b3134, y = groundY(x);
+  B.at(x, y, z, yaw);
+  B.box(w, 0.006, d, o.hole ?? 0x07090a, 0, 0.003, 0);
+  for (const s of [-1, 1]) { B.box(w + 0.06, 0.02, 0.03, c, 0, 0.01, s * (d / 2 + 0.015)); B.box(0.03, 0.02, d, c, s * (w / 2 + 0.015), 0.01, 0); }
+  for (let i = 1; i < Math.round(w / 0.07); i++) B.box(0.018, 0.016, d, c, -w / 2 + i * w / Math.round(w / 0.07), 0.012, 0);
+}
+
+// ---- 工具推车：两层铁架、四只小轮、一个把手，上面放着工具箱 ----
+function toolCart(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x3b4448, y = groundY(x);
+  B.at(x, y, z, yaw);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { B.box(0.03, 0.82, 0.03, c, sx * 0.38, 0.49, sz * 0.22); B.cyl(0.04, 0.04, 0.03, 8, 0x111416, sx * 0.38, 0.04, sz * 0.22, Math.PI / 2, 0, 0); }
+  for (const yy of [0.22, 0.86]) B.box(0.82, 0.03, 0.5, c, 0, yy, 0);
+  B.rod([-0.42, 0.86, -0.2], [-0.52, 1.0, -0.2], 0.012, c); B.rod([-0.42, 0.86, 0.2], [-0.52, 1.0, 0.2], 0.012, c); B.rod([-0.52, 1.0, -0.2], [-0.52, 1.0, 0.2], 0.014, c);
+  B.box(0.4, 0.16, 0.2, o.box ?? 0x7a3a2a, 0.12, 0.96, 0); B.box(0.3, 0.03, 0.06, 0x222628, 0.12, 1.05, 0);
+  B.box(0.3, 0.12, 0.25, o.box2 ?? 0x5a4a38, -0.15, 0.3, 0.02); B.box(0.22, 0.02, 0.04, 0x8a8a84, 0.2, 0.25, 0.1, 0, 0.5, 0);
+}
+
+// ---- 几只钢瓶（立着，用一根链子拴着）----
+function cylinders(B, x, z, n, o = {}) {
+  const y = groundY(x), cols = o.cols ?? [0x3e5458, 0x5a4a3a, 0x3a3f42];
+  for (let i = 0; i < n; i++) { const xx = x + (i - (n - 1) / 2) * 0.27, c = pick(cols); B.at(xx, y, z + rr(-0.03, 0.03), rnd() * 6.28, rr(-0.03, 0.03)); B.cyl(0.11, 0.11, 1.2, 12, c, 0, 0.6, 0); B.part(new THREE.SphereGeometry(0.11, 12, 6, 0, 6.28, 0, Math.PI / 2), c, 0, 1.2, 0); B.cyl(0.03, 0.03, 0.12, 8, 0x8a8478, 0, 1.33, 0); }
+  B.at(x, y, z).box(n * 0.27, 0.02, 0.02, 0x262a2c, 0, 0.85, 0.12);
+}
+
+// ---- 一卷电缆盘（木头的大线轴）----
+function reel(B, x, z, R, yaw = 0, o = {}) {
+  const c = o.col ?? 0x6b5a44, w = R * 0.8, y = groundY(x);
+  B.at(x, y + R, z, yaw);
+  for (const s of [-1, 1]) B.cyl(R, R, 0.05, 18, c, 0, 0, s * w / 2, Math.PI / 2, 0, 0);
+  B.cyl(R * 0.75, R * 0.75, w - 0.04, 18, o.wire ?? 0x1c1f20, 0, 0, 0, Math.PI / 2, 0, 0);
+  B.cyl(R * 0.2, R * 0.2, w + 0.12, 10, c, 0, 0, 0, Math.PI / 2, 0, 0);
+}
+
+// ---- 街上的：隔离桩、排队用的伸缩带立柱、塑料周转箱、自行车 ----
+function bollard(B, x, z, o = {}) {
+  const c = o.col ?? 0x3f4446, y = groundY(x);
+  B.at(x, y, z); B.cyl(0.085, 0.095, 0.82, 12, c, 0, 0.41, 0); B.part(new THREE.SphereGeometry(0.085, 12, 6, 0, 6.28, 0, Math.PI / 2), c, 0, 0.82, 0); B.cyl(0.088, 0.088, 0.07, 12, o.band ?? 0xc9ccc4, 0, 0.66, 0);
+}
+// 一排立柱，柱子之间拉着带子（带子微微往下垂）；broken：其中一根倒在地上，带子拖在地上
+function stanchions(B, x1, x2, z, n, o = {}) {
+  const c = o.col ?? 0x55595a, belt = o.belt ?? 0x8a3a30, H = 0.92, pts = [];
+  for (let i = 0; i < n; i++) {
+    const x = lerp(x1, x2, i / (n - 1)), y = groundY(x), down = o.broken === i;
+    if (down) {                                            // 倒在地上的那根：柱头倒向 yaw 那边，带子跟着拖到地上
+      const yw = o.yaw ?? 0.4, rl = Math.PI / 2 - 0.05; B.at(x, y + 0.03, z, yw, 0, rl); B.cyl(0.026, 0.026, H, 8, c, 0, H / 2, 0); B.cyl(0.17, 0.17, 0.03, 14, c, 0, 0.015, 0);
+      const hx = -H * Math.sin(rl); pts.push([x + hx * Math.cos(yw), y + 0.03 + H * Math.cos(rl), z - hx * Math.sin(yw)]); continue;
+    }
+    B.at(x, y, z); B.cyl(0.17, 0.18, 0.03, 14, c, 0, 0.015, 0); B.cyl(0.026, 0.026, H, 8, c, 0, H / 2, 0); B.cyl(0.04, 0.04, 0.07, 8, c, 0, H, 0);
+    pts.push([x, y + H - 0.04, z]);
+  }
+  for (let i = 1; i < pts.length; i++) {
+    if (o.broken === i - 1) {                              // 倒下的那根后面：带子脱了钩，从下一根柱子上垂下来一截
+      const [bx_, by, bz] = pts[i]; B.at(0, 0, 0).part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(bx_, by, bz), V3(bx_ - 0.12, by - 0.35, bz), V3(bx_ - 0.1, by - 0.6, bz + 0.02)), 8, 0.022, 3), belt, 0, 0, 0, 0, 0, 0, [1, 1, 0.35]);
+      continue;
+    }
+    const [ax, ay, az] = pts[i - 1], [bx_, by, bz] = pts[i], sag = (ay > 0.5 && by > 0.5) ? 0.06 : 0, m = [(ax + bx_) / 2, Math.max(0.03, (ay + by) / 2 - sag - (ay < 0.5 || by < 0.5 ? 0.25 : 0)), (az + bz) / 2];
+    B.at(0, 0, 0).part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(ax, ay, az), V3(...m), V3(bx_, by, bz)), 10, 0.022, 3), belt, 0, 0, 0, 0, 0, 0, [1, 1, 0.35]);
+  }
+}
+// 塑料周转箱：四面有一排排长方孔（画成深色的横条），n 只摞起来
+function crates(B, x, z, n, o = {}) {
+  const c = o.col ?? 0x5a6f7a, w = 0.6, h = 0.32, d = 0.4, y0 = groundY(x);
+  for (let k = 0; k < n; k++) {
+    B.at(x + rr(-0.04, 0.04), y0 + k * (h - 0.02), z + rr(-0.03, 0.03), (o.yaw ?? 0) + rr(-0.08, 0.08));
+    B.box(w, h, d, c, 0, h / 2, 0);
+    for (const yy of [0.12, 0.22]) for (const s of [-1, 1]) B.box(w * 0.82, 0.045, 0.004, o.hole ?? 0x22292c, 0, yy, s * (d / 2 + 0.002));
+    B.box(0.14, 0.04, 0.004, 0x1a1f21, 0, h - 0.06, d / 2 + 0.003);
+  }
+}
+// 自行车：两只轮子、三角车架、车把、座子，用脚撑立着（稍微歪一点）
+function bike(B, x, z, yaw = 0, o = {}) {
+  const c = o.col ?? 0x2f3a3f, t = 0x141718, y = groundY(x), R = 0.33;
+  B.at(x, y, z, yaw, 0, 0.12);
+  for (const sx of [-0.52, 0.52]) { B.torus(R, 0.022, t, sx, R, 0, 0, 0, 0, 6.2832, 20); B.cyl(0.03, 0.03, 0.06, 8, c, sx, R, 0, Math.PI / 2, 0, 0); }
+  const P_ = { rw: [-0.52, R, 0], fw: [0.52, R, 0], bb: [-0.05, R - 0.02, 0], st: [-0.2, R + 0.5, 0], hd: [0.38, R + 0.5, 0] };
+  for (const [a, b] of [['rw', 'bb'], ['bb', 'st'], ['st', 'rw'], ['st', 'hd'], ['bb', 'hd'], ['hd', 'fw']]) B.rod(P_[a], P_[b], 0.017, c);
+  B.rod([-0.2, R + 0.5, 0], [-0.24, R + 0.62, 0], 0.016, c); B.box(0.22, 0.04, 0.09, t, -0.25, R + 0.64, 0);
+  B.rod([0.38, R + 0.5, 0], [0.34, R + 0.66, 0], 0.016, c); B.rod([0.34, R + 0.66, -0.22], [0.34, R + 0.66, 0.22], 0.014, c);
+  B.rod([-0.05, R - 0.02, 0.03], [-0.15, 0.0, 0.22], 0.012, c);
+}
+// 一只倒着的板凳 / 小方凳
+function stool(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x5c4833, y = groundY(x);
+  if (o.tip) B.at(x, y + 0.16, z, yaw, 0, Math.PI / 2); else B.at(x, y, z, yaw);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) B.box(0.035, 0.42, 0.035, c, sx * 0.13, 0.21, sz * 0.13);
+  B.box(0.34, 0.035, 0.34, c, 0, 0.43, 0); B.box(0.28, 0.025, 0.025, c, 0, 0.14, 0.13); B.box(0.28, 0.025, 0.025, c, 0, 0.14, -0.13);
+}
+
+// ---- 废料场、维修巷、居民街上的 ----
+// 一台旧洗衣机（方盒子 + 前面一圈圆门）；tip 侧躺着
+function washer(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0xa8a89c, y = groundY(x);
+  if (o.tip) B.at(x, y + 0.3, z, yaw, 0, Math.PI / 2); else B.at(x, y, z, yaw, rr(-0.04, 0.04));
+  const oy = o.tip ? -0.42 : 0;
+  B.box(0.6, 0.84, 0.58, c, 0, oy + 0.42, 0); B.box(0.6, 0.1, 0.58, o.top ?? 0x8a8a80, 0, oy + 0.79, 0);
+  B.torus(0.17, 0.035, 0x3a3e40, 0, oy + 0.42, 0.29, 0, 0, 0); B.cyl(0.15, 0.15, 0.02, 16, 0x1e2426, 0, oy + 0.42, 0.29, Math.PI / 2, 0, 0);
+}
+// 一扇拆下来的车门：外板 + 窗框，斜靠着（lean 往后倒多少）或者平躺
+function carDoor(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x5a6a72, y = groundY(x), lean = o.flat ? Math.PI / 2 - 0.02 : (o.lean ?? 0.35);
+  B.at(x, y, z, yaw, -lean, 0);
+  B.box(1.05, 0.62, 0.06, c, 0, 0.31, 0); B.box(1.0, 0.04, 0.07, 0x2c3236, 0, 0.6, 0);
+  for (const [a, b] of [[[-0.48, 0.62, 0], [-0.4, 1.05, 0]], [[-0.4, 1.05, 0], [0.32, 1.05, 0]], [[0.32, 1.05, 0], [0.5, 0.62, 0]]]) B.rod(a, b, 0.025, 0x2c3236, 5);
+  B.box(0.16, 0.035, 0.05, 0x8a8a84, 0.32, 0.45, 0.04);
+}
+// 一根弯过的旧管子（躺在地上）
+function bentPipe(B, x, z, len, r, yaw, hex) {
+  const y = groundY(x) + r, a = rr(0.4, 0.9);
+  B.at(x, y, z, yaw).tube([[-len / 2, 0, 0], [0, 0, 0], [Math.cos(a) * len * 0.45, 0, Math.sin(a) * len * 0.45]], r, hex, 12, 8);
+}
+// 一张工作台：桌面、四条腿、下层隔板，桌上一只台钳和几件工具
+function workbench(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x5c4833, m = o.leg ?? 0x2f3436, y = groundY(x);
+  B.at(x, y, z, yaw);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) B.box(0.05, 0.86, 0.05, m, sx * 0.72, 0.43, sz * 0.28);
+  B.box(1.6, 0.05, 0.7, c, 0, 0.88, 0); B.box(1.5, 0.03, 0.6, c, 0, 0.2, 0);
+  B.box(0.16, 0.12, 0.14, 0x3a4448, 0.55, 0.96, 0.22); B.box(0.05, 0.04, 0.22, 0x3a4448, 0.55, 0.98, 0.34);
+  B.box(0.3, 0.02, 0.04, 0x8a8a84, -0.2, 0.915, 0.1, 0, 0.4, 0); B.box(0.24, 0.025, 0.05, 0x7a3a2a, -0.45, 0.915, -0.1, 0, -0.3, 0);
+  B.box(0.4, 0.16, 0.25, o.box ?? 0x5a4a38, -0.3, 0.3, 0); B.box(0.3, 0.2, 0.2, 0x3e4a4e, 0.35, 0.32, 0.05);
+}
+// 一只敞口的零件箱：木箱里堆着管头、齿轮、方块
+function partsBin(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x5c4833, y = groundY(x), w = o.w ?? 0.8, d = 0.55, h = 0.42;
+  B.at(x, y, z, yaw);
+  for (const s of [-1, 1]) { B.box(w, h, 0.03, c, 0, h / 2, s * d / 2); B.box(0.03, h, d, c, s * w / 2, h / 2, 0); }
+  B.box(w, 0.03, d, c, 0, 0.015, 0);
+  const cols = o.parts ?? [0x4a5458, 0x6a4a36, 0x3a3f42, 0x7a7a70];
+  for (let i = 0; i < 9; i++) { const px_ = rr(-w * 0.4, w * 0.4), pz = rr(-d * 0.35, d * 0.35), py = h - rr(0.02, 0.12); const k = rnd(); if (k < 0.35) B.cyl(0.04, 0.04, rr(0.15, 0.3), 8, pick(cols), px_, py, pz, rr(0, 1.5), rr(0, 3), rr(0, 1.5)); else if (k < 0.65) B.torus(0.06, 0.02, pick(cols), px_, py, pz, rr(0, 3), rr(0, 3), 0, 6.28, 10); else B.box(rr(0.06, 0.14), rr(0.06, 0.12), rr(0.06, 0.14), pick(cols), px_, py, pz, 0, rr(0, 3), 0); }
+}
+// 一只宽口的洗衣盆 / 水盆（里面有一点水，颜色浅一点）
+function basin(B, x, z, o = {}) {
+  const c = o.col ?? 0x6a7a80, y = groundY(x), r = o.r ?? 0.32;
+  B.at(x, y, z, rnd() * 6.28); B.part(new THREE.CylinderGeometry(r, r * 0.8, 0.18, 18, 1, true), c, 0, 0.09, 0); B.cyl(r * 0.8, r * 0.8, 0.01, 18, c, 0, 0.005, 0);
+  B.torus(r, 0.015, c, 0, 0.18, 0, Math.PI / 2, 0, 0, 6.2832, 18);
+  if (o.water !== false) B.cyl(r * 0.92, r * 0.92, 0.008, 18, o.water ?? 0x8aa4aa, 0, 0.13, 0);
+}
+// 花盆：盆、土、一棵小苗（几团叶子）；dead 枯了（只剩一根杆）
+function pot(B, x, z, o = {}) {
+  const c = o.col ?? 0x8a5a3e, y = groundY(x), s = o.s ?? 1;
+  B.at(x, y, z, rnd() * 6.28); B.cyl(0.14 * s, 0.1 * s, 0.24 * s, 12, c, 0, 0.12 * s, 0); B.cyl(0.15 * s, 0.15 * s, 0.035 * s, 12, c, 0, 0.235 * s, 0); B.cyl(0.13 * s, 0.13 * s, 0.01, 12, 0x2e261e, 0, 0.245 * s, 0);
+  if (o.dead) { B.rod([0, 0.24 * s, 0], [0.03, 0.55 * s, 0.02], 0.008, 0x5a4a38); return; }
+  B.rod([0, 0.24 * s, 0], [0, (0.3 + (o.h ?? 0.25)) * s, 0], 0.01, 0x4a5a30);
+  for (let i = 0; i < (o.n ?? 5); i++) B.ball(rr(0.05, 0.09) * s, pick(o.leaf ?? [0x4c6a38, 0x5f8040, 0x3e5a2e]), rr(-0.08, 0.08) * s, (0.32 + (o.h ?? 0.25) * rr(0.6, 1.1)) * s, rr(-0.08, 0.08) * s, [1, 0.8, 1], 0);
+}
+// 手推的两轮小车，车上绑着一只水桶
+function handCart(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x3a4448, y = groundY(x);
+  B.at(x, y, z, yaw, 0, -0.35);
+  for (const sz of [-0.22, 0.22]) { B.rod([0, 0.08, sz], [0, 1.25, sz], 0.018, c); B.torus(0.12, 0.035, 0x161a1b, 0.05, 0.12, sz * 1.25, 0, 0, 0, 6.28, 12); }
+  B.box(0.3, 0.025, 0.5, c, 0.13, 0.04, 0); B.rod([0, 1.25, -0.22], [0, 1.25, 0.22], 0.018, c);
+  B.cyl(0.2, 0.2, 0.62, 14, o.drum ?? 0x4f6670, 0.2, 0.36, 0);
+}
+
+// ---- 野外的：石头、瓷瓶（电线杆上掉下来的绝缘子）、一卷铁丝、歪着的牌子、倒下的栅栏 ----
+// 一块石头（烘进网格里；颜色来自 rockGeo 的顶点色：朝上的面带一点青苔）
+function stone(B, x, z, s, o = {}) {
+  const flat = o.flat ?? rr(0.55, 0.85), g = rockGeo(o.seed ?? Math.floor(rr(0, 9999)), { flat, col: o.col ?? 0x7a7468, mossCol: o.moss ?? 0x6a6a44, moss: o.mk ?? 0.6, detail: o.detail ?? (s < 0.2 ? 0 : 1) });   // 小石头用最粗的那一档，省三角形
+  B.at(x, groundY(x) - s * flat * 0.3, z, rnd() * 6.28).part(g, 0xffffff, 0, 0, 0, 0, 0, 0, [s * rr(1, 1.3), s, s * rr(0.8, 1.05)]);
+}
+// 绝缘子：一串叠起来的瓷碟（白的，或者褐釉的），歪在草里
+function insulator(B, x, z, o = {}) {
+  const c = o.col ?? 0xd8d6cc, y = groundY(x), n = o.n ?? 3;
+  B.at(x, y + 0.06, z, rnd() * 6.28, 0, Math.PI / 2 - rr(0, 0.3));
+  for (let i = 0; i < n; i++) { B.cyl(0.07, 0.07, 0.025, 12, c, 0, i * 0.06, 0); B.cyl(0.035, 0.035, 0.06, 8, c, 0, i * 0.06 + 0.03, 0); }
+}
+// 一卷生锈的铁丝：几圈叠在一起的细环
+function wireCoil(B, x, z, R = 0.3, o = {}) {
+  const c = o.col ?? 0x4a3a2e, y = groundY(x);
+  for (let i = 0; i < 5; i++) B.at(x + rr(-0.04, 0.04), y + 0.01 + i * 0.012, z + rr(-0.04, 0.04), rnd() * 6.28, rr(-0.12, 0.12), rr(-0.12, 0.12)).torus(R * rr(0.85, 1.05), 0.006, c, 0, 0, 0, Math.PI / 2, 0, 0, 6.2832, 20);
+}
+// 一块歪着的旧牌子：一根短桩，顶上钉着一块铁皮
+function sign(B, x, z, yaw, o = {}) {
+  const y = groundY(x); B.at(x, y, z, yaw, 0, o.tilt ?? 0.18);
+  B.box(0.07, 1.1, 0.07, o.post ?? 0x4a3e32, 0, 0.55, 0); B.box(0.6, 0.42, 0.02, o.col ?? 0x8a5a3a, 0, 1.0, 0.045); B.box(0.5, 0.06, 0.022, o.band ?? 0xb8b0a0, 0, 1.06, 0.046);
+}
+// 倒下的一段栅栏：两根桩（一根还斜插在地里，一根倒在地上）、几道松垮的铁丝
+function fallenFence(B, x, z, len, yaw = 0, o = {}) {
+  const c = o.post ?? 0x5a4a3a, w = o.wire ?? 0x2e2a26, y = groundY(x);
+  B.at(x, y, z, yaw, 0, -0.45); B.box(0.08, 1.2, 0.08, c, 0, 0.6, 0);
+  const tx = len * 0.95; B.at(x + tx, groundY(x + tx) + 0.05, z, yaw, 0, Math.PI / 2 - 0.05); B.box(0.08, 1.2, 0.08, c, 0, -0.6, 0);
+  const top = [x - Math.sin(0.45) * 1.15, y + Math.cos(0.45) * 1.15];
+  for (const k of [0.45, 0.75, 1]) B.at(0, 0, 0).part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(x - Math.sin(0.45) * 1.15 * k, y + Math.cos(0.45) * 1.15 * k, z), V3(x + tx * 0.5, groundY(x + tx * 0.5) + 0.02, z + 0.25), V3(x + tx - 1.1 * k + 0.6, groundY(x + tx) + 0.06, z)), 14, 0.007, 4), w);
+  return top;
+}
+
+// ---- 花园里的：独轮车、耙子、喷壶、标签牌、肥料袋、喷头、踏脚石、修成方块的小灌木 ----
+function wheelbarrow(B, x, z, yaw, o = {}) {   // 独轮车：斜着的四面斗、里面一斗土，前面一只轮子，后面两根把手
+  const c = o.col ?? 0x3a6a8a, y = groundY(x);
+  B.at(x, y, z, yaw);
+  B.box(0.66, 0.03, 0.46, c, 0, 0.36, 0);
+  B.box(0.03, 0.32, 0.6, c, 0.42, 0.5, 0, 0, 0, -0.45); B.box(0.03, 0.3, 0.56, c, -0.38, 0.5, 0, 0, 0, 0.3);
+  for (const s of [-1, 1]) B.box(0.86, 0.3, 0.03, c, 0.02, 0.5, s * 0.28, s * 0.3, 0, 0);
+  B.box(0.8, 0.05, 0.5, o.soil ?? 0x4a3a2a, 0.02, 0.6, 0);
+  B.torus(0.17, 0.045, 0x1c1e1e, 0.66, 0.18, 0, 0, 0, 0, 6.2832, 12); B.cyl(0.03, 0.03, 0.1, 8, 0x4a4a44, 0.66, 0.18, 0, Math.PI / 2, 0, 0);
+  for (const s of [-1, 1]) { B.rod([0.66, 0.18, s * 0.05], [-0.95, 0.62, s * 0.27], 0.018, 0x4a4a44); B.rod([-0.25, 0.38, s * 0.22], [-0.3, 0, s * 0.24], 0.016, 0x4a4a44); }
+}
+function rake(B, x, z, yaw, o = {}) {   // 靠在什么上面：lean 往后倒多少
+  const y = groundY(x); B.at(x, y, z, yaw, -(o.lean ?? 0.3), 0);
+  B.box(0.03, 1.5, 0.03, o.col ?? 0x8a6a44, 0, 0.75, 0); B.box(0.42, 0.04, 0.04, 0x4a4e4a, 0, 1.5, 0); for (let i = 0; i < 9; i++) B.box(0.012, 0.09, 0.012, 0x4a4e4a, -0.19 + i * 0.0475, 1.46, 0.02);
+}
+function wateringCan(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x4f8a6a, y = groundY(x);
+  if (o.tip) B.at(x, y + 0.13, z, yaw, 0, Math.PI / 2); else B.at(x, y, z, yaw);
+  const oy = o.tip ? -0.14 : 0;
+  B.cyl(0.13, 0.14, 0.28, 14, c, 0, oy + 0.14, 0); B.rod([0.1, oy + 0.08, 0], [0.38, oy + 0.32, 0], 0.018, c); B.cyl(0.035, 0.02, 0.05, 8, c, 0.39, oy + 0.33, 0, 0, 0, -0.9);
+  B.torus(0.11, 0.014, c, -0.04, oy + 0.3, 0, 0, 0, 0, Math.PI, 10);
+}
+function stake(B, x, z, o = {}) {   // 插在土里的白色标签牌
+  const y = groundY(x); B.at(x, y, z, rr(-0.1, 0.1), rr(-0.08, 0.08), rr(-0.08, 0.08)); B.box(0.015, 0.3, 0.01, o.col ?? 0xe8e8e0, 0, 0.15, 0); B.box(0.08, 0.06, 0.01, o.col ?? 0xe8e8e0, 0, 0.3, 0);
+}
+function sack(B, x, z, yaw, o = {}) {   // 一袋肥料 / 土：鼓鼓的软袋子立着（lie 平躺），口子折下来，正面一道色带
+  const c = o.col ?? 0xd8d4c4, y = groundY(x); B.at(x, y, z, yaw, o.lie ? Math.PI / 2 - 0.08 : -0.12, 0);
+  const oy = o.lie ? -0.13 : 0;
+  B.box(0.42, 0.5, 0.2, c, 0, oy + 0.25, 0); B.ball(0.2, c, 0, oy + 0.06, 0, [1.05, 0.4, 0.55]); B.box(0.36, 0.08, 0.16, c, 0, oy + 0.52, -0.02, -0.5, 0, 0);
+  B.box(0.43, 0.09, 0.205, o.band ?? 0x4a8a4a, 0, oy + 0.3, 0);
+}
+function sprinkler(B, x, z, o = {}) {   // 草坪上冒出来的一只喷头
+  const y = groundY(x); B.at(x, y, z); B.cyl(0.05, 0.06, 0.06, 10, o.col ?? 0x2a2e2c, 0, 0.03, 0); B.cyl(0.025, 0.025, 0.05, 8, 0x8a8e88, 0, 0.08, 0);
+}
+function steppingStone(B, x, z, s = 0.28, o = {}) {
+  const y = groundY(x); B.at(x, y, z, rnd() * 6.28); B.part(new THREE.CylinderGeometry(s, s * 1.04, 0.05, 9), o.col ?? 0xb8b2a2, 0, 0.012, 0, 0, 0, 0, [1, 1, rr(0.75, 0.95)]);
+}
+function boxHedge(B, x, z, w = 0.55, h = 0.45, o = {}) {   // 修剪成一个方墩的小灌木：一团团叶子挤在一起，顶上剪平了、向着太阳的那一面亮
+  const y = groundY(x), c = o.col ?? 0x3c7a3e, c2 = o.col2 ?? 0x4f8a44;
+  B.at(x, y, z, rr(-0.1, 0.1));
+  for (let i = 0; i < 9; i++) { const r = rr(0.14, 0.2); B.ball(r, rnd() < 0.5 ? c : c2, rr(-w / 2 + r * 0.7, w / 2 - r * 0.7), rr(r * 0.8, h - r * 0.9), rr(-w / 2 + r * 0.7, w / 2 - r * 0.7), 1, 0); }
+  B.box(w * 0.92, 0.05, w * 0.92, o.top ?? 0x8ab858, 0, h - 0.04, 0);
+}
+// 一段还立着的旧栅栏：几根歪歪斜斜的木桩，三道往下垂的铁丝；broken 那一跨断了，铁丝垂到地上
+function oldFence(B, x1, x2, z, o = {}) {
+  const c = o.post ?? 0x5a4a3a, w = o.wire ?? 0x2e2a26, n = Math.max(2, Math.round((x2 - x1) / (o.step ?? 2.3)) + 1), tops = [];
+  for (let i = 0; i < n; i++) {
+    const x = lerp(x1, x2, i / (n - 1)) + rr(-0.2, 0.2), y = groundY(x), h = rr(1.0, 1.25), lz = rr(-0.22, 0.22), lx = rr(-0.08, 0.08);
+    B.at(x, y - 0.1, z + rr(-0.08, 0.08), 0, lx, lz); B.box(0.08, h + 0.1, 0.08, c, 0, (h + 0.1) / 2, 0);
+    tops.push([x - Math.sin(lz) * h, y - 0.1 + Math.cos(lz) * h, z + Math.sin(lx) * h, h]);
+  }
+  for (let i = 1; i < tops.length; i++) for (const k of [0.45, 0.72, 0.96]) {
+    const [ax, ay, az] = tops[i - 1], [bx_, by, bz] = tops[i], ya = groundY(ax) + (ay - groundY(ax)) * k, yb = groundY(bx_) + (by - groundY(bx_)) * k;
+    if (o.broken === i) { B.at(0, 0, 0).part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(ax, ya, az), V3(ax + 0.35, ya - 0.5, az + 0.1), V3(ax + 0.9 + k * 0.4, groundY(ax + 1) + 0.02, az + 0.25)), 10, 0.007, 4), w); continue; }
+    B.at(0, 0, 0).part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(ax, ya, az), V3((ax + bx_) / 2, (ya + yb) / 2 - 0.12, (az + bz) / 2), V3(bx_, yb, bz)), 12, 0.007, 4), w);
+  }
+}
+
+// ---- 中枢里的：育苗盘小推车、样品罐、走线槽 ----
+// 一辆矮推车，两层托着育苗盘，盘里一格一格冒着小苗（中枢里唯一的绿）
+function seedCart(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x3a4a52, y = groundY(x), g = o.green ?? [0x7aaa58, 0x8aba62, 0x6a9a4a];
+  B.at(x, y, z, yaw);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { B.box(0.03, 0.72, 0.03, c, sx * 0.48, 0.42, sz * 0.24); B.cyl(0.035, 0.035, 0.03, 8, 0x111416, sx * 0.48, 0.035, sz * 0.24, Math.PI / 2, 0, 0); }
+  for (const yy of [0.3, 0.74]) { B.box(1.0, 0.03, 0.52, c, 0, yy, 0); B.box(0.96, 0.06, 0.46, o.tray ?? 0x2a3236, 0, yy + 0.045, 0);
+    for (let i = 0; i < 8; i++) for (let k = 0; k < 4; k++) if (rnd() < 0.85) { const h = rr(0.04, 0.1), px_ = -0.42 + i * 0.12, pz = -0.16 + k * 0.107; B.box(0.008, h, 0.008, 0x4a6a3a, px_, yy + 0.075 + h / 2, pz); B.ball(rr(0.028, 0.04), pick(g), px_, yy + 0.075 + h, pz, [1.3, 0.6, 1.1], 0); } }
+  B.box(0.9, 0.02, 0.06, o.lamp ?? 0xd8d0e8, 0, 0.71, 0.18);                    // 上层隔板底下的一根补光灯管
+}
+// 一排样品罐：玻璃罐（浅色、半透的样子画成浅灰绿）、黑盖子
+function jars(B, x, z, n, o = {}) {
+  const y = groundY(x) + (o.y ?? 0);
+  for (let i = 0; i < n; i++) { const xx = x + (i - (n - 1) / 2) * 0.13; B.at(xx, y, z + rr(-0.02, 0.02)); B.cyl(0.05, 0.05, 0.16, 10, o.col ?? 0x7a9a96, 0, 0.08, 0); B.cyl(0.052, 0.052, 0.03, 10, 0x1a2024, 0, 0.175, 0); }
+}
+// 贴着地面的一段走线槽：方的盒子，隔一段一个接线盒
+function conduit(B, x1, x2, z, o = {}) {
+  const c = o.col ?? 0x2e3a42, y = groundY(x1);
+  B.at((x1 + x2) / 2, y, z).box(x2 - x1, 0.09, 0.16, c, 0, 0.045, 0);
+  for (let x = x1 + 0.6; x < x2 - 0.3; x += o.step ?? 2.6) B.at(x, y, z).box(0.26, 0.2, 0.22, o.box ?? 0x3e4c56, 0, 0.1, 0);
+}
+
+// ---- 山洞里的：石笋、一盘旧绳子、熄了的旧马灯、倒在地上的木支架 ----
+function stalagmite(B, x, z, h, o = {}) {   // 石笋：几块越往上越细的疙瘩石头摞成一根，顶上一个尖
+  const c = o.col ?? 0x55595a, y = groundY(x) - 0.04, r = h * rr(0.2, 0.28), n = 2 + Math.round(h * 2.2);
+  B.at(x, y, z, rnd() * 6.28, rr(-0.05, 0.05), rr(-0.05, 0.05));
+  for (let i = 0; i < n; i++) { const t = i / n, rk = r * (1 - t * 0.75), hk = h / n * 1.5; B.part(rockGeo(Math.floor(rr(0, 9999)), { detail: 0, amp: 0.28, flat: 1, moss: 0, col: 0xffffff }), c, rr(-0.02, 0.02) * h, t * h * 0.92 + hk * 0.35, rr(-0.02, 0.02) * h, 0, rnd() * 6.28, 0, [rk, hk * 0.62, rk]); }
+  B.part(new THREE.ConeGeometry(r * 0.3, h * 0.22, 6), c, 0, h * 0.98, 0);
+  if (rnd() < 0.5) B.part(rockGeo(7, { detail: 0, amp: 0.3, flat: 0.8, moss: 0, col: 0xffffff }), c, r * 1.3, r * 0.4, rr(-0.1, 0.1), 0, rnd() * 6.28, 0, [r * 0.7, r * 0.6, r * 0.7]);
+}
+function ropeCoil(B, x, z, o = {}) {
+  const c = o.col ?? 0x8a7a58, y = groundY(x);
+  for (let i = 0; i < 4; i++) B.at(x + rr(-0.03, 0.03), y + 0.015 + i * 0.022, z + rr(-0.03, 0.03), rnd() * 6.28).torus(0.2 - i * 0.01, 0.018, c, 0, 0, 0, Math.PI / 2, 0, 0, 6.2832, 16);
+  B.at(0, 0, 0).tube([[x + 0.2, y + 0.02, z], [x + 0.5, y + 0.02, z + 0.15], [x + 0.85, y + 0.02, z + 0.05]], 0.016, c, 8, 5);
+}
+function lantern(B, x, z, o = {}) {
+  const y = groundY(x), c = o.col ?? 0x4a3e32;
+  if (o.tip) B.at(x, y + 0.08, z, rnd() * 6.28, 0, Math.PI / 2); else B.at(x, y, z, rnd() * 6.28);
+  B.cyl(0.08, 0.09, 0.04, 10, c, 0, 0.02, 0); B.cyl(0.06, 0.07, 0.15, 10, o.glass ?? 0x6a6458, 0, 0.115, 0); B.cyl(0.05, 0.08, 0.05, 10, c, 0, 0.215, 0);
+  B.torus(0.07, 0.008, c, 0, 0.26, 0, 0, 0, 0, Math.PI, 8);
+}
+function timber(B, x, z, len, yaw, o = {}) {
+  const y = groundY(x); B.at(x, y + 0.09, z, yaw, 0, o.tilt ?? 0).box(len, 0.18, 0.18, o.col ?? 0x4e3e2e, 0, 0, 0);
+}
+
+// ============================================================
+//  主角脚边的东西（二）：会动的那些 —— 老鼠、蚂蚱、被跑过去带起来的纸片和叶子、被踢开的易拉罐
+//  都挂进 groundLife()（46-ground.js）里，跟着章节每帧推进；calm = true 时都不动（出效果图用）
+// ============================================================
+
+// ---- 老鼠：蹲在箱子边、墙根下，嗅来嗅去；主角走到 flee 米以内，就沿着 path（[x, z] 一串点）窜过去，到最后一个点钻进去不见了；
+// 主角走远了再出来。模型面朝 +x，比真的老鼠大一点（这么远看过去，真的老鼠只有十来个像素）
+function mkRat(parent, L, x, z, path, o = {}) {
+  const c = o.col ?? 0x5a504a, fur = lam(c, { emissive: c, emissiveIntensity: o.glow ?? 0.18 }), pink = lam(0x8a6a64, { emissive: 0x8a6a64, emissiveIntensity: 0.15 });
+  const sph = (r, a = 8, b = 6) => new THREE.SphereGeometry(r, a, b);
+  const g = grp(parent, x, groundY(x), z), body = grp(g, 0, 0, 0); g.scale.setScalar(o.s ?? 1.5);
+  add(body, sph(0.055), fur, 0, 0.05, 0, false).scale.set(1.9, 0.8, 0.95);
+  add(body, sph(0.05), fur, -0.045, 0.054, 0, false).scale.set(1.2, 0.95, 1.05);
+  const head = grp(body, 0.1, 0.05, 0);
+  add(head, new THREE.ConeGeometry(0.032, 0.09, 8), fur, 0.03, 0, 0, false).rotation.z = -Math.PI / 2;
+  for (const sz of [-1, 1]) add(head, sph(0.017, 6, 4), pink, 0.0, 0.032, sz * 0.022, false).scale.set(0.45, 1, 1);
+  const tail = add(body, new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V3(-0.1, 0.04, 0), V3(-0.2, 0.02, 0.02), V3(-0.3, 0.012, 0.0), V3(-0.38, 0.01, -0.03)]), 8, 0.0065, 4), pink, 0, 0, 0, false);
+  const legs = []; for (const sx of [-1, 1]) for (const sz of [-1, 1]) legs.push(add(body, bx(0.014, 0.03, 0.014), fur, sx * 0.055, 0.015, sz * 0.03, false));
+  const pts = path.map(([px, pz]) => [px, pz]);
+  const R = { x, z, yaw: o.yaw ?? (rnd() < 0.5 ? 0 : Math.PI), st: 'idle', t: 0, away: 0, k: 1, seg: 0, pause: 0, tx: x, tz: z, flee: o.flee ?? 3.2, sp: o.speed ?? 3.6, home: [x, z] };
+  R.reset = () => { R.x = R.tx = x; R.z = R.tz = z; R.yaw = o.yaw ?? R.yaw; R.st = 'idle'; R.t = 0; R.k = 1; R.seg = 0; R.away = 0; g.visible = true; };
+  R.step = dt => {
+    R.t += dt;
+    if (R.st === 'gone') { R.away = Math.abs(P.x - x) > 11 ? R.away + dt : 0; if (R.away > 5) R.reset(); return; }
+    let run = 0;
+    if (R.st === 'idle') {
+      if (!L.calm && heroNear(x, R.flee)) { R.st = 'flee'; R.t = 0; R.seg = 0; if (o.sound !== false) fx('skitter'); }
+      else {                                                // 嗅一嗅、挪两步、转个身
+        R.pause -= dt; const dx = R.tx - R.x, dz = R.tz - R.z, d = Math.hypot(dx, dz);
+        if (d < 0.01) { if (R.pause < 0 && !L.calm) { R.tx = x + L.rr(-0.25, 0.25); R.tz = z + L.rr(-0.08, 0.08); R.pause = L.rr(0.6, 3); } }
+        else { const st = Math.min(d, 0.5 * dt); R.x += dx / d * st; R.z += dz / d * st; R.yaw += wrapPi(Math.atan2(-dz, dx) - R.yaw) * (1 - Math.exp(-10 * dt)); run = 0.4; }
+        head.rotation.z = L.calm ? 0 : Math.sin(R.t * 13) * 0.08 * (Math.sin(R.t * 1.3) > 0.2 ? 1 : 0);
+      }
+    }
+    if (R.st === 'flee') {
+      const [tx, tz] = pts[Math.min(R.seg, pts.length - 1)], dx = tx - R.x, dz = tz - R.z, d = Math.hypot(dx, dz), st = R.sp * dt;
+      if (d <= st) { R.x = tx; R.z = tz; R.seg++; if (R.seg >= pts.length) R.st = 'hide'; }
+      else { R.x += dx / d * st; R.z += dz / d * st; R.yaw += wrapPi(Math.atan2(-dz, dx) - R.yaw) * (1 - Math.exp(-25 * dt)); }
+      run = 1;
+    }
+    if (R.st === 'hide') { R.k = Math.max(0, R.k - dt * 7); if (R.k <= 0) { R.st = 'gone'; R.away = 0; g.visible = false; } }
+    const bob = run ? Math.abs(Math.sin(R.t * 26)) * 0.012 * run : 0;
+    g.position.set(R.x, groundY(R.x) + bob, R.z); g.rotation.y = R.yaw; g.scale.setScalar((o.s ?? 1.5) * Math.max(0.02, R.k));
+    for (let i = 0; i < 4; i++) legs[i].scale.y = run ? 0.5 + 0.5 * Math.abs(Math.sin(R.t * 26 + i * 1.6)) : 1;
+    tail.rotation.y = Math.sin(R.t * (run ? 18 : 2)) * (run ? 0.25 : 0.08);
+  };
+  R.reset(); R.step(0); return L.add(R);
+}
+
+// ---- 蚂蚱 / 蟋蟀：趴在地上不动，主角走近就一蹦老远，落下来要是还近就再蹦；走远了回到原处 ----
+// list: [x, z]；o.col 颜色（枯草里是黄褐的，山洞里是灰白的）
+function mkHoppers(parent, L, list, o = {}) {
+  const c = o.col ?? 0x8a7a48, m = lam(c, { emissive: c, emissiveIntensity: o.glow ?? 0.2 }), s = o.s ?? 2.4;
+  const items = list.map(([x, z]) => {
+    const g = grp(parent, x, groundY(x), z); g.scale.setScalar(s);
+    add(g, bx(0.05, 0.014, 0.013), m, 0, 0.012, 0, false); add(g, bx(0.016, 0.016, 0.014), m, 0.03, 0.014, 0, false);
+    for (const sz of [-1, 1]) { const leg = add(g, bx(0.035, 0.005, 0.004), m, -0.008, 0.02, sz * 0.009, false); leg.rotation.z = 0.7; }
+    return { g, hx: x, hz: z, x, z, y: 0, vx: 0, vy: 0, vz: 0, air: false, yaw: L.rr(0, 6.28), cool: 0 };
+  });
+  const H = { st: 'idle', away: 0, items };
+  H.reset = () => { H.away = 0; for (const h of items) { h.x = h.hx; h.z = h.hz; h.air = false; h.cool = 0; h.g.visible = true; } };
+  H.step = dt => {
+    let far = true;
+    for (const h of items) {
+      if (Math.abs(P.x - h.x) < 11) far = false;
+      h.cool -= dt;
+      if (!h.air && !L.calm && h.cool < 0 && heroNear(h.x, o.flee ?? 1.7) && Math.abs(h.z) < 2.5) {
+        const dir = Math.sign(h.x - P.x) || 1, dist = L.rr(0.7, 1.5), T = L.rr(0.32, 0.45);
+        h.vx = dir * dist / T; h.vz = L.rr(-0.6, 0.6); h.vy = 4.9 * T * L.rr(0.9, 1.2); h.air = true; h.yaw = dir > 0 ? 0 : Math.PI; h.cool = L.rr(0.1, 0.3);
+      }
+      if (h.air) {
+        h.x += h.vx * dt; h.z += h.vz * dt; h.vy -= 9.8 * dt; h.y += h.vy * dt;
+        if (h.y <= 0 && h.vy < 0) { h.y = 0; h.air = false; }
+      }
+      h.g.position.set(h.x, groundY(h.x) + Math.max(0, h.y), h.z); h.g.rotation.y = h.yaw; h.g.rotation.z = h.air ? clamp(h.vy * 0.12, -0.5, 0.5) : 0;
+    }
+    H.away = far ? H.away + dt : 0; if (H.away > 5) H.reset();
+  };
+  H.reset(); return L.add(H);
+}
+
+// ---- 地上的纸片、塑料袋、落叶、花瓣：主角跑过去带起来的风把它们掀起来，翻几个跟头，再落回地上（落在新的地方）----
+// list: [x, z, 种类]；种类：paper 纸 / card 小块纸板 / bag 塑料袋 / leaf 叶子 / petal 花瓣 / clip 草屑
+// 只有跑起来才掀得动（慢慢走过去它们不动）；风大的地方（E.wind）飞得远一点
+const LOOSE_KINDS = {
+  paper: { w: 0.21, d: 0.28, col: 0xd9d6cb, lift: 1, drag: 2.2 }, card: { w: 0.3, d: 0.22, col: 0x8f7a5a, lift: 0.55, drag: 1.6 },
+  bag: { w: 0.32, d: 0.3, col: 0xc9cfcd, lift: 1.5, drag: 2.8 }, leaf: { w: 0.09, d: 0.13, col: 0x9a6a30, lift: 1.1, drag: 3 },
+  petal: { w: 0.05, d: 0.06, col: 0xe8a6b4, lift: 1.2, drag: 3.4 }, clip: { w: 0.03, d: 0.12, col: 0x7fa04a, lift: 1, drag: 3.2 },
+};
+function mkLoose(parent, L, list, o = {}) {
+  const mats = {}, items = list.map(([x, z, kind, col]) => {
+    const K = LOOSE_KINDS[kind], key = kind + (col ?? '');
+    const mat = mats[key] ??= lam(col ?? K.col, { side: THREE.DoubleSide, emissive: col ?? K.col, emissiveIntensity: o.glow ?? 0.1 });
+    const geo = new THREE.PlaneGeometry(K.w * (o.s ?? 1), K.d * (o.s ?? 1), 2, 2), p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setZ(i, (Math.abs(p.getX(i)) > 0.01 ? 0.02 : 0) * (kind === 'bag' ? 3 : 1) * (o.s ?? 1) + (Math.abs(p.getY(i)) > 0.01 ? 0.008 : 0));   // 边角翘起来一点
+    geo.computeVertexNormals();
+    const m = add(parent, geo, mat, x, groundY(x) + 0.004, z, false); m.receiveShadow = true;
+    return { m, K, hx: x, hz: z, x, z, y: 0, v: V3(), spin: V3(), air: false, yaw: L.rr(0, 6.28), t: L.rr(0, 9) };
+  });
+  const lay = it => { it.m.rotation.set(-Math.PI / 2, 0, it.yaw); it.m.position.set(it.x, groundY(it.x) + 0.004, it.z); };
+  const S = { st: 'idle', items };
+  S.reset = () => { for (const it of items) { it.x = it.hx; it.z = it.hz; it.air = false; it.y = 0; lay(it); } };
+  S.step = dt => {
+    const sp = Math.abs(P.vx);
+    for (const it of items) {
+      it.t += dt;
+      if (!it.air && !L.calm && sp > (o.minSpeed ?? 2.2) && state === 'play' && Math.abs(P.x - it.x) < 0.75 && Math.abs(it.z) < 1.3 && P.y - groundY(P.x) < 0.6) {
+        const k = it.K.lift * clamp(sp / 3.3, 0.5, 1.2);
+        it.air = true; it.y = 0.01; it.v.set(P.vx * L.rr(0.35, 0.75), L.rr(0.9, 1.9) * k, L.rr(-0.5, 0.5)); it.spin.set(L.rr(-9, 9), L.rr(-6, 6), L.rr(-9, 9));
+      }
+      if (!it.air) continue;
+      const dr = Math.exp(-it.K.drag * dt);
+      it.v.x = it.v.x * dr + (E.wind ?? 0) * 0.8 * dt; it.v.z *= dr; it.v.y = it.v.y * Math.exp(-it.K.drag * 0.5 * dt) - 3.2 * dt;
+      it.x += it.v.x * dt + Math.sin(it.t * 7) * 0.25 * dt; it.z += it.v.z * dt; it.y += it.v.y * dt;
+      it.m.rotation.x += it.spin.x * dt; it.m.rotation.y += it.spin.y * dt; it.m.rotation.z += it.spin.z * dt; it.spin.multiplyScalar(Math.exp(-0.8 * dt));
+      if (it.y <= 0 && it.v.y < 0) { it.air = false; it.y = 0; it.yaw = L.rr(0, 6.28); lay(it); continue; }
+      it.m.position.set(it.x, groundY(it.x) + 0.004 + it.y, it.z);
+    }
+  };
+  S.reset(); return L.add(S);
+}
+
+// ---- 易拉罐 / 小瓶子：横躺在主角走的那条线上，被脚碰到就骨碌碌滚出去，慢慢停下 ----
+// list: [x, z, 种类]；种类：can 易拉罐 / tin 罐头盒 / bottle 小玻璃瓶。lo、hi：滚到哪里为止（别滚进机关里）
+function mkCans(parent, L, list, o = {}) {
+  const items = list.map(([x, z, kind, col]) => {
+    const g = grp(parent, x, 0, z), s = o.s ?? 1.5, c = col ?? (kind === 'bottle' ? 0x4a6a58 : kind === 'tin' ? 0x8a8a80 : 0xa04a3a), m = lam(c, { emissive: c, emissiveIntensity: 0.12 });
+    const r = (kind === 'tin' ? 0.042 : kind === 'bottle' ? 0.03 : 0.033) * s, h = (kind === 'tin' ? 0.09 : kind === 'bottle' ? 0.2 : 0.12) * s;
+    const body = add(g, cy(r, r, h, 12), m, 0, r, 0); body.rotation.x = Math.PI / 2;
+    if (kind === 'bottle') add(body, cy(r * 0.4, r * 0.7, h * 0.35, 8), m, 0, h * 0.6, 0);
+    else add(body, cy(r * 0.95, r * 0.95, h * 0.08, 12), lam(0xb8bab4), 0, h * 0.5, 0, false);
+    return { g, body, r, hx: x, x, vx: 0, rot: L.rr(0, 6.28), still: true };
+  });
+  const S = { st: 'idle', items };
+  S.reset = () => { for (const it of items) { it.x = it.hx; it.vx = 0; it.still = true; it.g.position.set(it.x, groundY(it.x), it.g.position.z); } };
+  S.step = dt => {
+    for (const it of items) {
+      const foot = P.x + P.facing * 0.12;
+      if (!L.calm && state === 'play' && P.grounded && Math.abs(P.vx) > 0.4 && Math.abs(foot - it.x) < 0.16 && Math.abs(it.g.position.z) < 0.35 && Math.sign(it.x - P.x) === Math.sign(P.vx)) {
+        it.vx = P.vx * L.rr(1.15, 1.6) + Math.sign(P.vx) * 0.4; it.still = false;
+      }
+      if (it.still) continue;
+      it.x += it.vx * dt; it.vx *= Math.exp(-1.1 * dt); if (Math.abs(it.vx) < 0.08) { it.vx = 0; it.still = true; }
+      if (o.lo !== undefined && it.x < o.lo) { it.x = o.lo; it.vx = Math.abs(it.vx) * 0.3; }
+      if (o.hi !== undefined && it.x > o.hi) { it.x = o.hi; it.vx = -Math.abs(it.vx) * 0.3; }
+      it.rot -= it.vx / it.r * dt; it.g.position.x = it.x; it.g.position.y = groundY(it.x); it.g.rotation.z = it.rot;
+    }
+  };
+  S.reset(); return L.add(S);
+}
+
+// ============================================================
 //  玩家控制：移动 / 跳跃 / 攀爬 / 推拉 / 操作机关 / 回到存档点
 // ============================================================
 const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
@@ -7789,6 +8447,499 @@ airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
   sys.push(airLeaves(R, { n: 5, xs: [[X8 + 129, X8 + 140]], cols: [0x5a4430, 0x6e5236, 0x3e3024], fall: [0.3, 0.55], z: [-3.8, -2.9], size: [0.07, 0.1], wind: () => -0.35 }));
   sys.push(airFlock(R, [{ x1: X8 + 70, x2: X8 + 230, y: 19, z: -85, v: -3, n: 9, gap: 20, s: 1.5, c: 0x1c1a24 }], { on: () => 1 - CH8.END.deep }));
   sys.push(airBirds(R, flat(8, -3.4, [X8 + 131.6, X8 + 133.2, X8 + 136.0, X8 + 137.8], { c: 0x0a0b0a, s: 1.15, flee: 3, dy: 12, yMax: 14, toZ: -3, near: 0.6, minY: 6 }).map(b => (b[4].back = 25, b))));
+});
+
+// ============================================================
+//  主角脚边的东西（三）：每一章摆什么
+//  每一章四组，都在主角走的那条线（z = 0）前后两三米以内：
+//    floor 脚下 —— 贴着地面的：电缆、纸、螺母、油渍、排队的地标……主角从上面走过去
+//    behind 身后 —— 主角背后一两米、立着的：托盘、油桶、纸箱、推车……主角从它们前面走过
+//    front 身前 —— 主角和镜头之间一两米、矮矮的：管道、倒下的椅子、隔离桩……走过去时挡住一点脚
+//    alive 会动的 —— 老鼠、被跑过去带起来的纸片、被踢开的易拉罐
+//  看图工具（Last/tools/feet-sheet.html）可以一组一组地开关。种子是各章自己的，不动章节原有布景的随机数
+// ============================================================
+const FEET_GROUPS = ['floor', 'behind', 'front', 'alive'];
+const FEET_OFF = new URLSearchParams(location.search).get('feet') === '0';      // 地址后面加 ?feet=0：脚边的东西一样都不摆（对比用）
+function feetZone(n, vis, make) {
+  const S = { groups: {}, life: null, on: null };
+  const apply = () => { for (const k in S.groups) S.groups[k].visible = !S.on || S.on.includes(k); };
+  const z = defZone({ n, vis, feet: true,
+    *build(R) {
+      S.groups = {}; for (const k of FEET_GROUPS) { const g = new THREE.Group(); g.name = 'feet-' + k; R.add(g); S.groups[k] = g; }
+      S.life = groundLife(S.groups.alive, n * 31 + 7);
+      _seed = 7700 + n * 131;                            // 自己的种子：以后别的章节多摆了东西，这里的样子也不变
+      if (!FEET_OFF) yield* make(S.groups, S.life);
+      S.groups.floor.traverse(o => { if (o.isMesh) o.castShadow = false; });   // 贴着地面的东西薄得投不出看得见的影子：不进影子贴图，省一遍绘制
+      apply();
+    },
+    update(dt) { if (z.root && S.life) S.life.step(dt); },
+    reset() { if (S.life) S.life.reset(); }, solve() { z.reset(); },
+    unbuild() { S.groups = {}; S.life = null; },
+    only(names) { S.on = names; apply(); },
+    view: () => S });
+  return z;
+}
+// 地上的一片油渍 / 水渍 / 补过的水泥：几团叠在一起的深色，边缘发虚
+function stains(parent, x1, x2, z1, z2, spots, o = {}) {
+  return groundDecal(x1, x2, z1, z2, o.ppm ?? 48, g => {
+    const rgb = o.rgb ?? '6,9,10';
+    for (const [x, z, rx, rz, a0] of spots) {
+      const a = Math.min(0.8, a0 * (o.k ?? 1.7)), gr = g.createRadialGradient(x, z, 0, x, z, 1);
+      gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.55, `rgba(${rgb},${a * 0.85})`); gr.addColorStop(0.8, `rgba(${rgb},${a * 0.4})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+      g.save(); g.translate(x, z); g.scale(rx, rz); g.translate(-x, -z); g.fillStyle = gr; g.beginPath(); g.arc(x, z, 1, 0, 6.2832); g.fill(); g.restore();
+    }
+  }, { parent, order: o.order ?? -29 });
+}
+
+// ---- 第一章 · 工厂 ----
+// 脚下：从上面掉下来时踩塌的那块格栅碎在落脚的地方；几根粗电缆横穿过去（探照灯那台机器也有一根拖到场地前面）；地沟的铁箅子、油渍、散落的螺母和短铁条、压扁的纸板。
+// 身后：摞起来的托盘、倒着的油桶、工具推车、一排钢瓶、成箱的零件 —— 都在主角背后一到两米半；探照灯场地里不摆（会多出影子，躲没躲好的判定不算它们）。
+// 身前：一段贴地的管道（中间一只红色的阀门手轮）、一把倒在地上的椅子、一摞钢管、一只水桶。
+// 会动的：托盘底下、钢瓶后面、纸箱边上各有一只老鼠，走近了就窜进去；地上几张纸，跑过去带起来
+feetZone(1, [-40, 105], function* (G, L) {
+  const C = { steel: 0x3a4448, dark: 0x22292c, rust: 0x5e3e2e, rust2: 0x4a3a31, wood: 0x5a4a38, wood2: 0x473b2e, card: 0x6e5c44, cable: 0x101416, paper: 0xc4c9c4, red: 0x7a2e22 };
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  // 落脚的地方：踩塌的格栅碎成几块（上面那一截还挂在通道边上）
+  for (const [x, z, w, d, yaw] of [[1.6, 0.55, 0.9, 0.55, 0.3], [2.9, -0.35, 0.6, 0.45, -0.5], [3.7, 0.95, 0.5, 0.3, 1.1]]) {
+    const y = groundY(x) + 0.015; B.at(x, y, z, yaw, rr(-0.05, 0.05), rr(-0.08, 0.08));
+    for (const s of [-1, 1]) { B.box(w, 0.03, 0.03, C.steel, 0, 0, s * d / 2); B.box(0.03, 0.03, d, C.steel, s * w / 2, 0, 0); }
+    for (let i = 1; i < Math.round(w / 0.09); i++) B.box(0.012, 0.025, d, C.steel, -w / 2 + i * w / Math.round(w / 0.09), 0, 0);
+  }
+  scatter(B, 2.4, 0.3, 14, 1.3, ['nut', 'bar', 'chip'], [C.steel, C.dark, C.rust]);
+  // 电缆：开头那间屋子横穿一根；推车轨道前后各一根；探照灯机器拖出来一根，弯弯曲曲穿过场地；压机前面两根并排
+  B.vary = 0.04;
+  floorLine(B, -6.5, -2.6, 8.2, 1.2, 0.034, C.cable, { wob: 0.7, loop: 0.55 });
+  floorLine(B, 10.8, 2.6, 14.6, -2.4, 0.03, C.cable, { wob: 0.2 });
+  floorLine(B, 39.5, 2.8, 23.2, 1.05, 0.03, C.cable, { wob: 0.2 });
+  floorLine(B, 69.5, -15.5, 64.5, 3.2, 0.04, C.cable, { wob: 0.6 });
+  floorLine(B, 82.5, -2.2, 99.5, 2.9, 0.032, C.cable, { wob: 0.3 }); floorLine(B, 83.0, -2.0, 99.0, 3.1, 0.022, C.cable, { wob: 0.35 });
+  B.vary = 0.08;
+  grate(B, 6.4, 1.25, 1.1, 0.42, 0.02); grate(B, 21.6, 1.75, 0.9, 0.4, -0.04); grate(B, 85.2, 1.4, 1.1, 0.42, 0.03);
+  flatSheet(B, -3.2, 0.9, 0.9, 0.62, 0.4, C.card); flatSheet(B, 12.6, -0.75, 0.75, 0.55, -0.7, C.card); flatSheet(B, 91.4, 1.0, 0.8, 0.6, 2.4, C.card);
+  scatter(B, 13.4, 0.6, 9, 0.9, ['nut', 'bar'], [C.steel, C.dark]); scatter(B, 87.5, -0.9, 10, 1.1, ['nut', 'bar', 'chip'], [C.steel, C.rust, C.dark]);
+  scatter(B, 66.5, 1.4, 8, 1.2, ['nut', 'chip'], [C.steel, C.dark]); scatter(B, 33.5, 1.9, 7, 0.8, ['nut', 'bar'], [C.steel, C.rust]);
+  B.mesh(G.floor);
+  stains(G.floor, -7, 24, -3.2, 3.2, [[1.2, 0.2, 1.4, 0.55, 0.32], [7.2, 1.3, 0.9, 0.35, 0.4], [13.2, -0.4, 1.1, 0.4, 0.28], [21.4, 1.8, 0.8, 0.3, 0.4], [-4.5, -1.6, 1.3, 0.5, 0.3]]);
+  stains(G.floor, 80, 100, -3.2, 3.2, [[85.3, 1.4, 1.0, 0.38, 0.42], [89.5, -0.8, 1.5, 0.5, 0.3], [95.6, 1.2, 1.1, 0.4, 0.3], [98.8, -1.5, 0.9, 0.5, 0.35]]);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  pallet(B, -1.1, -1.95, 0.1, 4); pallet(B, 0.4, -2.35, -0.25, 2); drum(B, 1.45, -1.5, { tip: true, yaw: 0.9, col: 0x3c4f56 }); drum(B, -4.6, -2.2, { col: 0x5b3c2c });
+  toolCart(B, 5.5, -1.75, 0.15); bucket(B, 6.4, -1.3, { col: 0x58626a });
+  drum(B, 12.0, -2.1, { col: 0x5b3c2c }); drum(B, 12.7, -2.35, { col: 0x3c4f56 }); bucket(B, 13.4, -1.6, { tip: true, yaw: 2.2 });
+  for (const [x, z, w, h, d, yaw, k] of [[22.9, -2.0, 0.7, 0.5, 0.55, 0.1, 0], [23.5, -2.3, 0.6, 0.45, 0.5, -0.2, 0], [23.1, -2.1, 0.55, 0.4, 0.45, 0.3, 0.5]])
+    cardBox(B, x, z, w, h, d, yaw, { col: C.card, y: k ? groundY(x) + 0.5 : undefined });
+  cylinders(B, 28.6, -2.05, 3, { cols: [0x3e5458, 0x56463a, 0x3a3f42] });
+  drum(B, 33.6, -2.1, { col: 0x3c4f56 }); drum(B, 34.25, -2.35, { col: 0x3c4f56 }); drum(B, 34.9, -2.1, { col: 0x5b3c2c }); pallet(B, 36.4, -2.2, 1.45, 1, { y: groundY(36.4) });
+  toolCart(B, 83.6, -1.8, -0.2, { box: 0x3f4d52 });
+  for (const [x, z, w, h, d, yaw, y] of [[89.6, -1.9, 0.8, 0.55, 0.6, 0.05, 0], [90.5, -2.2, 0.7, 0.5, 0.55, -0.15, 0], [89.9, -2.0, 0.6, 0.45, 0.5, 0.25, 0.55], [92.6, -1.7, 0.55, 0.4, 0.45, 0.6, 0]])
+    cardBox(B, x, z, w, h, d, yaw, { col: C.card, y: groundY(x) + y, open: y ? 0.9 : 0 });
+  pallet(B, 94.6, -2.1, -0.08, 3);
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  pipeRun(B, -2.4, 3.9, 2.0, 0.3, 0.075, { valve: 1.0, step: 2.4, wheel: C.red, dive: true });
+  pipeRun(B, -9.5, -5.2, 2.6, 0.26, 0.06, { step: 2.0, dive: true });
+  chair(B, 11.6, 1.75, 0.6, { tip: true, col: 0x4a3a2c });
+  stickPile(B, 30.2, 1.95, 6, 2.6, 0.045, C.steel, 0.05); bucket(B, 26.4, 1.55, { col: 0x58626a });
+  pallet(B, 59.6, 2.3, 0.12, 1); bucket(B, 73.8, 2.0, { tip: true, yaw: -0.6, col: 0x58626a });
+  pallet(B, 86.2, 1.95, -0.15, 2); bucket(B, 93.4, 1.6, { col: 0x5b3c2c }); chair(B, 96.6, 1.9, -0.5, { col: 0x4a3a2c });
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  mkRat(G.alive, L, 2.35, -1.1, [[0.6, -1.45], [-0.4, -1.7], [-1.1, -1.95]], { yaw: Math.PI });     // 一落地就窜进托盘底下
+  mkRat(G.alive, L, 31.6, -1.6, [[29.6, -1.75], [28.9, -2.1]], { yaw: Math.PI });                   // 窜到钢瓶后面
+  mkRat(G.alive, L, 91.6, -1.4, [[90.9, -1.6], [90.4, -2.2]], { yaw: Math.PI * 0.9 });              // 钻到纸箱后面
+  mkLoose(G.alive, L, [[4.2, 0.35, 'paper', C.paper], [7.6, -0.4, 'paper', C.paper], [8.3, 0.6, 'paper', 0xb6b8ad], [-1.2, -0.3, 'paper', C.paper],
+    [27.8, 0.85, 'paper', C.paper], [31.1, -0.95, 'paper', 0xb6b8ad], [84.4, 0.4, 'paper', C.paper], [88.0, -0.3, 'paper', 0xb6b8ad], [92.5, 0.5, 'paper', C.paper]], { glow: 0.05 });
+});
+
+// ---- 第四章 · 配给街 ----
+// 脚下：配给机前地上画着一格一格排队站的位置（漆磨掉了一半）、一张张领完扔掉的包装纸、易拉罐、路边的雨水箅子和一只井盖。
+// 身后：配给机左边一堆黑色垃圾袋和纸箱、右边摞着空的周转箱；街边一辆支着的自行车、一道沙袋垒的矮墙、一只小方凳。
+// 身前：排队用的立柱和带子，主角正好从队伍的通道里走过去（有一根被碰倒了）；街边一排隔离桩。
+// 会动的：跑过去带起来的纸片；走过去会被踢开的易拉罐
+feetZone(4, [X4 - 6, X5 + 6], function* (G, L) {
+  const X = X4, K = X + 12, C = { bag: 0x272c2e, card: 0x8f7a5a, crate: 0x5a6f7a, crate2: 0x6f7a6a, post: 0x55595a, belt: 0x6e3a33, bol: 0x3f4446, paper: 0xdedbd0, wrap: 0xb8a878 };
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  grate(B, X + 6.2, 1.5, 0.9, 0.36, 0, { col: 0x3a3f41 }); grate(B, X + 44.5, 1.5, 0.9, 0.36, 0, { col: 0x3a3f41 }); grate(B, X + 63, 1.5, 0.9, 0.36, 0, { col: 0x3a3f41 });
+  B.at(X + 52.4, groundY(X + 52.4), -0.9); B.cyl(0.38, 0.38, 0.014, 20, 0x3a3e40, 0, 0.007, 0); B.torus(0.3, 0.01, 0x2c3032, 0, 0.012, 0, Math.PI / 2, 0, 0); B.torus(0.18, 0.01, 0x2c3032, 0, 0.012, 0, Math.PI / 2, 0, 0);
+  for (const [x, z, n] of [[K - 3.5, 0.2, 7], [X + 34, 0.3, 4], [X + 50, -0.2, 5], [X + 70, 0.4, 5]]) scatter(B, x, z, n, 1.6, ['cap', 'chip'], [0x8a8a80, 0x6a6e70, C.wrap]);
+  for (const [x, z, yaw] of [[K - 5.2, 0.9, 0.3], [K + 1.8, 1.0, -0.6], [X + 33.5, -0.8, 1.2], [X + 47.5, 0.95, 2.4], [X + 58.3, -0.7, 0.5]]) flatSheet(B, x, z, 0.32, 0.22, yaw, C.wrap, { t: 0.006 });
+  B.mesh(G.floor);
+  // 排队的地标：配给机前面一格一格往左排，漆磨掉了一半
+  groundDecal(K - 9.5, K + 0.4, -1.0, 1.0, 64, g => {
+    let s = 77; const rn = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    for (let i = 0; i < 10; i++) {
+      const x = K - 0.6 - i * 0.92, a = 0.55 - i * 0.035;
+      g.fillStyle = `rgba(214,206,170,${a})`; g.fillRect(x - 0.24, -0.34, 0.48, 0.07); g.fillRect(x - 0.24, 0.27, 0.48, 0.07); g.fillRect(x - 0.24, -0.34, 0.06, 0.68); g.fillRect(x + 0.18, -0.34, 0.06, 0.68);
+      g.globalCompositeOperation = 'destination-out'; for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(0,0,0,${0.4 + rn() * 0.6})`; g.fillRect(x - 0.3 + rn() * 0.6, -0.4 + rn() * 0.8, 0.03 + rn() * 0.1, 0.02 + rn() * 0.05); } g.globalCompositeOperation = 'source-over';
+    }
+    g.fillStyle = 'rgba(214,206,170,0.5)'; g.fillRect(K - 0.2, -0.9, 0.09, 1.8);       // 配给机前那道停止线
+  }, { parent: G.floor, order: -29 });
+  stains(G.floor, X + 2, X + 72, -2, 2.4, [[X + 6.2, 1.55, 0.9, 0.3, 0.3], [K - 1, -0.2, 1.3, 0.5, 0.18], [X + 44.5, 1.5, 0.8, 0.3, 0.3], [X + 63, 1.55, 0.9, 0.3, 0.3], [X + 39, -0.5, 1.5, 0.45, 0.15]]);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  bags(B, K - 3.4, -2.0, 5, { cols: [C.bag, 0x2f3638, 0x353b36] }); cardBox(B, K - 2.4, -2.25, 0.6, 0.45, 0.5, 0.3, { col: C.card, crush: 0.6 }); cardBox(B, K - 4.3, -2.4, 0.55, 0.4, 0.45, -0.4, { col: C.card, open: 1.1 });
+  crates(B, K + 1.3, -2.1, 3, { col: C.crate }); crates(B, K + 1.95, -2.35, 2, { col: C.crate2, yaw: 0.2 }); crates(B, K + 1.6, -1.55, 1, { col: C.crate, yaw: -0.3 });
+  stool(B, X + 19.6, -1.6, 0.4, { col: 0x5c4833 });
+  bike(B, X + 41.5, -1.9, 0.05); sandbags(B, X + 48.2, -2.3, 5, 3, 0, { col: 0x8a8068 });
+  bags(B, X + 57.2, -2.1, 4, { cols: [C.bag, 0x2f3638] }); cardBox(B, X + 58.3, -2.3, 0.7, 0.5, 0.55, 0.15, { col: C.card });
+  crates(B, X + 66.5, -1.9, 2, { col: C.crate2, yaw: -0.15 });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  stanchions(B, K - 8.8, K - 0.9, 1.15, 5, { col: C.post, belt: C.belt });
+  stanchions(B, K - 8.8, K - 0.9, -1.15, 5, { col: C.post, belt: C.belt, broken: 2, yaw: 0.6 });
+  for (const x of [X + 2.2, X + 5.4, X + 34.0, X + 39.6, X + 45.2, X + 50.8, X + 56.4, X + 62.0, X + 67.6]) bollard(B, x, 2.05, { col: C.bol });
+  trafficCone(B, X + 53.3, 1.5, { tip: true, yaw: 0.8 }); crates(B, X + 60.2, 1.6, 1, { col: C.crate, yaw: 0.4 });
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  const pp = []; for (const [x0, x1, n] of [[X + 1, K - 1, 9], [X + 31, X + 74, 12]]) for (let i = 0; i < n; i++) pp.push([lerp(x0, x1, (i + rnd()) / n), rr(-0.9, 1.0), rnd() < 0.7 ? 'paper' : 'card', rnd() < 0.5 ? C.paper : rnd() < 0.5 ? C.wrap : undefined]);
+  mkLoose(G.alive, L, pp);
+  mkCans(G.alive, L, [[K - 6.1, 0.12, 'can'], [X + 44.0, -0.1, 'tin'], [X + 52.9, 0.15, 'can', 0x4a6a8a], [X + 65.7, 0.05, 'bottle']], { lo: X + 1, hi: X5 - 2 });
+});
+
+// 一丛丛野草：沿着 x 撒开，z 在 z1..z2 之间；kinds 种类（plants 图集里的：grass / dry / seed / fern）；cols 几种颜色
+function weeds(parent, x1, x2, z1, z2, n, kinds, cols, hMin = 0.18, hMax = 0.42) {
+  const list = []; for (let i = 0; i < n; i++) { const x = rr(x1, x2); list.push([x, groundY(x), rr(z1, z2), pick(kinds), rr(hMin, hMax), pick(cols)]); }
+  return plants(parent, list);
+}
+// 一只手提的工具箱
+function toolbox(B, x, z, yaw, o = {}) {
+  const c = o.col ?? 0x7a3a2a, y = groundY(x);
+  B.at(x, y, z, yaw); B.box(0.48, 0.2, 0.22, c, 0, 0.1, 0); B.box(0.5, 0.025, 0.24, c, 0, 0.2, 0); B.box(0.2, 0.03, 0.03, 0x22282a, 0, 0.25, 0); for (const s of [-1, 1]) B.box(0.025, 0.05, 0.025, 0x22282a, s * 0.1, 0.225, 0);
+}
+
+// ---- 第三章 · 围墙与废料场 ----
+// 脚下：碎水泥块和石子、钢筋头和铁皮片、油渍、一道车辙；墙外的荒地上长着枯草。
+// 身后：一摞摞旧轮胎、生锈的油桶、侧躺的洗衣机、斜靠着的车门、一堆堆带钢筋的水泥块 —— 回收线那边扔出来的东西。
+// 身前：竖着半埋在土里的轮胎、翘着钢筋的水泥块、躺倒的油桶、弯管子。
+// 会动的：跑过去就被带着飞一阵的塑料袋和纸、油桶边的老鼠、枯草里的蚂蚱。
+// 墙脚到断桥那一段（追犬在那里来回跑）什么都不摆
+feetZone(3, [X3 - 6, X4 + 6], function* (G, L) {
+  const X = X3, C = { conc: 0x8a857a, conc2: 0x77736a, rust: 0x7a4a32, rust2: 0x5e4232, blue: 0x4f6670, tire: 0x2a2826, steel: 0x6d6a62, card: 0x8f7a5a, wood: 0x6e5a42 };
+  const YARD = [X + 3, X + 43], WASTE = [X + 61, X4 - 3];
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  for (const [a, b] of [YARD, WASTE]) for (let x = a; x < b; x += rr(1.6, 3.2)) { const z = rr(-1.4, 1.8); if (Math.abs(z) < 0.45) continue; chunk(B, x, z, rr(0.06, 0.13), { col: pick([C.conc, C.conc2]), rebar: rnd() < 0.3 }); }
+  for (const [a, b] of [YARD, WASTE]) for (let x = a; x < b; x += rr(3, 6)) scatter(B, x, rr(-1, 1.2), 10, 1.2, ['stone', 'chip', 'bar'], [C.conc2, C.conc, C.rust2, 0x5a564e]);
+  for (const [x, z, w, d, yaw, c] of [[X + 8.5, 1.1, 0.8, 0.5, 0.5, C.steel], [X + 15.4, -0.9, 0.7, 0.55, -0.3, C.card], [X + 36.2, 1.3, 0.9, 0.5, 1.9, C.steel], [X + 66, -0.8, 0.8, 0.6, 0.2, C.steel], [X + 83.5, 1.2, 0.7, 0.45, 2.6, C.rust2], [X + 104, -0.9, 0.9, 0.55, 0.8, C.steel], [X + 121.5, 1.0, 0.7, 0.5, -0.6, C.card]]) flatSheet(B, x, z, w, d, yaw, c);
+  B.vary = 0.04; floorLine(B, X + 19.5, -6.2, X + 24.5, 2.4, 0.03, 0x1e2022, { wob: 0.4 }); B.vary = 0.08;     // 回收线拖出来的一根电缆
+  B.mesh(G.floor);
+  stains(G.floor, X + 2, X + 44, -2.5, 2.5, [[X + 10, 0.6, 1.2, 0.4, 0.3], [X + 23, -0.7, 1.6, 0.5, 0.25], [X + 37, 1.2, 1.1, 0.4, 0.3]]);
+  // 荒地上的车辙：两道压实了的深色印子，弯弯地往右去
+  groundDecal(WASTE[0], WASTE[1], -1.6, 2.4, 22, g => { for (const dz of [-0.55, 1.05]) { g.strokeStyle = 'rgba(52,44,34,0.55)'; g.lineWidth = 0.36; g.beginPath(); for (let x = WASTE[0]; x <= WASTE[1]; x += 0.5) { const z = dz + Math.sin(x * 0.07) * 0.35; x === WASTE[0] ? g.moveTo(x, z) : g.lineTo(x, z); } g.stroke(); } }, { parent: G.floor, order: -29, fadeL: 6, fadeR: 6 });
+  // 枯草：一簇一簇的，不是均匀撒开（荒地上的草长在石头边、车辙外面）
+  const tufts = []; for (let x = WASTE[0]; x < WASTE[1]; x += rr(1.2, 2.6)) { const z = rnd() < 0.5 ? rr(-2.6, -0.75) : rr(0.75, 2.8), n = 3 + Math.floor(rnd() * 6); for (let i = 0; i < n; i++) { const xx = x + rr(-0.35, 0.35); tufts.push([xx, groundY(xx), z + rr(-0.15, 0.15), pick(['dry', 'dry', 'seed']), rr(0.14, 0.42), pick([0xa08c5c, 0x8a7448, 0xb09a68, 0x7a6a48])]); } }
+  plants(G.floor, tufts);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  tire(B, X + 7.8, -2.0, { stack: 3, col: C.tire }); tire(B, X + 8.7, -2.4, { stack: 2, col: C.tire }); tire(B, X + 9.6, -1.6, { stand: true, yaw: 0.4, col: C.tire });
+  drum(B, X + 12.5, -2.2, { col: C.rust }); drum(B, X + 13.2, -2.5, { col: C.blue }); drum(B, X + 13.9, -1.9, { tip: true, yaw: -0.4, col: C.rust });
+  pallet(B, X + 18.4, -2.1, 0.3, 2, { col: 0x7a6650, col2: 0x5e4e3c }); washer(B, X + 23.5, -2.2, -0.3, { tip: true });
+  for (const [x, n] of [[X + 32.5, 5], [X + 39.5, 4]]) for (let i = 0; i < n; i++) chunk(B, x + rr(-0.9, 0.9), rr(-2.8, -1.7), rr(0.18, 0.38), { col: pick([C.conc, C.conc2]) });
+  carDoor(B, X + 35.6, -2.1, 0.15, { col: 0x5a6a72 });
+  for (const [x, kind] of [[X + 63.5, 'chunks'], [X + 73.2, 'tires'], [X + 85.2, 'door'], [X + 92.3, 'washer'], [X + 101.5, 'chunks'], [X + 111.4, 'tires'], [X + 118.6, 'drums']]) {
+    if (kind === 'chunks') for (let i = 0; i < 5; i++) chunk(B, x + rr(-1, 1), rr(-2.9, -1.6), rr(0.18, 0.42), { col: pick([C.conc, C.conc2]) });
+    if (kind === 'tires') { tire(B, x, -2.1, { stack: 4, col: C.tire }); tire(B, x + 0.8, -1.7, { stand: true, yaw: -0.3, bury: 0.12, col: C.tire }); drum(B, x - 0.9, -2.4, { col: C.rust }); }
+    if (kind === 'door') { carDoor(B, x, -2.0, -0.1, { col: 0x6a5a4e }); bentPipe(B, x + 1.1, -1.6, 1.6, 0.05, 0.4, C.rust2); }
+    if (kind === 'washer') { washer(B, x, -2.2, 0.2); chunk(B, x + 0.8, -1.8, 0.2, { col: C.conc }); }
+    if (kind === 'drums') { drum(B, x, -2.3, { col: C.rust }); drum(B, x + 0.62, -2.0, { tip: true, yaw: 0.6, col: C.blue }); drum(B, x - 0.6, -2.6, { col: C.rust2 }); }
+  }
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  tire(B, X + 5.6, 1.8, { stand: true, yaw: 0.25, bury: 0.15, col: C.tire }); chunk(B, X + 16.2, 1.7, 0.24, { col: C.conc }); drum(B, X + 25.4, 2.2, { tip: true, yaw: 0.3, col: C.rust }); bentPipe(B, X + 33.8, 1.5, 1.8, 0.05, -0.2, C.rust2);
+  for (const [x, kind, z] of [[X + 62.6, 'chunk', 1.5], [X + 66.4, 'tire', 1.7], [X + 72.5, 'pipe', 2.2], [X + 76.4, 'chunk', 1.5], [X + 79.2, 'chunk', 1.9], [X + 84.2, 'flat', 2.2], [X + 89.3, 'pipe', 1.4], [X + 94.6, 'tire', 1.9],
+    [X + 99.2, 'flat', 2.0], [X + 104.4, 'chunk', 2.3], [X + 108.4, 'chunk', 1.6], [X + 112.6, 'pipe', 2.0], [X + 116.8, 'drum', 2.1], [X + 122.2, 'tire', 1.6], [X + 127.5, 'chunk', 1.8]]) {
+    if (kind === 'tire') tire(B, x, z, { stand: true, yaw: -0.3, bury: 0.15, col: C.tire });
+    if (kind === 'chunk') chunk(B, x, z, rr(0.2, 0.28), { col: pick([C.conc, C.conc2]) });
+    if (kind === 'pipe') bentPipe(B, x, z, 1.6, 0.05, 0.9, C.rust2);
+    if (kind === 'flat') tire(B, x, z, { col: C.tire });
+    if (kind === 'drum') drum(B, x, z, { tip: true, yaw: -0.5, col: C.rust });
+  }
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  const pp = []; for (let x = YARD[0]; x < YARD[1]; x += rr(2.5, 4.5)) pp.push([x, rr(-0.9, 1.0), rnd() < 0.5 ? 'paper' : 'card', rnd() < 0.5 ? 0xcfc8b6 : undefined]);
+  for (let x = WASTE[0]; x < WASTE[1]; x += rr(5, 9)) pp.push([x, rr(-0.8, 0.9), rnd() < 0.6 ? 'bag' : 'paper', rnd() < 0.5 ? 0xd2d4cc : 0xb8c4c8]);
+  mkLoose(G.alive, L, pp);
+  mkRat(G.alive, L, X + 14.8, -1.45, [[X + 14.2, -1.8], [X + 13.6, -2.2]], { yaw: Math.PI, col: 0x5e544a });
+  mkRat(G.alive, L, X + 74.4, -1.5, [[X + 73.6, -1.8], [X + 73.1, -2.2]], { yaw: Math.PI * 0.9, col: 0x5e544a });
+  const hp = []; for (let x = WASTE[0] + 2; x < WASTE[1]; x += rr(2.2, 4.5)) hp.push([x, rr(-1.6, 1.8)]);
+  mkHoppers(G.alive, L, hp, { col: 0x9a8650 });
+});
+
+// ---- 第五章 · 维修巷 ----
+// 脚下：一摊摊油渍、散落的螺丝和铁屑、服务站拖出来的一根电缆、雨水箅子、压扁的纸板。
+// 身后：靠墙的零件箱、一张带台钳的工作台、一摞旧轮胎、成对的钢瓶、纸箱、工具推车 —— 巷子里的人在这里修东西。
+// 身前：工具箱、油壶、水桶、平躺的轮胎、一段贴地的管子、倒下的方凳。
+// 会动的：工作台下面、轮胎边上的老鼠；地上的纸片
+feetZone(5, [X5 - 4, X6 + 4], function* (G, L) {
+  const X = X5, C = { steel: 0x4a5458, dark: 0x2a3033, rust: 0x6a4a36, wood: 0x5c4833, card: 0x7e6c52, tire: 0x1e2122, paper: 0xd0d0c6 };
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  for (const [x, z, n] of [[X + 9, 0.8, 9], [X + 25, 1.3, 8], [X + 45, -0.8, 9], [X + 55, 1.0, 7]]) scatter(B, x, z, n, 1.0, ['nut', 'bar', 'chip'], [C.steel, C.dark, C.rust]);
+  B.vary = 0.04; floorLine(B, X + 7.2, -1.3, X + 12.5, 1.6, 0.03, 0x111416, { wob: 0.35, loop: 0.7, loopR: 0.18 }); B.vary = 0.08;
+  grate(B, X + 20.2, 1.35, 1.0, 0.4, 0, { col: 0x30373a }); grate(B, X + 49, 1.25, 1.0, 0.4, 0, { col: 0x30373a });
+  flatSheet(B, X + 4.4, 0.8, 0.8, 0.6, 0.3, C.card); flatSheet(B, X + 40.5, 0.7, 0.75, 0.55, -1.1, C.card);
+  B.mesh(G.floor);
+  stains(G.floor, X + 1, X + 62, -2.6, 2.6, [[X + 5, 0.4, 1.2, 0.45, 0.35], [X + 11, -0.6, 1.5, 0.5, 0.3], [X + 22, 1.2, 1.0, 0.4, 0.35], [X + 28, -0.4, 1.4, 0.5, 0.25], [X + 42, 0.9, 1.1, 0.4, 0.35], [X + 53, -0.7, 1.6, 0.55, 0.3]]);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  partsBin(B, X + 3.6, -2.2, 0.1); tire(B, X + 5.2, -2.3, { stack: 3, col: C.tire });
+  workbench(B, X + 10.6, -2.6, 0.03); cardBox(B, X + 12.4, -2.1, 0.6, 0.45, 0.5, -0.2, { col: C.card }); cardBox(B, X + 12.6, -2.3, 0.5, 0.4, 0.45, 0.3, { col: C.card, y: groundY(X + 12.6) + 0.45 });
+  drum(B, X + 22.4, -2.5, { col: 0x3c4f56 }); drum(B, X + 23.1, -2.2, { col: C.rust }); partsBin(B, X + 26.2, -2.3, -0.15, { w: 0.7 }); cylinders(B, X + 29.6, -2.6, 2, { cols: [0x3e5458, 0x5a4a3a] });
+  toolCart(B, X + 39.4, -2.0, -0.1); workbench(B, X + 45.2, -2.7, -0.02); tire(B, X + 51.0, -2.2, { stack: 4, col: C.tire }); tire(B, X + 51.9, -1.8, { stand: true, yaw: 0.3, col: C.tire });
+  partsBin(B, X + 56.8, -2.3, 0.2); cardBox(B, X + 58.4, -2.2, 0.7, 0.5, 0.55, 0.1, { col: C.card, open: 1.0 });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  toolbox(B, X + 8.6, 1.6, 0.3); jerrycan(B, X + 12.6, 1.8, -0.4, { col: 0x6a3a2c }); bucket(B, X + 24.2, 1.5, { col: 0x5e686c });
+  tire(B, X + 30.4, 2.1, { col: C.tire }); pipeRun(B, X + 40.2, X + 45.6, 2.2, 0.26, 0.06, { dive: true, step: 2.2 });
+  stool(B, X + 54.8, 1.7, 0.4, { tip: true, col: C.wood }); jerrycan(B, X + 59.6, 1.5, 0.6, { tip: true, col: 0x5a6b4a });
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  mkRat(G.alive, L, X + 12.8, -1.5, [[X + 11.6, -1.9], [X + 10.9, -2.5]], { yaw: Math.PI, col: 0x605650 });
+  mkRat(G.alive, L, X + 52.6, -1.4, [[X + 51.6, -1.8], [X + 51.1, -2.2]], { yaw: Math.PI * 0.95, col: 0x605650 });
+  const pp = []; for (const [a, b] of [[X + 2, X + 17], [X + 36, X + 62]]) for (let x = a; x < b; x += rr(2, 4)) pp.push([x, rr(-0.9, 1.0), rnd() < 0.7 ? 'paper' : 'card', rnd() < 0.5 ? C.paper : undefined]);
+  mkLoose(G.alive, L, pp);
+});
+
+// ---- 第六章 · 供水街区 ----
+// 脚下：从水泵拖过来的一根水管、水泵和漏水的管子底下湿了一大片、雨水箅子、井盖、瓶盖；街尾长出了草。
+// 身后：水泵边排着一溜等水的水壶、水桶和盆；监控杆之间一张旧椅子和几盆菜苗；闸门后面漏水的管子底下摆着接水的桶和盆；街尾的旧轮胎、生锈的油桶。
+// 身前：接水管的盆、一箱空瓶子、一段贴地的管子、油壶、倒着的水桶、方凳；街尾的草丛。
+// 会动的：地上的纸片、被踢开的易拉罐、街尾草里的蚂蚱
+feetZone(6, [X6 - 6, X7 + 6], function* (G, L) {
+  const X = X6, PUMP = X + 18.5, C = { steel: 0x4f585c, blue: 0x4f6a7a, green: 0x56704e, yellow: 0x9a8a4a, red: 0x7a3e34, white: 0xb8bcb4, card: 0x8f7a5a, wood: 0x6a5640, tire: 0x262829, hose: 0x2e4a3a };
+  const GRASS = [X + 73, X7 - 2];
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  B.vary = 0.04; floorLine(B, PUMP + 0.4, -0.85, PUMP + 4.6, 1.45, 0.022, C.hose, { wob: 0.35 }); B.vary = 0.08;           // 水泵拖出来的水管，通到前面的盆里
+  grate(B, X + 26.2, 1.4, 0.9, 0.36, 0, { col: 0x3a4144 }); grate(B, X + 47.6, 1.4, 0.9, 0.36, 0, { col: 0x3a4144 });
+  B.at(X + 31.4, groundY(X + 31.4), -0.85); B.cyl(0.38, 0.38, 0.014, 20, 0x3a3f42, 0, 0.007, 0); B.torus(0.3, 0.01, 0x2c3134, 0, 0.012, 0, Math.PI / 2, 0, 0);
+  for (const [x, z, n] of [[X + 4, 0.6, 6], [X + 23, -0.4, 6], [X + 37, 0.8, 5], [X + 52, -0.7, 5], [X + 66, 0.6, 5]]) scatter(B, x, z, n, 1.4, ['cap', 'chip', 'stone'], [0x8a8a80, 0x5a6266, C.blue, 0x6a6e70]);
+  B.mesh(G.floor);
+  stains(G.floor, X + 14, X + 30, -2.4, 2.4, [[PUMP + 1, -0.6, 2.2, 0.8, 0.42], [PUMP + 3.8, 1.3, 1.2, 0.5, 0.4], [PUMP - 1.5, 0.2, 1.0, 0.4, 0.25], [X + 26.2, 1.4, 0.9, 0.35, 0.35]], { rgb: '14,22,28' });
+  stains(G.floor, X + 44, X + 62, -2.4, 2.4, [[X + 50, -0.4, 2.0, 0.9, 0.42], [X + 51.5, 0.9, 1.2, 0.5, 0.35], [X + 47.6, 1.4, 0.9, 0.35, 0.3]], { rgb: '14,22,28' });
+  weeds(G.floor, GRASS[0], GRASS[1], -2.6, -0.6, 90, ['grass', 'seed', 'grass'], [0x6a8a48, 0x7f9a52, 0x5e7a40], 0.15, 0.42);
+  weeds(G.floor, GRASS[0], GRASS[1], 0.6, 2.4, 70, ['grass', 'seed'], [0x6a8a48, 0x7f9a52, 0x5e7a40], 0.12, 0.36);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  // 等水的一溜：水壶、水桶、盆，挨个排着，排到了监控杆底下
+  let qx = PUMP + 2.3; for (const k of ['jerry', 'bucket', 'jerry', 'basin', 'bucket', 'jerry', 'bucket', 'jerry', 'basin', 'bucket']) {
+    const z = -1.65 + rr(-0.08, 0.08);
+    if (k === 'jerry') { jerrycan(B, qx, z, rr(-0.2, 0.2), { col: pick([C.blue, C.green, C.yellow, C.red]) }); qx += 0.42; }
+    else if (k === 'bucket') { bucket(B, qx, z, { col: pick([C.blue, C.white, C.red, C.steel]) }); qx += 0.4; }
+    else { basin(B, qx + 0.12, z, { col: pick([C.blue, C.steel]), water: false }); qx += 0.72; }
+  }
+  chair(B, X + 31.2, -2.0, 0.3, { col: 0x5a4a3a }); for (const [x, z] of [[X + 29.6, -2.3], [X + 30.1, -2.6], [X + 32.6, -2.4]]) pot(B, x, z, { s: 1.1 });
+  handCart(B, X + 38.6, -2.1, 0.2, { drum: C.blue });
+  for (const [x, k] of [[X + 49.4, 'bucket'], [X + 50.1, 'basin'], [X + 51.1, 'bucket'], [X + 51.8, 'jerry']]) { if (k === 'bucket') bucket(B, x, -1.7, { col: pick([C.white, C.blue]) }); else if (k === 'basin') basin(B, x, -1.75, { col: C.steel }); else jerrycan(B, x, -1.75, 0.2, { col: C.green }); }
+  cardBox(B, X + 64.5, -2.1, 0.6, 0.45, 0.5, 0.2, { col: C.card }); bags(B, X + 67.2, -2.2, 3);
+  tire(B, X + 78.5, -2.1, { stack: 3, col: C.tire }); drum(B, X + 88.6, -2.3, { col: 0x6a4a36 }); drum(B, X + 89.3, -2.0, { tip: true, yaw: 0.5, col: C.blue });
+  pallet(B, X + 99.8, -2.2, 0.15, 2, { col: 0x6a5a46 }); chair(B, X + 107.5, -2.0, -0.4, { tip: true, col: 0x5a4a3a });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  bucket(B, X + 10.4, 1.6, { col: C.steel }); basin(B, PUMP + 4.9, 1.55, { col: C.blue }); crates(B, X + 28.8, 1.8, 1, { col: 0x5a6f7a });
+  for (let i = 0; i < 6; i++) B.at(X + 28.8 + (i % 3 - 1) * 0.15, groundY(X + 28.8) + 0.32, 1.8 + (i < 3 ? -0.08 : 0.08)).cyl(0.035, 0.035, 0.2, 8, pick([0x6a8a7a, 0x8a9a8a, 0x4a6a5a]), 0, 0.1, 0);   // 箱子里插着几只空瓶
+  pipeRun(B, X + 33.6, X + 39.4, 2.2, 0.26, 0.06, { dive: true, step: 2.2 });
+  jerrycan(B, X + 46.4, 1.6, -0.5, { col: C.yellow }); bucket(B, X + 57.4, 1.8, { tip: true, yaw: 2.2, col: C.white }); stool(B, X + 64.2, 1.7, 0.3, { col: C.wood });
+  B.mesh(G.front);
+  weeds(G.front, GRASS[0], GRASS[1], 1.2, 2.8, 40, ['grass', 'seed'], [0x5e7a40, 0x6a8a48], 0.35, 0.65);
+  yield;
+  // ---------------- 会动的 ----------------
+  const pp = []; for (const [a, b] of [[X + 2, X + 8], [X + 22, X + 40], [X + 44, X + 72]]) for (let x = a; x < b; x += rr(2.2, 4.2)) pp.push([x, rr(-0.9, 1.0), rnd() < 0.7 ? 'paper' : 'card', rnd() < 0.5 ? 0xd6d4ca : undefined]);
+  mkLoose(G.alive, L, pp);
+  mkCans(G.alive, L, [[X + 24.6, 0.1, 'can', 0x4a6a8a], [X + 36.2, -0.05, 'tin'], [X + 68.5, 0.1, 'bottle']], { lo: X + 1, hi: X7 - 3 });
+  const hp = []; for (let x = GRASS[0] + 1; x < GRASS[1]; x += rr(2.5, 5)) hp.push([x, rr(-1.6, 1.8)]);
+  mkHoppers(G.alive, L, hp, { col: 0x7a8a48 });
+});
+
+// ---- 第二章 · 林地水闸（坡上那一段；林子里和水闸那一屏已经有自己的地面了）----
+// 脚下：路两边一簇簇枯草、几块石头和碎石、从电线杆上掉下来的白瓷绝缘子、一根垂到地上横过小路的旧电线。
+// 身后：倒了一半的栅栏、一只木头电缆盘、一块歪着的旧牌子、一堆拔下来的栅栏桩。
+// 身前：高一点的枯草和蓟、一块石头、一卷生锈的铁丝。
+// 会动的：草里的蚂蚱（走近就蹦开）、跑过去带起来的枯叶
+feetZone(2, [X2, X2 + 76], function* (G, L) {
+  const X = X2, A = X + 2.5, Bx = X + 72, C = { dry: [0xb09a68, 0x8a7448, 0xa08c5c, 0x9a8058], stone: 0x7a7266, wood: 0x5a4a3a, wire: 0x2a2622 };
+  const dens = x => 1 - 0.65 * sstep(X + 18, X + 30, x) * sstep(X + 62, X + 50, x);       // 坡顶那几十米镜头拉得很远，摆得稀一点
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  for (let x = A; x < Bx; x += rr(2.2, 4.5) / dens(x)) { const z = rnd() < 0.5 ? rr(-2.4, -0.7) : rr(0.7, 2.4); stone(B, x, z, rr(0.06, 0.16), { col: C.stone }); if (rnd() < 0.6) scatter(B, x + rr(-0.5, 0.5), z, 6, 0.6, ['stone'], [0x8a8478, 0x6a645a]); }
+  for (const [x, z] of [[X + 6.8, 1.0], [X + 9.2, -0.9], [X + 15.5, 1.3], [X + 58.5, -1.1], [X + 66.2, 0.9]]) insulator(B, x, z, { col: rnd() < 0.7 ? 0xd8d6cc : 0x6a4a36 });
+  // 旧电线：从后面一根歪掉的电线杆上垂下来，横过小路，拖到前面的草里
+  B.vary = 0.03; floorLine(B, X + 10.8, -5.5, X + 13.6, 2.6, 0.012, C.wire, { wob: 0.25 }); B.vary = 0.08;
+  B.mesh(G.floor);
+  const tufts = []; for (let x = A; x < Bx; x += rr(0.7, 1.6) / dens(x)) { const z = rnd() < 0.5 ? rr(-2.8, -0.6) : rr(0.6, 3.0), n = 3 + Math.floor(rnd() * 5); for (let i = 0; i < n; i++) { const xx = x + rr(-0.35, 0.35); tufts.push([xx, groundY(xx), z + rr(-0.12, 0.12), pick(['dry', 'dry', 'seed', 'grass']), rr(0.14, 0.4), pick(C.dry)]); } }
+  plants(G.floor, tufts);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  oldFence(B, X + 3.2, X + 9.8, -1.9, { broken: 2 }); reel(B, X + 11.6, -2.2, 0.48, 0.3); sign(B, X + 15.2, -1.7, 0.2, { tilt: -0.22 });
+  stickPile(B, X + 21.5, -2.0, 7, 1.8, 0.05, C.wood, 0.35); oldFence(B, X + 33.5, X + 40.5, -2.1, { broken: 1 });
+  for (const [x, z, s] of [[X + 27.2, -2.4, 0.42], [X + 44.6, -2.2, 0.5], [X + 57.4, -2.0, 0.38]]) stone(B, x, z, s, { col: C.stone });
+  reel(B, X + 52.5, -2.3, 0.42, -0.4); oldFence(B, X + 60.5, X + 67, -2.0, { broken: 3 }); sign(B, X + 69.4, -1.8, -0.3, { tilt: 0.25, col: 0x6a5a48 });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  for (const [x, z, s] of [[X + 8.1, 1.9, 0.22], [X + 24.4, 2.2, 0.28], [X + 47.8, 1.8, 0.24], [X + 64.3, 2.0, 0.26]]) stone(B, x, z, s, { col: C.stone });
+  wireCoil(B, X + 13.2, 1.7, 0.32); wireCoil(B, X + 55.6, 1.5, 0.28);
+  B.mesh(G.front);
+  const tall = []; for (let x = A; x < Bx; x += rr(1.8, 3.6) / dens(x)) { const z = rr(1.2, 2.8), n = 3 + Math.floor(rnd() * 4); for (let i = 0; i < n; i++) { const xx = x + rr(-0.3, 0.3); tall.push([xx, groundY(xx), z + rr(-0.1, 0.1), pick(['dry', 'seed', 'seed']), rr(0.4, 0.75), pick(C.dry)]); } }
+  plants(G.front, tall);
+  yield;
+  // ---------------- 会动的 ----------------
+  const hp = []; for (let x = A + 1; x < Bx; x += rr(1.8, 3.5) / dens(x)) hp.push([x, rr(-1.4, 1.6)]);
+  mkHoppers(G.alive, L, hp, { col: 0xa08a52 });
+  const lv = []; for (let x = A; x < Bx; x += rr(1.5, 3) / dens(x)) lv.push([x, rr(-1.0, 1.1), 'leaf', pick([0x9a6a30, 0x8a5a2a, 0xa88040])]);
+  mkLoose(G.alive, L, lv, { minSpeed: 2.0 });
+});
+
+// ---- 第七章 · 管理花园（花园里那一段；墙外的野地脚下已经有花和草）----
+// 脚下：草坪上一根黄色的水管弯弯地穿过去、路边一排冒出来的喷头、一溜踏脚石、刚剪下来的草屑和花瓣。
+// 身后：花垄前面停着一辆装着土的独轮车，耙子靠在车上；一排一模一样的花盆里种着一模一样的小苗，插着白色标签；几袋肥料、两只喷壶。
+// 身前：修成方块的小灌木、一只倒着的喷壶、一盘水管。
+// 会动的：跑过去带起来的草屑和花瓣
+feetZone(7, [X7 - 4, X8 - 4], function* (G, L) {
+  const X = X7, C = { hose: 0xd8a830, pot: 0xb06a42, sapl: [0x4e8a3a, 0x5f9a44, 0x3e7a32], hedge: 0x2f6a3a, can: 0x3f7a9a };
+  const SPANS = [[X + 2.2, X + 20], [X + 36.5, X + 45.5]];                 // 推树枝那一段、修剪机和门、阀门旁边都空着
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  B.vary = 0.03; floorLine(B, X + 3.2, -2.6, X + 17.5, 2.2, 0.028, C.hose, { wob: 0.7, loop: 0.35, loopR: 0.26 }); floorLine(B, X + 37.5, 2.4, X + 44.8, -2.2, 0.028, C.hose, { wob: 0.5 }); B.vary = 0.08;
+  for (const [a, b] of SPANS) for (let x = a + 0.6; x < b; x += 2.9) sprinkler(B, x, 1.25);
+  for (let i = 0, x = X + 6.4; i < 9; i++, x += rr(0.62, 0.78)) steppingStone(B, x, rr(-0.12, 0.12), rr(0.22, 0.27));
+  B.mesh(G.floor);
+  // 草屑和花瓣：撒在花垄前面和小路上（一张贴地的画）
+  groundDecal(X + 2, X + 46, -3.2, 2.6, 40, g => {
+    let s = 91; const rn = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    for (let i = 0; i < 1400; i++) { const x = X + 2 + rn() * 44, z = -3.2 + rn() * 5.8; if (x > X + 20 && x < X + 36.5) continue; const near = Math.exp(-(((z + 2.9) / 0.6) ** 2)); if (rn() > 0.25 + near) continue;
+      g.fillStyle = rn() < 0.75 ? `rgba(${60 + rn() * 40 | 0},${110 + rn() * 50 | 0},${40 + rn() * 20 | 0},0.8)` : pick(['rgba(232,80,72,0.8)', 'rgba(246,200,60,0.8)', 'rgba(248,246,236,0.85)', 'rgba(240,140,60,0.8)']);
+      g.save(); g.translate(x, z); g.rotate(rn() * 6.28); g.fillRect(-0.045, -0.012, 0.09, 0.024); g.restore(); }
+  }, { parent: G.floor, order: -29 });
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  wheelbarrow(B, X + 5.2, -2.2, 0.2); rake(B, X + 6.3, -2.6, 0.1, { lean: 0.32 }); sack(B, X + 7.6, -2.4, 0.3); sack(B, X + 8.2, -2.2, -0.4, { lie: true });
+  for (let i = 0; i < 9; i++) { const x = X + 10.5 + i * 0.62; pot(B, x, -2.25, { col: C.pot, h: 0.26, leaf: C.sapl, n: 4 }); stake(B, x + 0.05, -2.05); }      // 一模一样的花盆、一模一样的小苗
+  wateringCan(B, X + 17.0, -2.0, 0.6, { col: C.can }); wateringCan(B, X + 17.6, -2.3, -0.3, { col: C.can });
+  wheelbarrow(B, X + 39.4, -2.3, -0.3, { col: 0x8a3a2a }); for (let i = 0; i < 5; i++) pot(B, X + 41.2 + i * 0.62, -2.2, { col: C.pot, h: 0.26, leaf: C.sapl, n: 4 });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  for (const [x, z] of [[X + 3.6, 1.9], [X + 9.8, 2.1], [X + 13.4, 1.8], [X + 18.6, 2.0], [X + 38.6, 1.9], [X + 43.8, 2.1]]) boxHedge(B, x, z, 0.62, 0.52);
+  wateringCan(B, X + 15.6, 1.6, 2.2, { tip: true, col: C.can });
+  for (let i = 0; i < 6; i++) B.at(X + 41.2, groundY(X + 41.2) + 0.02 + i * 0.03, 1.6).torus(0.3 - i * 0.012, 0.02, C.hose, 0, 0, 0, Math.PI / 2, 0, 0, 6.2832, 20);   // 一盘水管
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  const pp = []; for (const [a, b] of SPANS) for (let x = a; x < b; x += rr(0.8, 1.6)) pp.push([x, rr(-1.1, 1.2), rnd() < 0.6 ? 'clip' : 'petal', rnd() < 0.6 ? undefined : pick([0xe8504a, 0xf6c83c, 0xf8f6ec, 0xf08c3c])]);
+  mkLoose(G.alive, L, pp, { minSpeed: 2.0 });
+});
+
+// ---- 第八章 · 生态中枢（前面三间屋子里，和出了门的那一道坡）----
+// 脚下：沿着地面走向机柜的成束电缆、地上的通风箅子、几张打印出来又被丢掉的纸。
+// 身后：一辆辆育苗小推车，盘里冒着小苗 —— 冷冰冰的中枢里唯一的绿；一排样品罐、一张方凳。
+// 身前：贴着地面的走线槽和接线盒、一盘电缆。核心那一屋（大圆灯）不摆，留给那一屏。
+// 出了门：脚下是碎石和枯草，身后是几根旧栅栏桩，身前是高一点的草；草里有蟋蟀，走近就蹦开
+feetZone(8, [X8 - 4, X8 + 150], function* (G, L) {
+  const X = X8, D1 = X + 20, D2 = X + 44, D3 = X + 70, EX = X + 96, C = { dark: 0x24303a, steel: 0x3a4a54, cable: 0x0e1418, paper: 0xb8c4c8, dry: [0x6a6a48, 0x7a7650, 0x5a5a3c], stone: 0x5a5c58 };
+  const ROOMS = [[X + 2.2, X + 10.8], [X + 13.4, D1 - 1.6], [D1 + 1.6, X + 27.2], [X + 38.6, D2 - 2.4], [D2 + 1.6, X + 51.2], [X + 63.2, D3 - 1.6]];   // 开关、导电桥和触点、门都空出来
+  // ---------------- 脚下 ----------------
+  let B = baker(); B.vary = 0.04;
+  for (const [a, b] of ROOMS) floorLine(B, a + 0.3, rr(1.2, 2.4), b - 0.3, -rr(1.6, 2.6), 0.035, C.cable, { wob: 0.4 });
+  floorLine(B, X + 3, 2.0, X + 10, -2.2, 0.025, C.cable, { wob: 0.6, loop: 0.5, loopR: 0.2 });
+  B.vary = 0.08;
+  for (const x of [X + 6.4, D1 + 4.2, X + 48.6, X + 66]) grate(B, x, 1.4, 1.0, 0.45, 0, { col: 0x2a3640 });
+  for (const [x, z, yaw] of [[X + 8.2, 0.7, 0.4], [D1 + 2.6, -0.8, -0.6], [X + 40.2, 0.9, 2.1], [D2 + 3.4, -0.6, 1.2]]) flatSheet(B, x, z, 0.21, 0.29, yaw, C.paper, { t: 0.004, bend: 0.05 });
+  B.mesh(G.floor);
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  const CARTS = [[X + 4.4, -1.9], [X + 15.6, -2.0], [D1 + 5.4, -1.9], [X + 41.0, -2.0], [D2 + 4.6, -1.9], [X + 65.4, -2.0]];
+  for (const [x, z] of CARTS) seedCart(B, x, z, rr(-0.06, 0.06));
+  jars(B, X + 7.6, -1.7, 5, { y: 0 }); stool(B, X + 17.6, -1.6, 0.4, { col: 0x3a4a54 }); jars(B, X + 49.4, -1.7, 4); stool(B, X + 67.8, -1.7, -0.3, { col: 0x3a4a54 });
+  B.mesh(G.behind);
+  for (const [x, z] of CARTS) { glow(G.behind, 0xe0c8ff, 1.3, 0.32, x, groundY(x) + 0.62, z + 0.2); glow(G.behind, 0xc8f0b0, 0.8, 0.22, x, groundY(x) + 0.82, z + 0.25); }   // 补光灯照着苗：一小团偏紫的光
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  for (const [a, b] of ROOMS) conduit(B, a + 0.4, Math.min(b - 0.4, a + 5.5), 1.9);
+  for (let i = 0; i < 5; i++) B.at(X + 9.2, groundY(X + 9.2) + 0.02 + i * 0.035, 1.5).torus(0.28 - i * 0.015, 0.03, C.cable, 0, 0, 0, Math.PI / 2, 0, 0, 6.2832, 18);
+  B.mesh(G.front);
+  yield;
+  // ---------------- 出了门：一道坡 ----------------
+  const O = [EX + 4, X + 140];
+  B = baker();
+  for (let x = O[0]; x < O[1]; x += rr(2, 4)) { const z = rnd() < 0.5 ? rr(-2.4, -0.7) : rr(0.7, 2.2); stone(B, x, z, rr(0.06, 0.15), { col: C.stone, moss: 0x4a4e3a }); }
+  B.mesh(G.floor);
+  const tf = []; for (let x = O[0]; x < O[1]; x += rr(0.8, 1.6)) { const z = rnd() < 0.5 ? rr(-2.8, -0.6) : rr(0.6, 2.8); for (let i = 0, n = 3 + Math.floor(rnd() * 5); i < n; i++) { const xx = x + rr(-0.35, 0.35); tf.push([xx, groundY(xx), z + rr(-0.12, 0.12), pick(['dry', 'grass', 'seed']), rr(0.14, 0.42), pick(C.dry)]); } }
+  plants(G.floor, tf);
+  B = baker(); oldFence(B, O[0] + 3, O[0] + 12, -2.0, { broken: 2, post: 0x3e3830 }); oldFence(B, O[0] + 22, O[0] + 30, -2.2, { post: 0x3e3830 }); B.mesh(G.behind);
+  const tall = []; for (let x = O[0]; x < O[1]; x += rr(1.6, 3.2)) for (let i = 0, n = 3 + Math.floor(rnd() * 4); i < n; i++) { const xx = x + rr(-0.3, 0.3); tall.push([xx, groundY(xx), rr(1.3, 2.6), pick(['seed', 'grass', 'dry']), rr(0.4, 0.7), pick(C.dry)]); }
+  plants(G.front, tall);
+  yield;
+  // ---------------- 会动的 ----------------
+  const pp = []; for (const [a, b] of ROOMS) for (let x = a; x < b; x += rr(2.5, 4.5)) pp.push([x, rr(-0.9, 1.0), 'paper', C.paper]);
+  mkLoose(G.alive, L, pp, { glow: 0.05 });
+  const hp = []; for (let x = O[0] + 1; x < O[1]; x += rr(2, 4)) hp.push([x, rr(-1.4, 1.6)]);
+  mkHoppers(G.alive, L, hp, { col: 0x8a8a6a });
+});
+
+// ---- 第九章 · 山洞与暗河（只摆在干的岩石上：水潭、潜水的地方都空着）----
+// 脚下：碎石和小石子、湿了的几片地、一截旧绳子。
+// 身后：大大小小的石头和石笋；第二段（别人留下的灯）有一只锈了的水桶、一盘绳子、一盏熄了的马灯；第六段（铁锈水）倒着几根旧矿洞的木支架。
+// 身前：剖面前面那一点地上的小石笋和石头（剖面在 z = 2.4，东西只能放到 2 以内）。
+// 会动的：洞里的蟋蟀（灰白色），走近就蹦开
+feetZone(9, [X9 - 8, X9 + 345], function* (G, L) {
+  const X = X9, C = { rock: 0x4e5256, rock2: 0x5a5a56, spike: 0x55595a, rust: 0x6a4a36, wood: 0x4e3e2e };
+  const DRY = [[-5, 9], [23.8, 46.6], [62.7, 84.8], [99.1, 121.6], [138.6, 154.6], [176.8, 196.6], [210.4, 235.6], [268.8, 284.6], [300.6, 334]].map(([a, b]) => [X + a, X + b]);
+  const ok = x => { const w = waterAt(x); return (!w || groundY(x) > w.y + 0.05) && ceilY(x) - groundY(x) > 1.9 && Math.abs(groundSlope(x)) < 0.35; };
+  // ---------------- 脚下 ----------------
+  let B = baker();
+  for (const [a, b] of DRY) for (let x = a + 0.4; x < b - 0.4; x += rr(1.4, 3)) if (ok(x)) { const z = rnd() < 0.55 ? rr(-2.4, -0.6) : rr(0.6, 1.8); stone(B, x, z, rr(0.05, 0.13), { col: pick([C.rock, C.rock2]), moss: 0x4a5048, mk: 0.3 }); scatter(B, x, z, 6, 0.5, ['stone'], [0x6a6c6a, 0x52565a]); }
+  ropeCoil(B, X + 33.5, 0.9, { col: 0x7a6a4c });
+  B.mesh(G.floor);
+  for (const [a, b] of DRY) stains(G.floor, a, b, -2.6, 2.2, Array.from({ length: Math.max(1, Math.round((b - a) / 8)) }, () => [rr(a + 1, b - 1), rr(-1.8, 1.4), rr(0.8, 1.6), rr(0.3, 0.6), 0.25]), { rgb: '10,14,16', k: 1.4 });
+  yield;
+  // ---------------- 身后 ----------------
+  B = baker();
+  for (const [a, b] of DRY) for (let x = a + 1; x < b - 1; x += rr(3, 6)) if (ok(x)) {
+    const t = rnd(), z = rr(-2.8, -1.3);
+    if (t < 0.45) stone(B, x, z, rr(0.25, 0.55), { col: pick([C.rock, C.rock2]), moss: 0x4a5048, mk: 0.4 });
+    else if (t < 0.85) { stalagmite(B, x, z, rr(0.5, 1.3), { col: C.spike }); if (rnd() < 0.5) stalagmite(B, x + rr(0.3, 0.6), z + rr(-0.3, 0.3), rr(0.25, 0.6), { col: C.spike }); }
+    else stone(B, x, z, rr(0.15, 0.3), { col: C.rock });
+  }
+  bucket(B, X + 29.2, -1.7, { col: C.rust, tip: true, yaw: 0.8 }); lantern(B, X + 31.6, -1.5, { tip: true }); ropeCoil(B, X + 36.8, -1.9, { col: 0x7a6a4c }); lantern(B, X + 40.4, -1.6);
+  for (const [x, z, len, yaw, tilt] of [[X + 214.5, -2.0, 2.4, 0.2, 0], [X + 219.2, -1.8, 2.0, -0.4, 0.15], [X + 226.4, -2.2, 2.6, 0.1, 0], [X + 272.5, -1.9, 2.2, 0.3, 0.1]]) timber(B, x, z, len, yaw, { tilt, col: C.wood });
+  B.mesh(G.behind);
+  yield;
+  // ---------------- 身前 ----------------
+  B = baker();
+  for (const [a, b] of DRY) for (let x = a + 1.5; x < b - 1; x += rr(4, 8)) if (ok(x)) { if (rnd() < 0.5) stalagmite(B, x, rr(1.0, 1.7), rr(0.25, 0.55), { col: C.spike }); else stone(B, x, rr(0.9, 1.7), rr(0.14, 0.26), { col: pick([C.rock, C.rock2]), mk: 0.2 }); }
+  B.mesh(G.front);
+  yield;
+  // ---------------- 会动的 ----------------
+  const hp = []; for (const [a, b] of DRY) for (let x = a + 1; x < b - 1; x += rr(3, 6)) if (ok(x)) hp.push([x, rr(-1.6, 1.4)]);
+  mkHoppers(G.alive, L, hp, { col: 0xb8b0a0, glow: 0.3, s: 2.6 });
 });
 
 // ============================================================
