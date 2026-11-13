@@ -458,8 +458,8 @@ const CH2 = (() => {
     {
       const x1 = 207.9, x2 = 213.3, y1 = -3.45, y2 = -0.3, s = 160, [mc, g] = mkCanvas(Math.round((x2 - x1) * s), Math.round((y2 - y1) * s)), rn = seeded(52);
       g.fillStyle = '#000'; g.fillRect(0, 0, mc.width, mc.height);
-      g.filter = 'blur(1.6px)'; g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s); setInk(g, '#fff');
-      for (const [x, y, k, lean] of LEAKS) {
+      g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s); setInk(g, '#fff');
+      blurDraw(g, 1.6, g => { for (const [x, y, k, lean] of LEAKS) {
         const ey = LOW - 0.03, n = k > 0.9 ? 2 : 1;
         for (let j = 0; j < n; j++) {                                                                   // 从缝里冲出来，越往下越散，到了下面断成水珠
           const lj = lean + (j - (n - 1) / 2) * 0.09 * k + (rn() - 0.5) * 0.04, pts = [];
@@ -470,7 +470,7 @@ const CH2 = (() => {
         const sp = g.createRadialGradient(0, 0, 0, 0, 0, 1); sp.addColorStop(0, `rgba(255,255,255,${0.55 * k})`); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.fillRect(-1, -1, 2, 2); g.restore();
         for (let i = 0; i < 9; i++) { g.globalAlpha = 0.25 + 0.4 * rn(); oval(g, x + lean + (rn() - 0.5) * 0.3 * k, ey + 0.03 + rn() * 0.16 * k, 0.012 + 0.012 * rn(), 0.012 + 0.02 * rn()); }   // 溅起来的水珠
         g.globalAlpha = 1; setInk(g, '#fff');
-      }
+      } });
       const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace; v.extraTex.push(mask);             // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
       const [fc, fg] = mkCanvas(32, 128); fg.fillStyle = '#dcdcdc'; fg.fillRect(0, 0, 32, 128);              // 水流：大体是亮的，夹着一道道更亮的和暗一些的，一直往下滚
       { const rf = seeded(53); for (let i = 0; i < 36; i++) { fg.fillStyle = rf() < 0.6 ? '#fff' : '#6a6a6a'; fg.fillRect(rf() * 32, rf() * 128, 2 + rf() * 4, 6 + rf() * 20); } }

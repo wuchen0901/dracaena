@@ -182,6 +182,111 @@ function canvasTex(c) {
   t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.generateMipmaps = true;
   return t;
 }
+
+// ---- 柔边：不靠 ctx.filter 的模糊 ----
+// 画布自带的 ctx.filter = 'blur()' 在 iPhone 上没有（2026-11-13 在 iOS 27.0.1 上实测，Mac 上的 WebKit 也没有），那里的柔边会全变成硬边。
+// blurDraw(g, px, draw, once)：px 和 CSS 的 blur(px) 一样，是画布上的像素，不跟着 g 当前的缩放变；px 是 0 就直接画在 g 上。
+//   默认逐笔虚化，和原来 ctx.filter 一样：每一笔各自模糊，叠在一起的地方留着各自的边。用画布的阴影来做 ——
+//     笔画本身挪到画布外面老远的地方，只让它的影子落回原处。影子是 shadowBlur = 2σ 的高斯，Chrome 和 WebKit 量出来都和 blur(σ) 一样大。
+//     影子只有一种颜色：每画一笔之前把 shadowColor 设成这一笔的颜色（不带透明度，透明度由笔画自己带）。
+//     所以 draw 里要用纯色，或者各色标同一种颜色、只是深浅不同的渐变；颜色不一样的渐变和图案只能取第一个色标的颜色。
+//     draw 里不要用 clip()（裁剪框会跟着笔画挪到画布外面去），也不要自己设影子。碰到这些都会记进 window.__blurStats.odd。
+//     draw(t) 里的 t 就是 g，只是 setTransform / resetTransform / getTransform / clearRect 照常用，挪开的那一段自动算进去。
+//   once 为真：整块清清楚楚地画好，再用显卡整张模糊一次（笔画成千上万的时候用）。画出画布的部分不算，和原来一样贴着边会淡掉
+const BLUR = new THREE.ShaderMaterial({
+  uniforms: { map: { value: null }, size: { value: new THREE.Vector2() }, dir: { value: new THREE.Vector2() }, sigma: { value: 1 }, R: { value: 1 } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: `uniform sampler2D map; uniform vec2 size, dir; uniform float sigma; uniform int R;
+    void main() {                                  // 沿 dir 方向的一维高斯。贴图里是预乘过透明度的颜色，画布外面算作全透明
+      vec4 s = vec4(0.0); float ws = 0.0;
+      for (int i = -64; i <= 64; i++) {
+        if (i < -R || i > R) continue;
+        float w = exp(-float(i * i) / (2.0 * sigma * sigma)); vec2 p = gl_FragCoord.xy + dir * float(i);
+        ws += w;
+        if (p.x > 0.0 && p.y > 0.0 && p.x < size.x && p.y < size.y) s += w * texture2D(map, p / size);
+      }
+      gl_FragColor = s / ws;
+    }`,
+  depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+});
+const BLUR_SCENE = new THREE.Scene(), BLUR_CAM = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+{ const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), BLUR); m.frustumCulled = false; BLUR_SCENE.add(m); }
+function blurCanvas(c, px) {                       // 把画布 c 整张原地模糊：横着一遍、竖着一遍，再读回画布
+  const W = c.width, H = c.height, U = BLUR.uniforms, nearest = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false };
+  const src = new THREE.CanvasTexture(c); Object.assign(src, nearest, { colorSpace: THREE.NoColorSpace, premultiplyAlpha: true, flipY: false });
+  const rt = [0, 1].map(() => new THREE.WebGLRenderTarget(W, H, { ...nearest, depthBuffer: false }));
+  const prev = renderer.getRenderTarget();
+  U.size.value.set(W, H); U.sigma.value = px; U.R.value = Math.min(64, Math.ceil(px * 3));
+  U.map.value = src; U.dir.value.set(1, 0); renderer.setRenderTarget(rt[0]); renderer.render(BLUR_SCENE, BLUR_CAM);
+  U.map.value = rt[0].texture; U.dir.value.set(0, 1); renderer.setRenderTarget(rt[1]); renderer.render(BLUR_SCENE, BLUR_CAM);
+  const buf = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt[1], 0, 0, W, H, buf);
+  renderer.setRenderTarget(prev); U.map.value = null; src.dispose(); rt.forEach(r => r.dispose());
+  const g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;    // 读回来的颜色是预乘过透明度的，画布要的是没预乘的
+  for (let i = 0; i < d.length; i += 4) { const a = buf[i + 3]; if (a) { const k = 255 / a; d[i] = buf[i] * k; d[i + 1] = buf[i + 1] * k; d[i + 2] = buf[i + 2] * k; d[i + 3] = a; } }
+  g.putImageData(img, 0, 0);
+}
+// 整块模糊一次：画在一张四周多留 3 倍 px 的临时画布上（变换照搬 g 的），把画出 g 的那一圈擦掉，模糊，再叠回 g
+function blurOnce(g, px, draw) {
+  const cw = g.canvas.width, chh = g.canvas.height, m = Math.ceil(px * 3), max = renderer.capabilities.maxTextureSize;
+  if (cw + 2 * m > max || chh + 2 * m > max) { draw(g); return; }   // 显卡放不下这么大的贴图：只好不虚化
+  const [tc, t] = mkCanvas(cw + 2 * m, chh + 2 * m), st = t.setTransform.bind(t), gt = t.getTransform.bind(t);
+  t.setTransform = (a, b, c, d, e, f) => { if (typeof a === 'object') ({ a, b, c, d, e, f } = a); st(a, b, c, d, e + m, f + m); };
+  t.resetTransform = () => st(1, 0, 0, 1, m, m);
+  t.getTransform = () => { const M = gt(); M.e -= m; M.f -= m; return M; };
+  t.setTransform(g.getTransform());
+  for (const k of ['fillStyle', 'strokeStyle', 'lineWidth', 'lineCap', 'lineJoin', 'globalAlpha', 'font', 'textAlign', 'textBaseline']) t[k] = g[k];
+  draw(t);
+  st(1, 0, 0, 1, 0, 0); t.clearRect(0, 0, tc.width, m); t.clearRect(0, m + chh, tc.width, m); t.clearRect(0, 0, m, tc.height); t.clearRect(m + cw, 0, m, tc.height);
+  blurCanvas(tc, px);
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.shadowColor = 'rgba(0,0,0,0)'; g.drawImage(tc, m, m, cw, chh, 0, 0, cw, chh); g.restore();
+}
+// 逐笔虚化用的小工具：一笔的颜色（不带透明度）；渐变记下各个色标的颜色
+const BLUR_STATS = window.__blurStats = { strokes: 0, odd: {} };
+const _css = document.createElement('canvas').getContext('2d'), _ink = new Map(), GRAD_INK = new WeakMap();
+function blurOdd(kind) { const o = BLUR_STATS.odd[kind] ??= { n: 0, at: new Error().stack.split('\n').slice(3, 6).join(' / ') }; o.n++; }
+function inkOf(style) {
+  if (typeof style !== 'string') {
+    const s = GRAD_INK.get(style); if (s && s.size === 1) return s.values().next().value;
+    blurOdd(s ? '颜色不一样的渐变' : '图案或不认识的渐变'); return s ? s.values().next().value : '#808080';
+  }
+  let v = _ink.get(style);
+  if (!v) { _css.fillStyle = '#000'; _css.fillStyle = style; const n = _css.fillStyle; v = n[0] === '#' ? n : n.replace(/^rgba\(([^,]+),([^,]+),([^,]+),[^)]*\)$/, 'rgb($1,$2,$3)'); _ink.set(style, v); }
+  return v;
+}
+const BLUR_PAINT = { fill: 'fillStyle', fillRect: 'fillStyle', fillText: 'fillStyle', stroke: 'strokeStyle', strokeRect: 'strokeStyle', strokeText: 'strokeStyle' };
+const BLUR_OWN = new Set(['shadowBlur', 'shadowColor', 'shadowOffsetX', 'shadowOffsetY', 'filter']);
+function blurStrokes(g, px, draw) {
+  const D = g.canvas.width + 20000, st = g.setTransform.bind(g), gt = g.getTransform.bind(g);
+  g.save();
+  g.shadowBlur = 2 * px; g.shadowOffsetX = -D; g.shadowOffsetY = 0;
+  { const M = gt(); st(M.a, M.b, M.c, M.d, M.e + D, M.f); }
+  const P = new Proxy(g, {
+    get(o, k) {
+      if (k in BLUR_PAINT) return (...a) => { o.shadowColor = inkOf(o[BLUR_PAINT[k]]); BLUR_STATS.strokes++; return o[k](...a); };
+      switch (k) {
+        case 'setTransform': return (a, b, c, d, e, f) => { if (typeof a === 'object') ({ a, b, c, d, e, f } = a); st(a, b, c, d, e + D, f); };
+        case 'resetTransform': return () => st(1, 0, 0, 1, D, 0);
+        case 'getTransform': return () => { const M = gt(); M.e -= D; return M; };
+        case 'clearRect': return (...a) => { const M = gt(); st(M.a, M.b, M.c, M.d, M.e - D, M.f); o.clearRect(...a); st(M.a, M.b, M.c, M.d, M.e, M.f); };
+        case 'createLinearGradient': case 'createRadialGradient': case 'createConicGradient': return (...a) => {
+          const gr = o[k](...a), inks = new Set(), add = gr.addColorStop.bind(gr);
+          gr.addColorStop = (t, c) => { add(t, c); inks.add(inkOf(c)); }; GRAD_INK.set(gr, inks); return gr;
+        };
+        case 'drawImage': return (...a) => {         // 图片的影子只有一种颜色：这一张单独整块模糊一次再叠上来
+          blurOdd('drawImage'); const M = gt(); M.e -= D;
+          blurOnce(o, px, t => { t.setTransform(M); t.drawImage(...a); });
+        };
+        case 'clip': return (...a) => { blurOdd('clip'); return o.clip(...a); };
+      }
+      const v = o[k]; return typeof v === 'function' ? v.bind(o) : v;
+    },
+    set(o, k, v) { if (BLUR_OWN.has(k)) blurOdd('设了 ' + k); else o[k] = v; return true; },
+  });
+  try { draw(P); } finally { g.restore(); }
+}
+function blurDraw(g, px, draw, once = false) {
+  if (!(px > 0)) draw(g); else if (once) blurOnce(g, px, draw); else blurStrokes(g, px, draw);
+}
 function add(parent, geo, mat, x = 0, y = 0, z = 0, shadow = true) {
   const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
   m.castShadow = m.receiveShadow = shadow; parent.add(m); return m;
@@ -333,22 +438,13 @@ let ROOT = scene;                                   // 布景板当前挂到哪�
 //    floor 平铺在地上，值是离地多高（这时 y1、y2 是 z 的范围，画的时候 y 就是 z，z 那个参数不用；要自己给 order）/
 //    lit 受场景里的灯光和影子影响（地上的污渍、积水要跟着明暗走；默认的布景板是自己发色的，不看灯光）/
 //    side 贴在一面朝 ±x 的竖墙上（比如水渠的内壁）：这时 x1、x2 是 z 的范围，z 那个参数是墙在哪个 x，画的时候横坐标就是 z；-1 朝 -x，+1 朝 +x（要自己给 order）/
-//    blurOnce 先清清楚楚地画在另一张画布上，再整张虚化一次（默认是每一笔各自虚化 —— 笔画成千上万的时候，浏览器的绘图进程会撑不住，整个画面都丢掉）
+//    blurOnce 先清清楚楚地画好，再整张虚化一次（默认是每一笔各自虚化 —— 笔画成千上万的时候太慢）。虚化都走 10-core.js 的 blurDraw，不靠浏览器的 ctx.filter，iPhone 上也一样
 function backdrop(x1, x2, y1, y2, z, ppm, draw, o = {}) {
   let W = (x2 - x1) * ppm, Hh = (y2 - y1) * ppm;
   const k = Math.min(1, 4096 / W, 4096 / Hh), s = ppm * k, flat = o.floor !== undefined, side = o.side ?? 0;
   const [c, g] = mkCanvas(Math.round(W * k), Math.round(Hh * k));
   const place = (gg = g) => flat ? gg.setTransform(s, 0, 0, s, -x1 * s, -y1 * s) : side > 0 ? gg.setTransform(-s, 0, 0, -s, x2 * s, y2 * s) : gg.setTransform(s, 0, 0, -s, -x1 * s, y2 * s);   // 平铺时画布上方是远处；朝 +x 的那面，画布从左到右是 z 从大到小
-  g.save();
-  if (o.blur && o.blurOnce) {
-    const [c2, g2] = mkCanvas(c.width, c.height); place(g2); draw(g2);
-    if ('filter' in g) g.filter = `blur(${o.blur}px)`; g.drawImage(c2, 0, 0);
-  } else {
-    if (o.blur && 'filter' in g) g.filter = `blur(${o.blur}px)`;
-    place();
-    draw(g);
-  }
-  g.restore(); place();
+  g.save(); place(); blurDraw(g, o.blur, draw, o.blurOnce); g.restore(); place();
   g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {     // 两端渐隐：和相邻章节的远景接上时看不出边
     const gr = g.createLinearGradient(a, 0, a + b * w, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -1753,7 +1849,7 @@ function groundDecal(x1, x2, z1, z2, ppm, draw, o = {}) {
   const W = (x2 - x1) * ppm, D = (z2 - z1) * ppm, k = Math.min(1, 4096 / W, 4096 / D), s = ppm * k, [c, g] = mkCanvas(Math.round(W * k), Math.round(D * k));
   const place = () => g.setTransform(s, 0, 0, s, -x1 * s, -z1 * s);
   place(); g.lineCap = 'round'; draw(g);
-  place(); if ('filter' in g) g.filter = 'none'; g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out';
+  place(); g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {
     const gr = g.createLinearGradient(a, 0, a + b * w, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.fillRect(Math.min(a, a + b * w), z1, w, z2 - z1);
@@ -2004,20 +2100,17 @@ function stump(parent, x, z, r, h) {
 function mudPath(parent, L, layers, x1, x2, zc, o = {}) {
   const w = o.w ?? 0.85, z1 = o.z1 ?? -2.6, z2 = o.z2 ?? 7.6, patches = o.patches ?? [], X1 = x1 - 1, X2 = x2 + 1;
   const blob = (g, x, z, rx, rz, col, a = 0) => { g.fillStyle = col; g.beginPath(); g.ellipse(x, z, rx, rz, a, 0, 6.2832); g.fill(); };
-  const soft = (g, px) => { if ('filter' in g) g.filter = px ? `blur(${px}px)` : 'none'; };
   const spots = [];                                        // 泥地由一团团椭圆叠成 [x, z, 半长, 半宽]
   for (let x = x1; x < x2; x += rr(0.16, 0.34)) spots.push([x, zc(x) + rr(-0.25, 0.25) * w, rr(0.45, 1.0), w * rr(0.5, 1.0)]);
   for (const [px, pz, rx, rz] of patches) for (let i = 0, n = Math.round(rx * rz * 10) + 6; i < n; i++) { const a = rr(0, 6.28), d = Math.sqrt(rnd()); spots.push([px + Math.cos(a) * d * rx * 0.8, pz + Math.sin(a) * d * rz * 0.8, rr(0.35, 0.8) * Math.min(1, rx * 0.6), rr(0.12, 0.3) * Math.min(1.4, rz * 1.6)]); }
   const wet = spots.filter(() => rnd() < 0.22).map(([x, z, rx, rz]) => [x + rr(-0.2, 0.2), z + rr(-0.08, 0.08), rx * rr(0.3, 0.65), rz * rr(0.2, 0.45)]);
   const decal = groundDecal(X1, X2, z1, z2, 40, g => {
-    soft(g, 8); for (const [x, z, rx, rz] of spots) blob(g, x, z, rx, rz, o.col ?? 'rgba(42,29,14,0.38)');                   // 湿土
-    soft(g, 3); for (const [x, z, rx, rz] of wet) blob(g, x, z, rx, rz, 'rgba(16,11,6,0.5)');                                 // 更湿、更黑的地方
-    soft(g, 0);
+    blurDraw(g, 8, g => { for (const [x, z, rx, rz] of spots) blob(g, x, z, rx, rz, o.col ?? 'rgba(42,29,14,0.38)'); });     // 湿土
+    blurDraw(g, 3, g => { for (const [x, z, rx, rz] of wet) blob(g, x, z, rx, rz, 'rgba(16,11,6,0.5)'); });                   // 更湿、更黑的地方
     for (const [x, z, rx, rz] of spots) if (rnd() < 0.6) for (let k = 0; k < 5; k++) blob(g, x + rr(-rx, rx), z + rr(-rz, rz) * 0.8, rr(0.015, 0.045), rr(0.01, 0.03), rnd() < 0.5 ? 'rgba(110,98,74,0.55)' : 'rgba(10,7,4,0.55)');   // 翻起来的土粒
     for (let x = x1 + 0.4, i = 0; x < x2 - 0.4; x += rr(0.3, 0.42), i++) { const z = zc(x) + (i % 2 ? 0.1 : -0.1) + rr(-0.04, 0.04); g.save(); g.translate(x, z); g.rotate(rr(-0.2, 0.2)); blob(g, 0, 0, 0.13, 0.055, 'rgba(8,6,3,0.55)'); blob(g, 0.04, 0, 0.07, 0.035, 'rgba(70,62,44,0.35)'); g.restore(); }   // 一串脚印
   }, { order: -31, lift: 0.006, fadeL: 2, fadeR: 2, parent });
-  const sheen = puddles(parent, L, X1, X2, z1, z2, [], layers, { rim: false, pool: false, soft: true, ppm: 30, k: o.k ?? 0.5, bed: 0x1e160c, mask: g => {
-    soft(g, 1.2);
+  const sheen = puddles(parent, L, X1, X2, z1, z2, [], layers, { rim: false, pool: false, soft: true, ppm: 30, k: o.k ?? 0.5, bed: 0x1e160c, maskBlur: 1.2, mask: g => {
     for (const [x, z, rx, rz] of wet) for (let k = 0; k < 2; k++) { g.globalAlpha = rr(0.45, 0.95); blob(g, x + rr(-rx, rx) * 0.6, z + rr(-rz, rz) * 0.5, rr(0.08, 0.26) * Math.max(0.6, rx), rr(0.025, 0.05), '#fff'); }   // 一道道横着的细水痕
     for (let x = x1 + 0.4, i = 0; x < x2 - 0.4; x += rr(0.3, 0.42), i++) if (rnd() < 0.18) { g.globalAlpha = 0.6; blob(g, x, zc(x) + (i % 2 ? 0.1 : -0.1), 0.09, 0.03, '#fff'); }   // 积了水的脚印
     g.globalAlpha = 1;
@@ -2030,15 +2123,15 @@ function mudPath(parent, L, layers, x1, x2, zc, o = {}) {
 // layers 是要映进水里的布景板（backdrop 返回的那几块，近的在前）。
 // 倒影不是另画的：水面上的每一点，沿着视线在水面上反弹回去的方向找，碰到哪一层布景板就取那一层贴图上的颜色 ——
 // 所以镜头一动，倒影跟着走；主角站在水洼后面，水里就有他的影子。越贴着水面看，映得越清楚（近处的水更透，看得见水底）
-// o: mask(g) 自己画水的形状（不用 pools 的椭圆）/ rim false 不要水边那圈湿土 / k 整体淡到多少 / pool false 不算作能踩出水花的水洼 / bed 水底的颜色
+// o: mask(g) 自己画水的形状（不用 pools 的椭圆）/ maskBlur 水的形状虚化几个像素（默认 2）/ rim false 不要水边那圈湿土 / k 整体淡到多少 / pool false 不算作能踩出水花的水洼 / bed 水底的颜色
 function puddles(parent, L, x1, x2, z1, z2, pools, layers, o = {}) {
   const y = o.y ?? groundY((x1 + x2) / 2), ppm = o.ppm ?? 44, k = Math.min(1, 4096 / ((x2 - x1) * ppm), 4096 / ((z2 - z1) * ppm)), [mc, mg] = mkCanvas(Math.round((x2 - x1) * ppm * k), Math.round((z2 - z1) * ppm * k));
   const shape = (g, grow) => { g.beginPath(); for (const [x, z, rx, rz] of pools) { g.moveTo(x + rx + grow, z); g.ellipse(x, z, rx + grow, rz + grow * 0.7, 0, 0, 6.2832); } g.fill(); };
   mg.fillStyle = '#000'; mg.fillRect(0, 0, mc.width, mc.height);                                // 先铺满黑的：形状图要不透明，红色通道才是真的深浅（透明画布传给显卡时，只要沾了一点边，颜色就是满的）
-  if ('filter' in mg) mg.filter = 'blur(2px)'; mg.setTransform(ppm * k, 0, 0, ppm * k, -x1 * ppm * k, -z1 * ppm * k); mg.fillStyle = '#fff';
-  if (o.mask) o.mask(mg); else shape(mg, 0);
+  mg.setTransform(ppm * k, 0, 0, ppm * k, -x1 * ppm * k, -z1 * ppm * k); mg.fillStyle = '#fff';
+  blurDraw(mg, o.maskBlur ?? 2, g => { if (o.mask) o.mask(g); else shape(g, 0); });
   const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace;
-  if (o.rim !== false) groundDecal(x1, x2, z1, z2, ppm, g => { if ('filter' in g) g.filter = 'blur(4px)'; g.fillStyle = o.rimCol ?? 'rgba(22,18,11,0.55)'; shape(g, 0.16); }, { order: -30.5, lift: 0.007, parent });   // 水边一圈湿土
+  if (o.rim !== false) groundDecal(x1, x2, z1, z2, ppm, g => blurDraw(g, 4, g => { g.fillStyle = o.rimCol ?? 'rgba(22,18,11,0.55)'; shape(g, 0.16); }), { order: -30.5, lift: 0.007, parent });   // 水边一圈湿土
   const U = { uMask: { value: mask }, uSky: { value: new THREE.Color() }, uFog: { value: new THREE.Color() }, uBed: { value: new THREE.Color(o.bed ?? 0x1c1a12) }, uCam: { value: V3() }, uK: { value: o.k ?? 1 }, uLin: { value: o.soft ? 1 : 0 },
     uHero: { value: new THREE.Vector4() }, uT: { value: 0 }, uRip: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 9, 0)) } };
   for (let i = 0; i < 3; i++) { U['uL' + i] = { value: null }; U['uR' + i] = { value: new THREE.Vector4() }; U['uZ' + i] = { value: V3() }; }
@@ -3865,9 +3958,7 @@ const CH1 = (() => {
       for (const [x, z, w, d] of [[61.2, 1.0, 1.7, 1.1], [72.3, -2.6, 2.3, 1.3], [78.6, 5.2, 1.5, 1.8]]) { g.fillStyle = 'rgba(160,180,186,.11)'; g.fillRect(x, z, w, d); }   // 补过的几块
       g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineCap = 'round';
       for (let i = 0; i < 9; i++) { const x = 56 + rn() * 24, z = -3 + rn() * 7; g.lineWidth = 0.04 + rn() * 0.07; g.beginPath(); g.moveTo(x, z); g.quadraticCurveTo(x + 2 + rn() * 2, z + (rn() - 0.5) * 0.6, x + 4 + rn() * 5, z + (rn() - 0.5) * 0.9); g.stroke(); }   // 拖痕
-      if ('filter' in g) g.filter = 'blur(3px)';
-      g.fillStyle = 'rgba(4,7,10,.45)'; water(g);                                                 // 水
-      if ('filter' in g) g.filter = 'none';
+      blurDraw(g, 3, g => { g.fillStyle = 'rgba(4,7,10,.45)'; water(g); });                      // 水
     }, { floor: 0.006, lit: true, order: -30, fadeL: 2.5, fadeR: 2.5 });                           // 两头渐渐淡掉，和场地外面干净的地面接上时看不出一条边
     yield;
     // 探照灯在水里的倒影：一道朝着镜头拉长的亮光，只留在有水的地方。
@@ -3878,8 +3969,7 @@ const CH1 = (() => {
       gr.addColorStop(0, 'rgba(215,232,238,.8)'); gr.addColorStop(0.35, 'rgba(215,232,238,.42)'); gr.addColorStop(1, 'rgba(215,232,238,0)');
       lg.setTransform(30, 0, 0, 254, 32, 256); lg.fillStyle = gr; lg.fillRect(-1, -1, 2, 2);       // 四周留一圈透明的边，贴图外面才是空的
       const [mc, mg] = mkCanvas(858, 520);
-      if ('filter' in mg) mg.filter = 'blur(2px)';
-      mg.setTransform(26, 0, 0, 26, -54 * 26, 9 * 26); mg.fillStyle = '#fff'; water(mg);
+      mg.setTransform(26, 0, 0, 26, -54 * 26, 9 * 26); mg.fillStyle = '#fff'; blurDraw(mg, 2, water);
       const light = canvasTex(lc), mask = canvasTex(mc); light.matrixAutoUpdate = false; mask.colorSpace = THREE.NoColorSpace;
       light.generateMipmaps = false; light.minFilter = THREE.LinearFilter;                          // 不要缩小用的那几级贴图：贴着地面看过去它们会把这道光抹平、抹宽，四周那圈透明的边也会被抹掉
       const mat = new THREE.MeshBasicMaterial({ map: light, alphaMap: mask, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
@@ -4564,8 +4654,8 @@ const CH2 = (() => {
     {
       const x1 = 207.9, x2 = 213.3, y1 = -3.45, y2 = -0.3, s = 160, [mc, g] = mkCanvas(Math.round((x2 - x1) * s), Math.round((y2 - y1) * s)), rn = seeded(52);
       g.fillStyle = '#000'; g.fillRect(0, 0, mc.width, mc.height);
-      g.filter = 'blur(1.6px)'; g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s); setInk(g, '#fff');
-      for (const [x, y, k, lean] of LEAKS) {
+      g.setTransform(s, 0, 0, -s, -x1 * s, y2 * s); setInk(g, '#fff');
+      blurDraw(g, 1.6, g => { for (const [x, y, k, lean] of LEAKS) {
         const ey = LOW - 0.03, n = k > 0.9 ? 2 : 1;
         for (let j = 0; j < n; j++) {                                                                   // 从缝里冲出来，越往下越散，到了下面断成水珠
           const lj = lean + (j - (n - 1) / 2) * 0.09 * k + (rn() - 0.5) * 0.04, pts = [];
@@ -4576,7 +4666,7 @@ const CH2 = (() => {
         const sp = g.createRadialGradient(0, 0, 0, 0, 0, 1); sp.addColorStop(0, `rgba(255,255,255,${0.55 * k})`); sp.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sp; g.fillRect(-1, -1, 2, 2); g.restore();
         for (let i = 0; i < 9; i++) { g.globalAlpha = 0.25 + 0.4 * rn(); oval(g, x + lean + (rn() - 0.5) * 0.3 * k, ey + 0.03 + rn() * 0.16 * k, 0.012 + 0.012 * rn(), 0.012 + 0.02 * rn()); }   // 溅起来的水珠
         g.globalAlpha = 1; setInk(g, '#fff');
-      }
+      } });
       const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace; v.extraTex.push(mask);             // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
       const [fc, fg] = mkCanvas(32, 128); fg.fillStyle = '#dcdcdc'; fg.fillRect(0, 0, 32, 128);              // 水流：大体是亮的，夹着一道道更亮的和暗一些的，一直往下滚
       { const rf = seeded(53); for (let i = 0; i < 36; i++) { fg.fillStyle = rf() < 0.6 ? '#fff' : '#6a6a6a'; fg.fillRect(rf() * 32, rf() * 128, 2 + rf() * 4, 6 + rf() * 20); } }
@@ -7000,8 +7090,8 @@ const pickOf = arr => arr[Math.floor(Math.random() * arr.length)];
 const AIR_TEX = (() => {
   const [c, g] = mkCanvas(256, 256);
   const tile = (i, fn) => { g.save(); g.translate((i % 4) * 64 + 32, Math.floor(i / 4) * 64 + 32); g.scale(32, 32); g.fillStyle = g.strokeStyle = '#fff'; g.lineCap = g.lineJoin = 'round'; fn(); g.restore(); };
-  const ell = (x, y, rx, ry, a = 0) => { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, 6.2832); g.fill(); };
-  const path = (pts, close = true) => { g.beginPath(); pts.forEach(([x, y], k) => g[k ? 'lineTo' : 'moveTo'](x, y)); if (close) g.closePath(); };
+  const ell = (x, y, rx, ry, a = 0, gg = g) => { gg.beginPath(); gg.ellipse(x, y, rx, ry, a, 0, 6.2832); gg.fill(); };
+  const path = (pts, close = true, gg = g) => { gg.beginPath(); pts.forEach(([x, y], k) => gg[k ? 'lineTo' : 'moveTo'](x, y)); if (close) gg.closePath(); };
   tile(0, () => { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 0.92); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.85)'); gr.addColorStop(0.6, 'rgba(255,255,255,.28)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(-1, -1, 2, 2); });
   tile(1, () => { const gr = g.createLinearGradient(-0.9, 0, 0.9, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.3, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; ell(0, 0, 0.9, 0.07); });
   tile(2, () => { path([[0, -0.82], [0.36, -0.3], [0.32, 0.25], [0, 0.6], [-0.32, 0.25], [-0.36, -0.3]]); g.fill(); g.lineWidth = 0.07; path([[0, -0.6], [0, 0.88]], false); g.stroke(); });
@@ -7016,7 +7106,7 @@ const AIR_TEX = (() => {
   tile(9, () => dragon(true)); tile(10, () => dragon(false));
   tile(11, () => { for (const sx of [-1, 1]) { ell(sx * 0.36, -0.16, 0.36, 0.3, sx * 0.4); ell(sx * 0.26, 0.28, 0.24, 0.2, -sx * 0.3); } g.lineWidth = 0.08; path([[0, -0.36], [0, 0.4]], false); g.stroke(); });
   tile(12, () => { ell(0.02, -0.32, 0.2, 0.42, 0.15); g.lineWidth = 0.08; path([[-0.42, 0.12], [0.46, 0.1]], false); g.stroke(); });
-  tile(13, () => { if ('filter' in g) g.filter = 'blur(1.2px)'; path([[0, -0.1], [-0.72, -0.42], [-0.62, 0.32], [0, 0.18], [0.62, 0.32], [0.72, -0.42]]); g.fill(); ell(0, 0, 0.1, 0.36); });
+  tile(13, () => blurDraw(g, 1.2, t => { path([[0, -0.1], [-0.72, -0.42], [-0.62, 0.32], [0, 0.18], [0.62, 0.32], [0.72, -0.42]], true, t); t.fill(); ell(0, 0, 0.1, 0.36, 0, t); }));
   tile(14, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.84, 0.32); g.quadraticCurveTo(-0.4, -0.12, 0, 0.04); g.quadraticCurveTo(0.4, -0.12, 0.84, 0.32); g.stroke(); ell(0, 0.06, 0.2, 0.12); });
   tile(15, () => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.82, -0.5); g.quadraticCurveTo(-0.36, -0.06, 0, 0.12); g.quadraticCurveTo(0.36, -0.06, 0.82, -0.5); g.stroke(); ell(0, 0.12, 0.2, 0.12); });
   const t = canvasTex(c); t.anisotropy = 1; return t;

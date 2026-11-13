@@ -264,9 +264,7 @@ const CH1 = (() => {
       for (const [x, z, w, d] of [[61.2, 1.0, 1.7, 1.1], [72.3, -2.6, 2.3, 1.3], [78.6, 5.2, 1.5, 1.8]]) { g.fillStyle = 'rgba(160,180,186,.11)'; g.fillRect(x, z, w, d); }   // 补过的几块
       g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineCap = 'round';
       for (let i = 0; i < 9; i++) { const x = 56 + rn() * 24, z = -3 + rn() * 7; g.lineWidth = 0.04 + rn() * 0.07; g.beginPath(); g.moveTo(x, z); g.quadraticCurveTo(x + 2 + rn() * 2, z + (rn() - 0.5) * 0.6, x + 4 + rn() * 5, z + (rn() - 0.5) * 0.9); g.stroke(); }   // 拖痕
-      if ('filter' in g) g.filter = 'blur(3px)';
-      g.fillStyle = 'rgba(4,7,10,.45)'; water(g);                                                 // 水
-      if ('filter' in g) g.filter = 'none';
+      blurDraw(g, 3, g => { g.fillStyle = 'rgba(4,7,10,.45)'; water(g); });                      // 水
     }, { floor: 0.006, lit: true, order: -30, fadeL: 2.5, fadeR: 2.5 });                           // 两头渐渐淡掉，和场地外面干净的地面接上时看不出一条边
     yield;
     // 探照灯在水里的倒影：一道朝着镜头拉长的亮光，只留在有水的地方。
@@ -277,8 +275,7 @@ const CH1 = (() => {
       gr.addColorStop(0, 'rgba(215,232,238,.8)'); gr.addColorStop(0.35, 'rgba(215,232,238,.42)'); gr.addColorStop(1, 'rgba(215,232,238,0)');
       lg.setTransform(30, 0, 0, 254, 32, 256); lg.fillStyle = gr; lg.fillRect(-1, -1, 2, 2);       // 四周留一圈透明的边，贴图外面才是空的
       const [mc, mg] = mkCanvas(858, 520);
-      if ('filter' in mg) mg.filter = 'blur(2px)';
-      mg.setTransform(26, 0, 0, 26, -54 * 26, 9 * 26); mg.fillStyle = '#fff'; water(mg);
+      mg.setTransform(26, 0, 0, 26, -54 * 26, 9 * 26); mg.fillStyle = '#fff'; blurDraw(mg, 2, water);
       const light = canvasTex(lc), mask = canvasTex(mc); light.matrixAutoUpdate = false; mask.colorSpace = THREE.NoColorSpace;
       light.generateMipmaps = false; light.minFilter = THREE.LinearFilter;                          // 不要缩小用的那几级贴图：贴着地面看过去它们会把这道光抹平、抹宽，四周那圈透明的边也会被抹掉
       const mat = new THREE.MeshBasicMaterial({ map: light, alphaMap: mask, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });

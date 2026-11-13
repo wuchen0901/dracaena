@@ -31,6 +31,7 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 ## 目录
 
 - `Last/sidescroller/src/`：原型的源码，按文件名顺序分段（核心、世界、布景、灯光、角色、地上的东西、玩家、声音、八个章节、空中的细节、界面、主循环）。`47-cave-kit.js` 是山洞的布景套件（岩石的剖面、后墙、水色、水面的亮线、光柱、焦散），`68-ch9-cave.js` 是第九章，`74-water-fx.js` 是水里的气泡、水花和波纹；游泳的操作在 `50-player.js` 最后一段，游泳的动作在 `42-character-anim.js`。`46-ground.js` 是各章共用的地上的东西：石头、落叶、草和蕨（一张共用的图集）、树枝和倒木、泥、会映出画面的水洼，还有走近了会逃开的青蛙、蜥蜴和虫子。空中的细节在 `70-air.js`（光里的尘埃、落叶、风沙、虫子、远处的鸟群、萤火虫）、`71-air-birds.js`（会被惊飞的鸟）、`72-air-chapters.js`（每一章摆什么）。
+- 画布上的柔边（虚化）一律用 `10-core.js` 的 `blurDraw`，不要用画布自带的 `ctx.filter = 'blur()'`：iPhone 上没有它，柔边会全变成硬边。
 - `Last/sidescroller/build.sh`：把 `src/` 拼成 `Last/sidescroller.html`。改完源码后运行 `bash Last/sidescroller/build.sh`。
 - `Last/sidescroller.html`：拼好的成品，浏览器打开的就是它。
 - `Last/models/hero.glb`：主角模型。

@@ -13,7 +13,7 @@ function groundDecal(x1, x2, z1, z2, ppm, draw, o = {}) {
   const W = (x2 - x1) * ppm, D = (z2 - z1) * ppm, k = Math.min(1, 4096 / W, 4096 / D), s = ppm * k, [c, g] = mkCanvas(Math.round(W * k), Math.round(D * k));
   const place = () => g.setTransform(s, 0, 0, s, -x1 * s, -z1 * s);
   place(); g.lineCap = 'round'; draw(g);
-  place(); if ('filter' in g) g.filter = 'none'; g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out';
+  place(); g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out';
   for (const [w, a, b] of [[o.fadeL, x1, 1], [o.fadeR, x2, -1]]) if (w) {
     const gr = g.createLinearGradient(a, 0, a + b * w, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.fillRect(Math.min(a, a + b * w), z1, w, z2 - z1);
@@ -264,20 +264,17 @@ function stump(parent, x, z, r, h) {
 function mudPath(parent, L, layers, x1, x2, zc, o = {}) {
   const w = o.w ?? 0.85, z1 = o.z1 ?? -2.6, z2 = o.z2 ?? 7.6, patches = o.patches ?? [], X1 = x1 - 1, X2 = x2 + 1;
   const blob = (g, x, z, rx, rz, col, a = 0) => { g.fillStyle = col; g.beginPath(); g.ellipse(x, z, rx, rz, a, 0, 6.2832); g.fill(); };
-  const soft = (g, px) => { if ('filter' in g) g.filter = px ? `blur(${px}px)` : 'none'; };
   const spots = [];                                        // 泥地由一团团椭圆叠成 [x, z, 半长, 半宽]
   for (let x = x1; x < x2; x += rr(0.16, 0.34)) spots.push([x, zc(x) + rr(-0.25, 0.25) * w, rr(0.45, 1.0), w * rr(0.5, 1.0)]);
   for (const [px, pz, rx, rz] of patches) for (let i = 0, n = Math.round(rx * rz * 10) + 6; i < n; i++) { const a = rr(0, 6.28), d = Math.sqrt(rnd()); spots.push([px + Math.cos(a) * d * rx * 0.8, pz + Math.sin(a) * d * rz * 0.8, rr(0.35, 0.8) * Math.min(1, rx * 0.6), rr(0.12, 0.3) * Math.min(1.4, rz * 1.6)]); }
   const wet = spots.filter(() => rnd() < 0.22).map(([x, z, rx, rz]) => [x + rr(-0.2, 0.2), z + rr(-0.08, 0.08), rx * rr(0.3, 0.65), rz * rr(0.2, 0.45)]);
   const decal = groundDecal(X1, X2, z1, z2, 40, g => {
-    soft(g, 8); for (const [x, z, rx, rz] of spots) blob(g, x, z, rx, rz, o.col ?? 'rgba(42,29,14,0.38)');                   // 湿土
-    soft(g, 3); for (const [x, z, rx, rz] of wet) blob(g, x, z, rx, rz, 'rgba(16,11,6,0.5)');                                 // 更湿、更黑的地方
-    soft(g, 0);
+    blurDraw(g, 8, g => { for (const [x, z, rx, rz] of spots) blob(g, x, z, rx, rz, o.col ?? 'rgba(42,29,14,0.38)'); });     // 湿土
+    blurDraw(g, 3, g => { for (const [x, z, rx, rz] of wet) blob(g, x, z, rx, rz, 'rgba(16,11,6,0.5)'); });                   // 更湿、更黑的地方
     for (const [x, z, rx, rz] of spots) if (rnd() < 0.6) for (let k = 0; k < 5; k++) blob(g, x + rr(-rx, rx), z + rr(-rz, rz) * 0.8, rr(0.015, 0.045), rr(0.01, 0.03), rnd() < 0.5 ? 'rgba(110,98,74,0.55)' : 'rgba(10,7,4,0.55)');   // 翻起来的土粒
     for (let x = x1 + 0.4, i = 0; x < x2 - 0.4; x += rr(0.3, 0.42), i++) { const z = zc(x) + (i % 2 ? 0.1 : -0.1) + rr(-0.04, 0.04); g.save(); g.translate(x, z); g.rotate(rr(-0.2, 0.2)); blob(g, 0, 0, 0.13, 0.055, 'rgba(8,6,3,0.55)'); blob(g, 0.04, 0, 0.07, 0.035, 'rgba(70,62,44,0.35)'); g.restore(); }   // 一串脚印
   }, { order: -31, lift: 0.006, fadeL: 2, fadeR: 2, parent });
-  const sheen = puddles(parent, L, X1, X2, z1, z2, [], layers, { rim: false, pool: false, soft: true, ppm: 30, k: o.k ?? 0.5, bed: 0x1e160c, mask: g => {
-    soft(g, 1.2);
+  const sheen = puddles(parent, L, X1, X2, z1, z2, [], layers, { rim: false, pool: false, soft: true, ppm: 30, k: o.k ?? 0.5, bed: 0x1e160c, maskBlur: 1.2, mask: g => {
     for (const [x, z, rx, rz] of wet) for (let k = 0; k < 2; k++) { g.globalAlpha = rr(0.45, 0.95); blob(g, x + rr(-rx, rx) * 0.6, z + rr(-rz, rz) * 0.5, rr(0.08, 0.26) * Math.max(0.6, rx), rr(0.025, 0.05), '#fff'); }   // 一道道横着的细水痕
     for (let x = x1 + 0.4, i = 0; x < x2 - 0.4; x += rr(0.3, 0.42), i++) if (rnd() < 0.18) { g.globalAlpha = 0.6; blob(g, x, zc(x) + (i % 2 ? 0.1 : -0.1), 0.09, 0.03, '#fff'); }   // 积了水的脚印
     g.globalAlpha = 1;
@@ -290,15 +287,15 @@ function mudPath(parent, L, layers, x1, x2, zc, o = {}) {
 // layers 是要映进水里的布景板（backdrop 返回的那几块，近的在前）。
 // 倒影不是另画的：水面上的每一点，沿着视线在水面上反弹回去的方向找，碰到哪一层布景板就取那一层贴图上的颜色 ——
 // 所以镜头一动，倒影跟着走；主角站在水洼后面，水里就有他的影子。越贴着水面看，映得越清楚（近处的水更透，看得见水底）
-// o: mask(g) 自己画水的形状（不用 pools 的椭圆）/ rim false 不要水边那圈湿土 / k 整体淡到多少 / pool false 不算作能踩出水花的水洼 / bed 水底的颜色
+// o: mask(g) 自己画水的形状（不用 pools 的椭圆）/ maskBlur 水的形状虚化几个像素（默认 2）/ rim false 不要水边那圈湿土 / k 整体淡到多少 / pool false 不算作能踩出水花的水洼 / bed 水底的颜色
 function puddles(parent, L, x1, x2, z1, z2, pools, layers, o = {}) {
   const y = o.y ?? groundY((x1 + x2) / 2), ppm = o.ppm ?? 44, k = Math.min(1, 4096 / ((x2 - x1) * ppm), 4096 / ((z2 - z1) * ppm)), [mc, mg] = mkCanvas(Math.round((x2 - x1) * ppm * k), Math.round((z2 - z1) * ppm * k));
   const shape = (g, grow) => { g.beginPath(); for (const [x, z, rx, rz] of pools) { g.moveTo(x + rx + grow, z); g.ellipse(x, z, rx + grow, rz + grow * 0.7, 0, 0, 6.2832); } g.fill(); };
   mg.fillStyle = '#000'; mg.fillRect(0, 0, mc.width, mc.height);                                // 先铺满黑的：形状图要不透明，红色通道才是真的深浅（透明画布传给显卡时，只要沾了一点边，颜色就是满的）
-  if ('filter' in mg) mg.filter = 'blur(2px)'; mg.setTransform(ppm * k, 0, 0, ppm * k, -x1 * ppm * k, -z1 * ppm * k); mg.fillStyle = '#fff';
-  if (o.mask) o.mask(mg); else shape(mg, 0);
+  mg.setTransform(ppm * k, 0, 0, ppm * k, -x1 * ppm * k, -z1 * ppm * k); mg.fillStyle = '#fff';
+  blurDraw(mg, o.maskBlur ?? 2, g => { if (o.mask) o.mask(g); else shape(g, 0); });
   const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace;
-  if (o.rim !== false) groundDecal(x1, x2, z1, z2, ppm, g => { if ('filter' in g) g.filter = 'blur(4px)'; g.fillStyle = o.rimCol ?? 'rgba(22,18,11,0.55)'; shape(g, 0.16); }, { order: -30.5, lift: 0.007, parent });   // 水边一圈湿土
+  if (o.rim !== false) groundDecal(x1, x2, z1, z2, ppm, g => blurDraw(g, 4, g => { g.fillStyle = o.rimCol ?? 'rgba(22,18,11,0.55)'; shape(g, 0.16); }), { order: -30.5, lift: 0.007, parent });   // 水边一圈湿土
   const U = { uMask: { value: mask }, uSky: { value: new THREE.Color() }, uFog: { value: new THREE.Color() }, uBed: { value: new THREE.Color(o.bed ?? 0x1c1a12) }, uCam: { value: V3() }, uK: { value: o.k ?? 1 }, uLin: { value: o.soft ? 1 : 0 },
     uHero: { value: new THREE.Vector4() }, uT: { value: 0 }, uRip: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 9, 0)) } };
   for (let i = 0; i < 3; i++) { U['uL' + i] = { value: null }; U['uR' + i] = { value: new THREE.Vector4() }; U['uZ' + i] = { value: V3() }; }
