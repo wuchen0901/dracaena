@@ -12,7 +12,11 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 
 然后在浏览器打开 <http://127.0.0.1:8765/sidescroller.html>。页面需要联网，three.js 从 cdn.jsdelivr.net 加载。
 
+没有装 Python 的机器（比如 Windows）用 `node Last/tools/serve.mjs 8765` 代替上面那一行，`.claude/launch.json` 里对应的是 `last-prototype-node`（端口 8771）。
+
 地址后面加 `?ch=5` 可以直接从第五章开始，`?ch=9` 直接进山洞。
+
+主角不总是正侧面：站着是四分之三侧身，隔几秒换一个站法（有时背过身去看远处）；走、跑、跳时身子朝镜头转过来一点，肩和胯反着拧；原地转身时脚跟着挪步；推拉、攀爬、摆好的姿势还是正侧面。数值在 `42-character-anim.js` 的 `TURN` 里，地址后面加 `?turn=0` 回到原来的正侧面（对比用）。
 
 在手机上看：用 `.claude/launch.json` 里的 `last-prototype-lan`（端口 8770，同一个 Wi-Fi 里的设备都能打开），手机上打开 `http://<这台电脑的局域网地址>:8770/sidescroller.html`。`tools/phone-check.html` 在手机上量帧率、查柔边能不能用，结果记进服务器日志。
 
