@@ -62,6 +62,12 @@
   <p class="note">拖到听着合适，把数字告诉我就行（1 是现在的音量）。</p>
   <div id="mix"></div>
   <div class="grid" style="margin-top:8px"><button id="ambToggle">环境声 关</button></div>
+
+  <h2 id="brush">七 · 拨开路边的植物</h2>
+  <p class="note">清脆的“沙啦”。点下面让主角跑过去 / 慢慢走过去：林子里（第二章）的叶子是枯的，花园里（第七章）的是嫩的。
+    叶子被推得越快越响；手一松、叶子弹回去，会轻轻“唰”一下；小树枝弹回去时抖落几片叶子，有零星的碎响。多响可以在“六”里的“拨开植物”那一条调。</p>
+  <table id="brWalks" style="margin-top:8px"></table>
+  <div class="grid" style="margin-top:8px" id="brMore"></div>
 </div>
 <script>
 // 声音样板：把横版原型装进左边的窗口，用它的调试接口（window.__g）摆主角、放声音。声音全部来自游戏本身（Last/sidescroller/src/51-sound-synth.js、52-audio.js、53-breath.js）。
@@ -149,7 +155,7 @@ SINGLES.forEach(([k, name, gain], i) => btn(document.getElementById('singles'), 
 }));
 
 // ---- 六 · 音量 ----
-const MIX = [['amb', '环境的底子'], ['step', '脚步'], ['breath', '呼吸'], ['far', '远处的声音'], ['bird', '鸟']];
+const MIX = [['amb', '环境的底子'], ['step', '脚步'], ['breath', '呼吸'], ['far', '远处的声音'], ['bird', '鸟'], ['brush', '拨开植物']];
 for (const [k, name] of MIX) {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${name}</label><input type="range" min="0" max="2" step="0.05" value="1"><span>1.00</span>`;
@@ -164,6 +170,35 @@ function quietAmb(q) {                                             // 听单独�
   if (!q) { g.SND.vol.bird = +MIX.bird.value; g.SND.vol.far = +MIX.far.value; }
 }
 document.getElementById('ambToggle').onclick = () => { soundOn(); quietAmb(ambSaved === null); };
+
+// ---- 七 · 拨开路边的植物 ----
+// 声音在游戏里（52-audio.js 的 brushSound）：主角真的走过去，叶子被推开多快就多响
+// 每一丛：[名字, 章, x]。主角从前面几米处出发，跑过去（默认的速度）或按着 Shift 慢慢走过去
+const BR_PLANTS = [['林子 · 大叶子', 2, 189.5], ['林子 · 高草', 2, 238.6], ['林子 · 蕨', 2, 182.6], ['林子 · 小树枝', 2, 224.6],
+  ['花园 · 大叶子', 7, X[7] + 73.5], ['花园 · 高草', 7, X[7] + 84.5], ['花园 · 蕨', 7, X[7] + 91.5], ['花园 · 小树枝', 7, X[7] + 99]];
+async function brPass(ch, x, run) {                                  // 让主角穿过这一丛
+  const g = G();
+  await place(ch, x - (run ? 7 : 3.6)); g.BR.ex = 0;
+  await sleep(1200);                                                 // 这一丛的声音头一次用：先等它算好
+  g.keys.add('R'); if (!run) g.keys.add('S');
+  await sleep(run ? 3400 : 5200); g.keys.delete('R'); g.keys.delete('S');
+}
+const brT = document.getElementById('brWalks');
+BR_PLANTS.forEach(([name, ch, x], i) => {
+  const tr = brT.insertRow(), td0 = tr.insertCell(), td1 = tr.insertCell(); td0.innerHTML = `<b style="color:var(--hot)">${i + 1}</b> ${name}`;
+  btn(td1, '跑过去', async () => { say(`拨开 ${i + 1} · ${name} · 跑过去`); await brPass(ch, x, true); });
+  btn(td1, '慢慢走', async () => { say(`拨开 ${i + 1} · ${name} · 慢慢走过去`); await brPass(ch, x, false); });
+});
+// 一口气穿过花园里的这一排；单独听弹回去、抖落叶子
+const BR_MORE = [
+  ['花园里一口气跑过这一排', async () => { await brPassRow(7, X[7] + 66, true, 14); }],
+  ['花园里一口气慢慢走过这一排', async () => { await brPassRow(7, X[7] + 70, false, 34); }],
+  ['只听：叶子弹回去（四种植物各一下）', async g => { quietAmb(true); for (const k of ['leaf', 'grass', 'fern', 'branch']) { g.play(`br:${k}:1:back`, { bus: 'fol', gain: 0.22, wet: 0.35 }); await sleep(700); } }],
+  ['只听：小树枝抖落叶子（枯、嫩）', async g => { quietAmb(true); for (const d of [1, 0]) { g.play(`br:branch:${d}:drop`, { bus: 'fol', gain: 0.25, wet: 0.4 }); await sleep(1300); } }],
+];
+async function brPassRow(ch, x, run, sec) { const g = G(); await place(ch, x); g.BR.ex = 0; await sleep(1200); g.keys.add('R'); if (!run) g.keys.add('S'); await sleep(sec * 1000); g.keys.delete('R'); g.keys.delete('S'); }
+BR_MORE.forEach(([name, fn], i) => btn(document.getElementById('brMore'), `<b>${BR_PLANTS.length + i + 1}</b>${name}`, async () => { say(`拨开 ${BR_PLANTS.length + i + 1} · ${name}`); await fn(G()); }));
+if (location.hash === '#brush') setTimeout(() => document.getElementById('brush').scrollIntoView(), 50);
 </script>
 </body>
 </html>
