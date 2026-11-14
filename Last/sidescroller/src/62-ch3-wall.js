@@ -119,6 +119,10 @@ const CH3 = (() => {
     // 沿路的维修标记：一块块指向旧城方向的小牌子
     for (const x of [X + 68, X + 96, X + 122]) { add(R, cy(0.04, 0.05, 2.2, 6), MAT.dark, x, 1.1, -1.6); plate(R, iconTex('bolt'), 0.4, 0.4, x - 0.25, 2.0, -1.55, 0xb9c4c0, { fog: true, order: 1 }); add(R, bx(1.1, 0.5, 0.05), MAT.steel, x, 2.0, -1.6); add(R, bx(0.3, 0.07, 0.06), MAT.pale, x + 0.25, 2.0, -1.56, false); }
     v.dog = makeCritter('dog', R);
+    // 墙外荒地的路边：几丛干草、一棵蒙着灰的牛蒡、一棵孤零零的小树（48-brush.js）。颜色是荒地上的灰黄
+    brushRow(R, [['grass', 334.5, 0.35, 1.05], ['leaf', 347.5, 0.42, 1.25], ['grass', 362.5, -0.35, 1.1], ['branch', 377.5, -0.75, 0.95]], {
+      leaf: [0x5e6040, 0x6a6a46, 0x55583a, 0x76704a], grass: [0xa89a6c, 0x9a8c5e, 0xb8aa7c, 0x8e8058], plume: [0xd6caa4, 0xc8bb92],
+      fern: [0x6e6040, 0x7a6c48], twig: [0x7a7a52, 0x6a6c48, 0x8a8458, 0x747048], bark: 0x4a4238 }, 3307);
     V = v;
   }
 
@@ -141,6 +145,7 @@ const CH3 = (() => {
     const D = DOG, inYard = P.x > A.x1 && P.x < PIT0 + 0.3, low = inYard && P.y < 0.75, near = Math.abs(P.x - D.x) < 30;
     if (near && state === 'play') {
       const chase = STORY.cat || low;
+      if (chase) TIRED.rushT = 0.5;                                          // 被追着：顾不上累
       if (D.bite > 0) { D.bite += dt; D.mode = 'bark'; if (D.bite > 0.7 && state === 'play') respawn(); }
       else if (chase) {
         let tx = clamp(P.x > PIT0 ? DMAX : P.x, DMIN, DMAX);

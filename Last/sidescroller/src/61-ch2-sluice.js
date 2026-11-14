@@ -194,6 +194,9 @@ const CH2 = (() => {
     // 水闸那一屏（x 约 200.5 到 219.5）不铺：那里的枯草、落叶、小石头、碎光斑是水闸标杆画面第三步定下来的（见上面）。两段在这两头慢慢淡进去
     yield* woods(v, layers, 176, 200.5, NEAR_SIDE, 2100);
     yield* woods(v, layers, 219.5, 257.5, FAR_SIDE, 2300);
+    // 路边会被拨开的植物（48-brush.js）：主角走过去，伸手把挡路的叶子拨开。水闸那一屏不摆；避开水洼、石头、青蛙、蜥蜴和虫子
+    brushRow(R, [['fern', 182.6, -0.4, 1.05], ['leaf', 189.5, 0.42, 1.35], ['branch', 224.6, -0.75, 1], ['grass', 238.6, 0.35, 1], ['leaf', 246.2, 0.42, 1.25, 1.45], ['fern', 252.8, 0.4, 1.0]], null, 2207);
+    yield;
     // 前景：贴着画面下沿的几丛草和蕨，深色、略微虚焦。从林子边一直到这一章的尽头（渠上没有：那里的地面低下去，这几丛落到画面外了）
     ROOT = v.gd.fore; withSeed(2105, () => foreTufts(165, 262, 9.7, { skip: [[202, 216.5]] }));          // 水闸那一屏的四个角已经有设计好的前景（枯枝、芦苇），这里不再画
     yield;
@@ -450,7 +453,7 @@ const CH2 = (() => {
     const leaf = (g, x, y, s, a, col) => { g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = col; g.beginPath(); g.moveTo(-s, 0); g.quadraticCurveTo(0, -s * 0.5, s, 0); g.quadraticCurveTo(0, s * 0.5, -s, 0); g.fill(); g.restore(); };
     const LEAFC = ['rgba(120,86,40,.95)', 'rgba(142,102,48,.92)', 'rgba(96,68,34,.95)', 'rgba(150,118,60,.9)', 'rgba(78,56,28,.95)'];
     const own = m => { m.userData.own = true; return m; };
-    v.gz = GZ; v.extraTex = [];
+    v.gz = GZ;
 
     // 闸门 · 漏水：闸板的几道缝里往外喷细水，逆光下发亮，落进渠里溅起白沫。
     // 水柱的形状画在一张透明度贴图上，上面再贴一层一直往下滚的明暗，看起来水在流；闸板一升起来就停了
@@ -471,7 +474,7 @@ const CH2 = (() => {
         for (let i = 0; i < 9; i++) { g.globalAlpha = 0.25 + 0.4 * rn(); oval(g, x + lean + (rn() - 0.5) * 0.3 * k, ey + 0.03 + rn() * 0.16 * k, 0.012 + 0.012 * rn(), 0.012 + 0.02 * rn()); }   // 溅起来的水珠
         g.globalAlpha = 1; setInk(g, '#fff');
       } });
-      const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace; v.extraTex.push(mask);             // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
+      const mask = canvasTex(mc); mask.colorSpace = THREE.NoColorSpace;                                    // 透明度贴图：按画出来的数值用，不做 sRGB 换算（换算会把中间调压得很暗）
       const [fc, fg] = mkCanvas(32, 128); fg.fillStyle = '#dcdcdc'; fg.fillRect(0, 0, 32, 128);              // 水流：大体是亮的，夹着一道道更亮的和暗一些的，一直往下滚
       { const rf = seeded(53); for (let i = 0; i < 36; i++) { fg.fillStyle = rf() < 0.6 ? '#fff' : '#6a6a6a'; fg.fillRect(rf() * 32, rf() * 128, 2 + rf() * 4, 6 + rf() * 20); } }
       v.flowTex = canvasTex(fc); v.flowTex.colorSpace = THREE.NoColorSpace; v.flowTex.wrapS = v.flowTex.wrapT = THREE.RepeatWrapping; v.flowTex.repeat.set(12, 3);
@@ -750,5 +753,6 @@ const CH2 = (() => {
   }
   function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); if (V) V.life.reset(); }
   function solve() { Object.assign(W, { open: true, t: 7, k: 1, level: HIGH, lamp: 1, flown: 99, bank: 1 }); placeTimber(); }
-  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.extraTex ?? []) t.dispose(); V = null; }, W, timber, view: () => V });
+  // 卸载：乌鸦的三张姿势是轮流换到材质上的，卸载时材质上只挂着其中一张（跟着材质一起释放），另外两张要在这里释放
+  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.crowTexs) t.dispose(); V = null; }, W, timber, view: () => V });
 })();

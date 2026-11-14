@@ -119,6 +119,8 @@ const CH9 = (() => {
   const secAt = x => { for (const S of SEC) if (x < X + S.x2) return S; return SEC[SEC.length - 1]; };
   // 地面、洞顶的颜色在两段交界前后各 4 米里慢慢换过去；照在上面的光斑用全章的（相邻一段的光也照得过来）
   const ALL_LIGHTS = SEC.flatMap(S => S.lights.map(([x, y, r, c, a]) => [X + x, y, r, c, a])), lumAll = lumOf(ALL_LIGHTS);
+  // 水花和气泡跟着这一段的光走：颜色往水面那道亮线的颜色偏一些（偏多了，暖灯底下的水花像火星），亮度看那里照得到多少光（暗处也留着一些：主角身边总有一盏补光）
+  for (const w of W) { const [r, g, b] = secAt((w.x1 + w.x2) / 2).surfC.map((v, i) => Math.round(lerp([216, 236, 238][i], v, 0.45))); w.fx = { c: (r << 16) | (g << 8) | b, lit: (x, y) => clamp(0.55 + lumAll(x, y), 0.5, 0.95) }; }
   const secCol = (x, key) => {
     const i = SEC.indexOf(secAt(x)), S = SEC[i], a = S[key], d1 = x - (X + S.x1), d2 = X + S.x2 - x;
     const N = d1 < 4 && i > 0 ? SEC[i - 1] : d2 < 4 && i < SEC.length - 1 ? SEC[i + 1] : null; if (!N) return a;

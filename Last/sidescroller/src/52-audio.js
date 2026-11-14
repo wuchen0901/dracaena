@@ -88,7 +88,7 @@ function initAudio() {
   loops.hum = loopOsc('sawtooth', 52, 240, 'sfx', 0.4);        // 探照灯 / 监控的嗡鸣
   loops.pump = loopOsc('triangle', 46, 180, 'sfx', 0.3);       // 水泵
   loops.buzz = loopOsc('square', 100, 520, 'sfx', 0.3);        // 通电的线路
-  { // 直升机（第十章）：旋翼一下一下拍打空气 —— 低、中、高三层噪声，被每秒十几下的锯齿波切开（每一下起得猛、落得慢）；上面一层发动机的啸叫不跟着拍子。
+  { // 直升机（第十一章）：旋翼一下一下拍打空气 —— 低、中、高三层噪声，被每秒十几下的锯齿波切开（每一下起得猛、落得慢）；上面一层发动机的啸叫不跟着拍子。
     // 整个再过一道低通：离得远只剩闷闷的“突突”，飞到头顶才又脆又吵
     const g = AC.createGain(), lp = AC.createBiquadFilter(), pan = AC.createStereoPanner ? AC.createStereoPanner() : null, chop = AC.createGain(), lfo = AC.createOscillator(), dep = AC.createGain();
     g.gain.value = 0; lp.type = 'lowpass'; lp.frequency.value = 400; lp.Q.value = 0.5; chop.gain.value = 0.45; lfo.type = 'sawtooth'; lfo.frequency.value = 12.5; dep.gain.value = -0.45;
@@ -204,7 +204,7 @@ Object.assign(sfx, {
 // ---- 鸟、滴水、远处偶尔一下的声音：每一章一组 ----
 const BIRDS = { 2: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], 7: [['bird', 0.82], ['dove', 0.18]], 9: [['bird', 1]] };
 const FAR = { 1: ['clank', 'chain', 'steam', 'creak', 'hum2'], 2: ['woodpecker', 'crow', 'twig'], 3: ['crow', 'rattle', 'creak', 'crow'], 4: ['chime', 'shutter', 'pigeon'],
-  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'], 10: ['owl', 'twig', 'owl'] };
+  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'], 11: ['owl', 'twig', 'owl'] };
 const FARV = { clank: 0.2, chain: 0.13, steam: 0.08, creak: 0.11, hum2: 0.1, woodpecker: 0.13, crow: 0.13, twig: 0.11, rattle: 0.15, chime: 0.09, shutter: 0.1, pigeon: 0.1,
   knock: 0.16, zap: 0.06, gurgle: 0.13, bee: 0.08, relay: 0.12, owl: 0.1, pebbles: 0.15, rumble: 0.3, plop: 0.13 };
 const pickW = list => { let s = 0; for (const [, w] of list) s += w; let u = Math.random() * s; for (const [n, w] of list) if ((u -= w) <= 0) return n; return list[0][0]; };

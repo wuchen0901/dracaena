@@ -42,11 +42,72 @@ function findGrab() {                             // 身前或身后紧挨着的
   return null;
 }
 
+// ============================================================
+//  累：爬坡爬久了、连续跑太久，人就累了 —— 慢下来、弓着腰走，时不时停下来撑着膝盖喘口气、抹一下汗、抬头望一眼坡顶、脚下绊一下
+//  F 疲劳 0..1：往上爬按爬高了多少涨（跑着爬比走着爬涨得快）；一直按着跑、跑上半分钟左右也开始涨（runT：这一口气跑了多久，停下来喘过气就重新算）；
+//    停下来喘气、站着缓得最快，平地上慢慢走缓得慢些，刚开始跑的那二十来秒也在缓；还在往上爬、或者跑太久了还硬撑着跑的时候缓不过来。回到存档点就缓过来了
+//  k 累的样子有多重：F 过了三成五开始有，过了八成五就是累透了；被追的时候（rushT > 0，章节里每帧给它续上）顾不上累
+//  三种走法（见 42-character-anim.js 的 TIRED_GAIT）组合着用：每回累起来随机挑“弓背低头”或者“拖着脚”为主，走一阵会换；
+//    坡陡的地方（多数时候）两手按到大腿上去
+//  四个小动作随机出现，一次只做一样：走着走着停下来撑着膝盖喘气（只在地面上，不在箱子、木梁上）、抹额头、抬头望坡顶（只在上坡）、
+//    脚尖绊一下（累透了才有）；站着不动的时候也是撑着膝盖喘，隔一会儿抬头往前看一眼
+// ============================================================
+const TIRED = { F: 0, k: 0, runT: 0, idleT: 0, ep: false, gait: 0, gaitT: 0, steep: true, mix: [1, 0, 0],
+  rest: 0, restT: -1, restD: 0, wipeT: -1, lookT: -1, stbT: -1, nRest: 0, nWipe: 0, nLook: 0, nStb: 0, half: 0, rushT: 0, seed: 20261113, fixF: -1 };
+function trand() { TIRED.seed = TIRED.seed * 16807 % 2147483647; return TIRED.seed / 2147483647; }   // 自己的随机数：画面图设好种子，拍出来每次一样
+function resetTired() { Object.assign(TIRED, { F: 0, k: 0, runT: 0, idleT: 0, ep: false, rest: 0, restT: -1, wipeT: -1, lookT: -1, stbT: -1, rushT: 0 }); }
+function stepTired(dt, d) {
+  const T = TIRED, ground = P.grounded && P.mode === 'normal', sp = Math.abs(P.vx);
+  const slope = ground ? groundSlope(P.x) : 0, up = slope * (d || P.facing), climb = Math.max(0, P.vx * slope);   // up：朝着走的方向坡往上多陡；climb：每秒爬高多少米
+  const onTerrain = ground && P.y - groundY(P.x) < 0.02, fast = ground && sp > 2.2;
+  const pushing = ground && d && sp > 0.25 && ctl && !keys.has('S');   // 想跑：按着方向键、没按 Shift（过场里自己走的时候不算）
+  T.rushT = Math.max(0, T.rushT - dt);
+  T.runT = T.rest ? 0 : pushing ? T.runT + dt : Math.max(0, T.runT - (sp < 0.1 || P.mode !== 'normal' ? 3 : 1) * dt);   // 推箱子、攀爬、游泳的时候不算在跑
+  T.idleT = ground && sp < 0.1 && !d ? T.idleT + dt : 0;
+  const gain = climb * (fast ? 0.45 : 0.33) + 0.07 * sstep(25, 35, T.runT);
+  const rec = !ground ? 0 : T.rest || sp < 0.1 ? 0.12 : climb > 0.02 ? 0 : (fast ? 0.04 : 0.07) * (1 - sstep(23, 27, T.runT));   // 跑得太久还硬撑着跑：走着也缓不过来，得停下来
+  T.F = T.fixF >= 0 ? T.fixF : clamp(T.F + (gain - rec) * dt, 0, 1);
+  const want = T.rushT > 0 ? 0 : sstep(0.35, 0.85, T.F);
+  T.k = damp(T.k, want, want > T.k ? 1.0 : T.rushT > 0 ? 5 : 0.8, dt);
+  // 一回累：开始的时候随机挑主要的走法、各个小动作第一次出现的时间；走一阵换一种走法
+  if (!T.ep && T.k > 0.06) {
+    T.ep = true; T.gait = trand() < 0.6 ? 0 : 2; T.gaitT = 8 + 6 * trand(); T.steep = trand() < 0.75;
+    T.nRest = 4 + 4 * trand(); T.nWipe = 3 + 5 * trand(); T.nLook = 2 + 3 * trand(); T.nStb = 6 + 6 * trand();
+  }
+  if (T.ep && T.k < 0.03 && !T.rest) T.ep = false;
+  if (T.ep && (T.gaitT -= dt) < 0) { T.gait = 2 - T.gait; T.gaitT = 7 + 7 * trand(); }
+  const thigh = T.steep ? sstep(0.1, 0.18, up) * sstep(0.45, 0.85, T.k) : 0;
+  for (let i = 0; i < 3; i++) T.mix[i] = damp(T.mix[i], (i === T.gait ? 1 - thigh : 0) + (i === 1 ? thigh : 0), 1.6, dt);
+  // 小动作：时间往前走，做完了清掉
+  if (T.wipeT >= 0 && (T.wipeT += dt) > 1.5) T.wipeT = -1;
+  if (T.lookT >= 0 && (T.lookT += dt) > 2.4) T.lookT = -1;
+  if (T.stbT >= 0 && (T.stbT += dt) > 0.75) T.stbT = -1;
+  if (T.restT >= 0) {                                                  // 走着走着停下来喘气：到点了接着走，起身之前抬头看一眼前面
+    T.restT += dt;
+    if (T.restT > T.restD - 1.3 && T.lookT < 0) T.lookT = 0;
+    if (T.restT > T.restD || !ground) { T.restT = -1; T.rest = 0; }
+  } else if (T.rest && (d || !ground || T.k < 0.2)) T.rest = 0;        // 站着喘气：一动就起身
+  const busy = T.rest || T.wipeT >= 0 || T.lookT >= 0 || T.stbT >= 0;
+  const half = Math.floor(hero.A.ph * 2), step = half !== T.half; T.half = half;   // step：刚好踩下一步
+  if (T.ep && T.k > 0.45 && T.rushT <= 0) {
+    if (ground && sp > 0.25 && d) {
+      if ((T.nRest -= dt) < 0 && !busy && onTerrain && T.k > 0.6) { T.rest = 1; T.restT = 0; T.restD = 2.2 + 1.2 * trand(); T.nRest = 9 + 7 * trand(); }
+      else if ((T.nWipe -= dt) < 0 && !busy && T.mix[1] < 0.3) { T.wipeT = 0; T.nWipe = 8 + 6 * trand(); }   // 两手按着大腿的时候腾不出手
+      else if ((T.nLook -= dt) < 0 && !busy && up > 0.04) { T.lookT = 0; T.nLook = 6 + 6 * trand(); }
+      else if ((T.nStb -= dt) < 0 && !busy && step && onTerrain && T.k > 0.75) { T.stbT = 0; T.nStb = (T.mix[2] > 0.5 ? 6 : 10) + 8 * trand(); }
+    } else if (ground && sp < 0.1 && !d && T.idleT > 0.35 && !busy) T.rest = 1;
+    if (T.rest && T.restT < 0 && T.lookT < 0 && (T.nLook -= dt) < 0) { T.lookT = 0; T.nLook = 3 + 3 * trand(); }
+  }
+}
+
 function stepPlayer(dt) {
   const d = ctl ? (keys.has('R') ? 1 : 0) - (keys.has('L') ? 1 : 0) : autoDir;      // autoDir：过场时自动往前走
   P.impact = 0;
+  stepTired(dt, d);
   if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
   P.jumpBuf -= dt; P.coyote -= dt;
+  P.ropeCD = Math.max(0, (P.ropeCD || 0) - dt);
+  if (P.mode !== 'rope' && P.rope) { P.rope.held = false; P.rope = null; }      // 回到存档点、换章节时还抓着绳子：放开
 
   if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
     const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
@@ -70,13 +131,20 @@ function stepPlayer(dt) {
   }
 
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+  if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
   // ---- 普通状态 ----
+  const y0 = P.y;                                 // 这一步开始时脚的高度：下面入水的时候，要看这一步实际降了多少
   // 从高处落地以后的一小会儿：lh 被拖住多少（蹲着走不快、跳不起来），lp 被惯性带着往前的速度，lc 这时按键能管几成
   let lh = 0, lp = null, lc = 1;
   if (P.land) { const L = P.land; L.t += dt * (d && L.t > 0.15 && L.style < 3 ? 1.35 : 1); const l = landAt(L); if (l.done) P.land = null; else { lh = l.hold; lp = l.push; lc = l.ctl; } }   // 按着方向键就起身快一些
-  const speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK * (1 - lh);
-  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), P.grounded ? (d || lp !== null ? 9 : 14) : 3.5, dt);
+  let speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK * (1 - lh);
+  if (TIRED.k > 0.001) {                                                // 累：慢下来，一下一下地往前挪；上坡比平地慢，坡越陡越慢
+    const up = P.grounded ? groundSlope(P.x) * (d || P.facing) : 0, tv = (up > 0.03 ? lerp(0.78, 0.56, sstep(0.05, 0.2, up)) : 0.95) * hero.A.pace;
+    speed = lerp(speed, Math.min(speed, tv), TIRED.k);
+  }
+  if (TIRED.restT >= 0) speed *= 1 - sstep(0, 0.3, TIRED.restT) * (1 - sstep(TIRED.restD - 0.3, TIRED.restD, TIRED.restT));   // 走着停下来喘口气
+  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? 3.5 : lp !== null ? 9 : d ? lerp(9, 18, TIRED.k) : 14, dt);   // 累了步子一下快一下慢，速度要跟得紧
   if (d && lc > 0.5) { P.facing = d; P.moved = true; }
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 
@@ -88,7 +156,7 @@ function stepPlayer(dt) {
   // 水平移动，被方块侧面挡住
   let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
   if (hit) {
-    const side = P.vx > 0 ? 1 : -1;
+    const side = P.x < (hit.x1 + hit.x2) / 2 ? 1 : -1;   // 方块在哪一边：看人在它中线的哪一侧（慢慢走下台阶边时身子还压着台阶的侧面，按速度判断会被推到台阶另一头去）
     nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
     const h = hit.y2 - P.y;                      // 腾空时贴着墙、够得着边缘就攀上去
     if (!P.grounded && d === side && h > 0.25 && h < 1.2 * P.H && P.vy < 4.5 && hit.x2 - hit.x1 > 0.6 && !hit.noclimb) { P.x = nx; startMantle(hit, side); return; }
@@ -108,7 +176,13 @@ function stepPlayer(dt) {
     else P.y = ny;
   } else { P.vy = 0; P.gy = P.y; }
   const cTop = ceilY(P.x); if (P.y + P.hh > cTop) { P.y = Math.max(f, cTop - P.hh); if (P.vy > 0) P.vy = 0; }   // 头顶碰到洞顶
-  const wt = waterAt(P.x); if (wt && P.y < wt.y - SWIM.enter) { enterSwim(wt); return; }     // 掉进能游泳的水里
+  if (!P.grounded && ROPES.length) { const g = findRope(); if (g) { enterRope(...g); return; } }   // 跳起来手碰到绳子：抓住
+  const wt = waterAt(P.x);
+  if (wt) {                                       // 能游泳的水：脚一碰到水面就溅起水花；再沉下去一截就游起来
+    const vIn = Math.min(P.vy, Math.max((P.y - y0) / dt, -7));   // 是多快下来的（顺着陡岸滑下去时 P.vy 是 0，按这一步实际降了多快算，最多算 7 米/秒）
+    if (y0 >= wt.y && P.y < wt.y) hitWater(wt, vIn);
+    if (P.y < wt.y - SWIM.enter) { enterSwim(wt, vIn); return; }
+  }
 
   // 抓住可以推拉的东西 / 操作机关
   if (ctl && P.grounded && keys.has('E')) {
@@ -139,7 +213,7 @@ function stepFade(dt) {
 }
 function placePlayer(x, y) {
   Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
-  P.y = y ?? floorY(x, 60); P.gy = P.y;
+  P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
 }
 function respawn() {
   fadeOut(() => {
@@ -174,11 +248,13 @@ function swimHit(x, cy) {                            // 身体中点在 (x, cy) 
   for (const s of SOLIDS) if (!s.off && x + r > s.x1 && x - r < s.x2 && cy + r > s.y1 && cy - r < s.y2) return true;
   return false;
 }
-function enterSwim(w) {
-  const vy = P.vy;
+// vy：是多快掉进来的。掉得越猛，水花越大，人沉得越深，带下去的气泡越多
+function hitWater(w, vy) { P.wetT = T; fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(w, P.x, clamp(-vy / 9, 0.25, 1)); }   // 脚碰到水面的那一下
+function enterSwim(w, vy = P.vy) {
+  if (!(T - P.wetT < 0.6)) hitWater(w, vy);         // 没经过水面就到了水里（比如被直接放进水里）：水花补在这里
   Object.assign(P, { mode: 'swim', water: w, grounded: false, coyote: 0, jumpBuf: 0, stroke: 0.55, land: null });
   P.vy = clamp(vy * 0.3, -2.2, 0); P.vx *= 0.6;
-  fx('splash', clamp(-vy / 8, 0.35, 1)); splashAt(P.x, w.y, clamp(-vy / 9, 0.25, 1));
+  plungeAt(w, clamp(-vy / 9, 0.25, 1));
 }
 // 在水面上往 side 那边找岸：地面从水里冒出来、又不太高（撑得上去），岸上头顶也够高（上去站得直）
 function climbOut(w, side, cx) {
@@ -188,7 +264,7 @@ function climbOut(w, side, cx) {
     if (top - w.y > SWIM.reach || ceilY(x + side * 0.45) < top + P.H + 0.05) return false;
     let e = x; for (let n = 0; n < 80 && groundY(e) < top - 0.04; n++) e += side * 0.01;
     P.water = null; startMantle(side > 0 ? { x1: e, x2: e + 1, y2: top } : { x1: e - 1, x2: e, y2: top }, side); P.mantle.T = 0.9;
-    fx('wade'); splashAt(cx + side * 0.2, w.y, 0.35);
+    fx('wade'); splashAt(w, cx + side * 0.2, 0.35, 8);
     return true;
   }
   return false;
@@ -213,7 +289,7 @@ function stepSwim(dt, d) {
   let nx = cx + P.vx * dt;
   if (swimHit(nx, cy)) { if (atTop && d && climbOut(w, d, cx)) return; nx = cx; P.vx = 0; }
   let ny = Math.min(cy + P.vy * dt, topY);
-  if (swimHit(nx, ny)) { ny = cy; P.vy = 0; }
+  if (swimHit(nx, ny)) { ny = cy; if (cy <= topY + 1e-4) P.vy = 0; }   // 刚入水、身子还高出该浮着的那条线时被挡住，是往下够那条线时蹭到了岸壁，不是沉到了底：往下沉的势头留着
   if (ny >= topY - 1e-4 && P.vy > 0) P.vy = 0;
   P.x = nx; P.y = ny - SWIM.c;
   if (atTop && ctl && pressed.has('J') && climbOut(w, P.facing, nx)) return;

@@ -54,9 +54,10 @@ function dragMarks(parent, x1, x2, y = 0, z = 0, half = 0.42) {
     }
   });
 }
-// 一块面朝镜头的小牌子 / 图标（不受光照，自己发亮）
+// 一块面朝镜头的小牌子 / 图标（不受光照，自己发亮）。卸载这一章时连同 textTex() 写的字一起释放（图标是几章共用的，不释放）
 function plate(parent, tex, w, h, x, y, z, color = 0xffffff, o = {}) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color, fog: o.fog ?? false, opacity: o.opacity ?? 1 }));
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color, fog: o.fog ?? false, opacity: o.opacity ?? 1 }); mat.userData.own = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   m.position.set(x, y, z); m.renderOrder = o.order ?? 30; parent.add(m); return m;
 }
 // 沿着几个点弯过去的一根管子 / 缆线

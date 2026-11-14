@@ -450,6 +450,7 @@ const CH1 = (() => {
     }
     // 躲在矮墙的影子里、光束又扫到附近时：站住不动的 07 会捂住胸口的灯
     const nearYard = P.x > W.cx - W.amp - 4 && P.x < W.cx + W.amp + 4 && P.y < 2.4;
+    if (nearYard && inHall) TIRED.rushT = 0.5;                              // 探照灯底下：顾不上累
     HX.hide = state === 'play' && nearYard && inShadow(P.x) ? sstep(8, 4, Math.abs(P.x - W.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
     HX.alert = W.exposure;
     if (inHall) { AUD.hum = (1 - E.ext) * sstep(34, 6, Math.abs(P.x - W.cx)) * (0.02 + 0.05 * W.exposure); AUD.humF = 52 + 60 * W.exposure; }
@@ -497,6 +498,6 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { if (V) V.glint.material.alphaMap.dispose(); V = null; },
+  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();

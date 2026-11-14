@@ -216,7 +216,7 @@ function stencil07() {                                  // 头盔侧面喷的出
   g.globalCompositeOperation = 'destination-out';
   g.fillStyle = '#000'; g.fillRect(0, 62, 192, 7);                                                     // 喷漆模板中间那道“桥”
   for (let i = 0; i < 320; i++) { g.globalAlpha = 0.25 + 0.7 * rn(); g.fillRect(rn() * 192, rn() * 128, 1 + rn() * 5, 1 + rn() * 2.5); }   // 磨掉的漆
-  return _stencil07 = canvasTex(c);
+  return _stencil07 = sharedTex(canvasTex(c));
 }
 
 function buildRobot07(o = {}) {
