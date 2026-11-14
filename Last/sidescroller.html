@@ -59,6 +59,11 @@
   #menulist .it.sel{background:rgba(201,143,61,.2);outline:1px solid rgba(230,174,92,.55)}
   #menulist .it.sel b{color:#ffd9a0}
   #end .keys{max-width:34em;line-height:2;margin-top:22px}
+  /* 《长夜》的结局：不写结局名和说明，只留重来的提示；拉闸以后画面全白，字换成深色 */
+  #end.bare h1,#end.bare .sub,#end.bare .keys{display:none}
+  #end.bare .go{margin-top:62vh}
+  #end.white .go{color:#6d6a5e}
+  #white{background:#f3f1ea;opacity:0;transition:opacity 3s ease}
   /* 手机触屏：不要滚动、缩放、长按弹菜单；黑边和右上角的图标改画在画布里 */
   html,body{touch-action:none;overscroll-behavior:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   body.touch #bars{display:none}
@@ -83,6 +88,7 @@
 <div id="vig" class="fx"></div>
 <div id="grain" class="fx"></div>
 <div id="fade" class="fx"></div>
+<div id="white" class="fx"></div>
 <div id="bars" class="fx"></div>
 <div id="hint"></div>
 <div id="chap"></div>
@@ -91,7 +97,7 @@
 </div>
 <div id="title" class="ov hide">
   <h1>铁锈与微光</h1>
-  <div class="sub">横版原型 · 十一章</div>
+  <div class="sub">横版原型 · 十三章</div>
   <div class="keys">
     <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关　　在水里按 <b>↓</b> 潜下去　　抓着绳子按 <b>↑</b><b>↓</b> 上下爬<br>
     <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
@@ -324,7 +330,8 @@ const chapterAt = x => { let c = CHAPTERS[0]; for (const k of CHAPTERS) if (x >=
 // 故事进度：跨章节要记住的事（存进 localStorage，下次打开接着走）
 //   cat 救下了小猫 / fed 老人拿到了食物 / cleaner 1 = 电池给了清洁机器人，2 = 给了门 /
 //   pump 水泵通了电 / water 给幸存者和猫留了水 / wild 野地得到了水 / ending 1 = 修复，2 = 旁路
-const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false, water: false, wild: false, ending: 0 };
+//   《长夜》原型：bulb 灯泡在包里（第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
+const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false, water: false, wild: false, ending: 0, bulb: false, room: 0 };
 const STORY = { ...STORY0 };
 
 // ---- 地形：一条折线，坡度都很缓；陡的台阶、坑壁用 SOLIDS 里的方块表示 ----
@@ -1620,7 +1627,7 @@ function makeCharacter(kind, prev, o = {}) {
     A.lc = damp(A.lc ?? 0, ld.c, 40, dt); A.hand = damp(A.hand ?? 0, ld.hand, 30, dt); A.trip = damp(A.trip ?? 0, ld.trip, 30, dt); A.ltuck = damp(A.ltuck ?? 0, ld.tuck, 40, dt);
     const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck;
     // 身子朝哪（见上面的 TURN）。摆好的姿势（坐下、弯腰、伸手够东西）都是照正侧面排的，这时候不转；q.turn 可以直接指定
-    const posed = !!(q.sit || q.bow || q.reach || q.arms || limp), sw = s.swim || A.lastSwim;
+    const posed = !!(q.sit || q.bow || q.reach || q.arms || q.hands || limp), sw = s.swim || A.lastSwim;
     const rest = s.grounded && sp < 0.05 && s.mode === 'normal' && !posed && !o.npc;
     if (rest) {                                                              // 站了一会儿就换个站法（不和上一个重样）
       A.restT += dt;
@@ -1922,6 +1929,9 @@ function makeCharacter(kind, prev, o = {}) {
           const [fx, fy] = at('headfront'), [hx, hy] = at('Head'), [ex, ey] = at('head_end');
           k = wipe; bulge = 0.015; tx = fx + 0.6 * (ex - hx) + 0.065 - 0.045 * wipeX; ty = fy + 0.6 * (ey - hy) - 0.05 + 0.02 * wipeX;
         }
+        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从包里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
+        const hq = q.hands && q.hands[i];
+        if (hq && (hq.k ?? 1) > 0.001) { k = hq.k ?? 1; tx = (hq.x - s.x) * dir; ty = hq.y - s.y; bulge = hq.bulge ?? 0; }
         if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) k *= 1 - brush.k * (1 - restK);   // 这只手正伸出去拨路边的叶子：先拨叶子（停下来撑膝盖的时候除外）
         if (k > 0.001) {
           // 手不是一下子跳过去的：从它现在的位置沿着身前移过去，每一刻都重新解 IK，手肘自然地弯着。
@@ -1981,6 +1991,190 @@ function makeCharacter(kind, prev, o = {}) {
   }
   function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry && !o.userData.travelerShared) o.geometry.dispose(); if (o.userData.travelerOwned) { for (const material of (Array.isArray(o.material) ? o.material : [o.material])) material.dispose(); } if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
   return { kind, B, A, root, H: u, update, dispose };
+}
+
+// ============================================================
+//  《长夜》的灯泡和斜挎包（原型 C 先用：第十二章凿记号、第十三章机房）
+//  灯泡：天上当星星用的蓄光灯泡，个头不小 —— 连灯头约 18 厘米高，灯头外面箍着一圈 8～9 厘米宽的金属套，记号凿穿在这圈套上（约 6 厘米）。
+//    灯泡总是灯头朝上（和挂在天上灯座里的方向一样，原点在灯头顶上）。灯亮着，光从镂空里漏出来，记号是一个亮的形状；灯暗着，镂空是一个黑的缺口。
+//    几种记号只在轮廓上不同（缺了一角的方框 / 圆 / 三角 / 尖角），不靠颜色分
+//    亮度 glow：0 报废（强光也激不亮）/ 0.12 离开灯座以后的余光 / 1 接上灯座的电 / 1.5 以上被强光激亮
+//  斜挎包：灰模占位 —— 样子还没定（design/long-night-story.md 第十节第 10 条），只求侧面剪影里看得出是一个包、包口能透出光。
+//    挎在主角右边胯上，带子从胸前斜到左肩、再从背后绕回来。平时灯泡用布包好装在里面，身上看不见光；
+//    被强光照中时，光透过布和包（CARRY.excite：主角这里的光有多强，章节每帧给）
+//  CARRY.state：none 身上没有灯泡 / bag 在包里 / out 拿在手上 / set 放在别处（工作台、灯座里：位置由章节给 CARRY.at）
+//  CARRY.act：正在做的一段动作（out 取出、in 收回），由章节开始（carryStart），这里每帧往前推、算出两只手放在哪
+// ============================================================
+const CARRY = { bag: false, state: 'none', act: null, holdAt: null, at: null, excite: 0, power: 0, wrap: 1, spin: 0, bulb: null, B: null, light: null, bagLight: null, near: 1 };
+let _carrySeed = 4242;
+const crand = () => { _carrySeed = _carrySeed * 16807 % 2147483647; return _carrySeed / 2147483647; };   // 自己的随机数：不动关卡那一套
+
+// ---- 金属套上的记号：一张绕着套子一圈的贴图，记号凿穿的地方是透明的，透出里面的芯 ----
+const MARK_TEX = {};
+function markTex(kind) {
+  if (MARK_TEX[kind]) return MARK_TEX[kind];
+  const W = 512, H = 128, [c, g] = mkCanvas(W, H);
+  g.fillStyle = '#6e6656'; g.fillRect(0, 0, W, H);                                     // 旧黄铜（压暗一点：灯亮着时漏光的记号要比套子亮得多）
+  for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(${crand() < 0.5 ? '38,32,24' : '214,204,172'},${0.05 + 0.1 * crand()})`; g.fillRect(crand() * W, crand() * H, 4 + 36 * crand(), 1 + 2 * crand()); }
+  g.fillStyle = 'rgba(30,26,20,.55)'; g.fillRect(0, 0, W, 7); g.fillRect(0, H - 7, W, 7);   // 上下两道箍边
+  g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineWidth = 15; g.lineCap = 'butt'; g.lineJoin = 'miter';
+  const cx = 256, cy = 64, r = 44; g.beginPath();                                      // 记号在贴图正中（套子转半圈以后正对镜头）
+  if (kind === 'square') { g.moveTo(cx + r - 30, cy - r); g.lineTo(cx - r, cy - r); g.lineTo(cx - r, cy + r); g.lineTo(cx + r, cy + r); g.lineTo(cx + r, cy - r + 30); }   // 缺了右上角的方框：主角的
+  else if (kind === 'circle') g.arc(cx, cy, r - 2, 0, 6.2832);
+  else if (kind === 'triangle') { g.moveTo(cx, cy - r); g.lineTo(cx + r * 1.05, cy + r * 0.85); g.lineTo(cx - r * 1.05, cy + r * 0.85); g.closePath(); }
+  else if (kind === 'chevron') { g.moveTo(cx - r, cy + r * 0.75); g.lineTo(cx, cy - r * 0.75); g.lineTo(cx + r, cy + r * 0.75); }   // 尖角：老人的
+  g.stroke();
+  return MARK_TEX[kind] = sharedTex(canvasTex(c));
+}
+// 平面上的同一个记号（工具上打的钢印、屏幕上的图）：白色线条，透明底
+const MARK_ICON = {};
+function markIcon(kind) {
+  if (MARK_ICON[kind]) return MARK_ICON[kind];
+  const [c, g] = mkCanvas(128, 128); g.strokeStyle = '#fff'; g.lineWidth = 15; g.lineCap = 'butt'; g.lineJoin = 'miter';
+  const cx = 64, cy = 64, r = 40; g.beginPath();
+  if (kind === 'square') { g.moveTo(cx + r - 27, cy - r); g.lineTo(cx - r, cy - r); g.lineTo(cx - r, cy + r); g.lineTo(cx + r, cy + r); g.lineTo(cx + r, cy - r + 27); }
+  else if (kind === 'circle') g.arc(cx, cy, r - 2, 0, 6.2832);
+  else if (kind === 'triangle') { g.moveTo(cx, cy - r); g.lineTo(cx + r * 1.05, cy + r * 0.85); g.lineTo(cx - r * 1.05, cy + r * 0.85); g.closePath(); }
+  else if (kind === 'chevron') { g.moveTo(cx - r, cy + r * 0.75); g.lineTo(cx, cy - r * 0.75); g.lineTo(cx + r, cy + r * 0.75); }
+  g.stroke();
+  return MARK_ICON[kind] = sharedTex(canvasTex(c));
+}
+
+// ---- 一只灯泡。parent 挂在哪；mark 记号；o.glow 一开始多亮。set(k) 改亮度，cut(k) 记号凿出来几成（凿记号的那一下用）----
+const BULB_C = { dead: new THREE.Color(0x1d1b17), res: new THREE.Color(0x7a5a30), lit: new THREE.Color(0xfff1d2), core0: new THREE.Color(0x000000), coreR: new THREE.Color(0x9a6a26), coreL: new THREE.Color(0xfff6e2) };
+function makeBulb(parent, mark, o = {}) {
+  const g = new THREE.Group(); parent.add(g);
+  const own = m => { m.userData.own = true; return m; };
+  const sMat = own(new THREE.MeshLambertMaterial({ map: mark ? markTex(mark) : null, color: mark ? 0xffffff : 0x6e6656, alphaTest: 0.5, side: THREE.DoubleSide }));
+  const sleeve = add(g, new THREE.CylinderGeometry(0.043, 0.043, 0.065, 28, 1, true), sMat, 0, -0.0325, 0, false); sleeve.rotation.y = Math.PI;
+  const coreMat = own(new THREE.MeshBasicMaterial({ color: 0x000000 }));
+  add(g, new THREE.CylinderGeometry(0.035, 0.035, 0.063, 18), coreMat, 0, -0.0325, 0, false);           // 套子里面的芯：亮着就从记号里漏出来
+  add(g, new THREE.CylinderGeometry(0.043, 0.043, 0.004, 28), MAT.steel, 0, -0.0005, 0, false);          // 套子顶上封口
+  add(g, cy(0.019, 0.023, 0.016, 14), MAT.steel, 0, 0.008, 0, false);                                    // 螺口和触点
+  const gMat = own(new THREE.MeshBasicMaterial({ color: 0x1d1b17, transparent: true, opacity: 0.92 }));
+  const glass = add(g, new THREE.SphereGeometry(0.057, 22, 16), gMat, 0, -0.114, 0, false); glass.scale.y = 1.12;
+  add(g, new THREE.CylinderGeometry(0.03, 0.043, 0.02, 20), gMat, 0, -0.072, 0, false);                 // 玻璃收进套子的那一截
+  const halo = glow(g, 0xffe4b8, 0.3, 0, 0, -0.125, 0.02); halo.renderOrder = 61;    // 光晕只围着玻璃，不盖住上面的套子和记号
+  const cloth = add(g, new THREE.IcosahedronGeometry(0.105, 1), own(new THREE.MeshLambertMaterial({ color: 0x8b8470 })), 0, -0.075, 0, false);   // 包着的布
+  cloth.scale.set(1, 1.2, 1); cloth.visible = false;
+  // 记号凿到一半：用一块和套子一样颜色的“盖子”挡住还没凿开的那一部分（只有凿记号的那一下用）
+  // （记号在贴图正中，套子转了半圈，所以记号朝着 +z，也就是 theta = 0 附近那一段）
+  const LID0 = -0.72, LIDW = 1.44, lidGeo = k => new THREE.CylinderGeometry(0.0436, 0.0436, 0.066, 20, 1, true, LID0 + LIDW * k, LIDW * (1 - k) + 1e-3);
+  const lid = add(g, lidGeo(0), own(new THREE.MeshLambertMaterial({ color: 0x6e6656, side: THREE.DoubleSide })), 0, -0.0325, 0, false);
+  lid.visible = false; let lidK = 0;
+  const api = { g, glass, halo, cloth, lid, k: -1, mark,
+    set(k) {
+      if (Math.abs(k - api.k) < 0.002) return; api.k = k;
+      if (k <= 0.12) { gMat.color.copy(BULB_C.dead).lerp(BULB_C.res, k / 0.12); coreMat.color.copy(BULB_C.core0).lerp(BULB_C.coreR, k / 0.12); }
+      else { const t = clamp((k - 0.12) / 0.88, 0, 1); gMat.color.copy(BULB_C.res).lerp(BULB_C.lit, t); coreMat.color.copy(BULB_C.coreR).lerp(BULB_C.coreL, t); }
+      gMat.opacity = k > 0.3 ? 1 : 0.92;
+      halo.material.opacity = Math.min(1, 0.22 * sstep(0.04, 0.14, k) + 0.75 * sstep(0.2, 1, k)); halo.scale.setScalar(0.17 + 0.2 * Math.min(k, 3));
+    },
+    wrap(w) { cloth.visible = w > 0.02; cloth.scale.set(w, 1.2 * w, w); },
+    cut(k) { lid.visible = k < 0.999; if (Math.abs(k - lidK) < 0.02 && k < 0.999 && k > 0) return; lidK = k; lid.geometry.dispose(); lid.geometry = lidGeo(clamp(k, 0, 1)); } };
+  api.set(o.glow ?? 0.12);
+  return api;
+}
+
+// ---- 斜挎包：主角的模型载入以后挂到他身上（换外形、重新搭一遍以后自己重挂）----
+function buildBag(h) {
+  const tv = h.B.traveler; if (!tv || !tv.group) return null;
+  const g = new THREE.Group(); h.root.add(g);
+  const mat = new THREE.MeshLambertMaterial({ color: 0x5c5346, emissive: 0xffdcaa, emissiveIntensity: 0 }), dark = new THREE.MeshLambertMaterial({ color: 0x3e372e });
+  const bag = grp(g);                                                                  // 包的原点在包口（上沿的中间），往下挂
+  add(bag, bx(0.21, 0.155, 0.055), mat, 0, -0.085, 0);                                // 包身：前后 21 厘米、高 15 厘米、贴着胯，薄
+  const flap = add(bag, bx(0.215, 0.07, 0.062), dark, 0.002, -0.03, 0.004); flap.rotation.z = -0.04;   // 盖子
+  add(bag, bx(0.03, 0.03, 0.01), lam(0x8a7e66), 0.01, -0.06, 0.036, false);         // 扣子
+  const mouth = glow(bag, 0xffe8c0, 0.32, 0, 0.0, 0.0, 0.03); mouth.renderOrder = 62;   // 包口透出来的光
+  const strap = [0, 1, 2, 3].map(() => add(g, new THREE.CylinderGeometry(0.011, 0.011, 1, 6), dark, 0, 0, 0, false));
+  return { g, bag, mat, mouth, strap, h, swing: 0, sv: 0 };
+}
+const _cv = [0, 1, 2, 3, 4, 5].map(() => new THREE.Vector3()), _up = new THREE.Vector3(0, 1, 0), _cq = new THREE.Quaternion();
+function placeSeg(m, a, b) {                                                           // 一段带子：从 a 到 b（角色坐标）
+  _cv[5].subVectors(b, a); const L = _cv[5].length(); m.scale.set(1, Math.max(L, 1e-3), 1);
+  m.position.addVectors(a, b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(_up, _cv[5].normalize());
+}
+
+// 开始一段动作：kind 'out' 从包里取出（hold 最后举到哪，世界坐标 {x, y}；不给就拿在胸前）/ 'in' 收回包里
+function carryStart(kind, hold) { CARRY.act = { kind, t: 0, T: kind === 'out' ? 1.7 : 1.3, hold: hold ?? null }; if (kind === 'out') { CARRY.state = 'out'; CARRY.wrap = 1; } fx('cloth'); }
+const carryBusy = () => !!CARRY.act;
+
+// 在 hero.update 之前：按正在做的动作，算出两只手放在哪（合进 HX.pose）
+function poseCarry(dt) {
+  const A = CARRY.act; if (!A && CARRY.state !== 'out') return;
+  const dir = P.facing, near = dir > 0 ? 1 : 0, far = 1 - near; CARRY.near = near;
+  const bagPt = { x: P.x - dir * 0.03, y: P.y + 0.6 }, chest = { x: P.x + dir * 0.21, y: P.y + 0.7 };
+  const hold = (A ? A.hold : CARRY.holdAt) ?? chest;
+  const L = (p, q, t) => ({ x: lerp(p.x, q.x, t), y: lerp(p.y, q.y, t) });
+  const hands = [null, null]; let wrap = CARRY.wrap;
+  if (A) {
+    A.t += dt; const t = A.t;
+    if (A.kind === 'out') {
+      if (t < 0.35) hands[near] = { ...bagPt, k: sstep(0, 0.35, t) };
+      else if (t < 0.7) hands[near] = { ...L(bagPt, chest, sstep(0.35, 0.7, t)), k: 1 };
+      else if (t < 1.3) { hands[near] = { ...chest, k: 1 }; hands[far] = { x: chest.x + dir * 0.05, y: chest.y + 0.1, k: sstep(0.7, 0.9, t) * (1 - sstep(1.15, 1.3, t)) }; wrap = 1 - sstep(0.8, 1.2, t); }
+      else hands[near] = { ...L(chest, hold, sstep(1.3, 1.7, t)), k: 1 };
+      CARRY.visible = t > 0.33;
+      if (t >= A.T) { CARRY.act = null; CARRY.holdAt = A.hold; wrap = 0; }
+    } else {
+      const from = CARRY.holdAt ?? chest;
+      if (t < 0.35) hands[near] = { ...L(from, chest, sstep(0, 0.35, t)), k: 1 };
+      else if (t < 0.85) { hands[near] = { ...chest, k: 1 }; hands[far] = { x: chest.x + dir * 0.05, y: chest.y + 0.1, k: sstep(0.35, 0.5, t) * (1 - sstep(0.75, 0.85, t)) }; wrap = sstep(0.4, 0.8, t); }
+      else hands[near] = { ...L(chest, bagPt, sstep(0.85, 1.15, t)), k: 1 - sstep(1.15, 1.3, t) };
+      CARRY.visible = t < 1.17;
+      if (t >= A.T) { CARRY.act = null; CARRY.state = 'bag'; CARRY.holdAt = null; wrap = 1; }
+    }
+  } else { hands[near] = { ...hold, k: 1 }; CARRY.visible = true; wrap = 0; }
+  CARRY.wrap = wrap;
+  const q = HX.pose || {}, hs = q.hands ? q.hands.slice() : [null, null];
+  for (let i = 0; i < 2; i++) if (hands[i]) hs[i] = hands[i];
+  HX.pose = { ...q, hands: hs, look: q.look ?? 0 };
+}
+
+// 在 hero.update 之后：把包摆到胯上、带子拉好；把灯泡放到手里（或者章节给的地方）；透光
+function stepCarry(dt) {
+  const inLN = chapterAt(P.x).n >= 12; CARRY.bag = inLN;                             // 包和灯泡只在《长夜》的章节里有（前十一章还是原来的故事）
+  const showBag = inLN && state !== 'title';
+  if (!CARRY.B || CARRY.B.h !== hero) { if (CARRY.B) { CARRY.B.g.parent?.remove(CARRY.B.g); } CARRY.B = hero.B.traveler?.group ? buildBag(hero) : null; }
+  if (!CARRY.light) { CARRY.light = pointLight({ p: [0, 0, 0], c: 0xffe6c4, i: 5, d: 4, dec: 1.7, on: 0 }); CARRY.bagLight = pointLight({ p: [0, 0, 0], c: 0xffe2b6, i: 4, d: 3.2, dec: 1.7, on: 0 }); }
+  const B = CARRY.B, has = CARRY.state !== 'none';
+  // 灯泡在包里、布包着：只有强光才透得出来
+  const ex = CARRY.excite, inBag = CARRY.state === 'bag' || (CARRY.act && !CARRY.visible);
+  const bagGlow = has && inBag ? sstep(0.3, 1, ex) : 0;
+  CARRY.bagLight.on = 0;
+  if (B) {
+    B.g.visible = showBag;
+    if (showBag) {
+      const tv = hero.B.traveler, R = hero.root;
+      R.updateMatrixWorld(true);
+      const loc = (n, v) => R.worldToLocal(tv.bones.get(n).node.getWorldPosition(v));
+      const hip = loc('Hips', _cv[0]), sp = loc('Spine', _cv[1]), sh = loc('LeftShoulder', _cv[2]);
+      // 跑跳时包往后甩一点、晃回来（一个小弹簧）
+      const want = -Math.abs(P.vx) * 0.045 - (P.grounded ? 0 : 0.16);
+      B.sv += ((want - B.swing) * 60 - B.sv * 7) * dt; B.swing = clamp(B.swing + B.sv * dt, -0.5, 0.3);
+      B.bag.position.set(hip.x - 0.035, hip.y - 0.0, hip.z + 0.125); B.bag.rotation.set(0, 0, B.swing);
+      const top = _cv[3].set(B.bag.position.x + 0.06, B.bag.position.y - 0.01, B.bag.position.z - 0.01);
+      const chest = _cv[4].set(sp.x + 0.085, sp.y - 0.02, sp.z + 0.02), back = new THREE.Vector3(sp.x - 0.08, sp.y - 0.01, sp.z + 0.01), shoulder = sh.clone().add(new THREE.Vector3(0, 0.035, 0)), topB = top.clone().add(new THREE.Vector3(-0.12, 0, 0));
+      placeSeg(B.strap[0], top, chest); placeSeg(B.strap[1], chest, shoulder); placeSeg(B.strap[2], shoulder, back); placeSeg(B.strap[3], back, topB);
+      B.mat.emissiveIntensity = 0.55 * bagGlow; B.mouth.material.opacity = bagGlow; B.mouth.scale.setScalar(0.25 + 0.35 * bagGlow);
+      if (bagGlow > 0.01) { B.bag.getWorldPosition(_cv[5]); CARRY.bagLight.p = [_cv[5].x, _cv[5].y, _cv[5].z + 0.2]; CARRY.bagLight.on = bagGlow; }
+    }
+  }
+  // 灯泡
+  const b = CARRY.bulb; CARRY.light.on = 0; if (!b) return;
+  const vis = inLN && has && state !== 'title' && (CARRY.state === 'set' || (CARRY.state === 'out' && CARRY.visible !== false) || (CARRY.act && CARRY.visible));
+  b.g.visible = vis; if (!vis) return;
+  if (CARRY.state === 'set' && CARRY.at) { b.g.position.set(CARRY.at.x, CARRY.at.y, CARRY.at.z ?? 0); b.g.rotation.set(0, CARRY.spin, 0); }
+  else {
+    const tv = hero.B.traveler; if (!tv?.model) return;
+    const side = CARRY.near ? 'Right' : 'Left', hand = tv.bones.get(side + 'Hand').node.getWorldPosition(_cv[0]), fore = tv.bones.get(side + 'ForeArm').node.getWorldPosition(_cv[1]);
+    const d = _cv[2].subVectors(hand, fore).normalize();
+    b.g.position.set(hand.x + d.x * 0.035, hand.y + d.y * 0.035 + 0.19, hand.z + d.z * 0.035 + 0.02); b.g.rotation.set(0, CARRY.spin, 0);
+  }
+  b.wrap(CARRY.wrap);
+  const k = Math.max(CARRY.power, 0.12 + 1.7 * ex) * (1 - 0.92 * sstep(0.2, 0.7, CARRY.wrap));   // 布包着的时候一点光也透不出来
+  b.set(k);
+  if (k > 0.3) { CARRY.light.p = [b.g.position.x, b.g.position.y - 0.32, b.g.position.z + 0.35]; CARRY.light.on = clamp((k - 0.3) / 1.2, 0, 1.4); }   // 在灯泡下前方：照亮手和脸，不把套子照白
 }
 
 // ============================================================
@@ -3910,6 +4104,20 @@ function findUse() {                              // 脚边够得着、现在能
   }
   return best;
 }
+// ---- 按住型机关：按住 E 一点点推进，松手就往回退，推到头才算数（《长夜》机房的检修柄、拧灯、拉闸三处共用）----
+// { x 站在哪里够得着, r 左右多远, can() 现在能不能用, rate(k) 按住时每秒推进多少（随推到哪里变：前半程快、后半程慢）,
+//   back(k) 松手以后每秒退多少, done(o) 推到头时调一次（之后 locked，不再退回）, keep 推到头也不算数（小窗：按着就停在头上，一松手照样回去）}
+// k 现在推到哪（0..1），on 这一刻有没有人按着
+const HOLDS = [];
+function holdable(o) { o.k = 0; o.on = false; o.locked = false; HOLDS.push(o); return o; }
+function findHold() {
+  let best = null, bd = 1e9;
+  for (const o of HOLDS) { const d = Math.abs(P.x - o.x); if (!o.locked && d < (o.r ?? 0.8) && d < bd && (!o.can || o.can())) { best = o; bd = d; } }
+  return best;
+}
+function stepHolds(dt) {                          // 没人按着的就往回退
+  for (const o of HOLDS) if (!o.on && !o.locked && o.k > 0) o.k = Math.max(0, o.k - (o.back ? o.back(o.k) : 1) * dt);
+}
 function findGrab() {                             // 身前或身后紧挨着的、可以推拉的东西
   for (const o of PUSHABLES) {
     if (o.locked || o.off || Math.abs(P.y - o.y1) > 0.06) continue;
@@ -4008,6 +4216,15 @@ function stepPlayer(dt) {
     return;
   }
 
+  if (P.mode === 'hold') {                        // 按着按住型机关：人站住不动，手搭在上面（手放在哪由章节给，见 HX.pose.hands）
+    const o = P.holdObj;
+    if (!keys.has('E') || !ctl || o.locked || (o.can && !o.can())) { P.mode = 'normal'; o.on = false; return; }
+    o.on = true; o.k = Math.min(1, o.k + o.rate(o.k) * dt); P.vx = 0;
+    if (o.face) P.facing = o.face;
+    if (o.stand !== undefined) P.x = damp(P.x, o.stand, 10, dt);
+    if (o.k >= 1 && !o.keep) { o.locked = true; o.on = false; P.mode = 'normal'; if (o.done) o.done(o); }
+    return;
+  }
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
   if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
@@ -4066,7 +4283,11 @@ function stepPlayer(dt) {
   if (ctl && P.grounded && keys.has('E')) {
     const g = findGrab();
     if (g) { P.mode = 'push'; P.grabObj = g[0]; P.grab = g[1]; P.facing = g[1]; g[0].v = 0; P.land = null; }
-    else if (pressed.has('E')) { const u = findUse(); if (u) { P.used = true; u.on(u); } }
+    else if (pressed.has('E')) {
+      const h = findHold();                       // 按住型机关要新按一下才开始：一直按着 E 走过去不算
+      if (h) { P.mode = 'hold'; P.holdObj = h; P.vx = 0; P.land = null; P.used = true; h.on = true; if (h.start) h.start(h); }
+      else { const u = findUse(); if (u) { P.used = true; u.on(u); } }
+    }
   }
   for (let i = CPS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CPS[i].x) { P.cp = i; break; }
 }
@@ -4090,7 +4311,8 @@ function stepFade(dt) {
   const f = fadeThen; fadeThen = null; state = 'play'; ctl = true; $('fade').style.opacity = 0; if (f) f();
 }
 function placePlayer(x, y) {
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
+  if (P.holdObj) P.holdObj.on = false;
+  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
   P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
 }
 function respawn() {
@@ -5276,7 +5498,7 @@ function breathSound(dir, len, k, o = {}) {
   if (!AC || muted || len < 0.06) return;
   const V = VOICE[SND.voice] ?? VOICE.A;
   const x = SY.breath(SR(), seed(), { dir, len, k, ...o, voice: (o.voice ?? sstep(0.45, 0.95, k)) * V.voice + (o.voiceAll ?? 0), nose: V.nose * (1 - sstep(0.3, 0.75, k)) });
-  MX.play(MX.toBuf(x), { bus: 'fol', gain: (o.gain ?? lerp(0.05, 0.26, Math.pow(k, 1.4))) * V.vol * SND.vol.breath, rate: R2(0.97, 1.03), wet: 0.25 });
+  MX.play(MX.toBuf(x), { bus: 'fol', gain: (o.gain ?? lerp(0.03, 0.12, Math.pow(k, 1.4))) * V.vol * SND.vol.breath, rate: R2(0.97, 1.03), wet: 0.25 });
 }
 
 Object.assign(sfx, {
@@ -5446,10 +5668,21 @@ function updateAudio(dt, stepNow) {
 //  躲在暗处、光扫过来时屏住气，光过去了长长地呼一口；在水下憋着（没有呼吸声），浮上来大口地喘。
 //  声音关着的时候这里照样算（动作要用），只是不出声
 // ============================================================
-const BR = { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, alert: 0, gasp: -9, effort: -9, pushT: -9, skip: null, mode: 'normal', ground: true };
-// 一口气的节奏：每秒几口（不累时四秒一口，最累时一秒一口半）；吸气、呼气各占多少，剩下的是两口气之间停一下
-const brRate = ex => lerp(0.24, 1.45, Math.pow(ex, 0.85));
+const BR = { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, alert: 0, gasp: -9, effort: -9, pushT: -9, skip: null, mode: 'normal', ground: true, voice: 0, quietT: 0, wasStill: 0, idle: 0 };
+// 一口气的节奏：每秒几口（不累时四秒一口，最累时一秒一口出头）；吸气、呼气各占多少，剩下的是两口气之间停一下
+const brRate = ex => lerp(0.24, 1.1, Math.pow(ex, 0.85));
 const brIn = ex => lerp(0.36, 0.46, ex), brOut = ex => lerp(0.42, 0.54, ex);
+// 哪几口气出声：动作上每一口都喘，但声音只在合适的时候出一两口 —— 刚停下来、撑着膝盖、累了好一阵子以后，
+// 喘出来两三口就安静一阵（越累安静得越短）。不累的时候不出声。BR.voice 这一阵还要出声几口，BR.quietT 到这个时间以前不出声
+function brVoiceNext() {
+  const k = BR.ex; if (k < 0.32) { BR.voice = 0; return false; }
+  if (BR.voice > 0) { BR.voice--; if (!BR.voice) BR.quietT = T + lerp(14, 6, k) * (0.8 + 0.5 * Math.random()); return true; }
+  const rest = BR.bend || TIRED.rest > 0.5 || BR.idle > 0.3, stopped = BR.idle > 0.2 && !BR.wasStill;
+  if (stopped && k > 0.4 && T > BR.quietT - 4 || T > BR.quietT && (rest || T > BR.quietT + 8)) {
+    BR.voice = k > 0.6 && (rest || stopped) ? 2 : 1; return true;               // 这一口出声，后面再跟 voice 口
+  }
+  return false;
+}
 // 单独的几口气（听声音的工具页也直接用这几个）。k 累的程度，v 轻重
 const BREATH = {
   hup: (k, v = 1) => breathSound('out', 0.16, 0.6 + 0.4 * k, { att: 0.05, rel: 0.3, f0: 320, gain: lerp(0.09, 0.24, k) * v }),     // 起跳：“嘿”
@@ -5497,13 +5730,14 @@ function stepPant(dt, impact) {
     if (BR.hold > 1.2) { BREATH.sigh(); BR.ph = brIn(BR.ex); BR.skip = 'out'; }
     BR.hold = 0;
   }
+  BR.idle = play && P.grounded && Math.abs(P.vx) < 0.05 ? BR.idle + dt : 0;   // 站住了多久（出不出声要用；累的那一阵里 BR.still 不算）
   // ---- 一口一口地呼吸 ----
   const f = brRate(BR.ex), a = brIn(BR.ex), b = brOut(BR.ex), held = under || hide;
   if (!held) {
     const p0 = BR.ph; BR.ph += dt * f;
     const sound = play || state === 'end';
-    if (p0 < a && BR.ph >= a) { if (BR.skip === 'out') BR.skip = null; else if (sound) breathSound('out', b / f * 0.95, BR.ex); }       // 呼气
-    if (BR.ph >= 1) { BR.ph -= 1; if (sound) breathSound('in', a / f * 0.95, BR.ex); }                                                // 吸气
+    if (p0 < a && BR.ph >= a) { if (BR.skip === 'out') BR.skip = null; else if (sound && BR.on) breathSound('out', b / f * 0.95, BR.ex); }       // 呼气
+    if (BR.ph >= 1) { BR.ph -= 1; BR.on = brVoiceNext(); BR.wasStill = BR.idle > 0.2; if (sound && BR.on) breathSound('in', a / f * 0.95, BR.ex); }                                                // 吸气
   }
   const p = BR.ph, fill = p < a ? sstep(0, a, p) : p < a + b ? 1 - sstep(a, a + b, p) : 0;
   BR.chest = held ? damp(BR.chest, 0.8, 3, dt) : fill;
@@ -5513,7 +5747,7 @@ function stepPant(dt, impact) {
   BR.still = standing ? BR.still + dt : 0;
   BR.bend = standing && (BR.bend ? BR.ex > 0.42 : BR.ex > 0.72 && BR.still > 0.7) ? 1 : 0;
 }
-function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, skip: null }); }
+function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, skip: null, voice: 0, quietT: 0, wasStill: 0, idle: 0, on: false }); }
 
 // ============================================================
 //  第一章 · 工厂：关闭回收线
@@ -8630,7 +8864,7 @@ const CH8 = (() => {
   }
   return defZone({ n: 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
-function retryEnding() { CH8.retry(); }
+function retryEnding() { (endZone ?? CH8).retry(); }
 
 // ============================================================
 //  第九章 · 山洞与暗河：一条横着剖开的长山洞，一路有水，要跳下去游过去，潜到岩石底下钻过去，再从另一边浮上来、爬上岸
@@ -9627,6 +9861,791 @@ const CH11 = (() => {
   return defZone({ n: 11, vis: [X - 30, X + 170], build, update, reset, solve, unbuild() { V = null; },
     // 回到存档点：灯从这一段的最右边重新朝这边扫过来
     respawn(c) { if (c.x > X - 10 && c.x < X + 160) { Object.assign(H, { exposure: 0, caught: 0, hid: Math.min(H.hid, 3) }); if (H.live) { H.lx = SWEEP[H.stage][1]; leg(SWEEP[H.stage][0]); } } }, H, COVERS, SWEEP, lit });
+})();
+
+// ============================================================
+//  第十二章 · 作坊一角：在灯头上凿一个记号（《长夜》原型 C 的开头，设计见 design/long-night-story.md 第九节、第十一节第 4 条）
+//  原型 C（机房与选择）要玩家认得记号，开头先垫一小段凿记号 —— 是第一章“作坊与落星”开头几拍的缩写：
+//    一 · 按 E 修灯：按下接点，把松开的部件归位，灯亮了
+//    二 · 按 E 凿记号：小錾子在灯头的金属套上凿出一个缺了一角的方框，光从凿穿的地方漏出来；镜头推近到灯跟前
+//    三 · 按 E 取下来：取下来以后只剩一团低低的余光；举到检验光底下，突然亮了一下，旁边筐里待修的坏灯一点反应也没有；
+//         用布包好，余光一点也透不出来，收进斜挎包
+//  然后右边的门开了，走出去黑一下，直接到第十三章机房的门口（中间九章还没做）
+//  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它收进包里；这里为了接上机房，直接收进包里）
+// ============================================================
+const X12 = 2200;
+const CH12 = (() => {
+  const X = X12, BENCH = X + 4.2, INSP = BENCH + 0.5, DOOR = X + 9.4, STAND = BENCH - 0.42;
+  const FIX = { x: BENCH, y: 1.0, z: 0.02 };                                         // 工作台上的检测灯座：灯泡挂在它下面（灯头朝上）
+  const C = chapter({ n: 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood',
+    intro() { CAT.state = 'none'; } });
+  terrain([X - 60, 0], [X + 60, 0]);
+  ground(X - 60, 0x3a2f25); ground(X + 60, 0x3a2f25);
+  solid({ x1: X - 1.6, x2: X - 0.6, y1: -2, y2: 30, noclimb: true });              // 身后是作坊里面
+  const door = gate({ id: 'd121', x: DOOR, w: 0.5, h: 2.6, T: 1.4 });
+  solid({ x1: DOOR + 2.2, x2: DOOR + 3.2, y1: -2, y2: 30, noclimb: true });
+  checkpoint(X + 1.2);
+  camKeys([X - 3, 9.6, 1.25, 1.6], [X + 2, 9.6, 1.25, 1.2], [BENCH, 9.2, 1.2, 0.4], [DOOR - 1, 9.6, 1.25, -0.4], [DOOR + 3, 10, 1.3, -1.2]);
+  // 作坊的暖光：头顶一盏吊灯，工作台上一盏冷白的检验灯。门外是夜里
+  env(X - 6, { fog: 0x17110c, fogD: 0.03, hemiS: 0xb39876, hemiG: 0x1a130e, hemiI: 0.42, keyC: 0xffd8a8, keyI: 0.55, keyDir: [-0.3, 1, 0.45], rimC: 0xffc890, rimI: 0.35,
+    dustC: 0xffe0b8, dustO: 0.4, wind: 0.02, ext: 0, sky: [0x0a0c12, 0x0a0c12, 0x0a0c12, 0x0a0c12, 0x0a0c12, 0x0a0c12], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1,
+    aWind: 0, aWhis: 0, aLeaf: 0, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0.45, roomF: 190, aHum: 0.25, aCity: 0.15, aFar: 0.5, rvOut: 0, rvHall: 0.5, rvCave: 0 });
+  env(DOOR + 0.5, {});
+  env(DOOR + 2.5, { fog: 0x090c12, hemiS: 0x55627a, hemiG: 0x08090c, hemiI: 0.3, keyC: 0x8fa2c0, keyI: 0.2, aRoom: 0.1, aHum: 0, aCity: 0.4, rvHall: 0.1, rvOut: 0.6 });
+  env(X + 60, {});
+  spotLight({ p: [BENCH - 0.4, 3.2, 0.8], t: [BENCH, 0.8, -0.3], c: 0xffcf96, i: 3.2, a: 0.62, d: 9 });       // 头顶的吊灯
+  const inspL = spotLight({ p: [INSP, 1.62, -0.2], t: [INSP, 0.7, -0.3], c: 0xe8f4ff, i: 9, a: 0.4, pen: 0.5, d: 3 });   // 检验光：冷白、很亮、只照一小块
+  pointLight({ p: [X + 1.0, 2.4, -1.4], c: 0xffb070, i: 1.6, d: 6 });
+
+  // 进度：step 0 等着修 / 1 灯亮了，等着凿 / 2 凿好了，等着取 / 3 收进包里了。t 这一步开始以后过了多久（做动作的时候用）
+  const S = { step: 0, act: 0, t: 0, cut: 0, power: 0, insp: 0, look: 0, took: false };
+  let V = null;
+  const nearB = () => Math.abs(P.x - STAND) < 0.9 && P.y < 0.3;
+  usable({ x: STAND, r: 0.9, can: () => !S.act && S.step < 3, on() { S.act = S.step + 1; S.t = 0; ctl = false; } });
+  hint(() => state === 'play' && nearB() && !S.act && S.step === 0, '按 <b>E</b> 修灯');
+  hint(() => state === 'play' && nearB() && !S.act && S.step === 1, '按 <b>E</b> 凿记号');
+  hint(() => state === 'play' && nearB() && !S.act && S.step === 2, '按 <b>E</b> 取下来');
+  Object.assign(sfx, {
+    tap: () => { hit(3400, 4, 0.09, 0.04); hit(1200, 2, 0.06, 0.06); tone(2400, 2300, 0.02, 0.05, 'square'); },
+    contact: () => { hit(2200, 3, 0.1, 0.04); tone(420, 380, 0.05, 0.08, 'square'); },
+  });
+
+  function* build(R) {
+    const v = {};
+    // 后墙：旧灰泥，架子上一排排灯泡；一扇侧窗；输送带从后墙的洞里进来
+    backdrop(X - 3, DOOR + 1, -0.5, 5.5, -2.7, 40, g => {
+      setInk(g, '#3b3025'); box(g, X - 3, -0.5, DOOR - X + 4, 6);
+      g.fillStyle = 'rgba(0,0,0,.25)'; for (let x = X - 2.6; x < DOOR; x += 1.9) box(g, x, -0.5, 0.06, 6);
+      setInk(g, '#231b14'); for (const y of [1.5, 2.15, 2.8]) box(g, X - 1.8, y, 3.4, 0.07);            // 架子
+      for (const y of [1.5, 2.15, 2.8]) for (let x = X - 1.6; x < X + 1.5; x += 0.24) { g.fillStyle = '#1c1611'; disc(g, x, y - 0.13, 0.075); box(g, x - 0.035, y - 0.05, 0.07, 0.05); }
+      setInk(g, '#120d09'); box(g, BENCH - 1.4, 0.95, 3.2, 0.5);                                         // 输送带进来的墙洞
+      setInk(g, '#2a2119'); box(g, X + 6.2, 1.5, 1.4, 1.5); setInk(g, '#0b0d12'); box(g, X + 6.3, 1.6, 1.2, 1.3);   // 侧窗，外面是夜
+      setInk(g, '#4a3a2c'); for (let y = 2.4; y < 2.9; y += 0.08) box(g, X + 6.25, y, 1.3, 0.05);        // 卷起来的卷帘
+    }, { fog: false });
+    yield;
+    // 工作台：在走道后面，台面和孩子胸口差不多高；检测灯座的臂从台子上伸到走道上方
+    const wood = lam(0x5a4532), dark = lam(0x241c15);
+    add(R, bx(2.6, 0.08, 0.9), wood, BENCH + 0.9, 0.8, -0.75); for (const [dx, dz] of [[-0.35, -0.35], [2.1, -0.35], [-0.35, -1.15], [2.1, -1.15]]) add(R, bx(0.08, 0.8, 0.08), dark, BENCH + dx, 0.4, -0.75 + dz + 0.4);
+    add(R, bx(0.06, 0.72, 0.06), MAT.steel, BENCH + 0.12, 1.2, -0.4); add(R, bx(0.06, 0.06, 0.5), MAT.steel, BENCH + 0.12, 1.55, -0.15);
+    tube(R, [[BENCH + 0.12, 1.55, 0.08], [BENCH + 0.05, 1.4, 0.06], [FIX.x, 1.12, FIX.z]], 0.018, MAT.steel, 10);
+    v.fix = grp(R, FIX.x, FIX.y, FIX.z); add(v.fix, cy(0.05, 0.055, 0.1, 16), MAT.dark, 0, 0.06, 0); add(v.fix, cy(0.06, 0.06, 0.02, 16), MAT.steel, 0, 0.005, 0);
+    v.fixLamp = unlit(0x3a1a10); add(v.fix, new THREE.SphereGeometry(0.014, 8, 6), v.fixLamp, 0.06, 0.07, 0.03, false);   // 接点上的小灯
+    // 检验灯：一只罩子，底下一束冷光
+    v.insp = grp(R, INSP, 1.62, -0.2); add(v.insp, cy(0.05, 0.13, 0.12, 16), MAT.steel, 0, 0, 0); add(R, bx(0.04, 0.9, 0.04), MAT.steel, INSP + 0.05, 1.2, -0.7); add(R, bx(0.04, 0.04, 0.5), MAT.steel, INSP + 0.05, 1.65, -0.45);
+    v.inspGlow = glow(v.insp, 0xe8f4ff, 0.5, 0.8, 0, -0.07, 0);
+    const len = 0.95, geo = new THREE.ConeGeometry(0.24, len, 20, 1, true); geo.translate(0, -len / 2, 0);   // 尖朝上、口朝下：从灯罩往下照
+    const cone = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xdfeeff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    cone.material.userData.own = true; cone.position.y = -0.06; v.insp.add(cone);
+    // 筐里待修的坏灯：就在检验光底下，灰的，照着也不亮
+    add(R, new THREE.CylinderGeometry(0.2, 0.16, 0.18, 14, 1, true), lam(0x6a5a40, { side: THREE.DoubleSide }), INSP + 0.16, 0.93, -0.5);
+    for (const [dx, dz, rz] of [[-0.07, -0.05, 2.6], [0.07, 0.03, 2.2], [0.0, 0.08, 3.0], [0.1, -0.07, 1.9]]) { const b = makeBulb(R, null, { glow: 0 }); b.g.position.set(INSP + 0.16 + dx, 0.99, -0.5 + dz); b.g.rotation.z = rz; }
+    // 錾子和小锤
+    v.chisel = grp(R, BENCH + 0.6, 0.86, -0.4); add(v.chisel, cy(0.006, 0.008, 0.11, 6), MAT.steel, 0, 0.055, 0, false); add(v.chisel, cy(0.011, 0.011, 0.07, 8), wood, 0, 0.13, 0, false);
+    v.chisel.rotation.z = Math.PI / 2;
+    // 输送带：从墙洞里出来，横在台子后面，几只坏灯慢慢地挪过去
+    add(R, bx(3.4, 0.12, 0.42), MAT.dark, BENCH + 0.3, 1.02, -1.55); for (let x = BENCH - 1.3; x < BENCH + 2; x += 0.5) add(R, cy(0.05, 0.05, 0.44, 8), MAT.steel, x, 1.02, -1.55).rotation.x = Math.PI / 2;
+    v.belt = [0, 1, 2].map(i => { const b = makeBulb(R, null, { glow: 0 }); b.g.rotation.z = Math.PI / 2; b.g.position.set(0, 1.14, -1.55); return { b, o: i * 1.15 }; });
+    // 周转箱、凳子、墙边的布
+    mkCrate(R, { x: X + 1.6, y1: 0, w: 0.7, h: 0.5 }, 'wood').position.z = -1.4;
+    add(R, cy(0.16, 0.18, 0.46, 10), dark, STAND - 0.9, 0.23, -0.9);
+    // 门：一面墙、一扇往上升的门；门外是夜
+    add(R, bx(0.5, 40, 6), lam(0x3b3025), DOOR, 22.6, -3.2); add(R, bx(0.5, 2.6, 2.4), lam(0x3b3025), DOOR, 2.6 + 1.3 + 0.1, 0);
+    v.door = mkGateDoor(R, door, { depth: 2.0, mat: lam(0x4a3a2a), band: lam(0x2a2018) });
+    v.out = glow(R, 0x6070a0, 2.2, 0, DOOR + 0.6, 1.3, 0.1);
+    // 前景：一根柱子、几根垂下来的电线
+    backdrop(X - 3, DOOR + 3, -1, 6, 4.5, 20, g => { setInk(g, '#050404'); box(g, X + 2.7, -1, 0.35, 7); for (let x = X - 2; x < DOOR + 2; x += rr(2.5, 4)) cable(g, x, 5.4, x + rr(1.5, 3), 5.4, rr(0.6, 1.1), 0.05); }, { fog: false, blur: 1.6, order: 4000 });
+    V = v;
+  }
+
+  function update(dt) {
+    const here = P.x > X - 6 && P.x < DOOR + 4;
+    if (!here) return;
+    CARRY.bag = true;
+    if (!CARRY.bulb) CARRY.bulb = makeBulb(scene, 'square', { glow: 0.12 });
+    const dir = P.facing, near = dir > 0 ? 1 : 0, far = 1 - near;
+    S.t += dt; const t = S.t;
+    // 灯泡还挂在检测灯座上的时候（第三下取下来以后就归包管）
+    if (S.step < 2 || (S.step === 2 && S.act !== 3)) { CARRY.state = 'set'; CARRY.at = FIX; }
+    CARRY.power = S.power;
+    CARRY.bulb && CARRY.bulb.cut(S.cut);
+    // 检验光照着灯泡的程度：灯泡离光柱中心多近
+    const b = CARRY.bulb, bx_ = b ? b.g.position.x : 0, by_ = b ? b.g.position.y : 0;
+    S.insp = CARRY.state === 'out' && CARRY.wrap < 0.3 ? sstep(0.22, 0.06, Math.abs(bx_ - INSP)) * sstep(0.45, 0.9, by_) : 0;
+    CARRY.excite = S.insp;
+    let pose = null;
+    if (S.act === 1) {                                         // 修灯：两手伸到灯座上，按下接点、拨正部件；灯亮了
+      P.facing = 1; P.x = damp(P.x, STAND, 8, dt);
+      const k = sstep(0, 0.4, t) * (1 - sstep(1.6, 2.0, t)), wob = 0.02 * Math.sin(t * 13);
+      pose = { hands: [null, null] }; pose.hands[1] = { x: FIX.x - 0.03, y: FIX.y + 0.03 + wob, k }; pose.hands[0] = { x: FIX.x - 0.06, y: FIX.y - 0.08, k: k * sstep(0.3, 0.6, t) };
+      if (t > 0.7 && t - dt <= 0.7) fx('contact');
+      if (t > 1.1 && t - dt <= 1.1) { fx('ok'); }
+      S.power = sstep(1.05, 1.35, t);
+      if (t > 2.1) { S.act = 0; S.step = 1; ctl = true; }
+    } else if (S.act === 2) {                                  // 凿记号：錾子抵在金属套上，一下一下地敲，记号一点点凿开、光漏出来；凿完镜头推到灯跟前
+      P.facing = 1; P.x = damp(P.x, STAND, 8, dt);
+      const k = sstep(0, 0.4, t) * (1 - sstep(2.6, 3.0, t)), tap = Math.max(0, Math.sin(t * 14)) * sstep(0.5, 0.7, t) * (1 - sstep(2.3, 2.5, t));
+      pose = { hands: [null, null] }; pose.hands[1] = { x: FIX.x - 0.075, y: FIX.y - 0.03, k }; pose.hands[0] = { x: FIX.x - 0.14 - 0.04 * tap, y: FIX.y + 0.02 + 0.05 * tap, k };
+      if (t > 0.5 && t < 2.4 && Math.floor(t * 14 / 6.2832) !== Math.floor((t - dt) * 14 / 6.2832)) { fx('tap'); sparkAt(FIX.x - 0.04, FIX.y - 0.03); }
+      S.cut = sstep(0.55, 2.35, t);
+      if (V) { const hb = hero.B.traveler?.bones.get('RightHand')?.node; if (hb && k > 0.2) { hb.getWorldPosition(_cv[0]); V.chisel.position.set(_cv[0].x + 0.04, _cv[0].y + 0.02, _cv[0].z); V.chisel.rotation.set(0, 0, -1.25); } }
+      S.look = sstep(2.4, 3.0, t) * (1 - sstep(5.4, 6.2, t));            // 推近：看清灯头上漏光的方框
+      if (t > 6.4) { S.act = 0; S.step = 2; ctl = true; if (V) { V.chisel.position.set(BENCH + 0.6, 0.86, -0.4); V.chisel.rotation.set(0, 0, Math.PI / 2); } }
+    } else if (S.act === 3) {                                  // 取下来：只剩余光 → 举到检验光底下，骤亮；筐里的坏灯不亮 → 包好，收进包里
+      if (t < 0.6) { P.facing = 1; pose = { hands: [null, null] }; pose.hands[1] = { x: FIX.x - 0.03, y: FIX.y - 0.15, k: sstep(0, 0.4, t) }; S.power = 1 - sstep(0.35, 0.5, t); }
+      if (t > 0.5 && !S.took) { S.took = true; CARRY.state = 'out'; CARRY.holdAt = { x: FIX.x - 0.05, y: FIX.y - 0.2 }; CARRY.wrap = 0; S.power = 0; fx('contact'); }
+      if (t > 0.6 && t < 1.5) { autoDir = P.x < INSP - 0.34 ? 1 : 0; CARRY.holdAt = { x: P.x + 0.24, y: 0.82 }; }
+      if (t > 1.5 && t < 3.3) { autoDir = 0; P.facing = 1; CARRY.holdAt = { x: lerp(P.x + 0.24, INSP - 0.03, sstep(1.5, 2.0, t)), y: lerp(0.82, 1.06, sstep(1.5, 2.0, t)) }; }
+      if (t > 3.3 && !CARRY.act && CARRY.state === 'out') carryStart('in');
+      if (t > 3.3 && CARRY.state === 'bag' && !CARRY.act) { S.act = 0; S.step = 3; ctl = true; STORY.bulb = true; door.want = 1; fx('ok'); }
+      S.look = sstep(1.8, 2.2, t) * (1 - sstep(3.4, 3.9, t)) * 0.6;
+    }
+    if (pose) HX.pose = pose;
+    // 推近的镜头：对着检测灯座 / 检验灯
+    if (S.look > 0.001) { const fx_ = S.act === 3 ? INSP - 0.1 : FIX.x, fy = S.act === 3 ? 1.0 : FIX.y - 0.06, d = lerp(9.4, S.act === 3 ? 4.2 : 2.5, S.look);
+      camOvr = { d, yo: lerp(1.2, fy - P.y, S.look), xo: lerp(0.4, fx_ - P.x - cam.look, S.look) }; }
+    inspL.on = 1;
+    // 走出门：黑一下，到机房门口
+    if (state === 'play' && S.step === 3 && P.x > DOOR + 0.9) fadeOut(() => { startChapter(13, { keepBulb: true }); }, 1.2);
+    const v = V; if (!v) return;
+    v.fixLamp.color.setHex(S.power > 0.5 ? 0x9cff9a : 0x3a1a10);
+    v.door.sync(door); v.out.material.opacity = 0.5 * door.open;
+    for (const B_ of v.belt) { const x = BENCH - 1.2 + ((T * 0.18 + B_.o) % 3.3); B_.b.g.position.x = x; B_.b.g.visible = x < BENCH + 1.9; }
+  }
+  // 錾子敲下去的火星：几颗很小的亮点，一闪就灭
+  const sparks = [];
+  function sparkAt(x, y) { if (!V) return; for (let i = 0; i < 3; i++) { const s = glow(scene, 0xffd9a0, 0.05, 0.9, x, y, 0.08); sparks.push({ s, vx: rr(-0.6, 0.3), vy: rr(0.2, 1.1), t: 0 }); } }
+  function stepSparks(dt) { for (let i = sparks.length - 1; i >= 0; i--) { const p = sparks[i]; p.t += dt; p.vy -= 4 * dt; p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.material.opacity = 0.9 * (1 - p.t / 0.35); if (p.t > 0.35) { scene.remove(p.s); p.s.material.dispose(); sparks.splice(i, 1); } } }
+  function reset() {
+    Object.assign(S, { step: 0, act: 0, t: 0, cut: 0, power: 0, insp: 0, look: 0, took: false }); setGate(door, 0);
+    if (CARRY.bulb) CARRY.bulb.cut(0);
+    CARRY.state = 'set'; CARRY.at = FIX; CARRY.act = null; CARRY.holdAt = null; CARRY.wrap = 0; STORY.bulb = false;
+  }
+  function solve() { Object.assign(S, { step: 3, act: 0, t: 0, cut: 1, power: 0, insp: 0, look: 0, took: true }); setGate(door, 1); if (CARRY.bulb) CARRY.bulb.cut(1); }
+  return defZone({ n: 12, vis: [X - 6, DOOR + 6], build, update(dt) { update(dt); stepSparks(dt); }, reset, solve, unbuild() { V = null; }, S, door });
+})();
+
+// ============================================================
+//  第十三章 · 机房（《长夜》原型 C：机房与选择。故事见 design/long-night-story.md 第三节“第十章 · 机房”和第四节“两个结局”）
+//  先单独放在最后，从章节菜单进（和第九到第十一章一样）；灰模，先验证信息的顺序，美术以后再说。
+//  一屏宽的小屋子，老人一直坐在里面，不站起来拦人。孩子从左往右走，三段线路把三层事实依次显出来，每一段只是一次很短的操作：
+//    一 · 合上第一道闸刀：观察窗的检修机构有了电。按住检修柄往下带 —— 屋里先断电，锁销退出，配重把小遮板拉开一道缝。
+//         白光挤进来，照出窗边的旧焦痕；包里的灯泡被照透，屋里备用的灯泡一齐亮起来，只有老人桌边那只旧灯没亮。
+//         一松手，弹簧把手柄和遮板带回去，电又来了。老人一直望着那道光
+//    二 · 合上第二道闸刀：控制台醒过来，屏幕一块块亮出孩子认得的地方（侧窗、钟表街、断桥），巡逻图上来路封着、去机房的维护通道留空；
+//         旁边一排释放杆，有一根扳在释放的位置，连着停在检修位的那只空灯座（夹口朝下张着），旁边一块小屏画着落星的滑道。
+//         在空灯座底下按 E 取出灯泡对一下：规格一样
+//    三 · 合上第三道闸刀：头顶一片星灯稳下来。安静一会儿，另一处故障又跳起来，一段传动卡着走不顺；老人伸手去够调整杆，手停在半路。
+//         孩子把接点按回去，抖动停了，另一排磨损的部件还在慢慢地转
+//  老人身后是生活角落：窄床、饭盒、挂着的三件旧工作服（最小的一件和孩子身上的一样）、从孩子的高度往上长的身高刻痕、打着另一个记号的旧工具。
+//  老人手边那只擦得很干净的旧灯泡是暗的：站到桌前，镜头推过去，灯头上镂空的轮廓和工具上打的记号是同一个。
+//  最后两件装置：检修位的空灯座（拧回去）和右墙边的应急开罩手柄（拉闸）。两边都是按住到底才算数，中途松手原样退回；
+//  后半程明显更慢、更重，有自己的声音和画面（夹口在合、锁销在退），拉闸的后半程老人撑起半个身子，举起挡光片。选择前没有倒计时。
+//    拧回去：夹口咬死，那根释放杆自己弹回去，灯座沿着缆索升上去补齐钩形星群。旁边又一处故障亮起来。淡出 ——
+//         椅子上坐着的是孩子，调整杆拉近了，椅背上搭着老人的外套。工作铃，城里的窗一扇扇亮起来；下一次宵禁，一个屋顶上的卷帘抬起了一条缝
+//    拉闸：锁销脱出，配重落下去，外壳的遮光板慢慢分开，白光从越来越宽的缝里涌进来。孩子和老人成了剪影，包里的灯泡雪亮，
+//         刚断了电的星灯也一排排自己亮起来。画面全白，只剩风声
+//  结局后面不写结局名和说明；按 R 回到选择之前
+// ============================================================
+const X13 = 2300;
+const CH13 = (() => {
+  const X = X13;
+  const L1 = X + 1.3, WIN = X + 2.75, WIN_Y = 2.72, LEV = X + 3.9, L2 = X + 5.4, CON = X + 7.5, SOCK = X + 10.45, SOCK_Y = 1.32, L3 = X + 11.8, FAULT = X + 12.6,
+    ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 92;
+  const BACK = -3.0, CH_Z = -0.72;                                                      // 后墙在哪；老人和椅子在走道后面一点（孩子从他身前走过去）
+  const C = chapter({ n: 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal',
+    intro() { CAT.state = 'none'; } });
+  terrain([X - 40, 0], [X + 140, 0]);
+  ground(X - 40, 0x1b1f22); ground(X + 140, 0x1b1f22);
+  solid({ x1: X - 9.6, x2: X - 8.6, y1: -2, y2: 30, noclimb: true });              // 身后：爬上来的台阶（还没做），不往回走
+  solid({ x1: X - 0.2, x2: X + 0.2, y1: 2.38, y2: 30, noclimb: true });             // 左墙：门洞以上是墙
+  solid({ x1: RW - 0.2, x2: RW + 0.8, y1: -2, y2: 30, noclimb: true });              // 右墙
+  checkpoint(X - 3.2); checkpoint(X + 4.8); checkpoint(X + 11.1); checkpoint(X + 15.5);
+  camKeys([X - 14, 20, 3.4, 2], [X + 24, 20.5, 3.6, 0]);                             // 机房里每一帧由下面的 roomCam 接管
+  // 机房：窄、冷白；后墙之外是外面（白光），头顶是星灯的背面，再往上是外壳
+  const ROOM = { fog: 0x0b1013, fogD: 0.016, hemiS: 0x8a99a4, hemiG: 0x10141a, hemiI: 0.62, keyC: 0xd8e6ee, keyI: 0.42, keyDir: [0.05, 0.55, -1], rimC: 0xbfd6e2, rimI: 0.8,
+    dustC: 0xd4e2ea, dustO: 0.32, wind: 0.01, ext: 0, sky: [0x06080b, 0x06080b, 0x07090c, 0x080a0d, 0x090b0e, 0x06080b], sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1,
+    aWind: 0.06, aWhis: 0, aLeaf: 0, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0.7, roomF: 150, aHum: 0.45, aCity: 0, aFar: 0.7, rvOut: 0, rvHall: 0.55, rvCave: 0 };
+  env(X - 14, { ...ROOM, aRoom: 0.35, rvHall: 0.25, rvOut: 0.3, aWind: 0.35 }); env(X - 0.6, ROOM); env(X + 40, ROOM);
+  // 城里（拧回去的结局最后两个镜头）：长夜里的街区
+  const CITYE = { ...ROOM, fog: 0x0d1220, fogD: 0.01, hemiS: 0x6a7898, hemiG: 0x0a0c12, hemiI: 0.42, keyC: 0x9fb2d6, keyI: 0.3, keyDir: [-0.3, 0.7, 0.4], rimC: 0x8fa6cc, rimI: 0.4,
+    sky: [0x03050c, 0x060a16, 0x0b1222, 0x121a2c, 0x182236, 0x0a0e18], stars: 1.3, aRoom: 0, aHum: 0, aCity: 0.6, rvHall: 0, rvOut: 1, aWind: 0.25, aFar: 0 };
+  env(X + 62, CITYE); env(X + 140, CITYE);
+  const workL = spotLight({ p: [X + 9.6, 4.0, 0.8], t: [X + 9.6, 0, -0.9], c: 0xe6f0f4, i: 3.4, a: 0.85, d: 10 });         // 顶上的工作灯：屋子中间一盏，靠门一盏（窄窄的冷白光）
+  const workL2 = spotLight({ p: [X + 2.6, 4.0, 0.8], t: [X + 2.8, 0, -1.0], c: 0xe6f0f4, i: 2.6, a: 0.8, d: 9 });
+  const winL = spotLight({ p: [WIN, WIN_Y, -2.7], t: [WIN + 0.7, 0, 1.4], c: 0xffffff, i: 16, a: 0.44, pen: 0.55, d: 12, on: 0 });   // 小窗漏进来的白光
+  const scrL = pointLight({ p: [CON, 2.6, -1.9], c: 0x8fd8e8, i: 3.2, d: 6.5, on: 0 });                                    // 屏幕的光（第二道闸刀合上以后）
+  const tableL = pointLight({ p: [TABLE + 0.05, 1.45, -0.2], c: 0xffe2b8, i: 2.2, d: 4.2 });                                // 老人桌上的小灯
+  const skyL = pointLight({ p: [ROOMC, 6.6, 0.6], c: 0xffe6c0, i: 2.4, d: 14, dec: 1 });                                     // 头顶星灯的漫光
+  const pinL = pointLight({ p: [X + 15.3, 7.2, -1.6], c: 0xffa040, i: 5, d: 7, on: 0 });                                        // 拉闸的后半程：大锁销旁边一盏警示灯
+  const cityL = [[CITY - 6, 4.2], [CITY + 3, 5.5], [CITY + 10, 3.6]].map(([x, y]) => pointLight({ p: [x, y, -6], c: 0xffc98a, i: 3, d: 12, on: 0 }));
+
+  // ---- 进度 ----
+  // l[i] 三道闸刀合上没有，lt[i] 合上以后过了多久；seen1 小窗打开过；cmp 对过灯泡；cmpT 对灯泡这一段走到哪（-1 没在做）；
+  // fault 0 还没坏 / 1 正坏着 / 2 按回去了，ft 这一段过了多久；done3 第三段做完（两件装置可以用了）；look 推近镜头的程度；lookAt 推近到哪
+  const S = { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, lookAt: 'table', still: 0, winSnd: false, sk0: 0, pk0: 0 };
+  // 结局：c 1 拧回去 / 2 拉闸，t 过了多久
+  const END = { c: 0, t: 0, shown: false, step: 0 };
+  let V = null;
+  const busy = () => !!CARRY.act || S.cmpT >= 0;
+  const near = (x, r = 0.9) => Math.abs(P.x - x) < r && P.y < 0.4;
+  const inRoom = () => state === 'play' && ctl && P.x > X - 10 && P.x < RW && !END.c;
+
+  // ---- 机关 ----
+  const brk = [L1, L2, L3].map((x, i) => usable({ x, r: 0.75, can: () => !S.l[i] && !END.c && !busy() && (i === 0 || (i === 1 ? S.seen1 : S.cmp)), on() { S.l[i] = 1; S.lt[i] = 0; fx('knife'); } }));
+  const lever = holdable({ x: LEV, r: 0.8, stand: LEV - 0.15, face: 1, keep: true, can: () => S.l[0] && !busy() && !END.c && CARRY.state === 'bag', rate: () => 0.68, back: () => 2.6, start() { fx('lever'); } });
+  usable({ x: SOCK, r: 0.75, can: () => S.l[1] && CARRY.state === 'bag' && !busy() && !END.c, on() { takeOut(); } });
+  usable({ x: FAULT, r: 0.75, can: () => S.fault === 1 && !busy() && !END.c, on() { S.fault = 2; S.ft = 0; fx('knife'); fx('ok'); } });
+  // 拧灯：前半段灯泡往上拧进灯座、接上电亮起来（松手就拧出来）；后半段夹口一点点合拢（松手还会张开）；拧到头夹口咬死
+  const screw = holdable({ x: SOCK, r: 0.75, stand: SOCK - 0.24, face: 1, can: () => S.done3 && CARRY.state === 'out' && !CARRY.act && !END.c,
+    rate: k => k < 0.5 ? 0.34 : 0.14, back: k => k < 0.5 ? 0.7 : 0.32, done() { choose(1); } });
+  // 拉闸：前半程断电，星灯一排排熄灭（松手就复位、灯重新亮）；后半程粗拉索绷紧、锁销一截一截往外退（松手还会滑回去）；拉到底锁销脱出
+  const pull = holdable({ x: MAIN, r: 0.8, stand: MAIN - 0.16, face: 1, can: () => S.done3 && CARRY.state === 'bag' && !busy() && !END.c,
+    rate: k => k < 0.5 ? 0.34 : 0.12, back: k => k < 0.5 ? 0.9 : 0.3, start() { fx('lever'); }, done() { choose(2); } });
+  function takeOut() {
+    P.facing = 1;
+    if (!S.done3) { S.cmpT = 0; carryStart('out', { x: SOCK - 0.03, y: SOCK_Y - 0.2 - 0.04 }); }       // 对一下：举到空灯座底下
+    else carryStart('out', { x: SOCK - 0.03, y: SOCK_Y - 0.2 - 0.12 });                                // 准备拧：先拿在灯座底下
+  }
+  hint(() => inRoom() && !S.l[0] && near(L1), '按 <b>E</b> 合上闸刀');
+  hint(() => inRoom() && S.l[0] && !S.seen1 && near(LEV), '按住 <b>E</b> 往下带');
+  hint(() => inRoom() && S.seen1 && !S.l[1] && near(L2), '按 <b>E</b> 合上闸刀');
+  hint(() => inRoom() && S.l[1] && CARRY.state === 'bag' && !busy() && near(SOCK, 0.8), '按 <b>E</b> 取出灯泡');
+  hint(() => inRoom() && S.cmp && !S.l[2] && near(L3), '按 <b>E</b> 合上闸刀');
+  hint(() => inRoom() && S.fault === 1 && near(FAULT), '按 <b>E</b> 把接点按回去');
+  hint(() => inRoom() && S.done3 && CARRY.state === 'out' && !CARRY.act && near(SOCK, 0.8), '按住 <b>E</b> 拧进去　松手就退回来');
+  hint(() => inRoom() && S.done3 && CARRY.state === 'bag' && near(MAIN), '按住 <b>E</b> 往下拉　松手就退回来');
+  Object.assign(sfx, {
+    knife: () => { hit(2600, 3, 0.12, 0.05); tone(150, 80, 0.2, 0.18, 'square'); for (let i = 0; i < 4; i++) hit(R2(3000, 6000), 2, 0.06, 0.03, 'bandpass', 0.05 + i * 0.04); },
+    spring: () => { hit(700, 2, 0.16, 0.08); tone(420, 160, 0.12, 0.16, 'square'); },
+    ratchet: () => { hit(2400, 4, 0.07, 0.025); hit(800, 2, 0.05, 0.04); },
+    bite: () => { hit(160, 1, 0.5, 0.35, 'lowpass'); tone(110, 70, 0.25, 0.3, 'square'); hit(1900, 2, 0.12, 0.1); },
+    pinStep: () => { hit(140, 0.8, 0.45, 0.6, 'lowpass'); tone(75, 48, 0.3, 0.55); hit(900, 1.5, 0.12, 0.2); snd('creak', { gain: 0.25, rate: 0.6, wet: 0.8 }); },
+    boom: () => { hit(70, 0.6, 0.9, 2.2, 'lowpass'); tone(48, 26, 0.45, 2.4); snd('rumble', { gain: 0.6, wet: 1 }); },
+    clank13: () => snd('clank', { gain: 0.35, rate: 0.85, wet: 0.6 }),
+    relayOff: () => { hit(1800, 3, 0.08, 0.03); tone(260, 120, 0.05, 0.12, 'square'); },
+    fit: () => { hit(1500, 3, 0.08, 0.04); tone(880, 880, 0.03, 0.12); },
+    bell: (f = 740, v = 1) => { for (let n = 0; n < 3; n++) for (const [m, a] of [[1, 0.1], [2.4, 0.045], [4.1, 0.025], [5.9, 0.012]]) tone(f * m, f * m * 0.996, a * v, 2.6, 'sine', n * 0.95); },
+  });
+  FAR[13] = ['relay', 'creak', 'hum2', 'relay'];
+
+  // ---- 头顶的星灯：几排等距的灯座挂在缆索上，一起慢慢往右挪；钩形星群在机房正上方，少了钩尖那一颗 ----
+  // rows：[高, 深, 间距]；HOOK：钩形星群各颗的位置（相对 SOCK），最后一颗（钩尖）是空的 —— 它的灯座就是检修位上那只
+  const ROWS = [[5.15, -2.0, 1.15], [6.85, -2.6, 1.2], [8.3, -3.0, 1.25]];
+  const HOOK = [[-1.55, 7.4], [-0.8, 7.57], [-0.08, 7.37], [0.38, 6.85], [0.46, 6.2]];
+  const LAMP = { rows: [], hook: [], speed: 0.1, run: 1, off: [0, 0, 0, 0], jit: 0, flick: 1, pos: 0 };
+
+  function* build(R) {
+    const v = {}, own = m => { m.userData.own = true; return m; };
+    const plate_ = lam(0x2a3338), plate2 = lam(0x222a2f), dark = MAT.dark;
+    // ---------------- 屋子：后墙、左右墙、顶 ----------------
+    // 后墙：一块块铁板，铆钉；小窗那里是一道缝（画布上挖空，后面是白光），四周一圈旧焦痕
+    backdrop(X - 0.3, RW + 0.4, 0, CEIL + 0.1, BACK, 40, g => {
+      setInk(g, '#202a30'); box(g, X - 0.3, 0, RW - X + 0.7, CEIL + 0.1);
+      for (let x = X; x < RW; x += 1.6) { g.fillStyle = 'rgba(0,0,0,.35)'; box(g, x, 0, 0.04, CEIL); g.fillStyle = 'rgba(160,190,200,.06)'; box(g, x + 0.04, 0, 0.03, CEIL); }
+      for (const y of [1.1, 2.3, 3.5]) { g.fillStyle = 'rgba(0,0,0,.3)'; box(g, X - 0.3, y, RW - X + 0.7, 0.035); }
+      g.fillStyle = 'rgba(150,170,175,.18)'; for (let x = X + 0.2; x < RW; x += 0.4) for (const y of [0.25, 1.25, 2.45, 3.65]) disc(g, x, y, 0.018);
+      // 焦痕：从缝里往外烧黑的一圈，越靠近越黑
+      for (let i = 0; i < 9; i++) { const gr = g.createRadialGradient(WIN, WIN_Y, 0.2, WIN, WIN_Y, 0.6 + i * 0.14); gr.addColorStop(0, 'rgba(8,6,4,.32)'); gr.addColorStop(1, 'rgba(8,6,4,0)'); g.fillStyle = gr; g.fillRect(WIN - 2, WIN_Y - 2, 4, 4); }
+      g.strokeStyle = 'rgba(10,8,6,.55)'; g.lineWidth = 0.025; for (let i = 0; i < 18; i++) { const a = rr(0, 6.28), r0 = rr(0.5, 0.6); line(g, [[WIN + Math.cos(a) * r0, WIN_Y + Math.sin(a) * r0 * 0.6], [WIN + Math.cos(a) * (r0 + rr(0.2, 0.6)), WIN_Y + Math.sin(a) * (r0 + rr(0.15, 0.4)) * 0.6]], 0.02); }
+      g.clearRect(WIN - 0.48, WIN_Y - 0.12, 0.96, 0.24);                                // 观察缝
+    }, { lit: true });
+    const outside = add(R, new THREE.PlaneGeometry(1.4, 0.6), own(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })), WIN, WIN_Y, BACK - 0.12, false);   // 缝外面：白光
+    v.outside = outside;
+    // 白光挤进来：缝口一圈亮（亮里面焦痕是暗的，看得出来）、一束光斜着落到地上
+    v.slitGlow = glow(R, 0xffffff, 3.4, 0, WIN, WIN_Y, BACK + 0.25); v.slitGlow.renderOrder = 55;
+    { const len = 5.2, geo = new THREE.ConeGeometry(0.75, len, 24, 1, true); geo.translate(0, -len / 2, 0); geo.rotateX(-Math.PI / 2);
+      v.ray = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xf4f6f2, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })));
+      v.ray.position.set(WIN, WIN_Y, BACK + 0.1); v.ray.lookAt(WIN + 0.8, 0, 1.6); v.ray.scale.set(1, 0.35, 1); v.ray.renderOrder = 56; R.add(v.ray); }
+    yield;
+    add(R, bx(0.4, CEIL + 0.3 - 2.38, 4.6), plate_, X, 2.38 + (CEIL + 0.3 - 2.38) / 2, BACK + 2.3);   // 左墙门洞以上
+    add(R, bx(0.4, CEIL + 0.3, 1.6), plate_, X, (CEIL + 0.3) / 2, BACK + 0.8);         // 左墙门洞后面的一截
+    add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, -1.4); add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, 1.0);    // 门框
+    add(R, bx(0.4, CEIL + 0.3, 4.6), plate_, RW, (CEIL + 0.3) / 2, BACK + 2.3);       // 右墙
+    add(R, bx(RW - X + 0.6, 0.26, 4.6), plate2, ROOMC, CEIL + 0.13, BACK + 2.3);       // 顶（剖开的这一面朝着镜头）
+    for (let x = X + 1.6; x < RW; x += 3.2) add(R, bx(0.14, 0.3, 4.6), dark, x, CEIL - 0.12, BACK + 2.3);
+    // 地上一圈磨亮的走道
+    decal(R, X - 9, RW, -2.6, 1.6, 0, 12, g => { g.fillStyle = 'rgba(150,170,180,.06)'; g.fillRect(X - 9, -0.6, RW - X + 9, 1.2); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.03; for (let x = X - 9; x < RW; x += 1.2) { g.beginPath(); g.moveTo(x, -2.6); g.lineTo(x, 1.6); g.stroke(); } });
+    yield;
+    // ---------------- 外面：维护台和栏杆；头顶的外壳 ----------------
+    for (let x = X - 8.6; x < X - 0.4; x += 1.4) add(R, bx(0.05, 1.0, 0.05), MAT.steel, x, 0.5, 1.2);
+    add(R, bx(8.4, 0.05, 0.05), MAT.steel, X - 4.6, 1.0, 1.2); add(R, bx(8.4, 0.05, 0.05), MAT.steel, X - 4.6, 0.55, 1.2);
+    // 外壳：从后墙往上，一整片暗的遮光板，接缝、肋。在 SEAM 处有一道竖着的接缝 —— 拉闸以后从这里分开
+    const shellDraw = (x1, x2) => g => {
+      setInk(g, '#11171b'); box(g, x1, CEIL - 0.2, x2 - x1, 40);
+      for (let x = Math.ceil(x1 / 3.4) * 3.4; x < x2; x += 3.4) { g.fillStyle = 'rgba(0,0,0,.5)'; box(g, x, CEIL, 0.07, 40); g.fillStyle = 'rgba(120,150,160,.05)'; box(g, x + 0.07, CEIL, 0.05, 40); }
+      for (let y = CEIL + 2.2; y < 40; y += 2.8) { g.fillStyle = 'rgba(0,0,0,.45)'; box(g, x1, y, x2 - x1, 0.06); }
+      g.fillStyle = 'rgba(0,0,0,.6)'; for (let x = Math.ceil(x1 / 6.8) * 6.8; x < x2; x += 6.8) box(g, x - 0.25, CEIL, 0.5, 40);   // 肋
+    };
+    v.shellL = backdrop(X - 40, SEAM, CEIL - 0.2, 36, -3.4, 8, shellDraw(X - 40, SEAM), { fog: false });
+    v.shellR = backdrop(SEAM, X + 60, CEIL - 0.2, 36, -3.4, 8, shellDraw(SEAM, X + 60), { fog: false });
+    v.shellL.userData.x0 = v.shellL.position.x; v.shellR.userData.x0 = v.shellR.position.x;
+    v.white = add(R, new THREE.PlaneGeometry(90, 40), own(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, transparent: true, opacity: 0 })), SEAM, CEIL + 18, -3.7, false);
+    v.white.renderOrder = -20;
+    v.flood = add(R, new THREE.PlaneGeometry(RW - X + 1, CEIL), own(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })), ROOMC, CEIL / 2, BACK + 0.05, false);   // 白光泼进屋里：后墙一片亮
+    yield;
+    // ---------------- 头顶的星灯 ----------------
+    const sockGeo = cy(0.05, 0.06, 0.1, 8), coreGeo = new THREE.SphereGeometry(0.075, 10, 8);
+    LAMP.rows = ROWS.map(([y, z, gap], r) => {
+      add(R, bx(80, 0.025, 0.025), dark, X + 10, y + 0.22, z, false);                  // 缆索
+      const mat = own(new THREE.MeshBasicMaterial({ color: 0xfff0d0 })), list = [];
+      for (let x = X - 26; x < X + 46; x += gap) {
+        const g = grp(R, x, y, z); add(g, sockGeo, dark, 0, 0.09, 0, false); add(g, bx(0.01, 0.12, 0.01), dark, 0, 0.18, 0, false); add(g, coreGeo, mat, 0, -0.02, 0, false);
+        const s = glow(g, 0xffe2b0, lerp(1.0, 0.75, r / 2), 0.7, 0, -0.02, 0.02); s.renderOrder = 40;
+        list.push({ g, s, x0: x, ph: rr(0, 6.28) });
+      }
+      return { y, z, gap, mat, list };
+    });
+    LAMP.hook = HOOK.map(([dx, y]) => { const g = grp(R, SOCK + dx, y, 0); add(g, sockGeo, dark, 0, 0.09, 0, false); add(g, bx(0.012, 0.3, 0.012), dark, 0, 0.3, 0, false);
+      const core = add(g, coreGeo, own(new THREE.MeshBasicMaterial({ color: 0xfff2d8 })), 0, -0.02, 0, false); core.scale.setScalar(1.25); const s = glow(g, 0xffe8c0, 1.35, 0.95, 0, -0.02, 0.03); s.renderOrder = 41; return { g, s, core }; });
+    yield;
+    // ---------------- 一 · 观察窗：遮板、锁销、配重都露在外面；检修柄通过拉索连着锁销 ----------------
+    v.knife = [L1, L2, L3].map(x => {                                                // 闸刀：一只铁盒，一把会扳上去的刀
+      const g = grp(R, x, 0, -1.25); add(g, bx(0.08, 1.1, 0.08), MAT.steel, 0, 0.55, -0.1); add(g, bx(0.36, 0.46, 0.2), plate2, 0, 1.25, 0);
+      for (const dx of [-0.07, 0.07]) add(g, bx(0.03, 0.08, 0.06), MAT.copper, dx, 1.12, 0.12, false);
+      const arm = grp(g, 0, 1.12, 0.14); add(arm, bx(0.03, 0.2, 0.03), MAT.copper, 0, 0.1, 0, false); add(arm, cy(0.022, 0.022, 0.1, 8), lam(0x6a2a20), 0, 0.23, 0, false);
+      const lamp = unlit(0x2a1210); add(g, new THREE.SphereGeometry(0.035, 8, 6), lamp, 0.12, 1.42, 0.11, false);
+      return { g, arm, lamp };
+    });
+    tube(R, [[L1, 1.5, -1.3], [L1 + 0.2, 3.3, -2.8], [WIN - 0.9, 3.3, -2.9], [WIN - 0.6, WIN_Y + 0.3, -2.9]], 0.022, dark, 12);      // 第一条线：到小窗的机构
+    tube(R, [[L2, 1.5, -1.3], [L2 + 0.4, 1.0, -2.6], [CON - 1.2, 1.0, -2.0]], 0.022, dark, 10);                                     // 第二条线：到控制台
+    tube(R, [[L3, 1.5, -1.3], [L3, 3.4, -2.8], [L3 - 0.5, CEIL - 0.1, -2.6]], 0.022, dark, 10);                                       // 第三条线：往上，到星灯回路
+    v.pulse = [0, 1, 2].map(() => glow(R, 0xbfe8ff, 0.35, 0, 0, 0, 0));
+    v.pulsePath = [[[L1, 1.5, -1.3], [L1 + 0.2, 3.3, -2.8], [WIN - 0.9, 3.3, -2.9], [WIN - 0.6, WIN_Y + 0.3, -2.85]], [[L2, 1.5, -1.3], [L2 + 0.4, 1.0, -2.6], [CON - 1.2, 1.0, -2.0]], [[L3, 1.5, -1.3], [L3, 3.4, -2.8], [L3 - 0.5, CEIL - 0.1, -2.6]]].map(p => new THREE.CatmullRomCurve3(p.map(q => V3(...q))));
+    // 小窗的机构
+    add(R, bx(1.3, 0.1, 0.08), plate2, WIN, WIN_Y + 0.22, BACK + 0.06); add(R, bx(1.3, 0.1, 0.08), plate2, WIN, WIN_Y - 0.22, BACK + 0.06);   // 上下几层压着的铁板
+    for (const dx of [-0.62, 0.62]) add(R, bx(0.08, 0.6, 0.1), plate2, WIN + dx, WIN_Y, BACK + 0.07);
+    v.shut = add(R, bx(1.12, 0.34, 0.05), plate_, WIN, WIN_Y, BACK + 0.13);               // 遮板
+    for (const y of [-0.1, 0, 0.1]) add(v.shut, bx(1.12, 0.012, 0.055), dark, 0, y, 0, false);
+    v.pin = add(R, cy(0.035, 0.035, 0.32, 10), MAT.steel, WIN + 0.72, WIN_Y + 0.04, BACK + 0.2); v.pin.rotation.z = Math.PI / 2;   // 锁销：横着插在遮板边上
+    add(R, bx(0.12, 0.14, 0.1), plate2, WIN + 0.82, WIN_Y + 0.04, BACK + 0.12);
+    add(R, cy(0.07, 0.07, 0.04, 14), MAT.steel, WIN - 0.75, 3.55, BACK + 0.2).rotation.x = Math.PI / 2;     // 滑轮
+    v.cw = add(R, bx(0.16, 0.24, 0.12), lam(0x4a4036), WIN - 0.82, 3.0, BACK + 0.22);   // 配重
+    v.cwRope = add(R, bx(0.01, 1, 0.01), dark, WIN - 0.82, 3.3, BACK + 0.22, false);
+    add(R, bx(0.5, 0.01, 0.01), dark, WIN - 0.5, 3.6, BACK + 0.2, false);
+    // 检修柄：一只铁盒在右边，手柄朝左伸出来，往下带
+    add(R, bx(0.32, 1.0, 0.3), plate2, LEV + 0.47, 0.5, -0.35); v.lev = grp(R, LEV + 0.42, 0.85, -0.12);
+    add(v.lev, bx(0.45, 0.05, 0.05), MAT.steel, -0.225, 0, 0, false); add(v.lev, cy(0.03, 0.03, 0.16, 8), lam(0x8a3a28), -0.45, 0, 0, false).rotation.x = Math.PI / 2;
+    tube(R, [[LEV + 0.46, 1.1, -0.4], [LEV + 0.5, 3.0, -2.7], [WIN + 1.0, 3.0, -2.85], [WIN + 0.88, WIN_Y + 0.06, -2.82]], 0.012, dark, 10);   // 拉索：从检修柄到锁销
+    // 备用的灯泡：窗下一箱，老人桌子上方的架子上三只（白光进来时一齐亮起来）
+    mkCrate(R, { x: X + 4.75, y1: 0, w: 0.7, h: 0.42 }, 'wood').position.z = -1.7;
+    v.spares = [];
+    for (let i = 0; i < 5; i++) { const b = makeBulb(R, null, { glow: 0.12 }); b.g.position.set(X + 4.5 + i * 0.13, 0.62, -1.7 + (i % 2) * 0.12); b.g.rotation.z = 0.2 * (i % 3 - 1); v.spares.push(b); }
+    add(R, bx(0.9, 0.04, 0.26), lam(0x3a3028), TABLE - 0.95, 2.0, BACK + 0.2);
+    for (let i = 0; i < 3; i++) { const b = makeBulb(R, null, { glow: 0.12 }); b.g.position.set(TABLE - 1.25 + i * 0.3, 2.02 + 0.175, BACK + 0.22); v.spares.push(b); }
+    yield;
+    // ---------------- 二 · 控制台、屏幕、释放杆、检修位的空灯座 ----------------
+    add(R, bx(3.1, 0.95, 0.75), plate2, CON, 0.475, -2.2); add(R, bx(3.2, 0.06, 0.85), MAT.steel, CON, 0.97, -2.15);
+    for (let i = 0; i < 9; i++) add(R, bx(0.06, 0.02, 0.06), lam(0x6a7a80), CON - 1.3 + i * 0.32, 1.01, -1.95, false);
+    v.screens = [];
+    const SCR = [['window', CON - 1.08, 2.95, 1.0, 0.62], ['clock', CON, 2.95, 1.0, 0.62], ['bridge', CON + 1.08, 2.95, 1.0, 0.62], ['map', CON, 2.08, 3.16, 0.62]];
+    for (const [kind, x, y, w, h] of SCR) {
+      add(R, bx(w + 0.12, h + 0.12, 0.08), dark, x, y, BACK + 0.08);
+      const mat = own(new THREE.MeshBasicMaterial({ map: screenTex(kind), color: 0x000000, fog: false }));
+      const m = add(R, new THREE.PlaneGeometry(w, h), mat, x, y, BACK + 0.13, false); v.screens.push({ m, mat, kind });
+    }
+    { const x = SOCK + 0.95, y = 2.55; add(R, bx(0.64, 0.46, 0.08), dark, x, y, BACK + 0.08); const mat = own(new THREE.MeshBasicMaterial({ map: screenTex('chute'), color: 0x000000, fog: false }));
+      v.screens.push({ m: add(R, new THREE.PlaneGeometry(0.56, 0.38), mat, x, y, BACK + 0.13, false), mat, kind: 'chute' }); }
+    // 一排释放杆：每一根连着维护轨道上的一只灯座。第 4 根扳在释放的位置 —— 连着检修位上的那只
+    v.rel = [];
+    for (let i = 0; i < 7; i++) {
+      const x = SOCK - 0.9 + i * 0.3, g = grp(R, x, 1.62, BACK + 0.12); add(g, bx(0.12, 0.2, 0.06), plate2, 0, 0, 0); const arm = grp(g, 0, 0, 0.05);
+      add(arm, bx(0.03, 0.34, 0.03), MAT.steel, 0, 0.17, 0, false); add(arm, new THREE.SphereGeometry(0.035, 8, 6), lam(0x8a3a28), 0, 0.34, 0, false);
+      const lamp = unlit(0x1a1410); add(g, new THREE.SphereGeometry(0.025, 8, 6), lamp, 0, -0.16, 0.04, false);
+      add(R, bx(0.012, CEIL - 1.9, 0.012), dark, x, (CEIL + 1.9) / 2, BACK + 0.14, false);      // 连杆：往上通到维护轨道
+      v.rel.push({ arm, lamp, rel: i === 3 });
+    }
+    add(R, bx(2.6, 0.08, 0.1), MAT.steel, SOCK + 0.0, CEIL - 0.25, BACK + 0.4); add(R, bx(0.06, 0.06, Math.abs(BACK) - 0.3), MAT.steel, SOCK, CEIL - 0.25, BACK / 2 + 0.2);   // 维护轨道，拐到检修位上方
+    // 检修位：灯座挂在缆索上，被一只卡扣停住；灯头的夹口朝下张开
+    v.sockCable = add(R, bx(0.016, 1, 0.016), dark, SOCK, 3, 0, false);
+    v.sock = grp(R, SOCK, SOCK_Y, 0);
+    add(v.sock, cy(0.07, 0.078, 0.17, 16), plate2, 0, 0.085, 0); add(v.sock, cy(0.05, 0.05, 0.02, 16), MAT.steel, 0, 0.005, 0, false);
+    v.jaws = [-1, 1].map(s => { const j = grp(v.sock, s * 0.055, 0.01, 0); add(j, bx(0.018, 0.075, 0.07), MAT.steel, 0, -0.035, 0, false); add(j, bx(0.03, 0.012, 0.07), MAT.steel, -s * 0.01, -0.07, 0, false); return j; });
+    v.sockLamp = unlit(0x2a1210); add(v.sock, new THREE.SphereGeometry(0.018, 8, 6), v.sockLamp, 0.075, 0.12, 0.03, false);
+    v.tipGlow = glow(R, 0xffe8c0, 1.35, 0, SOCK, TIP - 0.12, 0.05); v.tipGlow.renderOrder = 41;     // 灯座升到钩尖以后：和旁边几颗一样亮的一团光
+    v.clip = grp(R, SOCK, SOCK_Y + 0.45, 0); add(v.clip, bx(0.14, 0.06, 0.08), lam(0x9a8a3a), 0, 0, 0); add(v.clip, bx(0.5, 0.03, 0.03), MAT.steel, -0.3, 0, -0.02, false);   // 维护卡扣
+    yield;
+    // ---------------- 三 · 故障指示、传动、调整杆 ----------------
+    add(R, bx(0.55, 0.7, 0.08), plate2, FAULT, 1.75, BACK + 0.08);
+    v.faultLamp = unlit(0x2a1210); add(R, new THREE.SphereGeometry(0.05, 10, 8), v.faultLamp, FAULT, 1.95, BACK + 0.15, false); v.faultGlow = glow(R, 0xff5a3a, 0.7, 0, FAULT, 1.95, BACK + 0.2);
+    add(R, bx(0.3, 1.0, 0.3), plate2, FAULT, 0.5, -1.2); v.contact = add(R, bx(0.12, 0.08, 0.12), MAT.copper, FAULT, 1.04, -1.2, false);   // 接点：按回去
+    v.gears = [[FAULT - 0.15, 3.2, 0.42, 1], [FAULT + 0.55, 3.45, 0.28, -1], [X + 13.6, 3.3, 0.36, 1], [X + 14.25, 3.55, 0.22, -1]].map(([x, y, r, s], i) => {
+      const g = grp(R, x, y, BACK + 0.15); add(g, cy(r, r, 0.06, 18), i < 2 ? MAT.steel : MAT.rust, 0, 0, 0).rotation.x = Math.PI / 2;
+      for (let k = 0; k < 10; k++) { const a = k / 10 * 6.2832; add(g, bx(0.06, 0.08, 0.06), i < 2 ? MAT.steel : MAT.rust, Math.cos(a) * r, Math.sin(a) * r, 0, false).rotation.z = a; }
+      add(g, bx(r * 1.6, 0.04, 0.07), dark, 0, 0, 0.02, false); return { g, r, s, a: 0 };
+    });
+    v.fault2 = unlit(0x2a1a08); add(R, new THREE.SphereGeometry(0.045, 10, 8), v.fault2, SOCK + 1.55, 3.55, BACK + 0.15, false); v.fault2Glow = glow(R, 0xffb040, 0.6, 0, SOCK + 1.55, 3.55, BACK + 0.2);
+    add(R, bx(0.18, 0.14, 0.18), plate2, ADJ, 0.07, CH_Z + 0.05); v.adj = grp(R, ADJ, 0.12, CH_Z + 0.05); add(v.adj, cy(0.02, 0.02, 0.95, 8), MAT.steel, 0, 0.47, 0, false); add(v.adj, new THREE.SphereGeometry(0.04, 8, 6), lam(0x8a3a28), 0, 0.95, 0, false);
+    v.adj.rotation.z = 0.12;
+    v.adjExt = add(R, cy(0.016, 0.016, 0.7, 6), MAT.steel, ADJ + 0.36, 1.0, CH_Z + 0.05, false); v.adjExt.rotation.z = Math.PI / 2 - 0.1; v.adjExt.visible = false;   // 拉近了的调整杆（结局）
+    yield;
+    // ---------------- 老人、椅子、桌子、生活角落 ----------------
+    v.chair = grp(R, CHAIR, 0, CH_Z);
+    const wd = lam(0x3c3128); add(v.chair, bx(0.5, 0.05, 0.48), wd, 0.04, 0.45, 0); add(v.chair, bx(0.05, 0.62, 0.46), wd, 0.3, 0.76, 0);
+    for (const [dx, dz] of [[-0.18, -0.2], [0.26, -0.2], [-0.18, 0.2], [0.26, 0.2]]) add(v.chair, bx(0.04, 0.45, 0.04), dark, dx, 0.22, dz);
+    v.coat = grp(v.chair, 0.31, 0.95, 0); add(v.coat, bx(0.13, 0.5, 0.5), lam(0x5f6b63, { side: THREE.DoubleSide }), 0.02, -0.12, 0); add(v.coat, bx(0.08, 0.36, 0.2), lam(0x56615a), 0.08, -0.4, 0.2); v.coat.visible = false;
+    v.old = makeNPC('G', R, { x: CHAIR, z: CH_Z, facing: -1 });
+    // 桌子：旧灯泡（暗的，擦得很干净，立在一只小圈座上）、叠着的挡光片、修过很多次的护目镜、饭盒
+    add(R, bx(0.7, 0.04, 0.5), wd, TABLE, 0.72, -0.85); for (const dx of [-0.3, 0.3]) for (const dz of [-0.2, 0.2]) add(R, bx(0.035, 0.72, 0.035), dark, TABLE + dx, 0.36, -0.85 + dz);
+    add(R, cy(0.035, 0.04, 0.02, 14), MAT.steel, TABLE + 0.2, 0.75, -0.6, false);
+    v.oldBulb = makeBulb(R, 'chevron', { glow: 0 }); v.oldBulb.g.position.set(TABLE + 0.2, 0.76 + 0.168, -0.6);
+    v.shields = []; for (let i = 0; i < 4; i++) { const m = add(R, bx(0.34, 0.012, 0.42), lam(0x15191b), TABLE - 0.12, 0.75 + i * 0.014, -0.98, false); m.rotation.y = 0.05 * i; v.shields.push(m); }
+    v.shield = grp(R, 0, 0, 0); add(v.shield, bx(0.012, 0.42, 0.34), lam(0x15191b), 0, 0, 0); add(v.shield, bx(0.02, 0.1, 0.04), lam(0x3a3028), 0.02, -0.2, 0); v.shield.visible = false;   // 举起来的那一片
+    { const g = grp(R, TABLE - 0.18, 0.79, -0.68); add(g, bx(0.2, 0.05, 0.08), lam(0x2a2a26), 0, 0, 0); for (const dx of [-0.055, 0.055]) add(g, cy(0.04, 0.04, 0.04, 12), lam(0x4a5658), dx, 0, 0.05).rotation.x = Math.PI / 2; add(g, bx(0.24, 0.015, 0.02), lam(0x6a6050), 0, 0.02, -0.045); }
+    add(R, bx(0.24, 0.1, 0.15), lam(0x6a7070), TABLE + 0.22, 0.79, -1.0);             // 饭盒
+    // 工具板：在桌子正后面的墙上，几件旧工具，每一件都打着同一个记号（尖角）；中间一块铜牌上打着大的
+    v.tools = plate(R, toolTex(), 1.0, 0.7, TABLE + 0.05, 1.78, BACK + 0.11, 0xb8b8b8, { fog: true, order: 2 });   // 透明的那一类、排在后墙后面画（不然会被后墙盖住）
+    // 挂着的旧工作服：一件比一件小，最小的一件和孩子身上的一样（米白的毛衣）
+    for (const [dx, s, col] of [[-0.55, 1.15, 0x5f6b63], [0, 0.95, 0x8f8a7e], [0.5, 0.72, 0xc4beb0]]) {
+      const g = grp(R, CLO + dx, 1.98, BACK + 0.2); add(g, cy(0.008, 0.008, 0.06, 6), MAT.steel, 0, 0.03, 0, false);
+      const m = lam(col); add(g, bx(0.34 * s, 0.46 * s, 0.07), m, 0, -0.25 * s, 0); for (const sx of [-1, 1]) { const sl = add(g, bx(0.09 * s, 0.4 * s, 0.06), m, sx * 0.2 * s, -0.22 * s, 0); sl.rotation.z = sx * 0.12; }
+    }
+    // 身高刻痕：从孩子头顶的高度开始，一道一道往上长到大人的个子
+    plate(R, heightTex(), 0.5, 1.0, MARKS, 1.4, BACK + 0.11, 0xffffff, { fog: true, order: 2 });
+    // 窄床
+    add(R, bx(2.1, 0.32, 0.78), dark, X + 16.3, 0.16, -2.45); add(R, bx(2.0, 0.12, 0.72), MAT.cloth, X + 16.3, 0.38, -2.45); add(R, bx(1.2, 0.07, 0.74), lam(0x4a4f48), X + 16.6, 0.47, -2.43); add(R, bx(0.4, 0.1, 0.5), lam(0xa8a290), X + 15.45, 0.48, -2.5);
+    yield;
+    // ---------------- 应急开罩手柄（拉闸）和它连着的大锁销、配重 ----------------
+    add(R, bx(0.42, 1.4, 0.4), plate2, MAIN + 0.55, 0.7, -0.45); add(R, bx(0.5, 0.1, 0.46), lam(0x8a6a2a), MAIN + 0.55, 1.4, -0.45);   // 手柄的座（顶上一道黄色的警示漆）
+    for (let i = 0; i < 4; i++) add(R, bx(0.43, 0.05, 0.41), i % 2 ? lam(0x1a1a18) : lam(0x8a6a2a), MAIN + 0.55, 0.2 + i * 0.1, -0.45, false);
+    v.main = grp(R, MAIN + 0.48, 0.95, -0.18); add(v.main, bx(0.5, 0.08, 0.08), MAT.steel, -0.25, 0, 0, false); add(v.main, cy(0.045, 0.045, 0.24, 8), lam(0x9a2a1e), -0.5, 0, 0, false).rotation.x = Math.PI / 2;
+    tube(R, [[MAIN + 0.6, 1.3, -0.5], [RW - 0.3, 1.5, -0.8], [RW - 0.3, CEIL - 0.1, -1.6]], 0.045, dark, 10);       // 粗拉索：顺着右墙上去，穿过顶
+    // 外壳基座上的大锁销：横着插在一只大支架里，挡着配重的锁扣；粗拉索从右边连过来
+    const PX = X + 15.9, PY = 6.1, PZ = -3.05;
+    add(R, bx(0.5, 1.5, 0.6), plate2, PX, PY, PZ); add(R, bx(0.5, 1.5, 0.6), plate2, PX - 1.5, PY, PZ);
+    v.bigPin = grp(R, PX - 0.6, PY, PZ + 0.1); add(v.bigPin, cy(0.26, 0.26, 2.6, 18), MAT.steel, 0, 0, 0).rotation.z = Math.PI / 2;
+    for (let i = 0; i < 5; i++) add(v.bigPin, cy(0.29, 0.29, 0.06, 18), dark, -1.0 + i * 0.42, 0, 0, false).rotation.z = Math.PI / 2;   // 一截一截的刻环
+    v.cwBig = grp(R, PX - 0.75, PY - 1.4, PZ - 0.1); add(v.cwBig, bx(1.3, 1.6, 0.6), lam(0x3a3631), 0, 0, 0); add(v.cwBig, bx(0.3, 0.4, 0.3), dark, 0, 0.95, 0);
+    v.cwChain = add(R, bx(0.05, 1, 0.05), dark, PX - 0.75, 0, PZ - 0.1, false);
+    v.bigCable = [0, 1, 2, 3, 4, 5, 6, 7].map(() => add(R, cy(0.045, 0.045, 1, 8), dark, 0, 0, 0, false));
+    v.cableA = V3(RW - 0.3, CEIL + 0.1, -1.8); v.cableB = V3(PX + 1.2, PY, PZ + 0.1);
+    v.dust = []; for (let i = 0; i < 24; i++) { const s = glow(R, 0x8a8a84, 0.12, 0, 0, 0, 0); v.dust.push({ s, t: 9, vx: 0, vy: 0 }); }
+    yield;
+    // ---------------- 城里（拧回去的结局最后两个镜头）----------------
+    backdrop(CITY - 30, CITY + 30, -2, 30, -60, 6, g => {                              // 远处的钩形星群（补齐了）和几排房顶
+      setInk(g, '#0a0e18'); for (let x = CITY - 30; x < CITY + 30; x += rr(2, 5)) box(g, x, -2, rr(2, 5), rr(4, 9));
+    }, { fog: false, order: -2000 });
+    v.cityHook = [[-1.6, 13.3], [-0.8, 13.5], [0, 13.3], [0.5, 12.8], [0.6, 12.1], [0.2, 11.6]].map(([dx, y]) => glow(R, 0xffe6c0, 1.3, 0.95, CITY + 6 + dx * 1.3, y, -40));
+    const B = [[CITY - 15, 7.5, 5.5], [CITY - 9.2, 9.6, 6], [CITY - 2.8, 8.2, 5.2], [CITY + 2.8, 10.5, 6.4], [CITY + 9.6, 7.8, 5.6]];
+    backdrop(CITY - 16, CITY + 16, -1, 12, -10, 20, g => {
+      setInk(g, '#151a22'); for (const [x, h, w] of B) { box(g, x, -1, w, h + 1); setInk(g, '#0d1117'); box(g, x - 0.1, h, w + 0.2, 0.25); setInk(g, '#151a22'); }
+      g.fillStyle = '#06080b'; for (const [x, h, w] of B) for (let y = 1.4; y < h - 1; y += 1.7) for (let xx = x + 0.6; xx < x + w - 1; xx += 1.3) box(g, xx, y, 0.7, 0.95);
+    }, { lit: false });
+    v.win = [0, 1, 2].map(k => backdrop(CITY - 16, CITY + 16, -1, 12, -9.9, 20, g => {     // 亮起来的窗：分三批，有的窗里有人
+      let n = 0;
+      for (const [x, h, w] of B) for (let y = 1.4; y < h - 1; y += 1.7) for (let xx = x + 0.6; xx < x + w - 1; xx += 1.3) {
+        if ((n++ * 7 + k * 3) % 5 !== 0 && (n * 11) % 3 !== k) continue;
+        g.fillStyle = '#e9b874'; box(g, xx, y, 0.7, 0.95);
+        const who = (n * 13 + k) % 7; g.fillStyle = '#2a1c10';
+        if (who === 0) { disc(g, xx + 0.3, y + 0.62, 0.09); box(g, xx + 0.2, y, 0.2, 0.52); box(g, xx + 0.4, y + 0.34, 0.16, 0.05); disc(g, xx + 0.55, y + 0.38, 0.06); }       // 端着碗
+        else if (who === 1) { box(g, xx + 0.42, y + 0.25, 0.18, 0.5); disc(g, xx + 0.51, y + 0.8, 0.03); }                                                            // 挂起来的围裙
+        else if (who === 2) { disc(g, xx + 0.22, y + 0.66, 0.09); box(g, xx + 0.12, y, 0.2, 0.56); disc(g, xx + 0.5, y + 0.46, 0.07); box(g, xx + 0.43, y, 0.14, 0.38); box(g, xx + 0.3, y + 0.4, 0.16, 0.04); }   // 大人把孩子拉回屋里
+      }
+    }, { additive: true, fog: false, opacity: 0 }));
+    // 前景：一片屋顶，上面一间小屋，正面一扇卷帘
+    add(R, bx(9, 0.3, 4), lam(0x1a1d22), CITY - 6.5, 3.35, -2.5); add(R, bx(9, 0.25, 0.15), lam(0x22262c), CITY - 6.5, 3.62, -0.5);   // 屋顶和矮矮的一道女儿墙（矮，不挡住后面卷帘底下那道缝）
+    add(R, bx(2.0, 2.1, 1.6), lam(0x30353d), CITY - 4.2, 4.6, -2.8); add(R, bx(2.0, 0.2, 1.6), lam(0x30353d), CITY - 4.2, 3.6, -2.8);
+    v.roofGlow = add(R, new THREE.PlaneGeometry(1.4, 1.2), own(new THREE.MeshBasicMaterial({ color: 0xffc27a, fog: false })), CITY - 4.2, 4.3, -1.99, false);
+    v.roofShut = add(R, bx(1.5, 1.3, 0.05), lam(0x4a5058), CITY - 4.2, 4.35, -1.95); for (let y = -0.55; y < 0.6; y += 0.12) add(v.roofShut, bx(1.5, 0.02, 0.06), lam(0x3a3f46), 0, y, 0, false);
+    v.crackGlow = glow(R, 0xffc27a, 1.1, 0, CITY - 4.2, 3.76, -1.85);
+    V = v;
+  }
+
+  // ---- 屏幕上的画：单色的监控画面。孩子认得的三个地方，一张巡逻图，一张落星滑道的小图 ----
+  function screenTex(kind) {
+    const [c, g] = mkCanvas(320, 200), ink = '#9fe4ef', dim = 'rgba(159,228,239,.35)', red = '#ff8a6a';
+    g.fillStyle = '#061015'; g.fillRect(0, 0, 320, 200); g.strokeStyle = g.fillStyle = ink; g.lineWidth = 3; g.lineCap = g.lineJoin = 'round';
+    const L = pts => { g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.stroke(); };
+    if (kind === 'window') {                                   // 作坊的侧窗：墙、一扇拉下一半的卷帘、屋顶的边；一束巡逻灯扫过来
+      L([[40, 190], [40, 70], [200, 70], [200, 190]]); L([[30, 70], [210, 70]]); g.strokeRect(95, 105, 60, 50);
+      for (let y = 108; y < 130; y += 6) L([[97, y], [153, y]]);
+      g.fillStyle = 'rgba(159,228,239,.18)'; g.beginPath(); g.moveTo(300, 20); g.lineTo(150, 190); g.lineTo(230, 190); g.closePath(); g.fill();
+      g.fillStyle = ink; g.beginPath(); g.arc(300, 20, 8, 0, 6.28); g.fill();
+    } else if (kind === 'clock') {                             // 钟表街：橱窗里一排旧钟，指针都停在同一刻；遮阳布；封锁门
+      L([[20, 190], [20, 60], [210, 60], [210, 190]]); for (let i = 0; i < 6; i++) L([[20 + i * 32, 60], [36 + i * 32, 40], [52 + i * 32, 60]]);
+      for (let i = 0; i < 4; i++) { const x = 52 + i * 44, y = 120; g.beginPath(); g.arc(x, y, 16, 0, 6.28); g.stroke(); L([[x, y], [x - 8, y - 9]]); L([[x, y], [x + 10, y - 4]]); }
+      L([[230, 190], [230, 90]]); L([[300, 190], [300, 90]]); for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? red : ink; g.fillRect(230, 110 + i * 14, 70, 7); }
+    } else if (kind === 'bridge') {                            // 断桥：桥面从中间断开；上面一架直升机罩着一块地
+      L([[0, 140], [120, 140]]); L([[175, 140], [320, 140]]); L([[120, 140], [130, 150]]); L([[175, 140], [168, 152]]);
+      for (const x of [40, 90, 210, 270]) L([[x, 140], [x, 195]]);
+      L([[180, 40], [240, 40]]); L([[160, 30], [260, 30]]); g.beginPath(); g.ellipse(210, 48, 26, 12, 0, 0, 6.28); g.stroke();
+      g.fillStyle = 'rgba(159,228,239,.16)'; g.beginPath(); g.moveTo(205, 58); g.lineTo(150, 140); g.lineTo(240, 140); g.closePath(); g.fill();
+    } else if (kind === 'map') {                               // 巡逻图：一条往右的路，来路一段段封着（红），去机房的那一段维护通道留空
+      const segs = [0, 1, 2, 3, 4, 5], w = 44, x0 = 14;
+      for (const i of segs) { const x = x0 + i * (w + 4); if (i < 5) { g.fillStyle = 'rgba(255,138,106,.45)'; g.fillRect(x, 70, w, 60); g.strokeStyle = red; g.strokeRect(x, 70, w, 60); for (let k = -60; k < w; k += 10) L([[x + Math.max(0, k), 70 + Math.max(0, -k)], [x + Math.min(w, k + 60), 130 - Math.max(0, k + 60 - w)]]); g.strokeStyle = ink; } }
+      g.setLineDash([6, 8]); L([[x0 + 5 * (w + 4), 100], [292, 100]]); g.setLineDash([]);
+      g.strokeRect(292, 82, 22, 36);                            // 机房
+      g.fillStyle = ink; for (const [x, k] of [[36, 'lamp'], [134, 'dog'], [182, 'heli']]) { if (k === 'lamp') { g.beginPath(); g.arc(x, 52, 6, 0, 6.28); g.fill(); L([[x, 52], [x - 12, 66]]); L([[x, 52], [x + 12, 66]]); } else if (k === 'dog') { g.fillRect(x - 10, 48, 18, 7); g.fillRect(x + 6, 44, 6, 6); } else { L([[x - 12, 46], [x + 12, 46]]); g.beginPath(); g.ellipse(x, 52, 9, 5, 0, 0, 6.28); g.fill(); } }
+      g.fillStyle = dim; g.fillRect(14, 150, 300, 3); g.fillRect(14, 150, 230, 3);
+    } else if (kind === 'chute') {                             // 落星的滑道：钩形星群，钩尖的夹口张开；一条虚线落到一个帆布棚和一只筐里
+      for (const [x, y] of [[60, 40], [95, 32], [130, 40], [150, 62], [152, 90]]) { g.beginPath(); g.arc(x, y, 7, 0, 6.28); g.fill(); }
+      L([[130, 112], [140, 104]]); L([[150, 112], [140, 104]]);
+      g.setLineDash([5, 7]); g.beginPath(); g.moveTo(140, 116); g.quadraticCurveTo(150, 170, 240, 160); g.stroke(); g.setLineDash([]);
+      L([[205, 165], [275, 150]]); L([[205, 165], [205, 190]]); g.strokeRect(245, 165, 30, 22);
+    }
+    for (let y = 0; y < 200; y += 4) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, y, 320, 1.5); }     // 扫描线
+    return canvasTex(c);
+  }
+  function toolTex() {                                         // 工具板：钉在墙上的几件旧工具，每一件上都打着一个尖角
+    const [c, g] = mkCanvas(400, 280); g.fillStyle = '#3b3328'; g.fillRect(0, 0, 400, 280);
+    g.fillStyle = 'rgba(0,0,0,.35)'; for (let x = 12; x < 400; x += 24) for (let y = 12; y < 280; y += 24) { g.beginPath(); g.arc(x, y, 2.2, 0, 6.28); g.fill(); }
+    const stamp = (x, y, s, col = '#1a140e') => { g.strokeStyle = col; g.lineWidth = s * 0.22; g.lineCap = 'butt'; g.lineJoin = 'miter'; g.beginPath(); g.moveTo(x - s, y + s * 0.75); g.lineTo(x, y - s * 0.75); g.lineTo(x + s, y + s * 0.75); g.stroke(); };
+    g.fillStyle = '#8a8476'; g.fillRect(40, 40, 18, 150); g.fillStyle = '#5a4532'; g.fillRect(36, 170, 26, 70); stamp(49, 205, 9);                  // 錾子
+    g.fillStyle = '#8a8476'; g.fillRect(100, 40, 70, 30); g.fillStyle = '#5a4532'; g.fillRect(126, 70, 18, 160); stamp(135, 160, 9);                // 小锤
+    g.fillStyle = '#8a8476'; g.beginPath(); g.moveTo(210, 40); g.lineTo(240, 150); g.lineTo(226, 240); g.lineTo(214, 240); g.lineTo(222, 150); g.fill(); g.beginPath(); g.moveTo(262, 40); g.lineTo(232, 150); g.lineTo(246, 240); g.lineTo(258, 240); g.lineTo(250, 150); g.fill(); stamp(236, 200, 8);   // 钳子
+    g.fillStyle = '#b08a4a'; g.fillRect(296, 70, 80, 80); g.strokeStyle = '#6a5228'; g.lineWidth = 4; g.strokeRect(296, 70, 80, 80); stamp(336, 112, 24, '#2a1c0c');   // 铜牌：打着大的尖角
+    g.fillStyle = '#8a8476'; g.fillRect(310, 180, 52, 12); g.fillStyle = '#5a4532'; g.fillRect(300, 176, 14, 20); stamp(336, 186, 6);                 // 小起子
+    return canvasTex(c);
+  }
+  function heightTex() {                                       // 身高刻痕：最低一道正好在孩子头顶，往上一道比一道高
+    const [c, g] = mkCanvas(80, 200); g.clearRect(0, 0, 80, 200);
+    const yOf = h => 200 - (h - 0.9) / 1.0 * 200;              // 贴图从 0.9 米到 1.9 米
+    g.strokeStyle = 'rgba(196,190,176,.9)'; g.lineWidth = 3.5; g.lineCap = 'round';           // 刻进漆里，露出底下的铁：比墙亮
+    [1.24, 1.29, 1.33, 1.38, 1.42, 1.46, 1.5].forEach((h, i) => { const y = yOf(h); g.beginPath(); g.moveTo(10, y); g.lineTo(58, y); g.stroke(); g.lineWidth = 2; g.beginPath(); g.moveTo(62, y - 4); g.lineTo(64 + (i % 3) * 4, y - 4); g.moveTo(62, y + 2); g.lineTo(62 + (i % 2) * 6 + 3, y + 2); g.stroke(); g.lineWidth = 3.5; });
+    return canvasTex(c);
+  }
+
+  // ---- 结局 ----
+  function choose(c) {
+    END.c = c; END.t = 0; END.step = 0; STORY.room = c; saveGame(); ctl = false; autoDir = 0;
+    if (c === 1) { fx('bite'); CARRY.state = 'set'; CARRY.power = 1; } else fx('boom');
+  }
+  // 镜头：老人一直在画面里。整间屋子放得下（宽屏）就对着屋子正中；放不下（窄屏）就把孩子和老人一起框进去，屏幕越窄退得越远
+  const camF = { x: 0, y: 3.6, d: 20 };
+  function roomCam() {
+    const half = Math.tan(camera.fov * Math.PI / 360) * camera.aspect, fit = 9.4 / half;
+    if (P.x > X + 0.4 && fit <= 22) return { x: ROOMC, y: 3.55, d: Math.max(19.5, fit) };
+    const a = Math.min(P.x, CHAIR) - 1.8, b = Math.max(P.x, CHAIR) + 1.8;            // 还在门外，或者屏幕太窄：把孩子和老人一起框进去
+    return { x: (a + b) / 2, y: 3.55, d: clamp((b - a) / 2 / half, 19.5, 26) };
+  }
+  function setCam(f) { camOvr = { d: f.d, yo: f.y - P.y, xo: f.x - P.x - cam.look }; }
+
+  function update(dt) {
+    const here = P.x > X - 12 && P.x < RW + 2;
+    if (!here && !END.c) return;
+    if (!CARRY.bulb) CARRY.bulb = makeBulb(scene, 'square', { glow: 0.12 });
+    if (CARRY.state === 'none' || (CARRY.state === 'set' && !END.c)) { CARRY.state = 'bag'; CARRY.at = null; }
+    for (let i = 0; i < 3; i++) S.lt[i] += dt;
+    // 控制：取放灯泡、对灯、结局的时候不能动
+    const lock = busy() || END.c > 0;
+    if (state === 'play') { if (lock) { ctl = false; S.locked = true; } else if (S.locked) { ctl = true; S.locked = false; } }
+    // 灯泡拿在手上，按方向键就先收回包里
+    if (CARRY.state === 'out' && !CARRY.act && P.mode !== 'hold' && !END.c && S.cmpT < 0 && (keys.has('L') || keys.has('R') || keys.has('J'))) carryStart('in');
+
+    // ---- 一 · 小窗 ----
+    const lk = lever.k; S.win = sstep(0.55, 1, lk); if (S.win > 0.6) S.seen1 = true;
+    const cut = sstep(0, 0.3, lk);                                                          // 屋里先断电
+    if (lever.on && lk > 0.98 && !S.winSnd) { S.winSnd = true; fx('clank13'); }
+    if (!lever.on && S.winSnd && lk < 0.5) { S.winSnd = false; fx('spring'); }
+    // 白光照到孩子身上：灯泡透过布和包亮起来
+    const inBeam = sstep(1.6, 0.6, Math.abs(P.x - (WIN + 0.9)));
+    let excite = S.win * lerp(0.55, 1.35, inBeam);
+    // ---- 二 · 对灯泡 ----
+    if ((S.cmpT >= 0 || CARRY.act) && near(SOCK, 1.0) && !END.c) { P.x = damp(P.x, SOCK - 0.24, 8, dt); P.facing = 1; }
+    if (S.cmpT >= 0) {
+      if (!CARRY.act) S.cmpT += dt;
+      if (S.cmpT > 0.05 && S.cmpT - dt <= 0.05) fx('fit');
+      if (S.cmpT > 3.8 && CARRY.state === 'out' && !CARRY.act) carryStart('in');
+      if (S.cmpT > 3.8 && CARRY.state === 'bag' && !CARRY.act) { S.cmpT = -1; S.cmp = true; }
+    }
+    // ---- 三 · 星灯回路、故障、老人伸手 ----
+    if (S.l[2] && S.fault === 0 && S.lt[2] > 4.5) { S.fault = 1; S.ft = 0; fx('deny'); }
+    S.ft += dt; if (S.fault >= 1) S.ft0 += dt;
+    if (S.fault === 2 && S.ft > 1.2) S.done3 = true;
+    // ---- 拧灯 / 拉闸的过程 ----
+    const sk = screw.k, pk = pull.k;
+    if (P.mode === 'hold' && P.holdObj === screw || (sk > 0 && !END.c)) {
+      CARRY.holdAt = { x: SOCK - 0.02, y: lerp(SOCK_Y - 0.2 - 0.12, SOCK_Y - 0.2, sstep(0, 0.42, sk)) };
+      CARRY.spin = sk * 16; CARRY.power = sstep(0.32, 0.46, sk);
+      if (screw.on && Math.floor(sk * 14) !== Math.floor(S.sk0 * 14) && sk > 0.5) fx('ratchet');
+      if (screw.on && sk > 0.45 && S.sk0 <= 0.45) fx('fit');
+    } else if (!END.c) { CARRY.spin = 0; CARRY.power = 0; }
+    if (pull.on && Math.floor(pk * 10) !== Math.floor(S.pk0 * 10) && pk > 0.5) { fx('pinStep'); dustBurst(); }
+    if (pull.on && pk < 0.5 && Math.floor(pk * 8) !== Math.floor(S.pk0 * 8)) fx('relayOff');
+    S.sk0 = sk; S.pk0 = pk;
+    // 星灯：拉闸的前半程一排排熄灭、传动停下；第三段线路以前，机房上面那一片一闪一闪
+    LAMP.run = 1 - sstep(0.05, 0.45, pk);
+    for (let r = 0; r < 4; r++) LAMP.off[r] = sstep(0.08 + r * 0.1, 0.16 + r * 0.1, pk);
+    LAMP.flick = S.l[2] ? 0 : 1; LAMP.jit = S.fault === 1 ? 1 : 0;
+
+    // ---- 老人 ----
+    const OM = { sit: 1, bow: 0.1, look: 0, nod: 0.1 };
+    if (S.win > 0.05) OM.nod = 0.1 + 0.12 * S.win;                                         // 望着那道光
+    if (S.fault >= 1) {                                                                      // 伸手去够调整杆，手停在半路，慢慢收回来
+      const t = S.ft0, k = sstep(0.8, 2.0, t) * (1 - sstep(3.6, 4.8, t));
+      if (k > 0.01) { OM.reach = { x: ADJ, y: 1.07, i: 1, k: 0.48 * k }; OM.bow = 0.1 + 0.18 * k; }
+    }
+    const rise = sstep(0.6, 0.85, pk) || (END.c === 2 ? 1 : 0);
+    if (rise > 0) {                                                                          // 拉闸的后半程：撑起半个身子，没能站起来；举起挡光片
+      OM.sit = 1 - 0.38 * rise; OM.bow = 0.1 + 0.3 * rise; const sh = sstep(0.72, 0.9, pk) || (END.c === 2 ? 1 : 0);
+      if (sh > 0) { OM.reach = { x: CHAIR - 0.32, y: 1.22 + 0.12 * (1 - OM.sit), k: sh }; OM.nod = 0.25 * sh; }
+    }
+    // ---- 结局 ----
+    if (END.c) END.t += dt;
+    const E1 = END.c === 1, E2 = END.c === 2, t = END.t;
+    let sockY = SOCK_Y, white = 0, flood = 0, relit = 0, tableau = false, cityK = 0;
+    if (E1) {
+      if (t > 0.6 && END.step === 0) { END.step = 1; fx('spring'); }                       // 释放杆自己弹回去
+      if (t > 1.4 && END.step === 1) { END.step = 2; fx('clank13'); }                      // 卡扣松开
+      sockY = SOCK_Y + (TIP - SOCK_Y) * sstep(1.6, 7.0, t);                                 // 灯座沿着缆索升上去，补上钩尖
+      CARRY.at = { x: SOCK, y: sockY, z: 0 }; CARRY.power = 1;
+      if (t > 7.0 && END.step === 2) { END.step = 3; fx('ok'); }
+      if (t > 10.6 && END.step === 3) { END.step = 4; fx('deny'); }                         // 旁边又一处故障亮起来
+      if (t > 12 && END.step === 4) { END.step = 5; $('fade').style.opacity = 1; }
+      if (t > 13.6 && END.step === 5) { END.step = 6; placePlayer(CHAIR, 0); P.facing = -1; snapCam({ x: CHAIR - 0.5, y: 1.3, d: 8.5 }); }
+      if (t > 14 && END.step === 6) { END.step = 7; $('fade').style.opacity = 0; }
+      tableau = t > 13.6;
+      if (t > 18.6 && END.step === 7) { END.step = 8; fx('bell', 740, 1); }                 // 工作铃
+      if (t > 19.4 && END.step === 8) { END.step = 9; $('fade').style.opacity = 1; }
+      if (t > 21 && END.step === 9) { END.step = 10; snapCam({ x: CITY - 1.5, y: 6.6, d: 17 }); $('fade').style.opacity = 0; }
+      if (t > 26 && END.step === 10) { END.step = 11; $('fade').style.opacity = 1; }
+      if (t > 27.6 && END.step === 11) { END.step = 12; fx('bell', 520, 0.8); $('fade').style.opacity = 0; }   // 睡觉铃：下一次宵禁
+      cityK = t > 21 && t < 27.6 ? sstep(21.2, 24.5, t) : 0;
+      if (t > 33 && !END.shown) { END.shown = true; showEndBare(ZONE, false); }
+    } else if (E2) {
+      if (t > 0.9 && END.step === 0) { END.step = 1; fx('pinStep'); }
+      white = sstep(2.6, 9.0, t); flood = sstep(3.0, 8.0, t); relit = t;
+      excite = Math.max(excite, 2.2 * sstep(1.6, 4.0, t));
+      if (t > 7 && END.step === 1) { END.step = 2; $('white').style.opacity = 1; }
+      if (t > 11 && !END.shown) { END.shown = true; showEndBare(ZONE, true); }
+    }
+    CARRY.excite = excite;
+    if (E2) envMod = (e => {                                                                    // 白光：雾和环境光变白，主光从后上方压过来，人成了剪影；风声起来，屋里的嗡嗡声没了
+      const k = white; e.fog.lerp(_white, k); e.fogD = lerp(e.fogD, 0.05, k); e.hemiI = lerp(e.hemiI, 0.18, k); e.keyI = lerp(e.keyI, 2.4, k); e.rimI = lerp(e.rimI, 2.2, k);
+      e.keyC.lerp(_white, k); e.rimC.lerp(_white, k); e.aWind = lerp(e.aWind, 3.2, k); e.aRoom *= 1 - k; e.aHum *= 1 - k; e.rvOut = lerp(e.rvOut, 1, k); e.rvHall *= 1 - k; e.aFar = 0; });
+    // 镜头
+    if (here || END.c) {
+      let f = roomCam();
+      if (S.cmpT >= 0) f = blendCam(f, { x: SOCK - 0.1, y: SOCK_Y - 0.12, d: 3.2 }, sstep(0, 0.5, S.cmpT + (CARRY.act ? 0.25 : 0)) * (1 - sstep(3.6, 4.3, S.cmpT)));
+      if (S.l[1] && S.lt[1] < 6.5) f = blendCam(f, { x: CON, y: 2.5, d: 7.2 }, sstep(0.3, 1.2, S.lt[1]) * (1 - sstep(5.4, 6.4, S.lt[1])));     // 屏幕一块块亮起来
+      if (S.l[2] && S.lt[2] < 4.5) f = blendCam(f, { x: SOCK, y: 5.6, d: 13 }, sstep(0.2, 1.2, S.lt[2]) * (1 - sstep(3.4, 4.4, S.lt[2])));     // 头顶那一片稳下来
+      // 站到桌前、站到挂着的衣服前：推近
+      const stillNow = P.grounded && Math.abs(P.vx) < 0.05 && P.mode === 'normal' && !busy() && !END.c;
+      S.still = stillNow ? S.still + dt : 0;
+      const atT = near(TABLE - 0.35, 0.6), atC = near(CLO + 0.3, 0.6);
+      S.look = damp(S.look, (atT || atC) && S.still > 0.45 ? 1 : 0, 2.2, dt);
+      if (atT || atC) S.lookAt = atT ? 'table' : 'clo';
+      if (S.look > 0.002) f = blendCam(f, S.lookAt === 'table' ? { x: TABLE + 0.08, y: 1.32, d: 3.6 } : { x: CLO + 0.5, y: 1.5, d: 4.4 }, sstep(0, 1, S.look));
+      // 按住的时候，镜头带出这件东西连着什么：拧灯 —— 先看清灯接上电，后半段顺着缆索抬上去，看钩尖那个空位；拉闸 —— 粗拉索、大锁销和配重
+      if (sk > 0.002 && !END.c) { const u = sstep(0.5, 1, sk); f = blendCam(f, { x: SOCK + lerp(0.1, 2.2, u), y: lerp(1.9, 4.0, u), d: lerp(6.5, 16.6, u) }, sstep(0, 0.12, sk)); }
+      if (pk > 0.002 && !END.c) { const u = sstep(0.45, 0.7, pk); f = blendCam(f, { x: lerp(ROOMC + 2, X + 15.3, u), y: lerp(4.4, 3.3, u), d: lerp(20.5, 15.2, u) }, sstep(0, 0.12, pk)); }   // 后半程：老人、孩子、上面的大锁销都在画面里，老人不压在提示字底下
+      if (E1 && t < 12) f = blendCam(f, { x: SOCK, y: lerp(3.6, sockY + 0.6, sstep(1.6, 4, t)), d: lerp(14, 12, sstep(5, 7, t)) }, sstep(1.0, 2.6, t) * (1 - sstep(8.8, 10.4, t)));
+      if (E1 && tableau && t < 21) f = { x: CHAIR - 0.5, y: 1.3, d: 8.5 };
+      if (E1 && t >= 21) f = { x: CITY - 1.5, y: 6.6, d: 17 };
+      if (E2) f = blendCam(f, { x: ROOMC + 2, y: 4.2, d: 23 }, sstep(0.5, 6, t));
+      setCam(f);
+    }
+    // 孩子的动作：握着手柄 / 拧灯 / 坐在椅子上
+    if (P.mode === 'hold' && P.holdObj === lever) HX.pose = { hands: handsAt(levHand(lk)) };
+    if (P.mode === 'hold' && P.holdObj === pull || (E2 && t < 9)) HX.pose = { hands: handsAt(mainHand(E2 ? 1 : pk)) };
+    if (tableau) HX.pose = { sit: 1, sitH: 0.37, sitLeg: 0.95, bow: 0.06, look: 0 };
+    stepDust(dt);
+
+    const v = V; if (!v) return;
+    // 闸刀和线
+    v.knife.forEach((K, i) => { const k = sstep(0, 0.25, S.l[i] ? S.lt[i] : 0) * S.l[i]; K.arm.rotation.z = lerp(-1.2, 0, k); K.lamp.color.setHex(S.l[i] ? 0x7dff9a : 0x2a1210); });
+    v.pulse.forEach((p, i) => { const k = S.l[i] ? S.lt[i] / 0.9 : 2; p.material.opacity = k < 1 ? 0.9 : 0; if (k < 1) p.position.copy(v.pulsePath[i].getPointAt(clamp(k, 0, 1))); });
+    // 小窗
+    v.shut.position.y = WIN_Y + 0.3 * S.win; v.pin.position.x = WIN + 0.72 + 0.17 * sstep(0.3, 0.55, lk); v.cw.position.y = 3.0 - 0.3 * S.win; v.cwRope.scale.y = 0.6 - 0.3 * S.win; v.cwRope.position.y = 3.3 + 0.15 - (0.6 - 0.3 * S.win) / 2;
+    v.lev.rotation.z = lerp(-0.55, 0.5, lk);
+    winL.on = S.win; v.slitGlow.material.opacity = 0.5 * S.win; v.ray.material.opacity = 0.16 * S.win;
+    const pw = (1 - 0.85 * cut) * (E2 ? 1 - white : 1);                                     // 屋里的电：检修柄往下带的那一下先断开
+    workL.on = pw; workL2.on = pw; tableL.on = pw; pinL.on = (E2 ? 1 - white : sstep(0.48, 0.56, pk)) * (0.6 + 0.4 * Math.sin(T * 7)); scrL.on = S.l[1] ? pw : 0; skyL.on = (1 - sstep(0.05, 0.45, pk)) * (E2 ? sstep(3.5, 6, t) : 1);
+    for (const b of v.spares) b.set(0.12 + 1.6 * Math.max(S.win, E2 ? sstep(1.4, 2.6, t) : 0));   // 白光进来：备用的灯泡一齐亮了（老人那只除外）
+    v.oldBulb.set(0);                                                                         // 老人那只旧灯：报废了，强光也激不亮
+    // 屏幕：一块一块亮起来，闪两下
+    v.screens.forEach((s, i) => { const t0 = 0.4 + i * 0.8, k = S.l[1] ? sstep(t0, t0 + 0.25, S.lt[1]) : 0, fl = S.l[1] && S.lt[1] < t0 + 0.5 && S.lt[1] > t0 ? (Math.sin(S.lt[1] * 60) > 0 ? 1 : 0.4) : 1; s.mat.color.setScalar(k * fl * pw); });
+    // 释放杆：第 4 根扳在释放的位置，指示灯一闪一闪；拧回去以后自己弹回来
+    v.rel.forEach(r => { const down = r.rel && !(E1 && t > 0.6); r.arm.rotation.z = down ? Math.PI - 0.35 : 0.05; r.lamp.color.setHex(S.l[1] ? (down ? (Math.sin(T * 6) > 0 ? 0xff6a4a : 0x3a1410) : 0x5ad070) : 0x1a1410); });
+    // 检修位的灯座：夹口跟着拧灯的后半程合拢；拧回去以后灯座沿着缆索升上去
+    const jaw = E1 ? 1 : sstep(0.5, 1, sk);
+    v.jaws.forEach((j, i) => { j.rotation.z = (i ? 1 : -1) * lerp(0.75, 0, jaw); });
+    v.sock.position.y = sockY; v.tipGlow.position.y = sockY - 0.12; v.tipGlow.material.opacity = E1 ? 0.95 * sstep(5.2, 7.0, t) : 0; v.clip.visible = !(E1 && t > 1.4); v.sockLamp.color.setHex(sk > 0.4 || E1 ? 0x7dff9a : S.l[1] ? 0xff6a4a : 0x2a1210);
+    v.sockCable.scale.y = Math.max(0.05, TIP + 0.4 - (sockY + 0.17)); v.sockCable.position.y = (TIP + 0.4 + sockY + 0.17) / 2;
+    // 故障和传动
+    v.faultLamp.color.setHex(S.fault === 1 && Math.sin(T * 9) > 0 ? 0xff5a3a : 0x2a1210); v.faultGlow.material.opacity = S.fault === 1 && Math.sin(T * 9) > 0 ? 0.8 : 0;
+    v.contact.position.y = S.fault === 2 ? 1.0 : 1.06;
+    const f2 = E1 && t > 10.6 ? (Math.sin(T * 7) > 0 ? 1 : 0) : 0; v.fault2.color.setHex(f2 ? 0xffb040 : 0x2a1a08); v.fault2Glow.material.opacity = 0.8 * f2;
+    v.gears.forEach((G, i) => {
+      let w = (i < 2 ? 0.9 : 0.25) * G.s * LAMP.run * (E2 ? 0 : 1) * pw;
+      if (i < 2 && S.fault === 1) w *= Math.sin(T * 5) > 0.3 ? 0 : 2.2;                        // 卡着走不顺
+      if (i >= 2) w *= 0.8 + 0.4 * Math.sin(T * 1.3 + i);                                   // 磨损的那一排：慢慢地、一下一下地转
+      G.a += w * dt; G.g.rotation.z = G.a + (i < 2 && S.fault === 1 ? 0.03 * Math.sin(T * 40) : 0);
+    });
+    if (S.fault === 1 && Math.floor(T * 1.6) !== Math.floor((T - dt) * 1.6)) fx('clunk');
+    // 调整杆、椅子、外套：拧回去的最后一个镜头
+    v.adjExt.visible = tableau; v.coat.visible = tableau; v.old.ch.root.visible = !tableau; v.chair.position.z = tableau ? 0 : CH_Z;
+    // 老人
+    const o = v.old; o.pose = { sit: OM.sit, sitH: 0.31, sitLeg: 1.1, bow: OM.bow, look: OM.look, nod: OM.nod, reach: OM.reach }; o.step(dt);
+    v.shield.visible = rise > 0 && (sstep(0.72, 0.9, pk) > 0.05 || E2);
+    if (v.shield.visible) { const hk = sstep(0.72, 0.9, pk) || 1; v.shield.position.set(lerp(TABLE + 0.14, CHAIR - 0.36, hk), lerp(0.8, 1.26, hk), lerp(-0.95, CH_Z + 0.05, hk)); v.shield.rotation.z = lerp(Math.PI / 2, 0.25, hk); }
+    v.shields[3].visible = !v.shield.visible;
+    // 大锁销和配重：拉闸的后半程一截一截往外退；拉到底以后配重落下去
+    const step5 = Math.floor(sstep(0.5, 1, pk) * 5) / 5, pinOut = E2 ? 1 : step5;
+    v.bigPin.position.x = X + 15.9 - 0.6 + 1.9 * pinOut;
+    v.cwBig.position.y = 6.1 - 1.4 - (E2 ? 9 * Math.pow(sstep(0.8, 3.4, t), 2) : 0);
+    v.cwChain.scale.y = 9.6 - v.cwBig.position.y - 0.8; v.cwChain.position.y = (9.6 + v.cwBig.position.y + 0.8) / 2;
+    // 粗拉索：拉得越紧越直
+    const ten = E2 ? 1 : sstep(0.35, 0.75, pk), A_ = v.cableA, B_ = v.cableB.clone(); B_.x += 1.9 * pinOut;
+    for (let i = 0; i < 8; i++) { const a = i / 8, b = (i + 1) / 8, sag = s => 0.9 * (1 - ten) * Math.sin(Math.PI * s);
+      const p = V3(lerp(A_.x, B_.x, a), lerp(A_.y, B_.y, a) - sag(a), lerp(A_.z, B_.z, a)), q = V3(lerp(A_.x, B_.x, b), lerp(A_.y, B_.y, b) - sag(b), lerp(A_.z, B_.z, b)); placeSeg(v.bigCable[i], p, q); }
+    v.main.rotation.z = lerp(-0.5, 0.6, E2 ? 1 : pk);
+    // 外壳分开、白光涌进来
+    const open = E2 ? Math.pow(sstep(1.0, 10, t), 1.4) : 0;
+    v.shellL.position.x = v.shellL.userData.x0 - open * 26; v.shellR.position.x = v.shellR.userData.x0 + open * 26;
+    v.white.material.opacity = Math.min(1, open * 4); v.flood.material.opacity = 0.75 * flood;
+    // 星灯
+    const ex2 = s => E2 ? sstep(1.9 + s * 0.55, 2.4 + s * 0.55, relit) : 0;                  // 被白光照得自己亮起来（一排一排；赶在画面变白之前，看得出来）
+    LAMP.rows.forEach((row, r) => {
+      const off = Math.max(LAMP.off[r], E2 ? 1 - ex2(2 - r) : 0), lit = (1 - off) + (E2 ? ex2(2 - r) * 0.6 : 0);
+      for (const L of row.list) {
+        L.g.position.x = X - 26 + ((L.x0 - (X - 26) + LAMP.pos) % 72 + 72) % 72;
+        let k = lit;
+        if (LAMP.flick && Math.abs(L.g.position.x - (X + 9)) < 6) k *= 0.35 + 0.65 * (Math.sin(T * 7 + L.ph * 3) > 0.2 ? 1 : 0.15);
+        if (LAMP.jit && r === 0) L.g.position.y = row.y + 0.04 * Math.sin(T * 30 + L.ph);
+        else L.g.position.y = row.y;
+        L.s.material.opacity = 0.62 * k;
+      }
+      row.mat.color.setRGB(lit, lit * 0.94, lit * 0.82);
+    });
+    LAMP.pos += LAMP.speed * LAMP.run * (E2 ? 0 : 1) * dt;
+    LAMP.hook.forEach(h => { const k = 1 - Math.max(LAMP.off[3], E2 ? 1 - ex2(3) : 0) + (E2 ? ex2(3) * 0.5 : 0); h.s.material.opacity = 0.95 * k; h.core.material.color.setRGB(k, k * 0.95, k * 0.85); });
+    // 城里：工作铃以后窗一批批亮起来；下一次宵禁全黑，一个屋顶上的卷帘抬起一条缝
+    v.win.forEach((m, k) => { m.material.opacity = sstep(k * 0.28, k * 0.28 + 0.3, cityK); });
+    cityL.forEach((l, k) => { l.on = sstep(k * 0.28, k * 0.28 + 0.3, cityK); });
+    const crack = E1 ? sstep(29.2, 31.2, t) : 0; v.roofShut.position.y = 4.35 + 0.15 * crack; v.roofGlow.material.color.setHex(0xffc27a).multiplyScalar(0.3 + 0.7 * crack); v.crackGlow.material.opacity = 0.55 * crack;
+    v.roofGlow.visible = crack > 0.01;
+  }
+  const _white = new THREE.Color(0xf3f1ea);
+  function blendCam(a, b, k) { return k <= 0 ? a : { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), d: lerp(a.d, b.d, k) }; }
+  function snapCam(f) { setCam(f); cam.d = f.d; cam.y = f.y; cam.x = f.x; cam.look = 0; camOvr.xo = f.x - P.x; placeCamera(); }
+  // 手搭在手柄上：两只手一前一后握着
+  const levHand = k => { const a = lerp(-0.55, 0.5, k); return { x: LEV + 0.42 - 0.45 * Math.cos(a), y: 0.85 - 0.45 * Math.sin(a) }; };
+  const mainHand = k => { const a = lerp(-0.5, 0.6, k); return { x: MAIN + 0.48 - 0.5 * Math.cos(a), y: 0.95 - 0.5 * Math.sin(a) }; };
+  const handsAt = p => [{ x: p.x - 0.02, y: p.y - 0.01, k: 1 }, { x: p.x + 0.03, y: p.y + 0.01, k: 1 }];
+  // 锁销退一截，灰从销孔里落下来
+  function dustBurst() { if (!V) return; let n = 0; for (const d of V.dust) if (d.t > 1.4 && n < 6) { n++; d.t = 0; d.s.position.set(X + 15.9 - 0.3 + rr(-0.3, 0.3), 6.1 + rr(-0.2, 0.2), -2.9); d.vx = rr(-0.3, 0.3); d.vy = rr(-0.2, 0.3); } }
+  function stepDust(dt) { if (!V) return; for (const d of V.dust) { if (d.t > 1.4) { d.s.material.opacity = 0; continue; } d.t += dt; d.vy -= 1.6 * dt; d.s.position.x += d.vx * dt; d.s.position.y += d.vy * dt; d.s.material.opacity = 0.5 * (1 - d.t / 1.4); } }
+
+  function resetEnd() {
+    if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到包里（只在演过结局以后：从菜单跳到第十二章时不要动它）
+    Object.assign(END, { c: 0, t: 0, shown: false, step: 0 }); STORY.room = 0;
+    screw.k = 0; screw.locked = false; screw.on = false; pull.k = 0; pull.locked = false; pull.on = false;
+    envMod = null; { const w = $('white'); w.style.transition = 'none'; w.style.opacity = 0; void w.offsetWidth; w.style.transition = ''; } $('fade').style.opacity = 0; $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
+  }
+  function reset() {
+    Object.assign(S, { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, still: 0, winSnd: false, sk0: 0, pk0: 0 });
+    lever.k = 0; resetEnd(); if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; }
+  }
+  function solve() { reset(); }
+  // 结局以后按 R：回到选择之前（三段线路都已经走过）
+  function retry() {
+    reset(); Object.assign(S, { l: [1, 1, 1], lt: [9, 9, 9], seen1: true, cmp: true, fault: 2, ft: 9, ft0: 9, done3: true });
+    placePlayer(X + 12.3); P.facing = 1; P.cp = cpAt(P.x); ctl = true; autoDir = 0; state = 'play'; camOvr = null; S.locked = false;
+    saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
+  }
+  function respawn() { if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; } S.cmpT = -1; }
+  const ZONE = defZone({ n: 13, vis: [X - 12, CITY + 18], build, update, reset, solve, retry, respawn, unbuild() { V = null; }, S, END, lever, screw, pull });
+  return ZONE;
 })();
 
 // ============================================================
@@ -10927,7 +11946,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -10941,9 +11960,11 @@ function soundNote(first) {
 
 // ---- 从某一章的开头开始 ----
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
-const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
-const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
+// 第十二章（凿记号）跳过去，就算灯泡已经在包里；第十三章（机房）回到选择之前
+const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; }, 12: s => { s.bulb = true; } };
+const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; }, 12: s => { s.bulb = false; }, 13: s => { s.room = 0; } };
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][n - 1] ?? 0.54;      // 07 的灯：每帮别人一次，暗一档
+let endZone = null;                                     // 是哪一章演的结局（按 R 回到哪一章的最后选择）；没有登记就是第八章
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
@@ -10952,8 +11973,8 @@ function startChapter(n, o = {}) {
   placePlayer(c.start); P.cp = cpAt(c.start + 0.01); resetPant();
   Object.assign(P, { moved: n > 1, jumped: n > 1, pushed: n > 1, used: n > 1 });
   if (STORY.cat) catPlace(c.start - 0.9, floorY(c.start - 0.9, P.y + 0.1)); else if (n > 3) CAT.state = 'none';
-  ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null;
-  $('end').classList.add('hide'); $('fade').style.opacity = 0;
+  ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null; endZone = null;
+  $('end').classList.add('hide'); $('end').classList.remove('bare', 'white'); $('fade').style.opacity = 0; $('white').style.opacity = 0;
   if (c.intro) c.intro();
   snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   if (!o.quiet) showChapter(c);
@@ -10988,6 +12009,11 @@ function begin() {
 function showEnd(sub, txt) {
   $('endsub').textContent = sub; $('endtxt').innerHTML = txt; $('end').classList.remove('hide'); $('fade').style.opacity = 0.5;
 }
+// 《长夜》的结局后面不写结局名、不写说明，只留“按 R 回到最后的选择”。white：画面已经全白（拉闸），字换成深色
+function showEndBare(zone, white) {
+  endZone = zone; state = 'end';
+  const el = $('end'); el.classList.add('bare'); el.classList.toggle('white', !!white); el.classList.remove('hide');
+}
 
 { // 胶片颗粒：一张噪点图铺满屏幕，每隔一帧随机挪一下位置
   const [c, g] = mkCanvas(256, 256), im = g.createImageData(256, 256);
@@ -10998,7 +12024,7 @@ function showEnd(sub, txt) {
 // ============================================================
 //  手机触屏：纯手势，屏幕上不画按钮（像 INSIDE 的手机版）
 //  按住屏幕左右滑 = 走（滑得近是慢走，滑得远是跑）　往上一划 = 跳 / 攀爬
-//  长按（按住不动一会儿）= 抓住身边的东西，接着左右滑就推拉，松手放开　点一下 = 操作机关
+//  长按（按住不动一会儿）= 抓住身边的东西，接着左右滑就推拉，松手放开；按住型机关（机房）也是长按，手指不松就一直按着　点一下 = 操作机关
 //  在水里：手指往哪边滑就往哪边游（往下滑住不放 = 潜下去），松开手人慢慢浮上去
 //  右上角的黑边里三个小图标：选择章节 / 回到存档点 / 声音。竖着拿手机时盖一层“请把手机横过来”，游戏停住
 //  手势最后都折算成和键盘一样的 keys / pressed，玩家控制那边不用改。
@@ -11057,10 +12083,10 @@ function touchInput(dt) {
   let jNew = false;
   if (touchJump) { touchJump = false; jHold = 0.34; jNew = true; }  // 往上一划：“跳”按住 0.34 秒，跳满高度
   if (jHold > 0) { want.add('J'); jHold -= dt; }
-  // 长按：身边有能推拉的东西就抓住（手指不松就一直抓着），旁边是机关就操作一下
+  // 长按：身边有能推拉的东西就抓住（手指不松就一直抓着）；身边是按住型机关也一样，手指不松 E 就一直按着；旁边是普通机关就操作一下
   if (state === 'play' && ctl) for (const t of TOUCHES.values()) {
     if (t.icon >= 0 || t.grab || t.used || !t.still || now - t.t0 < TG.hold * 1000 || !P.grounded) continue;
-    if (P.mode === 'push' || (P.mode === 'normal' && findGrab())) t.grab = true;
+    if (P.mode === 'push' || P.mode === 'hold' || (P.mode === 'normal' && (findGrab() || findHold()))) t.grab = true;
     else if (P.mode === 'normal' && findUse()) { t.used = true; touchTap = true; }
   }
   for (const t of TOUCHES.values()) if (t.grab) want.add('E');
@@ -11262,13 +12288,14 @@ function sim(dt) {
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
-  stepGates(dt); stepBreath(); stepWaterFx(dt);
+  stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
   stepPits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
+  poseCarry(dt);                                                         // 《长夜》：从包里取灯泡、收回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
@@ -11277,6 +12304,7 @@ function sim(dt) {
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null,
     rope: P.mode === 'rope' ? ropeAnim() : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
+  stepCarry(dt);                                                         // 斜挎包挂到胯上，灯泡放到手里；被强光照中时透出来
   stepCat(dt);
 
   updateCamera(dt);
@@ -11287,7 +12315,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, ROPES, ROPE, enterRope, groundY, ceilY, floorY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, ROPES, ROPE, enterRope, groundY, ceilY, floorY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角

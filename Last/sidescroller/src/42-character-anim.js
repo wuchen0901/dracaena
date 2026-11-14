@@ -138,7 +138,7 @@ function makeCharacter(kind, prev, o = {}) {
     A.lc = damp(A.lc ?? 0, ld.c, 40, dt); A.hand = damp(A.hand ?? 0, ld.hand, 30, dt); A.trip = damp(A.trip ?? 0, ld.trip, 30, dt); A.ltuck = damp(A.ltuck ?? 0, ld.tuck, 40, dt);
     const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck;
     // 身子朝哪（见上面的 TURN）。摆好的姿势（坐下、弯腰、伸手够东西）都是照正侧面排的，这时候不转；q.turn 可以直接指定
-    const posed = !!(q.sit || q.bow || q.reach || q.arms || limp), sw = s.swim || A.lastSwim;
+    const posed = !!(q.sit || q.bow || q.reach || q.arms || q.hands || limp), sw = s.swim || A.lastSwim;
     const rest = s.grounded && sp < 0.05 && s.mode === 'normal' && !posed && !o.npc;
     if (rest) {                                                              // 站了一会儿就换个站法（不和上一个重样）
       A.restT += dt;
@@ -440,6 +440,9 @@ function makeCharacter(kind, prev, o = {}) {
           const [fx, fy] = at('headfront'), [hx, hy] = at('Head'), [ex, ey] = at('head_end');
           k = wipe; bulge = 0.015; tx = fx + 0.6 * (ex - hx) + 0.065 - 0.045 * wipeX; ty = fy + 0.6 * (ey - hy) - 0.05 + 0.02 * wipeX;
         }
+        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从包里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
+        const hq = q.hands && q.hands[i];
+        if (hq && (hq.k ?? 1) > 0.001) { k = hq.k ?? 1; tx = (hq.x - s.x) * dir; ty = hq.y - s.y; bulge = hq.bulge ?? 0; }
         if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) k *= 1 - brush.k * (1 - restK);   // 这只手正伸出去拨路边的叶子：先拨叶子（停下来撑膝盖的时候除外）
         if (k > 0.001) {
           // 手不是一下子跳过去的：从它现在的位置沿着身前移过去，每一刻都重新解 IK，手肘自然地弯着。
