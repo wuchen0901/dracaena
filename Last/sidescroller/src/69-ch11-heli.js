@@ -2,7 +2,8 @@
 // ============================================================
 //  第十一章 · 夜搜：直升机在找主角
 //  （和第九、第十章一样先单独放在最后，从章节菜单进；故事定下来以后再挪到该放的地方）
-//  夜里，一条荒废的公路穿过野地。远处传来旋翼声：一架直升机飞过来，机头下面的探照灯罩着一块地面，沿着公路来回地找。
+//  夜里，一条荒废的公路穿过野地。远处传来旋翼声：一架直升机飞过来，机头下面的探照灯罩着一块地面，沿着公路来回地找；
+//  远处的野地上还有六架，前后错开排着，各扫各的一条地 —— 是在一片一片地搜。
 //  路边有四处灯照不进去的地方：候车亭、锈穿了一面的集装箱、铁皮棚、断桥底下。等灯扫过去，跑到下一处；
 //  在没遮没挡的地方被灯罩住半秒多，就算被发现，回到最近的存档点（每一处里面都有一个）。
 //  躲进断桥底下以后，直升机压低了在桥头来回找一阵；找不到，掉头飞走。风停了，蟋蟀和萤火虫又回来
@@ -43,6 +44,27 @@ const CH11 = (() => {
   const FAR_IN = [X + 70, 34, -210], FAR_OUT = [X - 50, 26, -300];               // 从哪里飞来，往哪里飞走（往左后方：那边是开阔的野地，看得见它越飞越远；右边是林子，会被树挡住）
   const H = { st: 'calm', t: 0, stage: 0, live: false, lx: X + 47, l0: X + 47, l1: X + 47, ls: 0, lD: 1, c: X + 46, bx: X + 47, r: 2.3, exposure: 0, caught: 0, hid: 0, low: 0, k: 0, near: 0, gust: false,
     pos: V3(...FAR_IN), vel: V3(), p0: V3(), aim: V3(X + 62, 0, -120), aim0: V3(), yaw: -1.57, roll: 0, pitch: 0, lamp: [0, 0, 0], tgt: [0, 0, 0], on: 0 };
+
+  // 不止一架：远处的野地上还有六架，前后错开排着，各沿着自己的一条地来回扫 —— 是在一片一片地搜，不是专门冲着主角来的。
+  // 每一架来回飞得不宽，离中点也不远：画面里同时看得见四五架
+  // 它们只是画面和声音，照不到公路上。[离头顶那一架来回飞的中点多远, 多高, 多深, 来回飞多宽, 错开多少]；跟着头顶那一架一起来、一起往前挪、一起走
+  const WING = [[-22, 13, -44, 14, 0.0], [20, 15, -52, 14, 5.2], [36, 16, -66, 16, 1.2], [-34, 17, -74, 18, 2.1], [6, 18, -84, 16, 3.3], [-10, 21, -108, 22, 4.0]]
+    .map(([dx, y, z, span, ph]) => ({ dx, y, z, span, ph, pos: V3(), aim: V3(), p0: V3(), yaw: -1.57, sp: 0, left: false }));
+  function stepWing(w, dt, arr, hunt) {
+    const s = T * 0.22 + w.ph, sx = H.c + w.dx + w.span / 2 * Math.sin(s), sy = w.y + 0.5 * Math.sin(T * 0.6 + w.ph), sz = w.z + 3 * Math.sin(T * 0.17 + w.ph * 2), px = w.pos.x, pz = w.pos.z;
+    if (hunt) {
+      w.left = false;
+      if (arr < 1) w.pos.set(lerp(FAR_IN[0] + w.dx * 1.6, sx, arr), lerp(FAR_IN[1] + 8, sy, arr), lerp(FAR_IN[2] + w.z * 0.7, sz, arr));
+      else { w.pos.x = damp(w.pos.x, sx, 1.2, dt); w.pos.y = damp(w.pos.y, sy, 1.2, dt); w.pos.z = damp(w.pos.z, sz, 1.2, dt); }
+    } else {
+      if (!w.left) { w.left = true; w.p0.copy(w.pos); }
+      const k = H.t / T_OUT, e = Math.pow(clamp(k, 0, 1), 2.2);
+      w.pos.set(lerp(w.p0.x, FAR_OUT[0] + w.dx * 1.6, e), lerp(w.p0.y, FAR_OUT[1] + 8, sstep(0, 1, k)), lerp(w.p0.z, FAR_OUT[2] + w.z * 0.7, e));
+    }
+    const vx = (w.pos.x - px) / Math.max(dt, 1e-4), vz = (w.pos.z - pz) / Math.max(dt, 1e-4);
+    w.yaw = damp(w.yaw, Math.atan2(-vz - (hunt ? 2.5 : 0), vx), 1.6, dt); w.sp = Math.hypot(vx, vz);
+    w.aim.set(w.pos.x + 7 * Math.cos(s) + 3 * Math.sin(T * 0.9 + w.ph), 0, w.pos.z + 9 + 5 * Math.sin(T * 0.5 + w.ph));   // 灯照着它前下方的地，晃来晃去
+  }
 
   checkpoint(X + 3); checkpoint(X + 29);
   for (const [a, b] of COVERS) checkpoint((a + b) / 2);                             // 每一处里面一个：被发现以后回到的地方一定是安全的
@@ -253,7 +275,8 @@ const CH11 = (() => {
 
     // ---------------- 直升机 ----------------
     const hull = M(0x1c242a), hull2 = M(0x0e1418), glass = M(0x0a1117, { emissive: 0x0c1826, emissiveIntensity: 0.6 });
-    const heli = grp(R), tilt = grp(heli);                 // heli：在哪、朝哪；tilt：机头压下去多少、侧倾多少。机头朝 +x
+    // 搭一架：主角头顶那一架和远处的几架是同一个样子
+    const mkHeli = () => { const o = {}, heli = grp(R), tilt = grp(heli);                 // heli：在哪、朝哪；tilt：机头压下去多少、侧倾多少。机头朝 +x
     add(tilt, new THREE.SphereGeometry(1, 20, 14), hull, 0.5, 0, 0, false).scale.set(2.3, 1.15, 1.2);
     add(tilt, new THREE.SphereGeometry(1, 16, 12), glass, 1.75, -0.12, 0, false).scale.set(1.25, 0.92, 1.08);                       // 座舱的玻璃
     add(tilt, bx(1.9, 0.5, 0.95), hull2, -0.1, 1.05, 0, false); add(tilt, cy(0.09, 0.09, 0.5, 8), hull2, 0.2, 1.5, 0, false);       // 发动机罩、旋翼轴
@@ -265,15 +288,16 @@ const CH11 = (() => {
     }
     const blade = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.55, depthWrite: false }));
     const disc = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
-    v.rotor = grp(tilt, 0.2, 1.78, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
-    for (let i = 0; i < 3; i++) { const g = grp(v.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.04, 0.28), blade, 2.65, 0, 0, false); }
-    add(v.rotor, new THREE.CircleGeometry(5.3, 40), disc, 0, 0.02, 0, false).rotation.x = -Math.PI / 2;
-    v.tailRotor = grp(tilt, -6.55, 1.2, 0.2); add(v.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(v.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
-    v.pod = grp(tilt, 1.9, -1.05, 0);                                                                                              // 机头下面的探照灯
-    add(v.pod, new THREE.SphereGeometry(0.26, 12, 10), hull2, 0, 0, 0, false); add(v.pod, new THREE.CircleGeometry(0.2, 16), unlit(0xeaf4f6, { fog: false }), 0, 0, 0.27, false);
-    v.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 1.24); v.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -1.24);           // 两侧的航行灯
-    v.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.7, 1.8, 0); v.beacon = glow(tilt, 0xff3020, 1.6, 0.1, 0.3, -1.25, 0);               // 尾巴上的频闪灯、肚子下面的防撞灯
-    heli.visible = false; v.heli = heli; v.tilt = tilt;
+    o.rotor = grp(tilt, 0.2, 1.78, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
+    for (let i = 0; i < 3; i++) { const g = grp(o.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.04, 0.28), blade, 2.65, 0, 0, false); }
+    add(o.rotor, new THREE.CircleGeometry(5.3, 40), disc, 0, 0.02, 0, false).rotation.x = -Math.PI / 2;
+    o.tailRotor = grp(tilt, -6.55, 1.2, 0.2); add(o.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(o.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
+    o.pod = grp(tilt, 1.9, -1.05, 0);                                                                                              // 机头下面的探照灯
+    add(o.pod, new THREE.SphereGeometry(0.26, 12, 10), hull2, 0, 0, 0, false); add(o.pod, new THREE.CircleGeometry(0.2, 16), unlit(0xeaf4f6, { fog: false }), 0, 0, 0.27, false);
+    o.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 1.24); o.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -1.24);           // 两侧的航行灯
+    o.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.7, 1.8, 0); o.beacon = glow(tilt, 0xff3020, 1.6, 0.1, 0.3, -1.25, 0);               // 尾巴上的频闪灯、肚子下面的防撞灯
+    heli.visible = false; o.heli = heli; o.tilt = tilt; return o; };
+    Object.assign(v, mkHeli());
     v.cones = [];                                          // 看得见的光柱：两层半透明的圆锥叠在一起
     for (const [k, op] of [[1, 0.07], [0.55, 0.085]]) {
       const geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L * k, CONE_L, 28, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
@@ -284,6 +308,16 @@ const CH11 = (() => {
     // 灯扫在远处野地上的那一块亮斑（离得太远，真的灯光照不到那里）
     v.spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own(new THREE.MeshBasicMaterial({ map: GLOW, color: 0xcfe2ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
     v.spot.rotation.x = -Math.PI / 2; v.spot.renderOrder = 3; v.spot.visible = false; R.add(v.spot);
+    // 远处的几架：一字排开，各扫各的一条地。真的灯光照不到那么远，只画光柱、灯头的光和地上的亮斑
+    v.wing = WING.map(() => {
+      const o = mkHeli(), geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L, CONE_L, 20, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
+      o.cone = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xd8ecf2, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })));
+      o.cone.renderOrder = 60; o.cone.visible = false; R.add(o.cone);
+      o.glare = glow(R, 0xdfeef2, 4, 0, 0, 0, 0, GLOW_SOFT);
+      o.spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own(new THREE.MeshBasicMaterial({ map: GLOW, color: 0xcfe2ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
+      o.spot.rotation.x = -Math.PI / 2; o.spot.renderOrder = 3; o.spot.visible = false; R.add(o.spot);
+      return o;
+    });
     renderer.localClippingEnabled = true;                  // 只有光柱的材质带着裁剪面，别的东西不受影响
     v.tower = glow(R, 0xff3828, 5, 0.9, X + 118, 47, -379);                                                                        // 远山上一座铁塔顶上的红灯
     V = v;
@@ -296,7 +330,7 @@ const CH11 = (() => {
     if (envMod === mod && H.k < 0.002) envMod = null;
     if (H.st === 'calm' && state === 'play') { AUD.heli = 0.045 * sstep(X + 4, X + 20, P.x); AUD.heliLP = 0.1; AUD.heliPan = 0.5; }   // 还没看见它，先听见很远的旋翼声
     bounceL.on = 0;
-    if (V) { V.heli.visible = false; for (const c of V.cones) c.visible = false; V.glare.material.opacity = V.core.material.opacity = 0; V.spot.visible = false; }
+    if (V) { V.heli.visible = false; for (const c of V.cones) c.visible = false; V.glare.material.opacity = V.core.material.opacity = 0; V.spot.visible = false; for (const o of V.wing) { o.heli.visible = o.cone.visible = o.spot.visible = false; o.glare.material.opacity = 0; } }
   }
   // 灯的下一趟：从现在的位置扫到 to。路程短，用的时间也短
   function leg(to) { H.l0 = H.lx; H.l1 = to; H.ls = 0; H.lD = Math.max(1.2, Math.abs(to - H.lx) / (H.stage === COVERS.length ? V_PROBE : V_SWEEP)); }
@@ -355,6 +389,7 @@ const CH11 = (() => {
     H.pitch = damp(H.pitch, -0.05 - clamp(Math.hypot(H.vel.x, H.vel.z) * 0.02, 0, 0.3), 2, dt);
     const lx = H.pos.x + 1.9 * Math.cos(H.yaw), ly = H.pos.y - 1.05, lz = H.pos.z - 1.9 * Math.sin(H.yaw);                  // 灯头在哪
     const fade = hunt ? 1 : 1 - sstep(0.55, 0.92, H.t / T_OUT);                                                               // 飞远了，灯也看不见了
+    for (const w of WING) stepWing(w, dt, arr, hunt);
     beam.position.set(lx, ly, lz); beam.target.position.copy(H.aim); beam.angle = ANG; beam.penumbra = 0.45;
     beam.intensity = 34 * fade; beam.color.lerpColors(C_CALM, C_ALERT, kx);
     H.lamp[0] = lx; H.lamp[1] = ly; H.lamp[2] = lz; H.aim.toArray(H.tgt); H.on = fade;
@@ -363,7 +398,7 @@ const CH11 = (() => {
     const dist = Math.hypot(H.pos.x - P.x, H.pos.y - P.y, H.pos.z);
     H.k = damp(H.k, sstep(260, 70, dist), 1.5, dt); H.near = sstep(30, 12, dist) * sstep(14, 6, H.pos.y);
     GUST.force = H.near > 0.02 ? lerp(gustAt(T), 3.2, H.near) : undefined; H.gust = H.near > 0.02;
-    AUD.heli = clamp(20 / (dist + 5), 0, 1); AUD.heliPan = 0.8 * clamp((H.pos.x - cam.x) / 16, -1, 1); AUD.heliLP = clamp(1.25 - dist / 150, 0.12, 1);
+    AUD.heli = clamp(20 / (dist + 5) + 0.12 * H.k, 0, 1);   /* 远处那几架也听得见 */ AUD.heliPan = 0.8 * clamp((H.pos.x - cam.x) / 16, -1, 1); AUD.heliLP = clamp(1.25 - dist / 150, 0.12, 1);
     // 躲在有顶的地方、灯又扫到附近时：站住不动的主角会缩起身子
     HX.hide = play && hot && ci >= 0 ? sstep(9, 4, Math.abs(P.x - H.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
     if (HX.hide > 0) HX.pose = { sit: 0.75 * HX.hide, sitH: 0.25, sitLeg: 0.35, bow: 0.3 * HX.hide };                          // 蹲下去，两手拢在胸前
@@ -391,6 +426,15 @@ const CH11 = (() => {
     v.glare.material.opacity = fade * (0.3 + 0.6 * face ** 3); v.glare.scale.setScalar(lerp(3, 8.5, face ** 4)); v.core.material.opacity = fade * (0.5 + 0.5 * face);
     const el = clamp((ly - H.aim.y) / len, 0.08, 1), rs = len * Math.tan(ANG) * 2.6;                                          // 远处的亮斑：灯压得越低，拉得越长
     v.spot.visible = H.aim.z < -9; v.spot.position.set(H.aim.x, groundY(H.aim.x) + 0.06, H.aim.z); v.spot.scale.set(rs, rs / el, 1); v.spot.material.opacity = 0.5 * fade * sstep(-9, -28, H.aim.z);
+    v.wing.forEach((o, i) => {
+      const w = WING[i], wl = _b.set(w.pos.x + 1.9 * Math.cos(w.yaw), w.pos.y - 1.05, w.pos.z - 1.9 * Math.sin(w.yaw)), wn = wl.distanceTo(w.aim) + 0.8, we = clamp((wl.y - w.aim.y) / wn, 0.08, 1), wr = wn * Math.tan(ANG) * 2.6;
+      o.heli.visible = true; o.heli.position.copy(w.pos); o.heli.rotation.y = w.yaw; o.tilt.rotation.set(0, 0, -0.05 - clamp(w.sp * 0.02, 0, 0.3));
+      o.rotor.rotation.y += dt * 41; o.tailRotor.rotation.z += dt * 63; o.pod.lookAt(w.aim);
+      o.cone.visible = fade > 0.01; o.cone.position.copy(wl); o.cone.lookAt(w.aim); o.cone.scale.setScalar(wn / CONE_L); o.cone.material.opacity = 0.075 * fade;
+      o.glare.position.copy(wl); o.glare.material.opacity = 0.75 * fade;
+      o.spot.visible = fade > 0.01; o.spot.position.set(w.aim.x, groundY(w.aim.x) + 0.06, w.aim.z); o.spot.scale.set(wr, wr / we, 1); o.spot.material.opacity = 0.45 * fade;
+      const b2 = (T + i * 0.37) % 1.3; o.strobe.material.opacity = b2 < 0.06 || (b2 > 0.16 && b2 < 0.22) ? 1 : 0; o.beacon.material.opacity = (T + i * 0.3) % 0.9 < 0.12 ? 0.95 : 0.1;
+    });
     const bl = T % 1.3; v.strobe.material.opacity = bl < 0.06 || (bl > 0.16 && bl < 0.22) ? 1 : 0; v.beacon.material.opacity = T % 0.9 < 0.12 ? 0.95 : 0.1;
   }
   // 这一点照不照得到（1 照得到，0 在顶下面的影子里）：空中的灰用。五个面都在它们的背面，就是在影子里
