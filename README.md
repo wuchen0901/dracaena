@@ -43,6 +43,6 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 - `Last/sidescroller.html`：拼好的成品，浏览器打开的就是它。
 - `Last/models/hero.glb`：主角模型。
 - `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`look-sheet.html` 是场景画面的对比图页面（同一屏换几套光色或布景，也能沿路截一遍游戏原样的画面），`look-sheet-ch7.html` 是第七章用的同一种页面（另外能把这一章的机关自动走一遍、截一小段连续的画面做动图），`ground-sheet.html` 是地上的东西的选项图页面（一格只开一样，也能把小动物逃开的样子截成动图、把一章地上会动的东西自动走一遍），`air-sheet.html` 是空中细节的画面页面（同一屏关掉和打开对比，也能截一小段连续的画面做动图），`feet-sheet.html` 是主角脚边那四组的选项图（每章一屏六格，也能出各章前后对比、动图，把每章会动的东西自动走一遍、检查切换章节时有没有漏掉释放），`daylight-sheet.html` 是“白天的六个办法”对比图（第七章那一屏，每格打开几条：太阳放低、空气透视、前景压暗、限制颜色、留出阴影区、形状做大），`cave-sheet.html` 是山洞水下的八套光色对比图（游戏外搭的粗模），`cave-route.html` 是第九章沿路的画面、动图和自动玩家从头游到尾的检查，`rope-route.html` 是第十章的同一种页面（沿路的画面、抓绳子 / 爬 / 翻上台阶的动图、自动玩家从头走到尾），`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。`phone-check.html` 是手机检测页（见上面“在手机上看”），`webkit-shot.swift` 用 Mac 自带的 WebKit（iPhone 同一个引擎）把画面图页面存成 PNG，不用手机也能看 iPhone 上画出来的样子。
-- `design/`：故事、关卡和角色的设计文档与设定图。较早的文档写的是已删除的 Cocos 版本，里面提到的 `assets/`、`preview/` 路径和音效生成脚本都已经不存在。
+- `design/`：故事、关卡和角色的设计文档与设定图。正在重写的新故事是 `design/long-night-story.md`（《长夜》，2026-11-14：一个孩子、一整夜、一片用灯泡装出来的天，现有十一章的机关怎么借用也写在里面）；`design/story-and-puzzle-outline.md` 是旧的机器人 07 版本。较早的文档写的是已删除的 Cocos 版本，里面提到的 `assets/`、`preview/` 路径和音效生成脚本都已经不存在。
 - `generated_images/`：导出的效果图。
 - 第十一章在 `Last/sidescroller/src/69-ch11-heli.js`（布局、布景、直升机和探照灯怎么找人都在里面；光柱里的灰和旋翼吹起来的风在 `72-air-chapters.js` 的最后一段，旋翼的声音在 `52-audio.js`）。`Last/tools/heli-route.html` 是这一章沿路的画面和自动玩家从头玩到尾的检查。
