@@ -6,10 +6,21 @@
 //  躲在暗处、光扫过来时屏住气，光过去了长长地呼一口；在水下憋着（没有呼吸声），浮上来大口地喘。
 //  声音关着的时候这里照样算（动作要用），只是不出声
 // ============================================================
-const BR = { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, alert: 0, gasp: -9, effort: -9, pushT: -9, skip: null, mode: 'normal', ground: true };
-// 一口气的节奏：每秒几口（不累时四秒一口，最累时一秒一口半）；吸气、呼气各占多少，剩下的是两口气之间停一下
-const brRate = ex => lerp(0.24, 1.45, Math.pow(ex, 0.85));
+const BR = { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, alert: 0, gasp: -9, effort: -9, pushT: -9, skip: null, mode: 'normal', ground: true, voice: 0, quietT: 0, wasStill: 0, idle: 0 };
+// 一口气的节奏：每秒几口（不累时四秒一口，最累时一秒一口出头）；吸气、呼气各占多少，剩下的是两口气之间停一下
+const brRate = ex => lerp(0.24, 1.1, Math.pow(ex, 0.85));
 const brIn = ex => lerp(0.36, 0.46, ex), brOut = ex => lerp(0.42, 0.54, ex);
+// 哪几口气出声：动作上每一口都喘，但声音只在合适的时候出一两口 —— 刚停下来、撑着膝盖、累了好一阵子以后，
+// 喘出来两三口就安静一阵（越累安静得越短）。不累的时候不出声。BR.voice 这一阵还要出声几口，BR.quietT 到这个时间以前不出声
+function brVoiceNext() {
+  const k = BR.ex; if (k < 0.32) { BR.voice = 0; return false; }
+  if (BR.voice > 0) { BR.voice--; if (!BR.voice) BR.quietT = T + lerp(14, 6, k) * (0.8 + 0.5 * Math.random()); return true; }
+  const rest = BR.bend || TIRED.rest > 0.5 || BR.idle > 0.3, stopped = BR.idle > 0.2 && !BR.wasStill;
+  if (stopped && k > 0.4 && T > BR.quietT - 4 || T > BR.quietT && (rest || T > BR.quietT + 8)) {
+    BR.voice = k > 0.6 && (rest || stopped) ? 2 : 1; return true;               // 这一口出声，后面再跟 voice 口
+  }
+  return false;
+}
 // 单独的几口气（听声音的工具页也直接用这几个）。k 累的程度，v 轻重
 const BREATH = {
   hup: (k, v = 1) => breathSound('out', 0.16, 0.6 + 0.4 * k, { att: 0.05, rel: 0.3, f0: 320, gain: lerp(0.09, 0.24, k) * v }),     // 起跳：“嘿”
@@ -57,13 +68,14 @@ function stepPant(dt, impact) {
     if (BR.hold > 1.2) { BREATH.sigh(); BR.ph = brIn(BR.ex); BR.skip = 'out'; }
     BR.hold = 0;
   }
+  BR.idle = play && P.grounded && Math.abs(P.vx) < 0.05 ? BR.idle + dt : 0;   // 站住了多久（出不出声要用；累的那一阵里 BR.still 不算）
   // ---- 一口一口地呼吸 ----
   const f = brRate(BR.ex), a = brIn(BR.ex), b = brOut(BR.ex), held = under || hide;
   if (!held) {
     const p0 = BR.ph; BR.ph += dt * f;
     const sound = play || state === 'end';
-    if (p0 < a && BR.ph >= a) { if (BR.skip === 'out') BR.skip = null; else if (sound) breathSound('out', b / f * 0.95, BR.ex); }       // 呼气
-    if (BR.ph >= 1) { BR.ph -= 1; if (sound) breathSound('in', a / f * 0.95, BR.ex); }                                                // 吸气
+    if (p0 < a && BR.ph >= a) { if (BR.skip === 'out') BR.skip = null; else if (sound && BR.on) breathSound('out', b / f * 0.95, BR.ex); }       // 呼气
+    if (BR.ph >= 1) { BR.ph -= 1; BR.on = brVoiceNext(); BR.wasStill = BR.idle > 0.2; if (sound && BR.on) breathSound('in', a / f * 0.95, BR.ex); }                                                // 吸气
   }
   const p = BR.ph, fill = p < a ? sstep(0, a, p) : p < a + b ? 1 - sstep(a, a + b, p) : 0;
   BR.chest = held ? damp(BR.chest, 0.8, 3, dt) : fill;
@@ -73,4 +85,4 @@ function stepPant(dt, impact) {
   BR.still = standing ? BR.still + dt : 0;
   BR.bend = standing && (BR.bend ? BR.ex > 0.42 : BR.ex > 0.72 && BR.still > 0.7) ? 1 : 0;
 }
-function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, skip: null }); }
+function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, still: 0, hold: 0, under: 0, skip: null, voice: 0, quietT: 0, wasStill: 0, idle: 0, on: false }); }

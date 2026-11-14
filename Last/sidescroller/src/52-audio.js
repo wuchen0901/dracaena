@@ -177,7 +177,7 @@ function breathSound(dir, len, k, o = {}) {
   if (!AC || muted || len < 0.06) return;
   const V = VOICE[SND.voice] ?? VOICE.A;
   const x = SY.breath(SR(), seed(), { dir, len, k, ...o, voice: (o.voice ?? sstep(0.45, 0.95, k)) * V.voice + (o.voiceAll ?? 0), nose: V.nose * (1 - sstep(0.3, 0.75, k)) });
-  MX.play(MX.toBuf(x), { bus: 'fol', gain: (o.gain ?? lerp(0.05, 0.26, Math.pow(k, 1.4))) * V.vol * SND.vol.breath, rate: R2(0.97, 1.03), wet: 0.25 });
+  MX.play(MX.toBuf(x), { bus: 'fol', gain: (o.gain ?? lerp(0.03, 0.12, Math.pow(k, 1.4))) * V.vol * SND.vol.breath, rate: R2(0.97, 1.03), wet: 0.25 });
 }
 
 Object.assign(sfx, {
