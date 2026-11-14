@@ -9,7 +9,7 @@
 let AC = null, master = null, MX = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
-const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0 };
+const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
 const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
@@ -88,6 +88,20 @@ function initAudio() {
   loops.hum = loopOsc('sawtooth', 52, 240, 'sfx', 0.4);        // 探照灯 / 监控的嗡鸣
   loops.pump = loopOsc('triangle', 46, 180, 'sfx', 0.3);       // 水泵
   loops.buzz = loopOsc('square', 100, 520, 'sfx', 0.3);        // 通电的线路
+  { // 直升机（第十章）：旋翼一下一下拍打空气 —— 低、中、高三层噪声，被每秒十几下的锯齿波切开（每一下起得猛、落得慢）；上面一层发动机的啸叫不跟着拍子。
+    // 整个再过一道低通：离得远只剩闷闷的“突突”，飞到头顶才又脆又吵
+    const g = AC.createGain(), lp = AC.createBiquadFilter(), pan = AC.createStereoPanner ? AC.createStereoPanner() : null, chop = AC.createGain(), lfo = AC.createOscillator(), dep = AC.createGain();
+    g.gain.value = 0; lp.type = 'lowpass'; lp.frequency.value = 400; lp.Q.value = 0.5; chop.gain.value = 0.45; lfo.type = 'sawtooth'; lfo.frequency.value = 12.5; dep.gain.value = -0.45;
+    lfo.connect(dep).connect(chop.gain); lfo.start();
+    for (const [type, f, q, k, at] of [['lowpass', 190, 0.8, 1, 0.3], ['bandpass', 620, 0.9, 1.6, 1.1], ['bandpass', 1500, 0.8, 0.7, 0.5]]) {
+      const s = AC.createBufferSource(), bf = AC.createBiquadFilter(), kg = AC.createGain(); s.buffer = noiseBuf; s.loop = true; bf.type = type; bf.frequency.value = f; bf.Q.value = q; kg.gain.value = k;
+      s.connect(bf).connect(kg).connect(chop); s.start(0, at);
+    }
+    const ws = AC.createBufferSource(), wf = AC.createBiquadFilter(), wg = AC.createGain(); ws.buffer = noiseBuf; ws.loop = true; wf.type = 'bandpass'; wf.frequency.value = 2300; wf.Q.value = 7; wg.gain.value = 0.1;
+    ws.connect(wf).connect(wg).connect(lp); ws.start(0, 0.7);
+    chop.connect(lp); lp.connect(g); out(pan ? g.connect(pan) : g, 'sfx', 0.35);
+    loops.heli = { g, f: lp, pan, lfo };
+  }
   // ---- 环境的底子 ----
   loops.room = loopNoise('lowpass', 210, 0.4, 'amb');          // 室内的低鸣（工厂、中枢、山洞）
   loops.drone = loopOsc('sine', 41, 400, 'amb');
@@ -190,7 +204,7 @@ Object.assign(sfx, {
 // ---- 鸟、滴水、远处偶尔一下的声音：每一章一组 ----
 const BIRDS = { 2: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], 7: [['bird', 0.82], ['dove', 0.18]], 9: [['bird', 1]] };
 const FAR = { 1: ['clank', 'chain', 'steam', 'creak', 'hum2'], 2: ['woodpecker', 'crow', 'twig'], 3: ['crow', 'rattle', 'creak', 'crow'], 4: ['chime', 'shutter', 'pigeon'],
-  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'] };
+  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'], 10: ['owl', 'twig', 'owl'] };
 const FARV = { clank: 0.2, chain: 0.13, steam: 0.08, creak: 0.11, hum2: 0.1, woodpecker: 0.13, crow: 0.13, twig: 0.11, rattle: 0.15, chime: 0.09, shutter: 0.1, pigeon: 0.1,
   knock: 0.16, zap: 0.06, gurgle: 0.13, bee: 0.08, relay: 0.12, owl: 0.1, pebbles: 0.15, rumble: 0.3, plop: 0.13 };
 const pickW = list => { let s = 0; for (const [, w] of list) s += w; let u = Math.random() * s; for (const [n, w] of list) if ((u -= w) <= 0) return n; return list[0][0]; };
@@ -242,6 +256,9 @@ function updateAudio(dt, stepNow) {
   setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, t, 0.1);
   setGain('belt', AUD.belt * 0.35, 0.2); setGain('water', AUD.water * 0.12, 0.3); setGain('pump', AUD.pump * 0.12, 0.2);
   setGain('buzz', AUD.buzz * 0.012, 0.15); setGain('sweep', AUD.sweep * 0.05, 0.1);
+  setGain('heli', AUD.heli * 1.3, 0.25); setFreq('heli', lerp(280, 5200, AUD.heliLP * AUD.heliLP), 0.3);          // 直升机：越近越响、越脆，旋翼的拍子也快一点
+  if (loops.heli.pan) loops.heli.pan.pan.setTargetAtTime(clamp(AUD.heliPan, -1, 1), t, 0.2);
+  loops.heli.lfo.frequency.setTargetAtTime(11.5 + 2 * AUD.heliLP, t, 0.5);
   // 水下：什么都闷下去，耳朵里只剩一层低低的嗡
   const uw = P.mode === 'swim' && P.under && state !== 'title' ? 1 : 0;
   MX.uw.frequency.setTargetAtTime(uw ? 480 : 18000, t, uw ? 0.05 : 0.12); setGain('uw', uw * 0.12, 0.15);

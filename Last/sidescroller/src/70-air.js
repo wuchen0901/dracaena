@@ -108,7 +108,7 @@ function airCloud(R, n, o) {
 
 // ---- 光里的尘埃：一颗颗在光里出生，慢慢往下落，飘出光就暗了。lights 是一组“光的范围”----
 //   slab 斜着的一道光（天窗、枝叶间漏下来的）{ x0 落地处的中心, x1 顶上的中心, y0, y1, w0 / w1 底下 / 顶上的半宽, z0, z1 }
-//   cone 一束聚光（探照灯、监控、吊灯）{ at() 返回 [灯的位置 [x,y,z], 照向的点 [x,y,z], 亮度 0..1], ang 半张角 }
+//   cone 一束聚光（探照灯、监控、吊灯）{ at() 返回 [灯的位置 [x,y,z], 照向的点 [x,y,z], 亮度 0..1], ang 半张角, shade(s) 这一颗没被东西挡住几成（不写就是没挡）}
 //   ball 一团灯光 { p: [x,y,z], r 半径 }
 //   back 逆光：尘埃挡在一面发光的墙前面的时候亮 { z 墙在哪, lum(x, y) 墙上这一点多亮（0..1）, box: [x1, x2, y1, y2, z1, z2] 在哪里出生（x 只在镜头看得见的那一段里取）}
 //   drip 从高处一缕一缕漏下来的灰 { p: [x, y, z], spread 横着散开多宽 }
@@ -121,7 +121,7 @@ function litDust(R, n, lights, o = {}) {
       return (1 - sstep(hw * 0.5, hw, Math.abs(s.x - cx))) * (1 - sstep(0, 1, Math.max(L.z0 - s.z, s.z - L.z1))) * lerp(0.45, 1, t); }
     if (L.k === 'cone') { cone(L); if (L._k <= 0) return 0; const p = L._p, q = L._q; ax.set(q[0] - p[0], q[1] - p[1], q[2] - p[2]); const len = ax.length(); ax.divideScalar(len);
       v.set(s.x - p[0], s.y - p[1], s.z - p[2]); const d = v.dot(ax); if (d <= 0) return 0; const r = v.addScaledVector(ax, -d).length(), rr_ = d * Math.tan(L.ang);
-      return L._k * (1 - sstep(rr_ * 0.4, rr_ * 1.05, r)) * (1 - sstep(len * 0.92, len * 1.12, d)); }
+      return L._k * (1 - sstep(rr_ * 0.4, rr_ * 1.05, r)) * (1 - sstep(len * 0.92, len * 1.12, d)) * (L.shade ? L.shade(s) : 1); }
     if (L.k === 'ball') return Math.pow(Math.max(0, 1 - Math.hypot(s.x - L.p[0], s.y - L.p[1], s.z - L.p[2]) / L.r), 1.6);
     if (L.k === 'back') { const c = camera.position, k = (L.z - c.z) / (s.z - c.z); return L.lum(c.x + (s.x - c.x) * k, c.y + (s.y - c.y) * k); }
     return 1;

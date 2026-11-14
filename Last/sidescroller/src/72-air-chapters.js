@@ -169,3 +169,37 @@ airZone(8, [X8 - 6, X8 + 232], [X8 + 1, X8 + 240], function* (R, sys) {
   sys.push(airFlock(R, [{ x1: X8 + 70, x2: X8 + 230, y: 19, z: -85, v: -3, n: 9, gap: 20, s: 1.5, c: 0x1c1a24 }], { on: () => 1 - CH8.END.deep }));
   sys.push(airBirds(R, flat(8, -3.4, [X8 + 131.6, X8 + 133.2, X8 + 136.0, X8 + 137.8], { c: 0x0a0b0a, s: 1.15, flee: 3, dy: 12, yMax: 14, toZ: -3, near: 0.6, minY: 6 }).map(b => (b[4].back = 25, b))));
 });
+
+// ---- 第十章 · 夜搜 ----
+// 探照灯的光柱里一粒粒发亮的灰。直升机压低了的时候，旋翼的风从它正下方贴着地面往四周吹：一道道灰、草屑和叶子被刮得满地跑。
+// 路灯边绕着几只飞蛾，野地里飘着草籽的绒毛；电线杆上、候车亭顶上歇着几只乌鸦，直升机一来就全飞了。
+// （萤火虫在环境里：直升机一来就不见了，它飞走以后再出来）
+airZone(10, [X10 - 30, X10 + 170], [X10 - 60, X10 + 200], function* (R, sys) {
+  const H = CH10.H, wash = () => 7 * H.near * clamp((camera.position.x - H.pos.x) / 7, -1, 1);       // 旋翼的风：背着直升机往两边吹
+  sys.push(litDust(R, 420, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 1.25, shade: s => CH10.lit(s.x, s.y, s.z) }])); yield;   // 顶下面的灰照不到，不亮
+  const ax = V3(), d = V3();
+  sys.push(airCloud(R, 240, { name: 'wash', order: 44,
+    init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x7f8c9a); },
+    step(s, dt) {
+      s.age += dt;
+      if (s.age >= s.life) {                                 // 在直升机正下方的一圈里出生，朝外吹出去
+        if (Math.random() > H.near) { s.a = 0; return; }
+        const a = ar(0, 6.2832), r = ar(1.5, 4.5);
+        s.x = H.pos.x + Math.cos(a) * r; s.z = H.pos.z + Math.sin(a) * r * 0.8; s.dx = Math.cos(a); s.dz = Math.sin(a); s.v = ar(6, 11);
+        s.h = 0.04 + 0.9 * Math.pow(Math.random(), 2.2); s.age = 0; s.life = ar(1.0, 2.1); s.len = ar(0.14, 0.4); s.a0 = ar(0.25, 0.6); s.hp = ar(0, 6.28);
+      }
+      s.x += s.dx * s.v * dt; s.z += s.dz * s.v * dt; s.v *= Math.exp(-0.7 * dt); s.hp += dt * 9;
+      s.y = groundY(s.x) + s.h + 0.05 * Math.abs(Math.sin(s.hp)); s.rot = 0.25 * Math.cos(s.hp) * Math.sign(s.dx || 1); s.size = s.len * (0.7 + 0.5 * H.near);
+      ax.set(H.tgt[0] - H.lamp[0], H.tgt[1] - H.lamp[1], H.tgt[2] - H.lamp[2]).normalize(); d.set(s.x - H.lamp[0], s.y - H.lamp[1], s.z - H.lamp[2]);
+      const t = d.dot(ax), inBeam = t > 0 ? 1 - sstep(0.5, 1.1, d.addScaledVector(ax, -t).length() / (t * Math.tan(0.16))) : 0;   // 吹进光柱里的那几道亮起来
+      s.a = s.a0 * (0.35 + 1.1 * inBeam * H.on * CH10.lit(s.x, s.y, s.z)) * sstep(0, 0.15, s.age) * (1 - sstep(s.life - 0.6, s.life, s.age));
+    } })); yield;
+  sys.push(airLeaves(R, { name: 'seeds', n: 14, drift: true, tiles: [8], cols: [0xb9c6d8, 0xa8b6cc], size: [0.07, 0.11], z: [-5, 5], lo: 0.3, hi: 2.6, lift: 0.25, wind: () => -0.5 + wash(), a: 0.5 }));
+  sys.push(airLeaves(R, { name: 'scraps', n: 16, drift: true, tiles: [2, 3, 4, 5], cols: [0x2e3a2a, 0x3a4630, 0x26301f], size: [0.06, 0.12], z: [-4, 4], lo: 0.05, hi: 1.8, lift: 0.3, wind: () => 1.4 * wash(), on: () => H.near > 0.25, a: 0.9 }));
+  sys.push(airMoths(R, [[X10 + 11.5, 4.75, -1.35, 5]], { c: 0xffd29a })); yield;
+  const B = [];
+  for (const [x, f] of [[33.25, 1], [33.9, -1], [34.5, 1]]) B.push(['crow', X10 + x, 6.36, -4.4, { face: f, flee: 0, s: 1.3, toZ: -5, back: 9999 }]);     // 第三根电线杆的横担上
+  for (const [x, f] of [[38.9, -1], [40.6, 1]]) B.push(['crow', X10 + x, 2.66, -0.6, { face: f, flee: 2.6, dy: 5, toZ: -4, back: 9999 }]);                           // 候车亭顶上
+  const birds = airBirds(R, B, { spread: 8 }); sys.push(birds);
+  sys.push({ name: 'birds', step() { if (H.st === 'hunt' && H.k > 0.35) birds.scare(X10 + 37, 12, 1); } });                 // 直升机飞近了：全惊飞
+});

@@ -35,7 +35,7 @@ function sim(dt) {
 
   // 这些每一帧都清零，由走到的那一章重新填写
   HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null;
-  for (const k in AUD) AUD[k] = 0; AUD.humF = 52; beam.intensity = 0;
+  for (const k in AUD) AUD[k] = 0; AUD.humF = 52; beam.intensity = 0; beam.angle = 0.118; beam.penumbra = 0.4;   // 探照灯的张角：第一章用原样的，第十章的直升机自己改宽
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
