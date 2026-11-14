@@ -16,7 +16,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -32,7 +32,7 @@ function soundNote(first) {
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
 const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }

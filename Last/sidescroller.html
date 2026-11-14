@@ -69,7 +69,7 @@
   body.portrait #rot{display:flex}
   #rot svg{width:56px;height:56px;animation:turn 3.2s ease-in-out infinite}
   @keyframes turn{0%,20%{transform:rotate(0)}45%,80%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
-  /* 矮屏（手机横着拿）：章节菜单排成两列才放得下九章 */
+  /* 矮屏（手机横着拿）：章节菜单排成两列才放得下十一章 */
   @media (max-height:520px){
     #menulist{display:grid;grid-template-columns:auto auto;column-gap:8px;margin-top:14px}
     #menulist .it{padding:5px 14px}
@@ -91,7 +91,7 @@
 </div>
 <div id="title" class="ov hide">
   <h1>铁锈与微光</h1>
-  <div class="sub">横版原型 · 十章</div>
+  <div class="sub">横版原型 · 十一章</div>
   <div class="keys">
     <b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作机关　　在水里按 <b>↓</b> 潜下去　　抓着绳子按 <b>↑</b><b>↓</b> 上下爬<br>
     <b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>Shift</b> 慢走　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换衣服颜色　　<b>X</b> 换腿脚
@@ -5108,7 +5108,7 @@ const SY = (() => {
 let AC = null, master = null, MX = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
-const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0 };
+const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
 const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1, brush: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
@@ -5204,6 +5204,20 @@ function initAudio() {
   loops.hum = loopOsc('sawtooth', 52, 240, 'sfx', 0.4);        // 探照灯 / 监控的嗡鸣
   loops.pump = loopOsc('triangle', 46, 180, 'sfx', 0.3);       // 水泵
   loops.buzz = loopOsc('square', 100, 520, 'sfx', 0.3);        // 通电的线路
+  { // 直升机（第十一章）：旋翼一下一下拍打空气 —— 低、中、高三层噪声，被每秒十几下的锯齿波切开（每一下起得猛、落得慢）；上面一层发动机的啸叫不跟着拍子。
+    // 整个再过一道低通：离得远只剩闷闷的“突突”，飞到头顶才又脆又吵
+    const g = AC.createGain(), lp = AC.createBiquadFilter(), pan = AC.createStereoPanner ? AC.createStereoPanner() : null, chop = AC.createGain(), lfo = AC.createOscillator(), dep = AC.createGain();
+    g.gain.value = 0; lp.type = 'lowpass'; lp.frequency.value = 400; lp.Q.value = 0.5; chop.gain.value = 0.45; lfo.type = 'sawtooth'; lfo.frequency.value = 12.5; dep.gain.value = -0.45;
+    lfo.connect(dep).connect(chop.gain); lfo.start();
+    for (const [type, f, q, k, at] of [['lowpass', 190, 0.8, 1, 0.3], ['bandpass', 620, 0.9, 1.6, 1.1], ['bandpass', 1500, 0.8, 0.7, 0.5]]) {
+      const s = AC.createBufferSource(), bf = AC.createBiquadFilter(), kg = AC.createGain(); s.buffer = noiseBuf; s.loop = true; bf.type = type; bf.frequency.value = f; bf.Q.value = q; kg.gain.value = k;
+      s.connect(bf).connect(kg).connect(chop); s.start(0, at);
+    }
+    const ws = AC.createBufferSource(), wf = AC.createBiquadFilter(), wg = AC.createGain(); ws.buffer = noiseBuf; ws.loop = true; wf.type = 'bandpass'; wf.frequency.value = 2300; wf.Q.value = 7; wg.gain.value = 0.1;
+    ws.connect(wf).connect(wg).connect(lp); ws.start(0, 0.7);
+    chop.connect(lp); lp.connect(g); out(pan ? g.connect(pan) : g, 'sfx', 0.35);
+    loops.heli = { g, f: lp, pan, lfo };
+  }
   // ---- 环境的底子 ----
   loops.room = loopNoise('lowpass', 210, 0.4, 'amb');          // 室内的低鸣（工厂、中枢、山洞）
   loops.drone = loopOsc('sine', 41, 400, 'amb');
@@ -5306,7 +5320,7 @@ Object.assign(sfx, {
 // ---- 鸟、滴水、远处偶尔一下的声音：每一章一组 ----
 const BIRDS = { 2: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], 7: [['bird', 0.82], ['dove', 0.18]], 9: [['bird', 1]] };
 const FAR = { 1: ['clank', 'chain', 'steam', 'creak', 'hum2'], 2: ['woodpecker', 'crow', 'twig'], 3: ['crow', 'rattle', 'creak', 'crow'], 4: ['chime', 'shutter', 'pigeon'],
-  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'] };
+  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'], 11: ['owl', 'twig', 'owl'] };
 const FARV = { clank: 0.2, chain: 0.13, steam: 0.08, creak: 0.11, hum2: 0.1, woodpecker: 0.13, crow: 0.13, twig: 0.11, rattle: 0.15, chime: 0.09, shutter: 0.1, pigeon: 0.1,
   knock: 0.16, zap: 0.06, gurgle: 0.13, bee: 0.08, relay: 0.12, owl: 0.1, pebbles: 0.15, rumble: 0.3, plop: 0.13 };
 const pickW = list => { let s = 0; for (const [, w] of list) s += w; let u = Math.random() * s; for (const [n, w] of list) if ((u -= w) <= 0) return n; return list[0][0]; };
@@ -5414,6 +5428,9 @@ function updateAudio(dt, stepNow) {
   setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, t, 0.1);
   setGain('belt', AUD.belt * 0.35, 0.2); setGain('water', AUD.water * 0.12, 0.3); setGain('pump', AUD.pump * 0.12, 0.2);
   setGain('buzz', AUD.buzz * 0.012, 0.15); setGain('sweep', AUD.sweep * 0.05, 0.1);
+  setGain('heli', AUD.heli * 1.3, 0.25); setFreq('heli', lerp(280, 5200, AUD.heliLP * AUD.heliLP), 0.3);          // 直升机：越近越响、越脆，旋翼的拍子也快一点
+  if (loops.heli.pan) loops.heli.pan.pan.setTargetAtTime(clamp(AUD.heliPan, -1, 1), t, 0.2);
+  loops.heli.lfo.frequency.setTargetAtTime(11.5 + 2 * AUD.heliLP, t, 0.5);
   // 水下：什么都闷下去，耳朵里只剩一层低低的嗡
   const uw = P.mode === 'swim' && P.under && state !== 'title' ? 1 : 0;
   MX.uw.frequency.setTargetAtTime(uw ? 480 : 18000, t, uw ? 0.05 : 0.12); setGain('uw', uw * 0.12, 0.15);
@@ -9161,6 +9178,414 @@ const CH10 = (() => {
 })();
 
 // ============================================================
+//  第十一章 · 夜搜：直升机在找主角
+//  （和第九、第十章一样先单独放在最后，从章节菜单进；故事定下来以后再挪到该放的地方）
+//  夜里，一条荒废的公路穿过野地。远处传来旋翼声：一架直升机飞过来，机头下面的探照灯罩着一块地面，沿着公路来回地找。
+//  路边有四处灯照不进去的地方：候车亭、锈穿了一面的集装箱、铁皮棚、断桥底下。等灯扫过去，跑到下一处；
+//  在没遮没挡的地方被灯罩住半秒多，就算被发现，回到最近的存档点（每一处里面都有一个）。
+//  躲进断桥底下以后，直升机压低了在桥头来回找一阵；找不到，掉头飞走。风停了，蟋蟀和萤火虫又回来
+// ============================================================
+const X11 = 1800;
+const CH11 = (() => {
+  const X = X11;
+  const C = chapter({ n: 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯',
+    intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
+  C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
+  terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
+  ground(X - 70, 0x2f3a2e); ground(X + 200, 0x2f3a2e);
+  surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
+  solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
+  solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
+
+  // 灯照不进去的四处，各占一段 x：候车亭、集装箱、铁皮棚、断桥底下。每一处都有顶，后面有一面墙 —— 灯是从后上方照过来的，
+  // 影子是那盏灯自己投出来的（见下面的 build），看着躲好了才算躲好了。搭出来的顶和墙比这里登记的一段左右各宽出三四十厘米：
+  // 灯从侧后方斜着照过来时影子会偏，宽出来的这一截正好补上
+  const COVERS = [[38.0, 41.6], [54.0, 60.0], [73.6, 77.6], [92.5, 99.5]].map(([a, b]) => [X + a, X + b]);
+  const coverAt = x => COVERS.findIndex(([a, b]) => x > a + 0.15 && x < b - 0.15);     // 0.15：主角半个身子的宽度
+  const inCover = x => coverAt(x) >= 0;
+  // 每一处的顶和后墙在哪：[顶的左边, 顶的右边, 顶有多高, 后墙的 z, 顶的前沿的 z]。看得见的那束光柱照到顶上就到此为止，不会穿过去落进里面（见 update 最后）
+  const ROOFS = [[-0.65, 0.65, 2.5, -1.15, 1.4], [-0.38, 0.38, 2.55, -1.45, 1.06], [-0.85, 0.85, 2.3, -1.3, 1.5], [-0.4, 0.4, 3.3, -3.0, 1.6]].map(([da, db, y, zb, zf], i) => [COVERS[i][0] + da, COVERS[i][1] + db, y, zb, zf]);
+  const CLIP = [0, 1, 2, 3, 4].map(() => new THREE.Plane(V3(0, 1, 0), 1e4));               // 五个面围出顶下面的那一块影子：左、右、顶、后墙、从顶的前沿顺着光斜下去的那一面
+  // 灯来回扫的那一段 [最左, 最右]：主角还没到第一处时，它在候车亭前后扫；到过第 k 处以后，就在第 k 处和下一处之间扫
+  // （两头各多扫出去五米半，两处都罩得到）；最后一项是主角躲进桥下以后，灯就在桥头两边找。
+  // 扫一趟是从一头慢慢起步、中间最快、到另一头慢慢停下，再掉头。主角每到一处新的，灯就改成先朝这一处的左边扫过来（从他头顶过去），
+  // 再掉头往右扫过下一段路 —— 所以在哪一处都是同一个办法：等灯从头顶过去、往右走远了，跟在它后面跑。
+  // （原来是一条正弦，换一段的时候中心慢慢挪过去：灯看着在往右走，其实马上要折回来，照着它跑会被罩个正着）
+  const SWEEP = [[X + 34, X + 58]];
+  for (let k = 0; k < COVERS.length - 1; k++) SWEEP.push([COVERS[k][1] - 5.5, COVERS[k + 1][0] + 5.5]);
+  SWEEP.push([X + 91.4, X + 100.6]);
+  // 直升机：st —— calm 还没来 / hunt 在找 / leave 飞走 / gone 走了。stage 主角到过第几处了（0 = 一处都没到），live 灯落到公路上了没有，lx 灯这一趟扫到哪了（l0 → l1，ls 走了几成，lD 这一趟要多久），bx 灯罩着公路上的哪一点，c 直升机来回飞的那一段的中点，
+  // r 罩住的那一块有多宽（半径），exposure 被罩住多久了（0..1），caught 被发现以后过了多久，hid 在桥下躲了多久，low 压低了多少，
+  // k 它离得有多近（0..1：蟋蟀和萤火虫跟着它安静下去），near 旋翼的风有多大（0..1），lamp / tgt / on 灯在哪、照着哪、亮不亮（空中的灰要用）
+  const T_IN = 8, T_HID = 9, T_OUT = 11, V_SWEEP = 2.8, V_PROBE = 2.8, ANG = 0.15, CONE_L = 26;     // 飞来要多久 / 在桥下躲多久它才走 / 飞走要多久 / 灯扫一趟平均多快（米每秒：平时、在桥头找的时候）/ 光柱的半张角
+  const FAR_IN = [X + 70, 34, -210], FAR_OUT = [X - 50, 26, -300];               // 从哪里飞来，往哪里飞走（往左后方：那边是开阔的野地，看得见它越飞越远；右边是林子，会被树挡住）
+  const H = { st: 'calm', t: 0, stage: 0, live: false, lx: X + 47, l0: X + 47, l1: X + 47, ls: 0, lD: 1, c: X + 46, bx: X + 47, r: 2.3, exposure: 0, caught: 0, hid: 0, low: 0, k: 0, near: 0, gust: false,
+    pos: V3(...FAR_IN), vel: V3(), p0: V3(), aim: V3(X + 62, 0, -120), aim0: V3(), yaw: -1.57, roll: 0, pitch: 0, lamp: [0, 0, 0], tgt: [0, 0, 0], on: 0 };
+
+  checkpoint(X + 3); checkpoint(X + 29);
+  for (const [a, b] of COVERS) checkpoint((a + b) / 2);                             // 每一处里面一个：被发现以后回到的地方一定是安全的
+  checkpoint(X + 108); checkpoint(X + 126);
+  // 直升机一来，镜头就拉远、抬高：主角小了，但直升机、光柱和它罩着的那块地都在画面里
+  camKeys([X - 12, 19, 1.8, 0.5], [X + 8, 19.5, 1.9, 1.2], [X + 18, 21, 2.4, 2], [X + 30, 27, 4.2, 2.5], [X + 86, 27, 4.2, 2.5], [X + 96, 25, 3.7, 0], [X + 103, 25, 3.7, 1.5],
+    [X + 116, 21, 2.3, 1.5], [X + 150, 20, 2.0, 0]);
+  // 夜：月亮在左后方，光是冷的、暗的，影子朝着镜头；天边一层发亮的雾，山和树都是比天暗的剪影。画面里最亮的东西是那盏探照灯
+  env(X - 60, { fog: 0x1a2738, fogD: 0.0075, hemiS: 0x7a98c8, hemiG: 0x0e1218, hemiI: 0.6, keyC: 0xa8c0e8, keyI: 0.6, keyDir: [-0.5, 0.75, -0.6], rimC: 0x8fb0e0, rimI: 0.45,
+    dustC: 0xb8c8e0, dustO: 0.22, wind: -0.25, ext: 1, sky: [0x070c18, 0x0c1426, 0x15223a, 0x1f3050, 0x2a3f60, 0x121b2a], sunX: -0.33, sunY: 0.13, sunC: 0xe4ecff, sunP: 0.5,
+    stars: 1.5, cloud: 0.4, cloudC: 0x3c4e6c, birds: 0, flies: 0.75, vig: 1,
+    aWind: 0.4, aWhis: 0, aLeaf: 0.4, leafDry: 0.35, aBug: 0.9, aDrip: 0, aFlow: 0, aRoom: 0, roomF: 210, aHum: 0, aCity: 0, aFar: 0.45, rvOut: 1, rvHall: 0, rvCave: 0 });   // 声音：夜风吹着草，满地的蟋蟀，远处一只猫头鹰
+  env(X + 200, {});
+
+  hint(() => H.st === 'hunt' && H.stage === 0 && P.x > X + 23 && P.x < COVERS[0][0], '躲进候车亭里，等灯扫过去');
+  hint(() => H.st === 'hunt' && H.stage === 1 && inCover(P.x), '等灯扫过去，再跑到下一处有顶的地方');
+  hint(() => H.st === 'hunt' && H.stage === COVERS.length && inCover(P.x), '躲着别出去，等它飞走');
+
+  const lampL = pointLight({ p: [X + 11.6, 4.7, -1.2], c: 0xffb060, i: 140, d: 11, dec: 1.8 });                  // 路口一盏还亮着的路灯
+  const bounceL = pointLight({ p: [X, 1.5, 0.5], c: 0xdcecf4, i: 2.4, d: 13, dec: 1.4, on: 0 });     // 探照灯罩着的那块地反上来的光：跟着灯走。躲在顶下面的主角就靠这点光看得见
+  pointLight({ p: [X + 96, 2.3, 3.2], c: 0x7f9cc8, i: 4, d: 8, dec: 1.2 });                        // 断桥底下：从镜头这边漏进去的一点天光
+
+  let V = null;                                          // 画面上的东西（这一章被卸载时清空）
+  const C_CALM = new THREE.Color(0xe2eef2), C_ALERT = new THREE.Color(0xff5030), _a = V3(), _b = V3(), _c = V3(), _d = V3();
+  // 直升机在的时候，环境跟着变：蟋蟀不叫了，萤火虫不见了，旋翼的风把灰往两边吹
+  const mod = E_ => { const k = H.k; E_.aBug *= 1 - 0.94 * k; E_.flies *= 1 - k; E_.aFar *= 1 - k; E_.wind = lerp(E_.wind, 2.4 * clamp((camera.position.x - H.pos.x) / 8, -1, 1), H.near); };
+
+  function* build(R) {
+    const v = {}, own = m => { m.userData.own = true; return m; }, M = (c, o) => own(lam(c, o));
+    const PAL = { far: '#182840', mid: '#111f33', wood: '#0a1524', near: '#070f1a' };
+    // ---------------- 布景板：夜里的山谷 ----------------
+    // 最远的一层山
+    backdrop(X - 330, X + 540, -8, 60, -380, 2, g => {
+      setInk(g, PAL.far); ridge(g, X - 330, X + 540, -8, x => 20 + 11 * Math.sin(x * 0.0105 + 1) + 6 * Math.sin(x * 0.027) + 3 * Math.sin(x * 0.071 + 2), 4);
+    }, { fog: false });
+    // 近一层的丘陵，上面一排高压线塔
+    backdrop(X - 230, X + 420, -6, 42, -190, 3, g => {
+      const top = x => 8 + 5 * Math.sin(x * 0.019 + 2) + 3 * Math.sin(x * 0.047) + 1.2 * Math.sin(x * 0.13);
+      setInk(g, PAL.mid); ridge(g, X - 230, X + 420, -6, top, 3);
+      const pylon = (x, y, h) => {
+        const w = h * 0.15, leg = t => w * (t < 0.72 ? 1 - 0.75 * t / 0.72 : 0.25 * (1 - (t - 0.72) / 0.28));
+        for (const s of [-1, 1]) line(g, [[x + s * w, y], [x + s * leg(0.72), y + h * 0.72], [x, y + h]], 0.22);
+        for (let k = 0; k < 5; k++) { const t0 = 0.72 * k / 5, t1 = 0.72 * (k + 1) / 5; for (const s of [-1, 1]) line(g, [[x - s * leg(t0), y + h * t0], [x + s * leg(t1), y + h * t1]], 0.1); }
+        line(g, [[x - h * 0.26, y + h * 0.72], [x + h * 0.26, y + h * 0.72]], 0.2); line(g, [[x - h * 0.19, y + h * 0.86], [x + h * 0.19, y + h * 0.86]], 0.2);
+      };
+      const xs = []; for (let x = X - 205; x < X + 410; x += 62) xs.push(x);
+      for (const x of xs) pylon(x, top(x) - 1.5, 24);
+      for (let i = 1; i < xs.length; i++) for (const [k, dx] of [[0.72, -0.26], [0.72, 0.26], [0.86, -0.19], [0.86, 0.19]])
+        cable(g, xs[i - 1] + dx * 24, top(xs[i - 1]) - 1.5 + k * 24, xs[i] + dx * 24, top(xs[i]) - 1.5 + k * 24, 2.6, 0.1);
+    }, { fog: false });
+    yield;
+    // 野地尽头的一排林子
+    backdrop(X - 210, X + 380, -3, 26, -125, 6, g => {
+      setInk(g, PAL.wood); ridge(g, X - 210, X + 380, -3, x => 3 + 1.5 * Math.sin(x * 0.05) + rr(0, 0.8), 2);
+      for (let x = X - 206; x < X + 376; x += rr(2.6, 6.5)) tree(g, x, 1.5, rr(9, 16), rnd() < 0.45 ? 'pine' : 'round');
+    }, { fog: false });
+    yield;
+    // 田埂：一道长满灌木的土坎，几棵孤零零的树；塌了一半的谷仓和一座水塔
+    backdrop(X - 70, X + 210, -2, 17, -26, 14, g => {
+      setInk(g, PAL.near);
+      ridge(g, X - 70, X + 210, -2, x => 0.9 + 0.5 * Math.sin(x * 0.21) + rr(0, 0.35), 0.7);
+      for (let x = X - 64; x < X + 206; x += rr(14, 34)) if (x < X + 58 || x > X + 110) tree(g, x, 0.6, rr(4, 8), pick(['round', 'dead', 'round', 'pine']));
+      poly(g, [[X + 62, 0.5], [X + 62, 4.6], [X + 65.2, 7.4], [X + 68.4, 5.2], [X + 70.2, 4.1], [X + 70.2, 0.5]]);            // 谷仓：一边的屋顶塌下去了
+      g.clearRect(X + 63.4, 0.8, 1.9, 2.5); g.clearRect(X + 64.6, 4.7, 1.0, 0.9); for (let x = X + 66.4; x < X + 69.8; x += 0.55) g.clearRect(x, 1.2, 0.12, rr(1.6, 3.2));
+      box(g, X + 74.2, 6.2, 3.4, 2.7); poly(g, [[X + 74, 8.9], [X + 77.8, 8.9], [X + 75.9, 10.2]]);                            // 水塔
+      for (const x of [X + 74.5, X + 77.3]) line(g, [[x, 0.5], [x + (x < X + 76 ? 0.3 : -0.3), 6.2]], 0.16);
+      line(g, [[X + 74.6, 2.2], [X + 77.2, 4.4]], 0.08); line(g, [[X + 77.2, 2.2], [X + 74.6, 4.4]], 0.08);
+    });
+    yield;
+    // 公路另一侧的铁丝网和路边的长草（断桥那一段让开）
+    for (const [a, b] of [[X - 22, X + 89], [X + 103, X + 152]]) backdrop(a, b, -0.4, 1.9, -3.1, 36, g => {
+      setInk(g, PAL.near); fence(g, a + 0.6, b - 0.6, groundY, 1.25, 2.6); grass(g, a, b, groundY, 0.25, 0.75, Math.round((b - a) * 5));
+    });
+    // 过了断桥，路钻进林子：三排树，一排比一排近；最前面几棵树干离镜头很近，略微虚焦
+    for (const [z, x0, col, h0, h1, gap] of [[-17, X + 104, '#0a1422', 9, 16, 3.2], [-9.5, X + 110, '#08101b', 8, 14, 4.4], [-5, X + 118, '#060c15', 7, 12, 6]]) {
+      backdrop(x0 - 4, X + 190, -1, 20, z, 16, g => {
+        setInk(g, col);
+        for (let x = x0; x < X + 188; x += rr(gap * 0.6, gap * 1.5)) tree(g, x, groundY(x) - 0.2, rr(h0, h1) * sstep(x0 - 6, x0 + 14, x) + 3, rnd() < 0.3 ? 'pine' : 'round');
+        grass(g, x0, X + 188, x => groundY(x) - 0.05, 0.3, 0.9, 260);
+      }, { fadeL: 3 });
+      yield;
+    }
+    backdrop(X + 120, X + 176, -2, 12, 6.5, 22, g => {
+      setInk(g, '#03070c');
+      for (const [x, w] of [[X + 127.5, 0.55], [X + 138, 0.8], [X + 147, 0.5], [X + 158, 0.9], [X + 168, 0.6]]) { poly(g, [[x - w * 1.5, -2], [x + w * 1.5, -2], [x + w / 2, 3], [x + w / 2, 12], [x - w / 2, 12], [x - w / 2, 3]]); twig(g, x, 5.5, rr(-1.2, 1.2), 2.6, 0.16, 2); }
+    }, { fog: false, blur: 2.2, order: 4000 });
+    // 来的方向：路被倒下的树和一人多高的灌木堵死了
+    backdrop(X - 34, X - 4.5, -0.6, 9, -0.9, 24, g => {
+      setInk(g, '#060c15'); ridge(g, X - 34, X - 5.5, -0.6, x => 2.3 + 0.8 * Math.sin(x * 0.9) + rr(0, 0.9) - 2.2 * sstep(X - 9, X - 5.5, x), 0.4);
+      for (let i = 0; i < 9; i++) twig(g, rr(X - 30, X - 8), rr(0.5, 2.2), rr(-1.3, 1.3), rr(1.2, 3), 0.12, 3);
+      line(g, [[X - 21, 0.4], [X - 6.6, 2.4]], 0.5); line(g, [[X - 14, 1.4], [X - 12.6, 4.2]], 0.16);
+    });
+    backdrop(X - 34, X - 7.6, -0.6, 7, 1.3, 24, g => {                                         // 它有一半伸到路这边来：主角走到跟前就过不去了
+      setInk(g, '#04080e'); ridge(g, X - 34, X - 8.4, -0.6, x => 1.7 + 0.6 * Math.sin(x * 1.1 + 1) + rr(0, 0.8) - 1.6 * sstep(X - 10.5, X - 8.4, x), 0.4);
+      for (let i = 0; i < 7; i++) twig(g, rr(X - 30, X - 10.5), rr(0.4, 1.6), rr(-1.3, 1.3), rr(1, 2.4), 0.1, 3);
+    }, { fog: false });
+    for (const [a, b] of [[X - 30, X + 36], [X + 36, X + 102], [X + 102, X + 168]]) foreTufts(a, b, 8.7, { cols: ['#050a0f', '#070d13', '#04080c'], h: 1.0, fern: 0.15 });
+    yield;
+
+    // ---------------- 地面：一条荒废的公路 ----------------
+    // 沥青的边被草一点点吃进来；一块块深浅不一的补丁，褪了色的中线和边线，裂缝
+    for (const [a, b] of [[X - 26, X + 42], [X + 42, X + 108]]) groundDecal(a, b, -2.8, 3.0, 40, g => {
+      g.fillStyle = 'rgba(44,48,53,0.95)'; g.beginPath(); g.moveTo(a, -2.3);
+      for (let x = a; x <= b; x += 0.5) g.lineTo(x, -2.3 + 0.16 * Math.sin(x * 1.3) + 0.1 * Math.sin(x * 3.1 + 1));
+      for (let x = b; x >= a; x -= 0.5) g.lineTo(x, 2.5 + 0.2 * Math.sin(x * 0.9 + 2) + 0.12 * Math.sin(x * 2.7));
+      g.closePath(); g.fill();
+      for (let i = 0; i < (b - a) * 0.5; i++) { g.fillStyle = rnd() < 0.5 ? `rgba(0,0,0,${rr(0.08, 0.22).toFixed(2)})` : `rgba(140,150,156,${rr(0.04, 0.1).toFixed(2)})`; g.fillRect(rr(a, b), rr(-2.0, 1.6), rr(0.6, 2.6), rr(0.3, 1.2)); }
+      g.fillStyle = 'rgba(196,198,186,0.36)'; for (let x = Math.ceil(a / 6) * 6; x < b - 3; x += 6) if (rnd() < 0.8) g.fillRect(x, 0.62, 3, 0.13);
+      g.fillStyle = 'rgba(196,198,186,0.2)'; g.fillRect(a, -2.02, b - a, 0.09); g.fillRect(a, 2.16, b - a, 0.09);
+      g.strokeStyle = 'rgba(8,10,12,0.8)';
+      for (let i = 0; i < (b - a) * 0.7; i++) { let x = rr(a, b), z = rr(-2.2, 2.4); g.lineWidth = rr(0.02, 0.05); g.beginPath(); g.moveTo(x, z); for (let k = 0; k < 5; k++) { x += rr(-0.5, 0.9); z += rr(-0.45, 0.45); g.lineTo(x, z); } g.stroke(); }
+    }, { fadeL: a < X ? 6 : 0, fadeR: b > X + 100 ? 5 : 0 });
+    // 过了断桥，沥青没了，只剩两道车辙
+    groundDecal(X + 103, X + 152, -2.2, 2.4, 30, g => {
+      for (const z0 of [-0.75, 0.75]) { g.strokeStyle = 'rgba(20,18,14,0.5)'; g.lineWidth = 0.55; g.beginPath(); for (let x = X + 103; x <= X + 152; x += 0.6) { const z = z0 + 0.25 * Math.sin(x * 0.4) + 0.1 * Math.sin(x * 1.3); x === X + 103 ? g.moveTo(x, z) : g.lineTo(x, z); } g.stroke(); }
+    }, { fadeL: 4, fadeR: 4 });
+    yield;
+    // 野地里的草：路边矮，越往远处越高；路上的裂缝里也钻出来几丛。受光照 —— 探照灯扫到哪，哪里的草就亮起来
+    const EMB = [COVERS[3][0] - 3.6, COVERS[3][1] + 3.6];                                           // 断桥后面的路堤占着的那一段
+    const bare = (x, z) => (z < -2.9 && x > EMB[0] && x < EMB[1]) || (z > -1.7 && z < 1.5 && COVERS.some(([a, b]) => x > a - 0.9 && x < b + 0.9));
+    const gcol = () => new THREE.Color(pick([0x4c5c3c, 0x56664a, 0x435236, 0x5f6a48])).multiplyScalar(rr(0.85, 1.1));
+    for (const [z0, z1, per, h0, h1] of [[-2.7, -5, 3.2, 0.35, 0.8], [-5, -12, 5, 0.6, 1.1], [-12, -29, 5, 0.9, 1.6], [2.9, 5, 3, 0.35, 0.75], [5, 9.6, 3, 0.5, 1.0], [-2.2, 2.4, 0.4, 0.14, 0.3]]) {
+      const list = [];
+      for (let i = 0, n = Math.round(230 * per); i < n; i++) {
+        const x = rr(X - 58, X + 172), z = rr(z0, z1), k = rnd(); if (bare(x, z) || (z0 === -2.2 && (Math.abs(z) < 0.3 || x > X + 104))) continue;
+        list.push([x, groundY(x), z, k < 0.68 ? 'grass' : k < 0.84 ? 'dry' : k < 0.97 ? 'seed' : 'fern', rr(h0, h1), gcol()]);
+      }
+      plants(R, list); yield;
+    }
+    // 路边几块半埋的石头，路上的碎石
+    for (const [x, z, s] of [[X + 7.5, -2.9, 0.5], [X + 20.4, 3.3, 0.6], [X + 47, -3.2, 0.45], [X + 67.2, 3.4, 0.7], [X + 86.5, -3.0, 0.5], [X + 112, 2.6, 0.6], [X + 133, -2.4, 0.8]]) rock(R, x, z, s, { moss: 0.4 });
+    { const pts = []; for (let i = 0; i < 380; i++) { const x = rr(X - 20, X + 150), z = rnd() < 0.5 ? rr(-2.6, -1.7) : rr(1.8, 2.9); pts.push([x, z, rr(0.02, 0.06)]); } pebbles(R, pts); }
+    yield;
+
+    // ---------------- 路边的东西 ----------------
+    const conc = M(0x5a6368), conc2 = M(0x454d52), rust = M(0x6a4634), rust2 = M(0x4a3a31), tin = M(0x4a4640), wood = M(0x4c3c2c), poleM = M(0x1b1a18), earth = M(0x2a3428), tar = M(0x2a2e33);
+    // 电线杆：一路排过去，有的歪了；电线垂着，有一档断了，耷拉到地上
+    const POLES = [X - 2, X + 16, X + 34, X + 50, X + 66, X + 84, X + 106, X + 124, X + 142].map((x, i) => [x, [0.03, -0.05, 0.02, 0.09, -0.03, 0.04, -0.12, 0.05, -0.02][i]]);
+    const armAt = ([x, lean], s) => [x - Math.sin(lean) * 6.3 + s * 0.7, groundY(x) + Math.cos(lean) * 6.3, -4.4];
+    for (const [x, lean] of POLES) {
+      const g = grp(R, x, groundY(x), -4.4); g.rotation.z = lean;
+      add(g, cy(0.085, 0.12, 6.9, 8), poleM, 0, 3.45, 0); add(g, bx(1.7, 0.1, 0.1), poleM, 0, 6.3, 0);
+      for (const s of [-0.7, 0.7]) add(g, cy(0.035, 0.035, 0.14, 6), MAT.pale, s, 6.42, 0, false);
+    }
+    for (let i = 1; i < POLES.length; i++) for (const s of [-1, 1]) {
+      const a = armAt(POLES[i - 1], s), b = armAt(POLES[i], s), pts = [];
+      if (i === 4 && s > 0) { tube(R, [a, [a[0] + 2.2, 2.6, -4.3], [a[0] + 3.4, 0.3, -4.0], [a[0] + 5.5, 0.06, -3.6]], 0.012, MAT.dark, 20); continue; }   // 断了的那一档
+      for (let t = 0; t <= 1.001; t += 0.125) pts.push([lerp(a[0], b[0], t), lerp(a[1], b[1], t) - 1.1 * 4 * t * (1 - t), -4.4]);
+      tube(R, pts, 0.012, MAT.dark, 24);
+    }
+    yield;
+    // 路口的路灯：还亮着，一闪一闪
+    add(R, cy(0.06, 0.09, 5, 8), poleM, X + 12.4, groundY(X + 12.4) + 2.5, -2.4); add(R, bx(1.3, 0.07, 0.07), poleM, X + 11.85, 4.95, -2.0).rotation.y = -0.6;
+    add(R, bx(0.5, 0.1, 0.22), poleM, X + 11.5, 4.9, -1.5, false);
+    v.lampGlow = glow(R, 0xffb868, 2.4, 0.85, X + 11.5, 4.8, -1.45, GLOW_SOFT); v.lampCore = glow(R, 0xffe2b0, 0.5, 0.95, X + 11.5, 4.82, -1.4);
+    // 一块歪了的路牌
+    { const g = grp(R, X + 25.6, 0, 2.7); g.rotation.z = -0.13; add(g, cy(0.035, 0.035, 2.3, 6), poleM, 0, 1.15, 0); add(g, bx(0.62, 0.62, 0.03), M(0x596066), 0, 2.2, 0).rotation.z = Math.PI / 4; }
+    // 一 候车亭：水泥的后墙和顶板，两头各半堵侧墙（只到主角走的那条线后面），前面两根细柱子；里面一条长凳，旁边一根站牌
+    { const a = COVERS[0][0] - 0.3, b = COVERS[0][1] + 0.3, cx = (a + b) / 2, w = b - a;
+      add(R, bx(w + 0.3, 2.5, 0.2), conc, cx, 1.25, -1.25); add(R, bx(w + 0.7, 0.16, 2.9), conc, cx, 2.58, -0.05);
+      for (const x of [a - 0.05, b + 0.05]) add(R, bx(0.18, 2.5, 0.8), conc, x, 1.25, -0.85);
+      for (const x of [a + 0.05, b - 0.05]) add(R, cy(0.045, 0.045, 2.5, 8), MAT.dark, x, 1.25, 1.2);
+      add(R, bx(w - 0.8, 0.07, 0.42), wood, cx, 0.46, -0.85); for (const x of [a + 0.7, b - 0.7]) add(R, bx(0.08, 0.46, 0.38), MAT.dark, x, 0.23, -0.85);
+      add(R, cy(0.035, 0.035, 2.7, 8), poleM, b + 1.3, 1.35, -1.0); add(R, bx(0.5, 0.5, 0.04), M(0x3f4c5a), b + 1.3, 2.45, -1.0).rotation.z = 0.06;
+    }
+    yield;
+    // 二 集装箱：朝镜头的那块侧板早就锈穿、掉在地上了，两头的门也没了，只剩后面的波纹板、顶和四根角柱
+    { const a = COVERS[1][0] - 0.35, b = COVERS[1][1] + 0.35, cx = (a + b) / 2, w = b - a, z0 = -1.45, z1 = 1.0, h = 2.6;
+      add(R, bx(w, h, 0.08), rust, cx, h / 2, z0); add(R, bx(w + 0.06, 0.1, z1 - z0 + 0.12), rust2, cx, h, (z0 + z1) / 2);
+      for (let x = a + 0.15; x < b; x += 0.3) add(R, bx(0.12, h - 0.2, 0.05), rust2, x, h / 2, z0 + 0.06, false);                 // 波纹板的竖棱
+      for (const x of [a, b]) { for (const z of [z0, z1]) add(R, bx(0.14, h, 0.14), MAT.dark, x, h / 2, z); add(R, bx(0.12, 0.14, z1 - z0), MAT.dark, x, h - 0.07, (z0 + z1) / 2, false); }
+      for (const z of [z0, z1]) add(R, bx(w, 0.16, 0.12), MAT.dark, cx, 0.08, z, false);
+      const fallen = add(R, bx(w - 0.6, 0.05, 2.3), rust, cx + 0.4, 0.06, 2.9); fallen.rotation.set(0.03, 0.08, 0.01);            // 掉下来的那块侧板
+      add(R, bx(0.9, 0.5, 0.03), M(0x7c7466), a + 1.3, 1.9, z0 + 0.1, false);                                                      // 一块褪了色的铭牌
+    }
+    yield;
+    // 三 铁皮棚：四根木柱撑着一面前高后低的波纹铁皮，后面钉着一排木板；里面两只旧轮胎、一只木箱
+    { const a = COVERS[2][0] - 0.4, b = COVERS[2][1] + 0.4, cx = (a + b) / 2, w = b - a;
+      add(R, bx(w + 0.9, 0.05, 3.3), tin, cx, 2.5, -0.1).rotation.x = -0.16;
+      for (let x = a - 0.35; x < b + 0.4; x += 0.42) add(R, bx(0.05, 0.03, 3.3), M(0x38352f), x, 2.535, -0.1, false).rotation.x = -0.16;   // 铁皮的棱
+      for (let x = a - 0.05; x < b; x += 0.27) add(R, bx(0.25, rr(2.05, 2.25), 0.04), wood, x + 0.13, 1.08, -1.32);
+      for (const x of [a, b]) { add(R, bx(0.12, 2.72, 0.12), wood, x, 1.36, 1.3); add(R, bx(0.12, 2.3, 0.12), wood, x, 1.15, -1.4); }
+      for (const [x, y, r] of [[b - 0.8, 0.12, 0], [b - 0.72, 0.36, 0.1]]) { const t = add(R, new THREE.TorusGeometry(0.3, 0.115, 8, 18), MAT.dark, x, y, -0.78); t.rotation.set(Math.PI / 2, 0, r); }
+      add(R, bx(0.75, 0.6, 0.7), wood, a + 0.75, 0.3, -0.85).rotation.y = 0.2;
+    }
+    yield;
+    // 四 断桥：一条从远处的路堤上过来、横跨在公路上面的旧桥。靠镜头的那一半早塌了，只剩后面的桥台、一截桥面和前面两根桥墩；
+    // 塌下来的桥板躺在公路前面的草里
+    { const a = COVERS[3][0] - 0.4, b = COVERS[3][1] + 0.4, cx = (a + b) / 2, w = b - a, top = 3.9, th = 0.6;
+      add(R, bx(w, th, 5.6), conc2, cx, top - th / 2, -1.2);                                                                      // 桥面：z 从 -4 到 1.6
+      add(R, bx(w + 0.5, top - th, 1.0), conc2, cx, (top - th) / 2, -3.5);                                                         // 桥台
+      for (const x of [a + 0.6, b - 0.6]) { add(R, cy(0.34, 0.34, top - th, 14), conc2, x, (top - th) / 2, 1.1); add(R, bx(1.0, 0.24, 1.0), conc2, x, top - th - 0.12, 1.1, false); }
+      const sh = new THREE.Shape(); sh.moveTo(-(w / 2 + 3.3), 0); sh.lineTo(w / 2 + 3.3, 0); sh.lineTo(w / 2 + 0.25, top - th); sh.lineTo(-(w / 2 + 0.25), top - th); sh.closePath();
+      add(R, new THREE.ExtrudeGeometry(sh, { depth: 46, bevelEnabled: false }), earth, cx, 0, -50);                                // 路堤：伸到远处
+      add(R, bx(w - 0.5, 0.06, 47), tar, cx, top - th + 0.02, -27.5).receiveShadow = true;                                         // 路堤上的路面，接到桥面上
+      for (const x of [a + 0.14, b - 0.14]) {                                                                                      // 两边的护栏
+        for (let z = 1.3; z > -30; z -= 2.2) add(R, bx(0.07, 0.75, 0.07), MAT.dark, x, top + 0.37, z, false);
+        add(R, bx(0.06, 0.09, 31.6), MAT.steel, x, top + 0.62, -14.4, false);
+      }
+      for (let i = 0; i < 7; i++) { const r = add(R, cy(0.018, 0.018, rr(0.5, 1.1), 5), MAT.rust, a + 0.6 + i * 0.95 + rr(-0.2, 0.2), top - rr(0.15, 0.45), 1.75, false); r.rotation.x = Math.PI / 2 + rr(0.2, 1.0); }   // 断口露出来的钢筋
+      const slab = add(R, bx(4.6, 0.55, 3.0), conc2, cx + 1.4, 0.3, 6.6); slab.rotation.set(0.06, 0.25, 0.09);
+      add(R, bx(1.5, 0.5, 1.2), conc2, cx - 2.9, 0.18, 5.2).rotation.set(0.3, 0.6, 0.2); add(R, bx(0.9, 0.4, 0.8), conc2, cx + 3.9, 0.15, 3.8).rotation.set(0.2, 1.1, 0.4);
+      // 桥上：一根歪了的灯杆，一辆扔在那里的车
+      { const g = grp(R, b - 0.5, top, -6.5); g.rotation.z = -0.14; add(g, cy(0.06, 0.08, 4.6, 8), poleM, 0, 2.3, 0); add(g, bx(1.2, 0.06, 0.06), poleM, -0.55, 4.55, 0, false); }
+      add(R, bx(1.75, 0.62, 3.9), MAT.dark, cx - 1.2, top + 0.52, -13); add(R, bx(1.6, 0.5, 1.9), MAT.dark, cx - 1.2, top + 1.05, -13.3);
+    }
+    yield;
+
+    // ---------------- 直升机 ----------------
+    const hull = M(0x1c242a), hull2 = M(0x0e1418), glass = M(0x0a1117, { emissive: 0x0c1826, emissiveIntensity: 0.6 });
+    const heli = grp(R), tilt = grp(heli);                 // heli：在哪、朝哪；tilt：机头压下去多少、侧倾多少。机头朝 +x
+    add(tilt, new THREE.SphereGeometry(1, 20, 14), hull, 0.5, 0, 0, false).scale.set(2.3, 1.15, 1.2);
+    add(tilt, new THREE.SphereGeometry(1, 16, 12), glass, 1.75, -0.12, 0, false).scale.set(1.25, 0.92, 1.08);                       // 座舱的玻璃
+    add(tilt, bx(1.9, 0.5, 0.95), hull2, -0.1, 1.05, 0, false); add(tilt, cy(0.09, 0.09, 0.5, 8), hull2, 0.2, 1.5, 0, false);       // 发动机罩、旋翼轴
+    add(tilt, cy(0.15, 0.36, 5.0, 10), hull, -4.0, 0.42, 0, false).rotation.z = Math.PI / 2 - 0.08;                                 // 尾梁
+    add(tilt, bx(0.9, 1.5, 0.08), hull, -6.4, 1.1, 0, false).rotation.z = -0.35; add(tilt, bx(0.7, 0.06, 1.8), hull, -5.5, 0.66, 0, false);   // 垂尾、平尾
+    for (const z of [-0.95, 0.95]) {                                                                                               // 滑橇
+      add(tilt, cy(0.05, 0.05, 3.7, 6), hull2, 0.5, -1.45, z, false).rotation.z = Math.PI / 2;
+      for (const x of [-0.4, 1.4]) add(tilt, bx(0.07, 0.8, 0.07), hull2, x, -1.08, z * 0.82, false).rotation.x = -Math.sign(z) * 0.38;
+    }
+    const blade = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.55, depthWrite: false }));
+    const disc = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+    v.rotor = grp(tilt, 0.2, 1.78, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
+    for (let i = 0; i < 3; i++) { const g = grp(v.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.04, 0.28), blade, 2.65, 0, 0, false); }
+    add(v.rotor, new THREE.CircleGeometry(5.3, 40), disc, 0, 0.02, 0, false).rotation.x = -Math.PI / 2;
+    v.tailRotor = grp(tilt, -6.55, 1.2, 0.2); add(v.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(v.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
+    v.pod = grp(tilt, 1.9, -1.05, 0);                                                                                              // 机头下面的探照灯
+    add(v.pod, new THREE.SphereGeometry(0.26, 12, 10), hull2, 0, 0, 0, false); add(v.pod, new THREE.CircleGeometry(0.2, 16), unlit(0xeaf4f6, { fog: false }), 0, 0, 0.27, false);
+    v.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 1.24); v.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -1.24);           // 两侧的航行灯
+    v.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.7, 1.8, 0); v.beacon = glow(tilt, 0xff3020, 1.6, 0.1, 0.3, -1.25, 0);               // 尾巴上的频闪灯、肚子下面的防撞灯
+    heli.visible = false; v.heli = heli; v.tilt = tilt;
+    v.cones = [];                                          // 看得见的光柱：两层半透明的圆锥叠在一起
+    for (const [k, op] of [[1, 0.07], [0.55, 0.085]]) {
+      const geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L * k, CONE_L, 28, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xd8ecf2, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false, clippingPlanes: CLIP, clipIntersection: true })));
+      m.renderOrder = 60; m.userData.a = op; m.visible = false; R.add(m); v.cones.push(m);
+    }
+    v.glare = glow(R, 0xdfeef2, 6, 0, 0, 0, 0, GLOW_SOFT); v.core = glow(R, 0xffffff, 1.3, 0, 0, 0, 0);                             // 灯头正对着镜头时的那一团眩光
+    // 灯扫在远处野地上的那一块亮斑（离得太远，真的灯光照不到那里）
+    v.spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own(new THREE.MeshBasicMaterial({ map: GLOW, color: 0xcfe2ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
+    v.spot.rotation.x = -Math.PI / 2; v.spot.renderOrder = 3; v.spot.visible = false; R.add(v.spot);
+    renderer.localClippingEnabled = true;                  // 只有光柱的材质带着裁剪面，别的东西不受影响
+    v.tower = glow(R, 0xff3828, 5, 0.9, X + 118, 47, -379);                                                                        // 远山上一座铁塔顶上的红灯
+    V = v;
+  }
+
+  // 直升机不在的时候：把它留下的东西收干净
+  function quiet(dt) {
+    H.k = damp(H.k, 0, 1.5, dt); H.near = 0; H.on = 0; H.exposure = 0;
+    if (H.gust) { GUST.force = undefined; H.gust = false; }
+    if (envMod === mod && H.k < 0.002) envMod = null;
+    if (H.st === 'calm' && state === 'play') { AUD.heli = 0.045 * sstep(X + 4, X + 20, P.x); AUD.heliLP = 0.1; AUD.heliPan = 0.5; }   // 还没看见它，先听见很远的旋翼声
+    bounceL.on = 0;
+    if (V) { V.heli.visible = false; for (const c of V.cones) c.visible = false; V.glare.material.opacity = V.core.material.opacity = 0; V.spot.visible = false; }
+  }
+  // 灯的下一趟：从现在的位置扫到 to。路程短，用的时间也短
+  function leg(to) { H.l0 = H.lx; H.l1 = to; H.ls = 0; H.lD = Math.max(1.2, Math.abs(to - H.lx) / (H.stage === COVERS.length ? V_PROBE : V_SWEEP)); }
+  function update(dt) {
+    const play = state === 'play', v = V;
+    lampL.i = 140 * (0.9 + 0.1 * Math.sin(T * 17) * Math.sin(T * 5.3)) * (hash1(Math.floor(T * 9)) < 0.06 ? 0.3 : 1);         // 路灯：电压不稳
+    if (v) { v.lampGlow.material.opacity = 0.85 * lampL.i / 140; v.lampCore.material.opacity = 0.95 * lampL.i / 140; v.tower.material.opacity = (T % 2.4 < 1.2 ? 0.9 : 0.12) * (1 - sstep(X + 100, X + 110, camera.position.x)); }   // 进了林子就被树挡住了
+    if (H.st === 'calm' && play && P.x > X + 20) { H.st = 'hunt'; H.t = 0; H.live = false; H.lx = H.bx = X + 47; H.pos.set(...FAR_IN); H.vel.set(0, 0, 0); }   // 走到这里，它就来了。灯会落在候车亭右边几米的公路上，再朝主角这边扫过来
+    if (H.st === 'calm' || H.st === 'gone') { quiet(dt); return; }
+    H.t += dt; envMod = mod;
+    // 主角到过哪一处了
+    const ci = coverAt(P.x), hunt = H.st === 'hunt', arr = hunt ? sstep(0, T_IN, H.t) : 1, hot = hunt && arr >= 1;   // hot：灯已经罩到公路上了
+    if (hunt && P.grounded && ci + 1 > H.stage) { H.stage = ci + 1; if (H.live) leg(H.lx > SWEEP[H.stage][0] + 0.5 ? SWEEP[H.stage][0] : SWEEP[H.stage][1]); }   // 到了新的一处：灯先朝这一处的左边扫过来
+    if (hot && !H.live) { H.live = true; leg(SWEEP[H.stage][0]); }
+    const probe = hunt && H.stage === COVERS.length, [xl, xr] = SWEEP[H.stage];
+    H.c = damp(H.c, (xl + xr) / 2, 0.8, dt);
+    // 灯来回扫；罩住没遮没挡的主角就开始“盯住”，盯满了就算被发现
+    if (H.caught > 0) { H.caught += dt; if (H.caught > 1.25 && play) respawn(); }
+    else if (hunt) {
+      if (H.live) {
+        H.ls += dt / H.lD * (1 - 0.85 * H.exposure);                                                                              // 罩住人的时候慢下来
+        if (H.ls >= 1) { H.lx = H.l1; leg(Math.abs(H.l1 - xl) < Math.abs(H.l1 - xr) ? xr : xl); }                                // 扫到头了：掉头
+        else H.lx = lerp(H.l0, H.l1, 0.5 - 0.5 * Math.cos(Math.PI * H.ls));
+      }
+      H.bx = H.lx + (H.live ? 0.3 * Math.sin(T * 1.9) : 0);                                                                       // 手不稳：微微晃着
+      const seen = play && hot && Math.abs(P.x - H.bx) < H.r * 0.9 && !inCover(P.x);
+      H.exposure = clamp(H.exposure + (seen ? dt / 0.65 : -dt / 0.9), 0, 1);
+      if (H.exposure >= 1) { H.caught = 1e-3; ctl = false; fx('alarm'); }
+      else if (probe && ci === COVERS.length - 1 && (H.hid += dt) >= T_HID) { H.st = 'leave'; H.t = 0; H.p0.copy(H.pos); H.aim0.copy(H.aim); H.exposure = 0; }   // 找不到：走了
+    }
+    // 灯照着哪里
+    const locked = H.caught > 0, kx = locked ? 1 : sstep(0.15, 1, H.exposure);
+    if (H.st === 'hunt') {                                   // 刚来的时候，灯先在远处的野地上扫，一路扫到公路上
+      const e = sstep(0.2, 1, H.t / T_IN);
+      H.aim.set(lerp(X + 62 + 14 * Math.sin(H.t * 0.9), lerp(H.bx, P.x, kx), e), lerp(0, lerp(0.25, P.y + 0.6, kx), e), lerp(-120, 0.45 * Math.sin(T * 0.9) * (1 - kx), e));
+    } else {                                                 // 飞走：灯甩到远处的山坡上去
+      const e = sstep(0, 0.45, H.t / T_OUT);
+      H.aim.set(lerp(H.aim0.x, X + 40 + 22 * Math.sin(H.t * 0.6), e), lerp(H.aim0.y, 0, e), lerp(H.aim0.z, -150, e));
+    }
+    // 直升机自己：跟着灯来回飞（飞得没有灯扫得远）；主角躲进桥下以后压低、靠近
+    H.low = damp(H.low, probe ? 1 : 0, 0.6, dt);
+    const sx = H.c + (probe ? 0.55 : 0.72) * (H.bx - H.c), sy = lerp(9.6, 7.3, H.low) + 0.3 * Math.sin(T * 0.8), sz = lerp(-13.5, -11.5, H.low) + 0.8 * Math.sin(T * 0.37);
+    _a.copy(H.pos);
+    if (hunt) {
+      if (arr < 1) H.pos.set(lerp(FAR_IN[0], sx, arr), lerp(FAR_IN[1], sy, arr), lerp(FAR_IN[2], sz, arr));
+      else { H.pos.x = damp(H.pos.x, sx, 1.6, dt); H.pos.y = damp(H.pos.y, sy, 1.2, dt); H.pos.z = damp(H.pos.z, sz, 1.2, dt); }
+    } else {
+      const e = Math.pow(clamp(H.t / T_OUT, 0, 1), 2.2);
+      H.pos.set(lerp(H.p0.x, FAR_OUT[0], e), lerp(H.p0.y, FAR_OUT[1], sstep(0, 1, H.t / T_OUT)), lerp(H.p0.z, FAR_OUT[2], e));
+      if (H.t >= T_OUT) { H.st = 'gone'; quiet(dt); return; }
+    }
+    H.vel.copy(H.pos).sub(_a).divideScalar(Math.max(dt, 1e-4));
+    // 机头朝着飞的方向；来回找的时候掉头总是从朝着镜头的那一边转过去。飞得越快机头压得越低，转弯时侧倾
+    const y0 = H.yaw; H.yaw = damp(H.yaw, Math.atan2(-H.vel.z - (hunt ? 2.5 : 0), H.vel.x), 1.6, dt);
+    H.roll = damp(H.roll, clamp(-(H.yaw - y0) / Math.max(dt, 1e-4) * 0.35, -0.35, 0.35), 3, dt);
+    H.pitch = damp(H.pitch, -0.05 - clamp(Math.hypot(H.vel.x, H.vel.z) * 0.02, 0, 0.3), 2, dt);
+    const lx = H.pos.x + 1.9 * Math.cos(H.yaw), ly = H.pos.y - 1.05, lz = H.pos.z - 1.9 * Math.sin(H.yaw);                  // 灯头在哪
+    const fade = hunt ? 1 : 1 - sstep(0.55, 0.92, H.t / T_OUT);                                                               // 飞远了，灯也看不见了
+    beam.position.set(lx, ly, lz); beam.target.position.copy(H.aim); beam.angle = ANG; beam.penumbra = 0.45;
+    beam.intensity = 34 * fade; beam.color.lerpColors(C_CALM, C_ALERT, kx);
+    H.lamp[0] = lx; H.lamp[1] = ly; H.lamp[2] = lz; H.aim.toArray(H.tgt); H.on = fade;
+    bounceL.p[0] = H.aim.x; bounceL.p[1] = H.aim.y + 1.4; bounceL.p[2] = H.aim.z + 0.6; bounceL.on = fade * sstep(-30, -8, H.aim.z); bounceL.c.copy(beam.color);
+    // 离得多近：声音、风、蟋蟀都跟着它
+    const dist = Math.hypot(H.pos.x - P.x, H.pos.y - P.y, H.pos.z);
+    H.k = damp(H.k, sstep(260, 70, dist), 1.5, dt); H.near = sstep(30, 12, dist) * sstep(14, 6, H.pos.y);
+    GUST.force = H.near > 0.02 ? lerp(gustAt(T), 3.2, H.near) : undefined; H.gust = H.near > 0.02;
+    AUD.heli = clamp(20 / (dist + 5), 0, 1); AUD.heliPan = 0.8 * clamp((H.pos.x - cam.x) / 16, -1, 1); AUD.heliLP = clamp(1.25 - dist / 150, 0.12, 1);
+    // 躲在有顶的地方、灯又扫到附近时：站住不动的主角会缩起身子
+    HX.hide = play && hot && ci >= 0 ? sstep(9, 4, Math.abs(P.x - H.bx)) * sstep(2.4, 0.9, Math.abs(P.vx)) : 0;
+    if (HX.hide > 0) HX.pose = { sit: 0.75 * HX.hide, sitH: 0.25, sitLeg: 0.35, bow: 0.3 * HX.hide };                          // 蹲下去，两手拢在胸前
+    HX.alert = H.exposure;
+    if (H.st === 'leave' && H.t < 8) camOvr = { d: 28, yo: 5.0, xo: -5 };                                                     // 镜头往左上方让一让：看着它飞走
+
+    if (!v) return;
+    v.heli.visible = true; v.heli.position.copy(H.pos); v.heli.rotation.y = H.yaw; v.tilt.rotation.set(H.roll, 0, H.pitch);
+    v.rotor.rotation.y += dt * 41; v.tailRotor.rotation.z += dt * 63;
+    _a.set(lx, ly, lz); const len = _a.distanceTo(H.aim) + 0.8;
+    for (const c of v.cones) { c.visible = fade > 0.01; c.position.copy(_a); c.lookAt(H.aim); c.scale.setScalar(len / CONE_L); c.material.color.copy(beam.color); c.material.opacity = c.userData.a * fade; }
+    v.pod.lookAt(H.aim);
+    // 光柱照到哪一处的顶上，就把顶下面那一块影子里的光柱切掉（影子的左、右、前三个面都顺着光的方向斜下去）
+    const rf = ROOFS.find(r => H.aim.x > r[0] - 6 && H.aim.x < r[1] + 6 && H.aim.z > -8);
+    if (!rf) CLIP[2].set(_b.set(0, 1, 0), 1e4);            // 附近没有顶：围出来的那一块挪到地底下去
+    else {
+      const [x1, x2, ry, zb, zf] = rf, cx = (x1 + x2) / 2, L = _c;
+      L.set(x1, ry, 0).sub(_a).normalize(); CLIP[0].setFromNormalAndCoplanarPoint(_b.set(L.y, -L.x, 0).normalize(), L.set(x1, ry, 0));
+      L.set(x2, ry, 0).sub(_a).normalize(); CLIP[1].setFromNormalAndCoplanarPoint(_b.set(-L.y, L.x, 0).normalize(), L.set(x2, ry, 0));
+      CLIP[2].setFromNormalAndCoplanarPoint(_b.set(0, 1, 0), L.set(cx, ry, 0)); CLIP[3].setFromNormalAndCoplanarPoint(_b.set(0, 0, -1), L.set(cx, 0, zb));
+      L.set(cx, ry, zf).sub(_a).normalize(); CLIP[4].setFromNormalAndCoplanarPoint(_b.set(0, L.z, -L.y).normalize(), L.set(cx, ry, zf));
+    }
+    const face = Math.max(0, _b.copy(camera.position).sub(_a).normalize().dot(_c.copy(H.aim).sub(_a).normalize()));           // 灯头有多正对着镜头
+    v.glare.position.copy(_a); v.core.position.copy(_a); v.glare.material.color.copy(beam.color);
+    v.glare.material.opacity = fade * (0.3 + 0.6 * face ** 3); v.glare.scale.setScalar(lerp(3, 8.5, face ** 4)); v.core.material.opacity = fade * (0.5 + 0.5 * face);
+    const el = clamp((ly - H.aim.y) / len, 0.08, 1), rs = len * Math.tan(ANG) * 2.6;                                          // 远处的亮斑：灯压得越低，拉得越长
+    v.spot.visible = H.aim.z < -9; v.spot.position.set(H.aim.x, groundY(H.aim.x) + 0.06, H.aim.z); v.spot.scale.set(rs, rs / el, 1); v.spot.material.opacity = 0.5 * fade * sstep(-9, -28, H.aim.z);
+    const bl = T % 1.3; v.strobe.material.opacity = bl < 0.06 || (bl > 0.16 && bl < 0.22) ? 1 : 0; v.beacon.material.opacity = T % 0.9 < 0.12 ? 0.95 : 0.1;
+  }
+  // 这一点照不照得到（1 照得到，0 在顶下面的影子里）：空中的灰用。五个面都在它们的背面，就是在影子里
+  const lit = (x, y, z) => { _d.set(x, y, z); for (const p of CLIP) if (p.distanceToPoint(_d) >= 0) return 1; return 0; };
+  function reset() {
+    Object.assign(H, { st: 'calm', t: 0, stage: 0, live: false, lx: X + 47, l0: X + 47, l1: X + 47, ls: 0, lD: 1, c: X + 46, bx: X + 47, exposure: 0, caught: 0, hid: 0, low: 0, k: 0, near: 0, on: 0, yaw: -1.57, roll: 0, pitch: 0 });
+    H.pos.set(...FAR_IN); H.vel.set(0, 0, 0);
+    if (H.gust) { GUST.force = undefined; H.gust = false; }
+    if (envMod === mod) envMod = null;
+  }
+  function solve() { reset(); H.st = 'gone'; }
+  return defZone({ n: 11, vis: [X - 30, X + 170], build, update, reset, solve, unbuild() { V = null; },
+    // 回到存档点：灯从这一段的最右边重新朝这边扫过来
+    respawn(c) { if (c.x > X - 10 && c.x < X + 160) { Object.assign(H, { exposure: 0, caught: 0, hid: Math.min(H.hid, 3) }); if (H.live) { H.lx = SWEEP[H.stage][1]; leg(SWEEP[H.stage][0]); } } }, H, COVERS, SWEEP, lit });
+})();
+
+// ============================================================
 //  空中的细节（一）：画法和公用的几种东西
 //  飞落的尘埃、飘荡的落叶、风沙、纸片和塑料袋、蠓虫、飞蛾、苍蝇、蜻蜓、蝴蝶、远处的鸟群、萤火虫。
 //  这些小东西都用“点”来画：一个点就是一张面朝镜头的小贴图，一整团只占一次绘制。
@@ -9269,7 +9694,7 @@ function airCloud(R, n, o) {
 
 // ---- 光里的尘埃：一颗颗在光里出生，慢慢往下落，飘出光就暗了。lights 是一组“光的范围”----
 //   slab 斜着的一道光（天窗、枝叶间漏下来的）{ x0 落地处的中心, x1 顶上的中心, y0, y1, w0 / w1 底下 / 顶上的半宽, z0, z1 }
-//   cone 一束聚光（探照灯、监控、吊灯）{ at() 返回 [灯的位置 [x,y,z], 照向的点 [x,y,z], 亮度 0..1], ang 半张角 }
+//   cone 一束聚光（探照灯、监控、吊灯）{ at() 返回 [灯的位置 [x,y,z], 照向的点 [x,y,z], 亮度 0..1], ang 半张角, shade(s) 这一颗没被东西挡住几成（不写就是没挡）}
 //   ball 一团灯光 { p: [x,y,z], r 半径 }
 //   back 逆光：尘埃挡在一面发光的墙前面的时候亮 { z 墙在哪, lum(x, y) 墙上这一点多亮（0..1）, box: [x1, x2, y1, y2, z1, z2] 在哪里出生（x 只在镜头看得见的那一段里取）}
 //   drip 从高处一缕一缕漏下来的灰 { p: [x, y, z], spread 横着散开多宽 }
@@ -9282,7 +9707,7 @@ function litDust(R, n, lights, o = {}) {
       return (1 - sstep(hw * 0.5, hw, Math.abs(s.x - cx))) * (1 - sstep(0, 1, Math.max(L.z0 - s.z, s.z - L.z1))) * lerp(0.45, 1, t); }
     if (L.k === 'cone') { cone(L); if (L._k <= 0) return 0; const p = L._p, q = L._q; ax.set(q[0] - p[0], q[1] - p[1], q[2] - p[2]); const len = ax.length(); ax.divideScalar(len);
       v.set(s.x - p[0], s.y - p[1], s.z - p[2]); const d = v.dot(ax); if (d <= 0) return 0; const r = v.addScaledVector(ax, -d).length(), rr_ = d * Math.tan(L.ang);
-      return L._k * (1 - sstep(rr_ * 0.4, rr_ * 1.05, r)) * (1 - sstep(len * 0.92, len * 1.12, d)); }
+      return L._k * (1 - sstep(rr_ * 0.4, rr_ * 1.05, r)) * (1 - sstep(len * 0.92, len * 1.12, d)) * (L.shade ? L.shade(s) : 1); }
     if (L.k === 'ball') return Math.pow(Math.max(0, 1 - Math.hypot(s.x - L.p[0], s.y - L.p[1], s.z - L.p[2]) / L.r), 1.6);
     if (L.k === 'back') { const c = camera.position, k = (L.z - c.z) / (s.z - c.z); return L.lum(c.x + (s.x - c.x) * k, c.y + (s.y - c.y) * k); }
     return 1;
@@ -9788,6 +10213,40 @@ airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
   for (const d of CH10.DECO) if (d.z === -15 && d.S !== CH10.S1) B.push(['crow', d.rx + 0.45, d.arm + 0.065, d.z, { flee: 5, dy: 4, toZ: -12 }]);
   for (const [dz, f] of [[-3.6, 1], [-5.1, -1]]) B.push(['crow', X10 + 99.9, 11.8 + 1.72 + 0.03, dz, { face: f, flee: 3.5, dy: 3, toZ: -14 }]);   // 尽头的栏杆
   sys.push(airBirds(R, B, { spread: 3 }));
+});
+
+// ---- 第十一章 · 夜搜 ----
+// 探照灯的光柱里一粒粒发亮的灰。直升机压低了的时候，旋翼的风从它正下方贴着地面往四周吹：一道道灰、草屑和叶子被刮得满地跑。
+// 路灯边绕着几只飞蛾，野地里飘着草籽的绒毛；电线杆上、候车亭顶上歇着几只乌鸦，直升机一来就全飞了。
+// （萤火虫在环境里：直升机一来就不见了，它飞走以后再出来）
+airZone(11, [X11 - 30, X11 + 170], [X11 - 60, X11 + 200], function* (R, sys) {
+  const H = CH11.H, wash = () => 7 * H.near * clamp((camera.position.x - H.pos.x) / 7, -1, 1);       // 旋翼的风：背着直升机往两边吹
+  sys.push(litDust(R, 420, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 1.25, shade: s => CH11.lit(s.x, s.y, s.z) }])); yield;   // 顶下面的灰照不到，不亮
+  const ax = V3(), d = V3();
+  sys.push(airCloud(R, 240, { name: 'wash', order: 44,
+    init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x7f8c9a); },
+    step(s, dt) {
+      s.age += dt;
+      if (s.age >= s.life) {                                 // 在直升机正下方的一圈里出生，朝外吹出去
+        if (Math.random() > H.near) { s.a = 0; return; }
+        const a = ar(0, 6.2832), r = ar(1.5, 4.5);
+        s.x = H.pos.x + Math.cos(a) * r; s.z = H.pos.z + Math.sin(a) * r * 0.8; s.dx = Math.cos(a); s.dz = Math.sin(a); s.v = ar(6, 11);
+        s.h = 0.04 + 0.9 * Math.pow(Math.random(), 2.2); s.age = 0; s.life = ar(1.0, 2.1); s.len = ar(0.14, 0.4); s.a0 = ar(0.25, 0.6); s.hp = ar(0, 6.28);
+      }
+      s.x += s.dx * s.v * dt; s.z += s.dz * s.v * dt; s.v *= Math.exp(-0.7 * dt); s.hp += dt * 9;
+      s.y = groundY(s.x) + s.h + 0.05 * Math.abs(Math.sin(s.hp)); s.rot = 0.25 * Math.cos(s.hp) * Math.sign(s.dx || 1); s.size = s.len * (0.7 + 0.5 * H.near);
+      ax.set(H.tgt[0] - H.lamp[0], H.tgt[1] - H.lamp[1], H.tgt[2] - H.lamp[2]).normalize(); d.set(s.x - H.lamp[0], s.y - H.lamp[1], s.z - H.lamp[2]);
+      const t = d.dot(ax), inBeam = t > 0 ? 1 - sstep(0.5, 1.1, d.addScaledVector(ax, -t).length() / (t * Math.tan(0.16))) : 0;   // 吹进光柱里的那几道亮起来
+      s.a = s.a0 * (0.35 + 1.1 * inBeam * H.on * CH11.lit(s.x, s.y, s.z)) * sstep(0, 0.15, s.age) * (1 - sstep(s.life - 0.6, s.life, s.age));
+    } })); yield;
+  sys.push(airLeaves(R, { name: 'seeds', n: 14, drift: true, tiles: [8], cols: [0xb9c6d8, 0xa8b6cc], size: [0.07, 0.11], z: [-5, 5], lo: 0.3, hi: 2.6, lift: 0.25, wind: () => -0.5 + wash(), a: 0.5 }));
+  sys.push(airLeaves(R, { name: 'scraps', n: 16, drift: true, tiles: [2, 3, 4, 5], cols: [0x2e3a2a, 0x3a4630, 0x26301f], size: [0.06, 0.12], z: [-4, 4], lo: 0.05, hi: 1.8, lift: 0.3, wind: () => 1.4 * wash(), on: () => H.near > 0.25, a: 0.9 }));
+  sys.push(airMoths(R, [[X11 + 11.5, 4.75, -1.35, 5]], { c: 0xffd29a })); yield;
+  const B = [];
+  for (const [x, f] of [[33.25, 1], [33.9, -1], [34.5, 1]]) B.push(['crow', X11 + x, 6.36, -4.4, { face: f, flee: 0, s: 1.3, toZ: -5, back: 9999 }]);     // 第三根电线杆的横担上
+  for (const [x, f] of [[38.9, -1], [40.6, 1]]) B.push(['crow', X11 + x, 2.66, -0.6, { face: f, flee: 2.6, dy: 5, toZ: -4, back: 9999 }]);                           // 候车亭顶上
+  const birds = airBirds(R, B, { spread: 8 }); sys.push(birds);
+  sys.push({ name: 'birds', step() { if (H.st === 'hunt' && H.k > 0.35) birds.scare(X11 + 37, 12, 1); } });                 // 直升机飞近了：全惊飞
 });
 
 // ============================================================
@@ -10424,7 +10883,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -10440,7 +10899,7 @@ function soundNote(first) {
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
 const SKIP = { 3: s => { s.cat = true; }, 4: s => { s.fed = true; }, 5: s => { s.cleaner = s.cleaner || 1; }, 6: s => { s.pump = true; s.water = true; }, 7: s => { s.wild = true; } };
 const UNDO = { 3: s => { s.cat = false; }, 4: s => { s.fed = false; }, 5: s => { s.cleaner = 0; }, 6: s => { s.pump = false; s.water = false; }, 7: s => { s.wild = false; }, 8: s => { s.ending = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][n - 1];      // 07 的灯：每帮别人一次，暗一档
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
@@ -10755,7 +11214,7 @@ function sim(dt) {
 
   // 这些每一帧都清零，由走到的那一章重新填写
   HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null;
-  for (const k in AUD) AUD[k] = 0; AUD.humF = 52; beam.intensity = 0;
+  for (const k in AUD) AUD[k] = 0; AUD.humF = 52; beam.intensity = 0; beam.angle = 0.118; beam.penumbra = 0.4;   // 探照灯的张角：第一章用原样的，第十一章的直升机自己改宽
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
