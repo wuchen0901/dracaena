@@ -38,12 +38,15 @@ const CH14 = (() => {
 
   // ---- 豁口：{ z 在哪, w 半宽, d 塌下去几层, p 形状（小于 1 圆，大于 1 尖）} ----
   // 玩法平面（z = 0）上那一截要整整齐齐，跳过去的高度才是定的
-  const NOTCH = [{ z: 2.7, w: 0.8, d: 4, p: 1.3 }, { z: -3.9, w: 0.42, d: 2, p: 0.8 }, { z: -9.6, w: 1.35, d: 6, p: 1.1 }, { z: -15.8, w: 0.5, d: 3, p: 1.6 },
-    { z: -21.5, w: 0.9, d: 2, p: 0.7 }, { z: -27, w: 1.7, d: 7, p: 1.2 }, { z: 9.5, w: 0.6, d: 3, p: 1 }];
+  const NOTCH = [{ z: -3.9, w: 0.42, d: 2, p: 0.8 }, { z: -9.6, w: 1.35, d: 6, p: 1.1 }, { z: -15.8, w: 0.5, d: 3, p: 1.6 },
+    { z: -21.5, w: 0.9, d: 2, p: 0.7 }, { z: -27, w: 1.7, d: 7, p: 1.2 }];
   withSeed(14141, () => { for (let z = -34; z > Z0; z -= rr(5, 15)) NOTCH.push({ z, w: rr(0.3, 1.7), d: Math.round(rr(1, 7)), p: rr(0.7, 1.6) }); });
   const hsh = (a, b, c = 0) => { const s = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453; return s - Math.floor(s); };
   // 从上往下数第 t 层（0 是压顶砖，1 是最上面一层砖）在 z 处还在不在。jit：每块砖自己的一点出入，豁口的边才是参差的
+  // 离镜头近的那一截（z > 1.6）塌了，只剩墙根：从上面断下去，剩下几层高低不齐
+  const remain = z => z < 1.6 ? NC + 2 : lerp(NC, 1.6 + 1.4 * (1 + Math.sin(z * 0.9 + 1)) + 1.2 * hsh(Math.floor(z * 1.5), 7), sstep(1.6, 2.15, z));
   function gone(t, z, jit) {
+    if (z > 1.4) { const rm = remain(z + (hsh(t, 3) - 0.5) * 1.1); if (t === 0 ? rm < NC + 0.5 : NC - t + 1 > rm + (rm > NC - 1 ? 0.7 : 1.8) * jit) return true; }   // 断口上的砖参差得厉害，不成台阶
     for (const n of NOTCH) {
       const u = Math.abs(z - n.z) / n.w; if (u > 1.7) continue;
       if (t === 0 ? u < 1.12 + 0.18 * jit : t <= n.d * (1 - Math.pow(Math.min(u, 1), n.p)) + 0.45 * jit) return true;
@@ -262,6 +265,70 @@ const CH14 = (() => {
         i = j + 1;
       }
     }
+    // ---- 前景：镜头跟前一整条建筑废料，照不到灯，几乎全黑，只勉强看得出轮廓 ----
+    //   高度不能挡住孩子的脚：从镜头看过去，z 处的东西矮于 hmax(z) 就在孩子脚底下的画面里（离镜头越近，能越高）；
+    //   隔一段才有一样高的（断砖垛、斜靠的板子、竖着的钢筋），离镜头很近，走过去一晃就过去了
+    const CZ = 10.5, hmax = z => 1.17 - 0.111 * (CZ - z);
+    const C = { p: [], n: [], c: [] }, conc = () => new THREE.Color(0x76736b).multiplyScalar(rr(0.7, 1.05));
+    const concMat = shade(lam(0xffffff, { vertexColors: true }), 3), rust = shade(lam(0x3a2a20), 3);
+    const rebar = (pts, r = 0.009) => tube(R, pts, r, rust, 10);
+    const mound = (x, z, r, h, col) => { const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.2, flat: 1, moss: 0.15, col }), concMat, x, 0, z); m.scale.set(r, h, r * rr(0.6, 0.9)); m.rotation.y = rr(0, 6.28); };
+    const heap = (cx, cz, r, h) => {                                // 一堆碎砖：底下一个土堆垫着，上面乱码着整砖、半截砖
+      mound(cx, cz, r * 0.85, h * 0.75, 0x3e3830);
+      for (let i = 0, n = Math.round(r * r * 70 + 8); i < n; i++) {
+        const a = rr(0, 6.28), d = Math.sqrt(rnd()) * r, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 0.75, top = h * (1 - (d / r) * (d / r));
+        pushBox(A, x, rr(top * 0.55, Math.max(0.03, top)) + 0.02, z, BD / 2, BH / 2, rnd() < 0.35 ? rr(0.04, 0.09) : BL / 2, 0, [rr(-0.7, 0.7), rr(0, 6.28), rr(-0.7, 0.7)], brickCol(0.1, 0.85));
+      }
+    };
+    const slab = (x, z, w, d, th, rx, rz, bars) => {               // 一块断了的钢筋混凝土板，半埋着、歪着，断口那边戳出几根弯了的钢筋
+      const y = th / 2 + Math.abs(Math.sin(rx)) * d * 0.5 + Math.abs(Math.sin(rz)) * w * 0.5 - rr(0.02, 0.08), ry = rr(0, 6.28);
+      pushBox(C, x, y, z, w / 2, th / 2, d / 2, 0.01, [rx, ry, rz], conc());
+      const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)).setPosition(x, y, z);
+      for (let i = 0; i < bars; i++) {
+        const u = rr(-0.4, 0.4) * d, p0 = V3(w / 2 - 0.05, rr(-0.3, 0.3) * th, u), dir = V3(1, rr(-0.2, 0.6), rr(-0.4, 0.4)).normalize(), L = rr(0.25, 0.7);
+        const p1 = p0.clone().addScaledVector(dir, L * 0.45), p2 = p1.clone().addScaledVector(dir, L * 0.3).add(V3(0, rr(-0.25, 0.3), rr(-0.2, 0.2))), p3 = p2.clone().add(V3(rr(0, 0.2), rr(-0.3, 0.1), rr(-0.15, 0.15)));
+        rebar([p0, p1, p2, p3].map(p => p.applyMatrix4(m).toArray()));
+      }
+    };
+    const chunk = (x, z, s) => { const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 0, amp: 0.35, flat: 0.7, moss: 0, col: 0x6e6b64 }), concMat, x, s * 0.25, z); m.scale.set(s * rr(1, 1.6), s, s * rr(0.8, 1.2)); m.rotation.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); };
+    const pier = (x, z, h) => {                                     // 断了的砖垛：一层两块，上面几层缺东少西
+      for (let r = 0, n = Math.round(h / PY); r < n; r++) for (const k of [-1, 1]) {
+        if (r > n - 4 && rnd() < 0.35 + (r - n + 4) * 0.15) continue;
+        const along = r % 2 ? [BL / 2, BD / 2] : [BD / 2, BL / 2], o = r % 2 ? [0, k * 0.058] : [k * 0.058, 0];
+        pushBox(A, x + o[0] + rr(-0.004, 0.004), r * PY + J + BH / 2, z + o[1], along[0], BH / 2, along[1], 0, [0, rr(-0.03, 0.03), 0], brickCol(r * PY, 0.85));
+      }
+    };
+    const wallX = (x0, x1, zc, top) => {                           // 沿着 x 的一段残墙，只剩墙根，两皮砖厚，上沿参差
+      for (let r = 0; r < 9; r++) for (const k of [-1, 1]) {
+        const off = (r % 2) * PZ / 2;
+        for (let x = x0 + off; x < x1; x += PZ) if (r < top(x) + rr(-0.6, 0.6))
+          pushBox(A, x + PZ / 2, r * PY + J + BH / 2, zc + k * 0.056, BL / 2 - rr(0, 0.003), BH / 2, BD / 2 - 0.002, 0, [0, rr(-0.01, 0.01), 0], brickCol(r * PY, 0.85));
+      }
+    };
+    // 塌下来的那一截墙两边：墙上倒下来的砖堆成两溜
+    for (let z = 1.9; z < 10; z += rr(0.7, 1.4)) for (const sd of [-1, 1]) if (rnd() < 0.8) { const r = rr(0.35, 0.75); heap(WX + sd * (T / 2 + r * 0.6), z, r, Math.min(hmax(z) * 0.85, r * 0.6)); }
+    // 整条路的前景
+    for (let x = X - 16; x < X + 36; x += rr(0.7, 1.7)) {
+      if (Math.abs(x - WX) < 1.2) continue;
+      const z = rr(2.8, 9.4), u = rnd(), hm = hmax(z);
+      if (u < 0.5) { const r = rr(0.4, 1.0); heap(x, z, r, Math.min(hm * rr(0.55, 0.95), r * 0.65)); }
+      else if (u < 0.78) { const th = rr(0.08, 0.15), d = rr(0.4, 0.9), w = rr(0.6, 1.4), rz = rr(-0.35, 0.35) * Math.min(1, hm / (w * 0.5)); slab(x, z, w, d, th, rr(-0.25, 0.25), rz, Math.floor(rr(1, 5))); }
+      else { chunk(x, z, rr(0.12, Math.min(0.35, hm * 0.5))); chunk(x + rr(-0.5, 0.5), z + rr(-0.4, 0.4), rr(0.08, 0.2)); }
+      if (rnd() < 0.5) chunk(x + rr(-0.6, 0.6), rr(2.6, 9.6), rr(0.04, 0.1));
+    }
+    // 一段只剩墙根的房子的墙，横在前景里，有几处断开
+    for (const [x0, x1] of [[X - 15, X - 9.5], [X - 7.8, X - 3], [X + 12, X + 17.5], [X + 20, X + 27]]) wallX(x0, x1, 6.4, x => 2 + 3.5 * (0.5 + 0.5 * Math.sin(x * 0.7)) * sstep(x0, x0 + 1.2, x) * sstep(x1, x1 - 1.2, x));
+    // 隔一段一样高的东西：离镜头很近，一晃就过去
+    for (const [x, kind] of [[X - 11, 'pier'], [X - 1.5, 'slab'], [X + 4.2, 'bars'], [X + 14.5, 'pier'], [X + 23, 'slab']]) {
+      const z = rr(8.2, 9.3);
+      if (kind === 'pier') pier(x, z, rr(1.0, 1.4));
+      else if (kind === 'slab') { const th = 0.14, w = 1.1, h = 1.5, y = h / 2 * Math.cos(0.45) - 0.05;   // 斜靠着的一块板，上沿断口戳出钢筋
+        pushBox(C, x, y, z, w / 2, h / 2, th / 2, 0.01, [-0.45, rr(-0.3, 0.3), rr(-0.1, 0.1)], conc());
+        for (let i = 0; i < 5; i++) { const bx0 = x + rr(-0.45, 0.45), by0 = h * Math.cos(0.45) - 0.08, bz0 = z - h / 2 * Math.sin(0.45); rebar([[bx0, by0, bz0], [bx0 + rr(-0.05, 0.05), by0 + rr(0.15, 0.3), bz0 - rr(0, 0.1)], [bx0 + rr(-0.25, 0.25), by0 + rr(0.25, 0.5), bz0 + rr(-0.2, 0.15)]], 0.011); }
+        heap(x + rr(-0.3, 0.3), z + 0.4, 0.6, 0.35); }
+      else { mound(x, z, 0.5, 0.25, 0x5a5850); for (let i = 0; i < 7; i++) { const bx0 = x + rr(-0.35, 0.35), bz0 = z + rr(-0.2, 0.2), hh = rr(0.6, 1.5); rebar([[bx0, 0.1, bz0], [bx0 + rr(-0.05, 0.05), hh * 0.6, bz0], [bx0 + rr(-0.3, 0.3), hh, bz0 + rr(-0.2, 0.2)], [bx0 + rr(-0.5, 0.5), hh - rr(0, 0.3), bz0 + rr(-0.2, 0.2)]], 0.012); } }
+    }
+    v.debris = meshOf(C, concMat); R.add(v.debris);
     const brickMat = shade(lam(0xffffff, { vertexColors: true }), 0);
     v.wall = meshOf(A, brickMat); R.add(v.wall);
     v.mortar = meshOf(M, brickMat); R.add(v.mortar);
@@ -321,7 +388,7 @@ const CH14 = (() => {
       const curve = new THREE.CatmullRomCurve3(main.map(p => V3(...rel(p))));
       const twigs = [];
       for (let i = 0; i < 9; i++) {                                   // 侧枝：从主枝上岔出去，往下垂
-        const t = rr(0.3, 0.95), a = curve.getPoint(t), d = V3(rr(-1, 1), rr(-0.9, -0.2), rr(-1, 0.6)).normalize().multiplyScalar(rr(0.6, 1.3));
+        const t = rr(0.3, 0.95), a = curve.getPoint(t), d = V3(rr(-1, 1), rr(-0.35, 0.15), rr(-1, 0.6)).normalize().multiplyScalar(rr(0.4, 0.85));
         const b = a.clone().add(d), m = a.clone().lerp(b, 0.5).add(V3(0, rr(0.05, 0.2), 0));
         tube(tr, [a, m, b].map(p => p.toArray()), 0.022, bark, 8); twigs.push(b);
       }
