@@ -67,7 +67,7 @@ const CH14 = (() => {
     float wallD(vec3 q) {
       float dz = max(0., -q.z);
       float base = 0.03 + 0.5 * exp(-max(0., dz - 3.) / 10.);              // 近处有天光，往后很快暗下去
-      base *= 1. - 0.88 * smoothstep(1.2, 4.5, q.z);                         // 镜头跟前在树底下：天光、月光都被挡掉，近处那一截墙成了黑影，眼睛先落在中间
+      base *= 1. - 0.88 * smoothstep(1.2, 4.5, q.z);                         // 镜头跟前压得很暗：近处那一截墙和前景成了黑影，眼睛先落在中间
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
       float cl = n2(c2) * 0.65 + n2(c2 * 2.3 + 7.1) * 0.35;
       float gap = smoothstep(0.56, 0.7, cl) * smoothstep(14., 30., dz) * exp(-dz / 80.);
@@ -372,28 +372,6 @@ const CH14 = (() => {
       for (let x = X - 120; x < X + 140; x += rr(0.8, 1.8)) { const h = 5 + 3.5 * Math.sin(x * 0.05) + 2.5 * Math.sin(x * 0.17 + 1) + rr(-1, 1.5); disc(g, x, h - rr(0.5, 1.5), rr(1.2, 2.6)); box(g, x - 1, -2, 2.2, h - 1); }
       for (let x = X - 115; x < X + 135; x += rr(9, 26)) tree(g, x, 0, rr(10, 14), 'pine');
     }, { fog: false, blur: 2.5, blurOnce: true });
-    // ---- 头顶伸过来一根树枝（树干在镜头后面，看不到）：叶子挡住路灯照向近处那一截墙和地的光，那里成了一片黑影 ----
-    {
-      const B0 = [WX + 4.4, 6.9, 11], tr = grp(R, ...B0), rel = p => [p[0] - B0[0], p[1] - B0[1], p[2] - B0[2]];
-      const bark = lam(0x1a1714); bark.userData.own = true;
-      const main = [B0, [WX + 3.0, 5.4, 6.5], [WX + 1.4, 4.0, 3.3], [WX - 0.1, 3.1, 1.6], [WX - 1.3, 2.65, 0.7]];
-      tube(tr, main.map(rel), 0.075, bark, 28);
-      const curve = new THREE.CatmullRomCurve3(main.map(p => V3(...rel(p))));
-      const twigs = [];
-      for (let i = 0; i < 9; i++) {                                   // 侧枝：从主枝上岔出去，往下垂
-        const t = rr(0.3, 0.95), a = curve.getPoint(t), d = V3(rr(-1, 1), rr(-0.35, 0.15), rr(-1, 0.6)).normalize().multiplyScalar(rr(0.4, 0.85));
-        const b = a.clone().add(d), m = a.clone().lerp(b, 0.5).add(V3(0, rr(0.05, 0.2), 0));
-        tube(tr, [a, m, b].map(p => p.toArray()), 0.022, bark, 8); twigs.push(b);
-      }
-      // 叶子：一团团挤在枝头上，越往梢头越密
-      const cl = [];
-      for (let t = 0.32; t <= 1.001; t += 0.06) { const p = curve.getPoint(t); cl.push([p, lerp(0.85, 0.65, t)]); for (let k = 0; k < 2; k++) cl.push([p.clone().add(V3(rr(-0.7, 0.7), rr(-0.35, 0.3), rr(-0.6, 0.6))), rr(0.45, 0.7)]); }
-      for (const b of twigs) cl.push([b, rr(0.4, 0.6)]);
-      const pts = [];
-      for (const [c, r] of cl) for (let k = 0; k < 120; k++) { const u = V3(rr(-1, 1), rr(-1, 1), rr(-1, 1)); if (u.lengthSq() <= 1) pts.push(u.multiplyScalar(r).multiply(V3(1, 0.6, 1)).add(c)); }
-      leafMass(tr, pts);
-      v.tree = tr;
-    }
     V = v;
   }
 
@@ -412,7 +390,7 @@ const CH14 = (() => {
     const fl = 1 - 0.18 * Math.pow(Math.max(0, Math.sin(T * 0.7) * Math.sin(T * 5.3 + 1)), 6) - 0.05 * Math.max(0, Math.sin(T * 31)) * Math.pow(Math.max(0, Math.sin(T * 0.23)), 20);
     beam.position.set(HEAD[0], HEAD[1], HEAD[2]); beam.target.position.set(WX - 0.55, 0, -1.4);
     beam.angle = 1.22; beam.penumbra = 0.55; beam.intensity = 170 * fl; beam.color.setHex(0xffa45a);   // 张角放得很大，明暗主要靠距离衰减：从灯底下往外一点点暗下去
-    if (V) { V.tree.rotation.z = 0.006 * Math.sin(T * 0.8) * GUST.v; V.tree.rotation.x = 0.004 * Math.sin(T * 0.55 + 1) * GUST.v; V.lamp.g1.material.opacity = 0.95 * fl; V.lamp.g2.material.opacity = 0.2 * fl; }
+    if (V) { V.lamp.g1.material.opacity = 0.95 * fl; V.lamp.g2.material.opacity = 0.2 * fl; }
   }
   return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; nearShadow(false); } });
 })();
