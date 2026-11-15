@@ -12685,28 +12685,30 @@ const CH14 = (() => {
       diffuseColor.rgb *= 1. - 0.4 * smoothstep(0.5, 0.85, n2(vec2(q.z * 7., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${TOP.toFixed(3)}, q.y);
     }
     diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
-    // 2 地面：土、干草根、碎石，一条踩实了的小路（玩法平面上），墙脚又湿又暗
+    // 2 地面：山上的岩石 —— 灰色岩面、岩层的纹理、裂开的石缝、地衣斑点；凹处积着碎石和水
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
     vec2 g = q.xz;
     float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, mid = n2(g * 2.1 + 1.3), fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
-    vec3 c = mix(${v3(0x342b23)}, ${v3(0x463b2c)}, smoothstep(0.35, 0.8, big));
-    c = mix(c, ${v3(0x34332f)}, smoothstep(0.5, 0.9, mid) * 0.45);
-    c = mix(c, ${v3(0x3a3329)}, (1. - smoothstep(0.3, 1.1, abs(q.z - pzf(q.x) + 0.05 + 0.2 * (n2(g * 0.9) - .5)))) * 0.55);
-    c *= mix(1., 0.75 + 0.35 * fine + 0.2 * (fine2 - .5), fd);
-    float wall = abs(q.x) - ${(T / 2).toFixed(3)};
-    c *= mix(0.45, 1., smoothstep(0., 0.42, wall));
-    // 干裂的泥缝：一格格的裂纹，成片出现（离镜头近才看得清）
-    vec2 cg = g * 2.6, ci = floor(cg), cf = fract(cg); float d1 = 9., d2 = 9.;
+    vec3 c = mix(${v3(0x45454a)}, ${v3(0x5c5b57)}, smoothstep(0.3, 0.8, big));                 // 岩面：深浅不一的灰
+    c = mix(c, ${v3(0x3a3936)}, smoothstep(0.55, 0.85, mid) * 0.6);
+    float steep = 1. - smoothstep(0.55, 0.9, vWN.y);                                                   // 陡的面上看得到岩层
+    float strata = smoothstep(0.75, 0.95, abs(sin(q.y * 9. + q.x * 0.6 + n2(g * 0.8) * 4.)));
+    c *= 1. - 0.35 * strata * (0.3 + 0.7 * steep);
+    c *= mix(1., 0.72 + 0.4 * fine + 0.25 * (fine2 - .5), fd);                                        // 石面的颗粒
+    // 石缝：一格格裂开，近处看得清
+    vec2 cg = g * 1.7, ci = floor(cg), cf = fract(cg); float d1 = 9., d2 = 9.;
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
       vec2 o = vec2(float(i), float(j)), p = o + vec2(h21(ci + o), h21(ci + o + 7.3)) - cf; float d = dot(p, p);
       if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
     }
-    float crack = (1. - smoothstep(0., 0.07, sqrt(d2) - sqrt(d1))) * smoothstep(0.45, 0.7, n2(g * 0.35 + 9.)) * fd;
-    c *= 1. - 0.5 * crack;
-    c *= 1. - 0.35 * smoothstep(0.82, 0.92, n3(vec3(g * 9., 3.))) * fd;          // 草根、碎屑：深色的小斑点
-    c *= 1. + 0.25 * smoothstep(0.86, 0.95, n3(vec3(g * 14., 8.))) * fd;          // 小砂粒：浅一点的点
-    // 水渍：积在凹下去的地方，还有零星几块；颜色发深，从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
-    wet14 = clamp(0.6 * smoothstep(-0.06, -0.18, vDet) + 0.8 * smoothstep(0.8, 0.9, n2(g * 0.45 + 21.)), 0., 1.) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)) * smoothstep(0.35, 0.6, n2(g * 0.7 + 13.));   // 一块一块的，不顺着车辙连成长条
+    float crack = (1. - smoothstep(0., 0.025 + 0.03 * n2(g * 3.), sqrt(d2) - sqrt(d1))) * smoothstep(0.4, 0.65, n2(g * vec2(0.45, 0.6) + 9.));   // 只在一部分地方裂开，不像铺的石板
+    c *= 1. - 0.6 * crack * (0.4 + 0.6 * fd);
+    c = mix(c, ${v3(0x8a8d80)}, smoothstep(0.88, 0.94, n3(vec3(g * 6., 2.))) * (1. - steep) * 0.2);   // 地衣：浅色的斑点，长在朝上的石面
+    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.6);                             // 凹处积着碎石，暗一些
+    float wall = abs(q.x) - ${(T / 2).toFixed(3)};
+    c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
+    // 水：积在凹下去的石窝里，一块一块的；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
+    wet14 = clamp(0.7 * smoothstep(-0.06, -0.18, vDet) + 0.6 * smoothstep(0.82, 0.9, n2(g * 0.45 + 21.)), 0., 1.) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)) * smoothstep(0.35, 0.6, n2(g * 0.7 + 13.));
     c = mix(c, c * 0.4, wet14);
     diffuseColor.rgb = c;`,
     // 3 其它（灯杆）：只跟着压暗
@@ -12865,20 +12867,22 @@ const CH14 = (() => {
     yield;
     // ---- 地面：一整块，颜色在着色器里算（越远越暗也在那里） ----
     // 地面：近处（z > -6）一块细的、远处一块粗的，用同一个高度函数，接缝对得上
-    const groundMat = shade(lam(0xffffff), 2);
+    const groundMat = shade(lam(0xffffff, { flatShading: true }), 2);   // 一个个平的小面：看上去是棱角分明的岩面
     {
       const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
       // 孩子身前（z > 0）：土包、浅坑、一道道压出来的辙，越靠镜头起伏越大（不能高到挡住孩子的脚）。孩子走的那条路和墙脚保持平
       const hFront = (x, z) => {
         const k = sstep(0.35, 1.4, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
-        return k * amp * (1.6 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.6 * (vn(x * 1.1 + 7, z * 1.3) - 0.5) + 0.25 * (vn(x * 3.1, z * 3.3 + 5) - 0.5) - 0.35 * Math.pow(Math.abs(Math.sin(z * 1.7 + vn(x * 0.2, 9) * 3)), 6));
+        const ridge = 1 - Math.abs(2 * vn(x * 0.6 + 3, z * 0.7) - 1);                                  // 山脊一样的尖棱
+        return k * amp * (1.5 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.7 * (ridge - 0.5) + 0.35 * (vn(x * 2.2, z * 2.4 + 5) - 0.5));
       };
       // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
       const hBack = (x, z) => {
         const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, Math.abs(x - WX)), A = 0.35 + 0.07 * Math.min(dz, 90);
         const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
-        return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills);
+        const crag = A * 0.5 * Math.pow(1 - Math.abs(2 * vn(x * 0.09 + 11, z * 0.08) - 1), 3);          // 一道道突出来的岩脊
+        return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
       };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
@@ -12905,9 +12909,9 @@ const CH14 = (() => {
         }
       };
       // 大一点的石块：一块块单独的，半埋在土里
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < 150; i++) {
         const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
-        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { flat, amp: rr(0.18, 0.32), moss: rr(0, 0.6), col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
+        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: rnd() < 0.6 ? 0 : 1, flat, amp: rr(0.25, 0.42), moss: rr(0, 0.4), col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
         m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
       }
       // 碎石子：一个带实例的网格，路上也有一些
@@ -12923,7 +12927,7 @@ const CH14 = (() => {
       }
       // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
       {
-        const n = 2600, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);
+        const n = 500, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);   // 山上叶子少
         for (let i = 0; i < n; i++) {
           let x, z;
           if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
@@ -12942,7 +12946,7 @@ const CH14 = (() => {
           const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, r, 5).toNonIndexed(), a = g.attributes.position.array, n = g.attributes.normal.array;
           for (let i = 0; i < a.length; i++) { P.push(a[i]); N.push(n[i]); } g.dispose();
         };
-        for (let i = 0; i < 160; i++) {
+        for (let i = 0; i < 50; i++) {
           let x, z; if (rnd() < 0.25) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.25, 0.9); z = PZ_(x) + rr(-5, 4); } else [x, z] = spot(rnd() < 0.06);
           const L = rr(0.15, 0.75) * (rnd() < 0.1 ? 1.8 : 1), a = rr(0, 6.28), r = rr(0.005, 0.014) * (L > 0.8 ? 1.5 : 1), dx = Math.cos(a), dz = Math.sin(a), bend = rr(-0.12, 0.12);
           const pts = [0, 0.33, 0.66, 1].map(t => { const px = x + dx * L * (t - 0.5) - dz * bend * Math.sin(t * 3.14), pz = z + dz * L * (t - 0.5) + dx * bend * Math.sin(t * 3.14); return V3(px, gy(px, pz) + r + 0.004 + 0.02 * Math.sin(t * 3.14) * rnd(), pz); });
