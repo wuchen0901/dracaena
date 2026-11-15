@@ -4,14 +4,14 @@
 // ============================================================
 const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0, lift: 0 };     // lift：镜头比平常再抬高多少（往下看）
 let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
-let camOvr = null;                                 // 过场时由章节临时接管镜头：{ d 距离, yo 高度偏移, xo 水平偏移 }
+let camOvr = null;                                 // 过场时由章节临时接管镜头：{ d 距离, yo 高度偏移, xo 水平偏移, lift 抬高（不写就是 0）}
 function placeCamera() {
   camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
   key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
   rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
 }
 function updateCamera(dt) {
-  const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo] : camKey(P.x);
+  const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo, camOvr.lift ?? 0] : camKey(P.x);
   cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
   cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
   const ty = (P.mode === 'swim' ? P.y + SWIM.c - 0.45 : P.grounded || P.mode === 'mantle' || P.mode === 'rope' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;   // 跳起来时镜头只跟一小半；游泳、爬绳子时整个跟着
