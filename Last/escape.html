@@ -12573,7 +12573,8 @@ const CH13 = (() => {
 //    近处（镜头后面到 z = -42）：一块一块的砖，有倒角、顺砖丁砖、灰缝缩进去一点、砖面的颗粒和小坑、
 //         墙顶一排立砌的压顶砖、豁口是一阶一阶塌下去的，塌下来的砖散在墙脚
 //    远处（z = -42 往后）：一整条墙体，砖缝在着色器里画；豁口的轮廓还在
-//  光：只有月光（不靠路灯，哪一章都能这样打光）。月亮在镜头这一侧的左上方、画面外面，带影子。
+//  光：只有月光（不靠路灯，哪一章都能这样打光）。月亮在画面深处偏左、压得很低（高度角约 11°，影子拖出去是高度的五倍多），带影子：
+//    朝着镜头的面全是背光面；前景里靠近孩子的那一排废料高、往镜头这边的矮，前排的影子往镜头这边拖，盖住后面 —— 画面下半部分留黑。
 //    wallD 只管往远处：天光、月光往后很快暗下去，云缝里漏下来的几块月光慢慢飘过去
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
@@ -12594,7 +12595,7 @@ const CH14 = (() => {
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
-  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.62, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.45, 0.45, 0.66], rimC: 0x8090b0, rimI: 0,
+  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.45, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.35, 0.2, -0.92], rimC: 0x8090b0, rimI: 0,
     dustC: 0xc8b89a, dustO: 0.1, wind: 0.03, ext: 1, sky: [0x04060a, 0x060810, 0x0a0e17, 0x0f141d, 0x0b0e14, 0x07090d], sunP: 0, stars: 0.55, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 20, NIGHT); env(X + 60, NIGHT);
@@ -12820,8 +12821,8 @@ const CH14 = (() => {
     // ---- 前景：镜头跟前一整条建筑废料，照不到灯，几乎全黑，只勉强看得出轮廓 ----
     //   高度不能挡住孩子的脚：从镜头看过去，z 处的东西矮于 hmax(z) 就在孩子脚底下的画面里（离镜头越近，能越高）；
     //   隔一段才有一样高的（断砖垛、斜靠的板子、竖着的钢筋），离镜头很近，走过去一晃就过去了
-    const CZ = 10.5, hmax = z => 1.17 - 0.111 * (CZ - z);
-    const C = { p: [], n: [], c: [] }, conc = () => new THREE.Color(0x76736b).multiplyScalar(rr(0.7, 1.05));
+    const CZ = 10.5, hmax = z => 1.17 - 0.111 * (CZ - z), hknee = z => 0.16 + 0.096 * z;   // hmax：不挡孩子的脚；hknee：顶多挡到孩子的脚踝
+    const C = { p: [], n: [], c: [] }, conc = () => new THREE.Color(0x5a5852).multiplyScalar(rr(0.7, 1.05));
     const concMat = shade(lam(0xffffff, { vertexColors: true }), 3), rust = shade(lam(0x3a2a20), 3);
     const rebar = (pts, r = 0.009) => tube(R, pts, r, rust, 10);
     const mound = (x, z, r, h, col) => { const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.2, flat: 1, moss: 0.15, col }), concMat, x, 0, z); m.scale.set(r, h, r * rr(0.6, 0.9)); m.rotation.y = rr(0, 6.28); };
@@ -12832,6 +12833,7 @@ const CH14 = (() => {
         pushBox(A, x, rr(top * 0.55, Math.max(0.03, top)) + 0.02, z, BD / 2, BH / 2, rnd() < 0.35 ? rr(0.04, 0.09) : BL / 2, 0, [rr(-0.7, 0.7), rr(0, 6.28), rr(-0.7, 0.7)], brickCol(0.1, 0.85));
       }
     };
+    // 板面朝镜头这边倾斜（rx > 0）：背着月亮，板面是暗的
     const slab = (x, z, w, d, th, rx, rz, bars) => {               // 一块断了的钢筋混凝土板，半埋着、歪着，断口那边戳出几根弯了的钢筋
       const y = th / 2 + Math.abs(Math.sin(rx)) * d * 0.5 + Math.abs(Math.sin(rz)) * w * 0.5 - rr(0.02, 0.08), ry = rr(0, 6.28);
       pushBox(C, x, y, z, w / 2, th / 2, d / 2, 0.01, [rx, ry, rz], conc());
@@ -12863,11 +12865,18 @@ const CH14 = (() => {
     //   连成一片：碎砖堆、断板一个挨一个，高度贴着“不挡孩子脚”的那条视线（hmax），在画面下沿连成一条黑色的剪影
     for (let x = X - 16; x < X + 36; x += rr(0.35, 0.8)) {
       if (Math.abs(x - WX) < 1.2) continue;
-      const z = 3.6 + 4.8 * Math.sqrt(rnd()), u = rnd(), hm = hmax(z);   // 离镜头至少 2 米
-      if (u < 0.5) { const r = rr(0.5, 1.3); heap(x, z, r, Math.min(hmax(z + r * 0.75) * rr(0.7, 0.85), r * 0.9)); }   // 堆的近边也不能高过那条视线
-      else if (u < 0.78) { const th = rr(0.1, 0.18), d = rr(0.5, 1.0), w = rr(0.8, 1.8), rz = (rnd() < 0.5 ? -1 : 1) * Math.asin(Math.min(0.95, (hm - 0.15) * rr(0.6, 0.85) / w)); slab(x, z, w, d, th, rr(-0.12, 0.12), rz, Math.floor(rr(2, 6))); }
+      //   两排：前排（靠近孩子，z 2.6–4.4）高，贴着“顶多挡到脚踝”的视线；后排（靠镜头，z 4.4–8.4）矮，落在前排的影子里
+      const front = rnd() < 0.3, z = front ? rr(2.6, 4.4) : 4.4 + 4 * Math.sqrt(rnd()), u = rnd(), hm = front ? hknee(z) : hmax(z) * 0.7;   // 离镜头至少 2 米
+      if (u < 0.5) { const r = rr(0.5, 1.3); heap(x, z, r, Math.min((front ? hknee(z + r * 0.75) : hmax(z + r * 0.75) * 0.7) * rr(0.8, 0.95), r * 0.9)); }   // 堆的近边也不能高过那条视线
+      else if (u < 0.78) { const th = rr(0.1, 0.18), d = rr(0.4, 0.7), w = rr(0.8, 1.8), rz = (rnd() < 0.5 ? -1 : 1) * Math.asin(Math.min(0.95, (hm - 0.15) * rr(0.6, 0.85) / w)); slab(x, z, w, d, th, rr(0.3, 0.55), rz, Math.floor(rr(2, 6))); }
       else { chunk(x, z, rr(0.12, Math.min(0.35, hm * 0.5))); chunk(x + rr(-0.5, 0.5), z + rr(-0.4, 0.4), rr(0.08, 0.2)); }
       if (rnd() < 0.5) chunk(x + rr(-0.6, 0.6), rr(2.6, 9.2), rr(0.04, 0.1));
+    }
+    // 前排：靠近孩子的一道连续的碎砖垄（z 2.6–3.8），贴着“顶多挡到脚踝”的视线，影子往镜头这边拖，盖住后面
+    for (let x = X - 16; x < X + 36; x += rr(0.3, 0.6)) {
+      if (Math.abs(x - WX) < 0.9) continue;
+      const z = rr(2.6, 3.8), r = rr(0.45, 0.85);
+      heap(x, z, r, Math.min(hknee(z + r * 0.75) * rr(0.82, 0.95), r * 0.95));
     }
     // 一段只剩墙根的房子的墙，横在前景里，有几处断开
     for (const [x0, x1] of [[X - 15, X - 9.5], [X - 7.8, X - 3], [X + 12, X + 17.5], [X + 20, X + 27]]) wallX(x0, x1, 6.4, x => 4 + 5 * (0.5 + 0.5 * Math.sin(x * 0.7)) * sstep(x0, x0 + 1.2, x) * sstep(x1, x1 - 1.2, x));
