@@ -12877,6 +12877,49 @@ const CH14 = (() => {
       grid(span(X - 80, X + 120, 0.25), span(-6, 20, 0.25));                         // 近处
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, 1), zs.reverse());
+      // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
+      //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
+      const gy = (x, z) => BIGG(x, z) + DET(x, z);
+      const rockMat = shade(lam(0xffffff, { vertexColors: true }), 3), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3);
+      const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
+      const spot = (onPath) => {                                       // 随便找一处：x 在这一章里，z 在那条弯路前后几米
+        for (;;) {
+          const x = rr(X - 15, X + 34), zr = onPath ? rr(-0.45, 0.45) : (rnd() < 0.5 ? -1 : 1) * (0.45 + Math.pow(rnd(), 1.4) * 4.5);
+          if (Math.abs(x - WX) < 0.3 && Math.abs(zr) < 1) continue;   // 翻墙的地方空着
+          return [x, PZ_(x) + zr];
+        }
+      };
+      // 大一点的石块：一块块单独的，半埋在土里
+      for (let i = 0; i < 70; i++) {
+        const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
+        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { flat, amp: rr(0.18, 0.32), moss: rr(0, 0.6), col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
+        m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
+      }
+      // 碎石子：一个带实例的网格，路上也有一些
+      {
+        const n = 900, geo = rockGeo(11, { detail: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
+        for (let i = 0; i < n; i++) {
+          const [x, z] = spot(rnd() < 0.18), sz = rr(0.012, 0.05);
+          ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
+          M4.compose(V3(x, gy(x, z) + sz * 0.15, z), qq, V3(sz * rr(0.9, 1.5), sz * rr(0.5, 0.8), sz * rr(0.8, 1.2))); mesh.setMatrixAt(i, M4);
+          mesh.setColorAt(i, cc.set(pick([0x4a4945, 0x3f3e3b, 0x55524b, 0x353431])).multiplyScalar(rr(0.8, 1.15)));
+        }
+        mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+      }
+      // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
+      {
+        const n = 2600, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);
+        for (let i = 0; i < n; i++) {
+          let x, z;
+          if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
+          else [x, z] = spot(rnd() < 0.12);
+          const sz = rr(0.07, 0.13), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
+          ee.set(rr(-0.08, 0.08), rr(0, 6.28), up); qq.setFromEuler(ee);
+          M4.compose(V3(x, gy(x, z) + 0.012 + Math.abs(Math.sin(up)) * sz * 0.4, z), qq, V3(sz, sz * 0.5, sz)); mesh.setMatrixAt(i, M4);
+          mesh.setColorAt(i, cc.set(pick(LEAF_COLS)).multiplyScalar(rr(0.55, 1.0)));
+        }
+        mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+      }
     }
     yield;
     // 很远的地方一排树的剪影，比天边那一点点亮光再黑一点：挡住视线，看不到头
