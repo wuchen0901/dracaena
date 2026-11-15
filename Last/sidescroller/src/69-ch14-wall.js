@@ -29,13 +29,15 @@ const CH14 = (() => {
   // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去（±3 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
   const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * 2.2 * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
   zpath(X - 14, X + 34, PZ_);
-  // 大起伏：整片地面（连孩子走的那条路）一起缓缓地高低起伏，±0.45 米，一个坡十来米长；墙脚附近收平（墙是平着砌的），章节两头收回 0。
+  // 大起伏：整片地面（连孩子走的那条路）一起高低起伏，沿路高低差一米多，一个坡十来米长；墙脚附近收平（墙是平着砌的），章节两头收回 0。
   //   孩子脚下的物理地形就按它登记（沿着那条弯路取值），所以走起来是真的上坡下坡。细碎的起伏只在路两边（见 build 里的 hFront / hBack）
   const vh = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + 17.3) * 43758.5453; return t - Math.floor(t); };
   const vn2 = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
     return lerp(lerp(vh(ix, iz), vh(ix + 1, iz), u), lerp(vh(ix, iz + 1), vh(ix + 1, iz + 1), u), w); };
-  const BIG = (x, z) => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * sstep(0.35, 1.8, Math.abs(u)) * (0.75 * (vn2(x * 0.11, z * 0.14) - 0.5) + 0.22 * (vn2(x * 0.37 + 5, z * 0.4) - 0.5)); };
+  const BIG = (x, z) => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * sstep(0.4, 3.2, Math.abs(u)) * (2.0 * (vn2(x * 0.11, z * 0.14) - 0.5) + 0.5 * (vn2(x * 0.37 + 5, z * 0.4) - 0.5)); };
   { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.5) pts.push([x, BIG(x, PZ_(x))]); terrain(...pts); }
+  // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
+  const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
     dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.42, sunY: 0.28, sunC: 0xc2cad0, sunP: 0.4, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
@@ -292,7 +294,7 @@ const CH14 = (() => {
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
         const pos = [], det = [], idx = [], nx = xs.length;
-        for (const z of zs) for (const x of xs) { const d = DET(x, z); pos.push(x, BIG(x, z) + d, z); det.push(d); }
+        for (const z of zs) for (const x of xs) { const d = DET(x, z); pos.push(x, BIGG(x, z) + d, z); det.push(d); }
         for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aDet', new THREE.Float32BufferAttribute(det, 1)); g.setIndex(idx); g.computeVertexNormals();
         const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
