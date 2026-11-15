@@ -12,7 +12,7 @@
 const E6_X = E4_END + 58;
 const E6 = (() => {
   const X = E6_X, END = X + 92, BZ = -1.75, CELL_H = 2.6, WZ = -2.6, GX = X + 88;
-  const C = chapter({ n: 6, x0: X + 0.5, start: X + 2, name: '接收', sub: '他们是这样来的', ground: 'concrete' });
+  const C = chapter({ n: 5, x0: X + 0.5, start: X + 2, name: '接收', sub: '他们是这样来的', ground: 'concrete' });   // 游戏里的第 5 章（焚化炉删掉以后）
   terrain([END, 0]); ground(X + 1, 0x1d2226); ground(GX - 1, 0x1d2226);
   const CELLS = [8, 16, 24, 32].map(x => X + x), CW = 7.4;
   const COVA = [[13.2, 14.8], [27.0, 28.6]].map(([a, b]) => ({ a: X + a, b: X + b, zb: -1.45, zf: -0.55 }));
@@ -199,7 +199,7 @@ const E6 = (() => {
     for (const f of CAP) { Object.assign(f, { x: f.home.x, z: f.home.z, yawT: f.home.yawT }); figAct(f, f.home.act); figSnap(f); }
   }
   function solve() { reset(); S.ev = 6; for (const f of LINE) f.hide = true; G1.hide = true; placeBox(crate, X + 40.75); }
-  return defZone({ n: 6, vis: [X - 8, END + 1], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 5, vis: [X - 8, END + 1], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) {
       if (c.x < X || c.x > END) return;
       Object.assign(W, { ex: 0, caught: 0 });

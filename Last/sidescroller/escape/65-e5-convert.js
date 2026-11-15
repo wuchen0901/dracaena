@@ -10,7 +10,7 @@
 // ============================================================
 const E5 = (() => {
   const X = E4_END, END = X + 58, LZ = -4.6, DL = X + 8, DR = X + 44, BOOTH = [X + 19, X + 31], ROOM = [X + 7, X + 45];     // 屋里的人走的那条线；左门、右门；中间那座机器
-  const C = chapter({ n: 5, x0: X + 0.5, start: X + 2, name: '改造室', sub: '从上面往下看', ground: 'metal' });
+  const C = chapter({ n: 4, x0: X + 0.5, start: X + 2, name: '改造室', sub: '从上面往下看', ground: 'metal' });   // 游戏里的第 4 章（焚化炉删掉以后）
   terrain([END, 0]); ground(X + 1, 0x20262a); ground(END, 0x20262a);
   solid({ id: 'e5step1', x1: E4X + 127, x2: E4X + 129, y1: 0, y2: 3.5, snd: 'wood' });     // 检修道尽头：两摞货箱当台阶下去
   solid({ id: 'e5step2', x1: E4X + 129, x2: E4X + 131, y1: 0, y2: 1.75, snd: 'wood' });
@@ -111,6 +111,6 @@ const E5 = (() => {
   }
   function reset() { Object.assign(S, { t: 0, undress: 0, dropX: 0, done: false }); Object.assign(W, { ex: 0, caught: 0 }); }
   function solve() { reset(); S.done = true; S.dropX = X + 48; WEAR.want = 0; WEAR.k = 0; }
-  return defZone({ n: 5, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 4, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x > X && c.x < END) { Object.assign(W, { ex: 0, caught: 0 }); if (!S.done) WEAR.want = 1; } }, S, W, over });
 })();

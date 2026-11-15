@@ -7,11 +7,18 @@
 //    二 两台压机一下一下往下砸，看准抬起来的空当过去；
 //    三 一盏灯来回扫着运工服的那条路，运工服的推车堆得比人高，跟着它走，待在它的影子里（按住 Shift 慢走正好跟得上）。
 //  看到的：他们死之前都穿着同样的灰色工服；这是每天都在做的事，连衣服都在回收。留下的问题：穿灰衣服的人，死之前在哪里？
+//
+//  2026-11-15 删掉了焚化炉那一章，这一章成了游戏的第 1 章：游戏从这里开始。原来焚化炉那边搭的几样东西搬到了这里 ——
+//  地形的起点、左边那道墙（原来是两章之间留门洞的那道，现在封死，后面没有屋子了）、挡着不让往左走的墙、教“← → 移动”的提示
 // ============================================================
+// 人物的随机数（60-kit.js 的 frand）：删掉焚化炉以前，那一章的几十个人用掉了一段，走到这里是这个值。照旧从这里接着，后面几章的人长得、站得和原来一样
+_figSeed = 290220027;
 const E2 = (() => {
   const X = EX + 80, END = X + 100, PZ = -5;                    // PZ：打手电的看守走的那条过道
-  const C = chapter({ n: 2, x0: X + 0.5, start: X + 3, name: '分拣', sub: '连衣服都在回收', ground: 'concrete' });
-  terrain([END, 0]); ground(X + 1, 0x1d1c18); ground(END, 0x1d1c18);
+  const C = chapter({ n: 1, x0: X + 0.5, start: X + 3, name: '分拣', sub: '连衣服都在回收', ground: 'concrete' });   // 游戏里的第 1 章（焚化炉删掉以后）
+  terrain([X - 20, 0], [END, 0]); ground(X + 1, 0x1d1c18); ground(END, 0x1d1c18);
+  solid({ id: 'e2wall', x1: X - 0.7, x2: X + 0.7, y1: 0, y2: 30, noclimb: true });        // 左边那道墙：往左走不过去
+  hint(() => !P.moved && chapterAt(P.x) === C, '<b>←</b><b>→</b> 移动');                   // 游戏的第一章：从头教一遍（旧原型的第一章也教）
   // 一 四处挡光的东西：大桶、货箱、一车堆得很高的工服。[左, 右]，都摆在主角走的那条线后面一米来远
   const COVERS = [[11.8, 13.2], [18.2, 19.8], [24.5, 25.9], [30.9, 32.5]].map(([a, b]) => ({ a: X + a, b: X + b, zb: -1.7, zf: -0.62 }));
   const PAT = { a: X + 8.5, b: X + 37.5, wait: 0, dir: -1, ax: X + 28 };
@@ -85,7 +92,7 @@ const E2 = (() => {
     v.cloths = ST.map(() => add(R, bx(0.5, 0.1, 0.4), lam(0x8d9391, { emissive: 0x8d9391, emissiveIntensity: 0.2 }), 0, -5, 0));
     B.mesh(R);
     v.lampG = lampGlows(R, LAMPS.slice(3)); for (const x of ST) glow(R, 0xffc070, 1.6, 0.7, x + 0.6, 3.3, SZ + 0.6);
-    divider(R, END);
+    divider(R, X, { door: 0 }); divider(R, END);                                             // 左边那道墙封死（原来留门洞通焚化炉）
     v.crowd = mkCrowd(R, FIGS.length + 2); v.crowd.addAll(FIGS);
     V = v;
   }
@@ -141,7 +148,7 @@ const E2 = (() => {
   }
   function reset() { S.t = 0; place(); }
   place();
-  return defZone({ n: 2, vis: [X - 2, END + 1], build, update, reset, solve() { reset(); }, unbuild() { V = null; },
+  return defZone({ n: 1, vis: [X - 2, END + 1], build, update, reset, solve() { reset(); }, unbuild() { V = null; },
     respawn(c) { if (c.x > X && c.x < END) { Object.assign(W, { ex: 0, caught: 0 }); if (c.x < X + 44 && Math.abs(GP.x - c.x) < 7) { GP.x = c.x < X + 23 ? PAT.b : PAT.a; PAT.dir = c.x < X + 23 ? -1 : 1; PAT.wait = 0; PAT.ax = GP.x; } } },
     S, W, PAT, GP, PRESS, LAMP, CC, COVERS, hidA, hidC });
 })();

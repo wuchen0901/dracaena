@@ -2,8 +2,9 @@
 // ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局
 // ============================================================
-// 二十一章用一份存档。名字沿用《逃出工厂》灰模原来那一份：它的第 1–8 章编号没变，进度接得上；旧原型单独的那份（rust-glimmer-save-v1）章节号对不上了，不再读
-const SAVE_KEY = 'escape-factory-save-v1';
+// 二十章用一份存档。2026-11-15 删掉《逃出工厂》的第一章（焚化炉）以后章节号都往前挪了一位，存档换成 v2：
+// 原来那份（escape-factory-save-v1）和旧原型单独的那份（rust-glimmer-save-v1）章节号都对不上了，不再读
+const SAVE_KEY = 'escape-factory-save-v2';
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(STORY)); } catch (e) { /* 存不了也照常玩 */ } }
 function loadGame() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && s.ch >= 1 && s.ch <= CHAPTERS.length) Object.assign(STORY, STORY0, s); } catch (e) { /* 读不出来就从头开始 */ }
@@ -36,7 +37,7 @@ const SKIP = { [OLD + 3]: s => { s.cat = true; }, [OLD + 4]: s => { s.fed = true
   [OLD + 12]: s => { s.bulb = true; } };
 const UNDO = { [OLD + 3]: s => { s.cat = false; }, [OLD + 4]: s => { s.fed = false; }, [OLD + 5]: s => { s.cleaner = 0; }, [OLD + 6]: s => { s.pump = false; s.water = false; }, [OLD + 7]: s => { s.wild = false; },
   [OLD + 8]: s => { s.ending = 0; }, [OLD + 12]: s => { s.bulb = false; }, [OLD + 13]: s => { s.room = 0; } };
-const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][localN(n) - 1] ?? 0.54;      // 07 的灯：每帮别人一次，暗一档
+const energyFor = n => [1, 1, 0.94, 0.86, 0.78, 0.7, 0.62, 0.54, 0.54, 0.54, 0.54][origN(n) - 1] ?? 0.54;      // 07 的灯：每帮别人一次，暗一档（按章节原来的编号）
 let endZone = null;                                     // 是哪一章演的结局（按 R 回到哪一章的最后选择）；没有登记就是旧原型的第八章
 function startChapter(n, o = {}) {
   const c = CHAPTERS[n - 1];
@@ -56,7 +57,7 @@ function startChapter(n, o = {}) {
 }
 
 // ---- 章节菜单（Esc）----
-// 二十一章排成两列：左边《逃出工厂》（第 1–8 章），右边旧原型（第 9–21 章）。上下键按章节号顺着走，走到头接回第一章
+// 二十章排成两列：左边《逃出工厂》（第 1–7 章），右边旧原型（第 8–20 章）。上下键按章节号顺着走，走到头接回第一章
 let menuOpen = false, menuSel = 0;
 const menuEl = $('menu'), menuList = $('menulist');
 function drawMenu() {

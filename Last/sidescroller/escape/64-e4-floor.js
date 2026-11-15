@@ -15,7 +15,7 @@ const E4X = EX + 290, E4_END = E4X + 75, CAT_Y = 5.2;             // CAT_Y：检
 const E4 = (() => {
   const X = E4X, END = E4_END, ST0 = X + 18, GAPS = 5, NST = 9, NS = 12, ZONE = [X + 14.5, X + 61.5];      // 九台机器，隔 5 米；NS：一排人一共占几个位置（多出来的在门外）
   const T_WORK = 5.0, T_STOP = 1.5, T_MOVE = 4.2, V_LINE = 1.25, ROWZ = [-0.5, -2.8, -5.1, -7.4, -9.7];
-  const C = chapter({ n: 4, x0: X + 0.5, start: X + 3, name: '劳动车间', sub: '只听铃声', ground: 'concrete' });
+  const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '劳动车间', sub: '只听铃声', ground: 'concrete' });   // 游戏里的第 3 章（焚化炉删掉以后）
   terrain([END, 0]); ground(X + 1, 0x24292b); ground(END, 0x24292b);
   solid({ id: 'e4block', x1: X + 67, x2: X + 127, y1: 0, y2: CAT_Y, snd: 'metal' });                     // 检修道：从这里一直通到第五章的尽头（下面是别的屋子，过不去）
   const CHAIN = rope({ x: X + 66, top: 8.4, bot: 1.85, r: 0.035, windK: 0.3 });
@@ -179,6 +179,6 @@ const E4 = (() => {
     CG.hide = true; WEAR.want = 0; ropeReset(CHAIN);
   }
   function solve() { reset(); WEAR.want = 1; WEAR.k = 1; S.entered = true; S.fall = 5; S.turned = 2; }
-  return defZone({ n: 4, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 3, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x > X && c.x < END) { Object.assign(W, { ex: 0, caught: 0 }); S.grace = 6; if (c.x > X + 9.2) { WEAR.want = 1; } } }, S, W, WK, CHAIN, TOWER, slotX, slotOf, stationAt, T_WORK, T_STOP, T_MOVE });
 })();

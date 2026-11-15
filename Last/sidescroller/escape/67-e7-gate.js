@@ -11,7 +11,7 @@
 const E7_X = E6_X + 88 + 9;                               // 大门在 E7_X - 9
 const E7 = (() => {
   const X = E7_X, GX = X - 9;
-  const C = chapter({ n: 7, x0: GX + 0.6, start: GX + 2.6, name: '大门', sub: '躲开直升机的灯',
+  const C = chapter({ n: 6, x0: GX + 0.6, start: GX + 2.6, name: '大门', sub: '躲开直升机的灯',   // 游戏里的第 6 章（焚化炉删掉以后）
     intro() { ALARM.t = 0; fx('alarm'); } });
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3], [X + 206, 1.3], [X + 208.5, 0.55], [X + 212, 0.55], [X + 214.5, 1.4], [X + 228, 2.0], [X + 252, 7.6], [X + 264, 9.2], [X + 278, 9.6], [X + 360, 9.6]);   // 过了林子：水渠、一道长坡（结尾，见 68-e8-ending.js）
@@ -481,7 +481,7 @@ const E7 = (() => {
     if (envMod === mod) envMod = null;
   }
   function solve() { reset(); H.st = 'gone'; }
-  return defZone({ n: 7, vis: [GX - 2, X + 196], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 6, vis: [GX - 2, X + 196], build, update, reset, solve, unbuild() { V = null; },
     // 回到存档点：灯从这一段的最右边重新朝这边扫过来
     respawn(c) { if (c.x > X - 10 && c.x < X + 160) { Object.assign(H, { exposure: 0, caught: 0, hid: Math.min(H.hid, 3) }); if (H.live) { H.lx = SWEEP[H.stage][1]; leg(SWEEP[H.stage][0]); } } }, H, COVERS, SWEEP, lit, VAN, FREED, ALARM });
 })();
