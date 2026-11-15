@@ -140,9 +140,9 @@ const CH14 = (() => {
     // 3 其它（灯杆）：只跟着压暗
     ``,
   ];
-  function shade(mat, kind) {
+  function shade(mat, kind, sat = 0.35) {          // sat：保留多少颜色（0 全灰，1 原样）。大部分东西都很灰；落叶、树枝这些小东西留一点颜色
     mat.userData.own = true;
-    mat.customProgramCacheKey = () => 'ch14-' + kind;
+    mat.customProgramCacheKey = () => 'ch14-' + kind + '-' + sat;
     mat.onBeforeCompile = sh => {
       sh.uniforms.uT = WU.uT; sh.uniforms.uHX = WU.uHX;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;' + (kind === 2 ? ' attribute float aDet; varying float vDet;' : ''))
@@ -158,7 +158,7 @@ const CH14 = (() => {
         .replace('#include <color_fragment>', `#include <color_fragment>
           float wet14 = 0.; vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q, ${kind === 2 ? 'vDet' : 'q.y'});
           ${SURF[kind]}
-          diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, 0.35);   // 颜色几乎去掉：只有孩子身上有颜色`)
+          diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, ${sat.toFixed(2)});   // 去掉大部分颜色：只留一点点，小东西上的颜色看得出区别`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           totalEmissiveRadiance += fogColor * wet14 * (0.2 + 0.8 * pow(1. - max(dot(normalize(cameraPosition - vWP), vec3(0., 1., 0.)), 0.), 4.)) * 0.22 * smoothstep(0.15, 0.7, wD);`)   // 水渍映出雾
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
@@ -286,14 +286,14 @@ const CH14 = (() => {
         i = j + 1;
       }
     }
-    const brickMat = shade(lam(0xffffff, { vertexColors: true }), 0);
+    const brickMat = shade(lam(0xffffff, { vertexColors: true }), 0, 0.45);
     v.wall = meshOf(A, brickMat); R.add(v.wall);
     v.mortar = meshOf(M, brickMat); R.add(v.mortar);
     v.far = meshOf(F, shade(lam(0x6a4436), 1)); R.add(v.far);
     yield;
     // ---- 地面：一整块，颜色在着色器里算（越远越暗也在那里） ----
     // 地面：近处（z > -6）一块细的、远处一块粗的，用同一个高度函数，接缝对得上
-    const groundMat = shade(lam(0xffffff, { flatShading: true }), 2);   // 一个个平的小面：看上去是棱角分明的岩面
+    const groundMat = shade(lam(0xffffff, { flatShading: true }), 2, 0.5);   // 一个个平的小面：看上去是棱角分明的岩面
     {
       const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
@@ -325,7 +325,7 @@ const CH14 = (() => {
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
       const gy = (x, z) => BIGG(x, z) + DET(x, z);
-      const rockMat = shade(lam(0xffffff, { vertexColors: true }), 3), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3);
+      const rockMat = shade(lam(0xffffff, { vertexColors: true }), 3, 0.6), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3, 0.95);
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       const spot = (onPath) => {                                       // 随便找一处：x 在这一章里，z 在那条弯路前后几米
         for (;;) {
@@ -337,7 +337,7 @@ const CH14 = (() => {
       // 大一点的石块：一块块单独的，半埋在土里
       for (let i = 0; i < 150; i++) {
         const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
-        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: rnd() < 0.6 ? 0 : 1, flat, amp: rr(0.25, 0.42), moss: rr(0, 0.4), col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
+        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: rnd() < 0.6 ? 0 : 1, flat, amp: rr(0.25, 0.42), moss: rr(0.1, 0.8), mossCol: 0x4f6a2e, col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
         m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
       }
       // 碎石子：一个带实例的网格，路上也有一些
@@ -353,15 +353,16 @@ const CH14 = (() => {
       }
       // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
       {
-        const n = 500, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);   // 山上叶子少
+        const n = 1400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);   // 山上叶子不多，大都被风吹到路两边、石头脚下
         for (let i = 0; i < n; i++) {
           let x, z;
           if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
+          else if (rnd() < 0.6) { x = rr(X - 15, X + 34); z = PZ_(x) + (rnd() < 0.5 ? -1 : 1) * rr(0.3, 1.8); }   // 多半在路两边一两米之内（被照亮的那一带）
           else [x, z] = spot(rnd() < 0.12);
-          const sz = rr(0.07, 0.13), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
+          const sz = rr(0.08, 0.16), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
           ee.set(rr(-0.08, 0.08), rr(0, 6.28), up); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + 0.012 + Math.abs(Math.sin(up)) * sz * 0.4, z), qq, V3(sz, sz * 0.5, sz)); mesh.setMatrixAt(i, M4);
-          mesh.setColorAt(i, cc.set(pick(LEAF_COLS)).multiplyScalar(rr(0.55, 1.0)));
+          mesh.setColorAt(i, cc.set(pick([0xc8962e, 0xd4a83a, 0xb87a2a, 0xa8642a, 0x8a5a30, 0xc0a040, 0x7a6a38])).multiplyScalar(rr(0.6, 1.05)));   // 黄的、橙黄的、褐的
         }
         mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
       }
@@ -384,7 +385,7 @@ const CH14 = (() => {
           }
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-        const m = new THREE.Mesh(g, shade(lam(0x3a3027), 3)); m.castShadow = m.receiveShadow = true; m.frustumCulled = false; R.add(m);
+        const m = new THREE.Mesh(g, shade(lam(0x5a3d26), 3, 0.85)); m.castShadow = m.receiveShadow = true; m.frustumCulled = false; R.add(m);
       }
     }
     yield;
