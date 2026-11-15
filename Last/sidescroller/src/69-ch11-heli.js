@@ -46,9 +46,10 @@ const CH11 = (() => {
     pos: V3(...FAR_IN), vel: V3(), p0: V3(), aim: V3(X + 62, 0, -120), aim0: V3(), yaw: -1.57, roll: 0, pitch: 0, lamp: [0, 0, 0], tgt: [0, 0, 0], on: 0 };
 
   // 不止一架：远处的野地上还有六架，前后错开排着，各沿着自己的一条地来回扫 —— 是在一片一片地搜，不是专门冲着主角来的。
-  // 每一架来回飞得不宽，离中点也不远：画面里同时看得见四五架
+  // 排法（照 Last/tools/heli-concept.html 那幅目标画面）：左右交替、一架比一架远，斜着排成一条线往远处退。越远飞得越高一点，在画面上正好排在同一条线上（都在天边的林子上面）、一架比一架小，
+  // 一直退到天边的林子跟前 —— 地上的光斑也就从近到远连成一条搜索线。来回飞得不宽，画面里同时看得见五六架
   // 它们只是画面和声音，照不到公路上。[离头顶那一架来回飞的中点多远, 多高, 多深, 来回飞多宽, 错开多少]；跟着头顶那一架一起来、一起往前挪、一起走
-  const WING = [[-22, 13, -44, 14, 0.0], [20, 15, -52, 14, 5.2], [36, 16, -66, 16, 1.2], [-34, 17, -74, 18, 2.1], [6, 18, -84, 16, 3.3], [-10, 21, -108, 22, 4.0]]
+  const WING = [[24, 14.5, -48, 8, 0.0], [-26, 16, -60, 10, 5.2], [40, 17.5, -74, 12, 1.2], [-38, 19, -88, 12, 2.1], [8, 20.5, -100, 14, 3.3], [30, 21.5, -110, 14, 4.0], [-22, 22.5, -118, 16, 0.7]]
     .map(([dx, y, z, span, ph]) => ({ dx, y, z, span, ph, pos: V3(), aim: V3(), p0: V3(), yaw: -1.57, sp: 0, left: false }));
   function stepWing(w, dt, arr, hunt) {
     const s = T * 0.22 + w.ph, sx = H.c + w.dx + w.span / 2 * Math.sin(s), sy = w.y + 0.5 * Math.sin(T * 0.6 + w.ph), sz = w.z + 3 * Math.sin(T * 0.17 + w.ph * 2), px = w.pos.x, pz = w.pos.z;
@@ -274,32 +275,32 @@ const CH11 = (() => {
     yield;
 
     // ---------------- 直升机 ----------------
-    const hull = M(0x1c242a), hull2 = M(0x0e1418), glass = M(0x0a1117, { emissive: 0x0c1826, emissiveIntensity: 0.6 });
+    const hull = M(0x10161b), hull2 = M(0x080c10), glass = M(0x0a1117, { emissive: 0x0c1826, emissiveIntensity: 0.6 });
     // 搭一架：主角头顶那一架和远处的几架是同一个样子
     const mkHeli = () => { const o = {}, heli = grp(R), tilt = grp(heli);                 // heli：在哪、朝哪；tilt：机头压下去多少、侧倾多少。机头朝 +x
-    add(tilt, new THREE.SphereGeometry(1, 20, 14), hull, 0.5, 0, 0, false).scale.set(2.3, 1.15, 1.2);
-    add(tilt, new THREE.SphereGeometry(1, 16, 12), glass, 1.75, -0.12, 0, false).scale.set(1.25, 0.92, 1.08);                       // 座舱的玻璃
-    add(tilt, bx(1.9, 0.5, 0.95), hull2, -0.1, 1.05, 0, false); add(tilt, cy(0.09, 0.09, 0.5, 8), hull2, 0.2, 1.5, 0, false);       // 发动机罩、旋翼轴
-    add(tilt, cy(0.15, 0.36, 5.0, 10), hull, -4.0, 0.42, 0, false).rotation.z = Math.PI / 2 - 0.08;                                 // 尾梁
-    add(tilt, bx(0.9, 1.5, 0.08), hull, -6.4, 1.1, 0, false).rotation.z = -0.35; add(tilt, bx(0.7, 0.06, 1.8), hull, -5.5, 0.66, 0, false);   // 垂尾、平尾
+    add(tilt, new THREE.SphereGeometry(1, 20, 14), hull, 0.4, 0, 0, false).scale.set(2.2, 0.82, 0.82);                             // 机身：细长，不是一只蛋
+    add(tilt, new THREE.SphereGeometry(1, 16, 12), glass, 1.5, -0.1, 0, false).scale.set(1.05, 0.66, 0.7);                       // 座舱的玻璃
+    add(tilt, bx(1.7, 0.4, 0.7), hull2, -0.1, 0.85, 0, false); add(tilt, cy(0.07, 0.07, 0.7, 8), hull2, 0.2, 1.3, 0, false);       // 发动机罩、旋翼轴
+    add(tilt, cy(0.1, 0.24, 5.2, 10), hull, -4.1, 0.3, 0, false).rotation.z = Math.PI / 2 - 0.06;                                 // 尾梁
+    add(tilt, bx(0.7, 1.4, 0.06), hull, -6.5, 0.95, 0, false).rotation.z = -0.4; add(tilt, bx(0.6, 0.05, 1.5), hull, -5.7, 0.5, 0, false);   // 垂尾、平尾
     for (const z of [-0.95, 0.95]) {                                                                                               // 滑橇
-      add(tilt, cy(0.05, 0.05, 3.7, 6), hull2, 0.5, -1.45, z, false).rotation.z = Math.PI / 2;
-      for (const x of [-0.4, 1.4]) add(tilt, bx(0.07, 0.8, 0.07), hull2, x, -1.08, z * 0.82, false).rotation.x = -Math.sign(z) * 0.38;
+      add(tilt, cy(0.04, 0.04, 3.4, 6), hull2, 0.5, -1.2, z * 0.8, false).rotation.z = Math.PI / 2;
+      for (const x of [-0.4, 1.4]) add(tilt, bx(0.06, 0.6, 0.06), hull2, x, -0.92, z * 0.66, false).rotation.x = -Math.sign(z) * 0.38;
     }
-    const blade = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.55, depthWrite: false }));
-    const disc = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
-    o.rotor = grp(tilt, 0.2, 1.78, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
-    for (let i = 0; i < 3; i++) { const g = grp(o.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.04, 0.28), blade, 2.65, 0, 0, false); }
+    const blade = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.4, depthWrite: false }));
+    const disc = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.06, depthWrite: false, side: THREE.DoubleSide }));
+    o.rotor = grp(tilt, 0.2, 1.62, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
+    for (let i = 0; i < 3; i++) { const g = grp(o.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.03, 0.18), blade, 2.65, 0, 0, false); }
     add(o.rotor, new THREE.CircleGeometry(5.3, 40), disc, 0, 0.02, 0, false).rotation.x = -Math.PI / 2;
-    o.tailRotor = grp(tilt, -6.55, 1.2, 0.2); add(o.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(o.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
-    o.pod = grp(tilt, 1.9, -1.05, 0);                                                                                              // 机头下面的探照灯
+    o.tailRotor = grp(tilt, -6.6, 1.0, 0.16); add(o.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(o.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
+    o.pod = grp(tilt, 1.75, -0.78, 0);                                                                                              // 机头下面的探照灯
     add(o.pod, new THREE.SphereGeometry(0.26, 12, 10), hull2, 0, 0, 0, false); add(o.pod, new THREE.CircleGeometry(0.2, 16), unlit(0xeaf4f6, { fog: false }), 0, 0, 0.27, false);
-    o.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 1.24); o.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -1.24);           // 两侧的航行灯
-    o.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.7, 1.8, 0); o.beacon = glow(tilt, 0xff3020, 1.6, 0.1, 0.3, -1.25, 0);               // 尾巴上的频闪灯、肚子下面的防撞灯
+    o.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 0.86); o.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -0.86);           // 两侧的航行灯
+    o.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.8, 1.6, 0); o.beacon = glow(tilt, 0xff3020, 2.0, 0.1, 0.1, 1.15, 0);   // 防撞灯在背上：剪影顶上一点红，远远就看得见               // 尾巴上的频闪灯、肚子下面的防撞灯
     heli.visible = false; o.heli = heli; o.tilt = tilt; return o; };
     Object.assign(v, mkHeli());
     v.cones = [];                                          // 看得见的光柱：两层半透明的圆锥叠在一起
-    for (const [k, op] of [[1, 0.07], [0.55, 0.085]]) {
+    for (const [k, op] of [[1, 0.075], [0.4, 0.13]]) {                // 外面一层淡的，里面一道亮的芯
       const geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L * k, CONE_L, 28, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
       const m = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xd8ecf2, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false, clippingPlanes: CLIP, clipIntersection: true })));
       m.renderOrder = 60; m.userData.a = op; m.visible = false; R.add(m); v.cones.push(m);
@@ -318,6 +319,17 @@ const CH11 = (() => {
       o.spot.rotation.x = -Math.PI / 2; o.spot.renderOrder = 3; o.spot.visible = false; R.add(o.spot);
       return o;
     });
+    // 野地上贴着地的一层低雾：远处几架的光柱打进去就亮起来，天边的林子脚下也蒙一层（目标画面里最要紧的空气感）
+    { const [c, g] = mkCanvas(64, 128), gr = g.createLinearGradient(0, 0, 0, 128);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.8, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 128);
+      g.globalCompositeOperation = 'destination-in'; const gx = g.createLinearGradient(0, 0, 64, 0);   // 左右两头淡出去：只蒙在野地上，进了林子就没有了
+      gx.addColorStop(0, 'rgba(0,0,0,0)'); gx.addColorStop(0.25, 'rgba(0,0,0,1)'); gx.addColorStop(0.75, 'rgba(0,0,0,1)'); gx.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gx; g.fillRect(0, 0, 64, 128); const tex = canvasTex(c);
+      for (const [z, h, op] of [[-121, 10, 0.34], [-95, 6, 0.16], [-60, 3.5, 0.07]]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(230, h), own(new THREE.MeshBasicMaterial({ map: tex, color: 0x5a7394, transparent: true, opacity: op, depthWrite: false, fog: false })));
+        m.position.set(X + 0, h * 0.3, z); m.renderOrder = 2; R.add(m);
+      }
+    }
     renderer.localClippingEnabled = true;                  // 只有光柱的材质带着裁剪面，别的东西不受影响
     v.tower = glow(R, 0xff3828, 5, 0.9, X + 118, 47, -379);                                                                        // 远山上一座铁塔顶上的红灯
     V = v;
@@ -387,7 +399,7 @@ const CH11 = (() => {
     const y0 = H.yaw; H.yaw = damp(H.yaw, Math.atan2(-H.vel.z - (hunt ? 2.5 : 0), H.vel.x), 1.6, dt);
     H.roll = damp(H.roll, clamp(-(H.yaw - y0) / Math.max(dt, 1e-4) * 0.35, -0.35, 0.35), 3, dt);
     H.pitch = damp(H.pitch, -0.05 - clamp(Math.hypot(H.vel.x, H.vel.z) * 0.02, 0, 0.3), 2, dt);
-    const lx = H.pos.x + 1.9 * Math.cos(H.yaw), ly = H.pos.y - 1.05, lz = H.pos.z - 1.9 * Math.sin(H.yaw);                  // 灯头在哪
+    const lx = H.pos.x + 1.75 * Math.cos(H.yaw), ly = H.pos.y - 0.78, lz = H.pos.z - 1.75 * Math.sin(H.yaw);                  // 灯头在哪
     const fade = hunt ? 1 : 1 - sstep(0.55, 0.92, H.t / T_OUT);                                                               // 飞远了，灯也看不见了
     for (const w of WING) stepWing(w, dt, arr, hunt);
     beam.position.set(lx, ly, lz); beam.target.position.copy(H.aim); beam.angle = ANG; beam.penumbra = 0.45;
@@ -425,14 +437,14 @@ const CH11 = (() => {
     v.glare.position.copy(_a); v.core.position.copy(_a); v.glare.material.color.copy(beam.color);
     v.glare.material.opacity = fade * (0.3 + 0.6 * face ** 3); v.glare.scale.setScalar(lerp(3, 8.5, face ** 4)); v.core.material.opacity = fade * (0.5 + 0.5 * face);
     const el = clamp((ly - H.aim.y) / len, 0.08, 1), rs = len * Math.tan(ANG) * 2.6;                                          // 远处的亮斑：灯压得越低，拉得越长
-    v.spot.visible = H.aim.z < -9; v.spot.position.set(H.aim.x, groundY(H.aim.x) + 0.06, H.aim.z); v.spot.scale.set(rs, rs / el, 1); v.spot.material.opacity = 0.5 * fade * sstep(-9, -28, H.aim.z);
+    v.spot.visible = H.aim.z < -9; v.spot.position.set(H.aim.x, groundY(H.aim.x) + 0.06, H.aim.z); v.spot.scale.set(rs, rs / el, 1); v.spot.material.opacity = 0.8 * fade * sstep(-9, -28, H.aim.z);
     v.wing.forEach((o, i) => {
-      const w = WING[i], wl = _b.set(w.pos.x + 1.9 * Math.cos(w.yaw), w.pos.y - 1.05, w.pos.z - 1.9 * Math.sin(w.yaw)), wn = wl.distanceTo(w.aim) + 0.8, we = clamp((wl.y - w.aim.y) / wn, 0.08, 1), wr = wn * Math.tan(ANG) * 2.6;
+      const w = WING[i], wl = _b.set(w.pos.x + 1.75 * Math.cos(w.yaw), w.pos.y - 0.78, w.pos.z - 1.75 * Math.sin(w.yaw)), wn = wl.distanceTo(w.aim) + 0.8, we = clamp((wl.y - w.aim.y) / wn, 0.08, 1), wr = wn * Math.tan(ANG) * 2.6;
       o.heli.visible = true; o.heli.position.copy(w.pos); o.heli.rotation.y = w.yaw; o.tilt.rotation.set(0, 0, -0.05 - clamp(w.sp * 0.02, 0, 0.3));
       o.rotor.rotation.y += dt * 41; o.tailRotor.rotation.z += dt * 63; o.pod.lookAt(w.aim);
-      o.cone.visible = fade > 0.01; o.cone.position.copy(wl); o.cone.lookAt(w.aim); o.cone.scale.setScalar(wn / CONE_L); o.cone.material.opacity = 0.075 * fade;
+      o.cone.visible = fade > 0.01; o.cone.position.copy(wl); o.cone.lookAt(w.aim); o.cone.scale.setScalar(wn / CONE_L); o.cone.material.opacity = 0.11 * fade;
       o.glare.position.copy(wl); o.glare.material.opacity = 0.75 * fade;
-      o.spot.visible = fade > 0.01; o.spot.position.set(w.aim.x, groundY(w.aim.x) + 0.06, w.aim.z); o.spot.scale.set(wr, wr / we, 1); o.spot.material.opacity = 0.45 * fade;
+      o.spot.visible = fade > 0.01; o.spot.position.set(w.aim.x, groundY(w.aim.x) + 0.06, w.aim.z); o.spot.scale.set(wr * 1.4, wr * 1.4 / we, 1); o.spot.material.opacity = 0.8 * fade;
       const b2 = (T + i * 0.37) % 1.3; o.strobe.material.opacity = b2 < 0.06 || (b2 > 0.16 && b2 < 0.22) ? 1 : 0; o.beacon.material.opacity = (T + i * 0.3) % 0.9 < 0.12 ? 0.95 : 0.1;
     });
     const bl = T % 1.3; v.strobe.material.opacity = bl < 0.06 || (bl > 0.16 && bl < 0.22) ? 1 : 0; v.beacon.material.opacity = T % 0.9 < 0.12 ? 0.95 : 0.1;
