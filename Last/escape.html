@@ -12596,7 +12596,7 @@ const CH14 = (() => {
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
-  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.45, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.45, 0.45, 0.66], rimC: 0x8090b0, rimI: 0.25,
+  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.62, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.45, 0.45, 0.66], rimC: 0x8090b0, rimI: 0,
     dustC: 0xc8b89a, dustO: 0.1, wind: 0.03, ext: 1, sky: [0x04060a, 0x060810, 0x0a0e17, 0x0f141d, 0x0b0e14, 0x07090d], sunP: 0, stars: 0.55, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 20, NIGHT); env(X + 60, NIGHT);
@@ -12695,7 +12695,7 @@ const CH14 = (() => {
           vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q);
           ${SURF[kind]}`)
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
-        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;');
+        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD * (1. - 0.8 * smoothstep(-1., 9., q.z));   // 天光：离镜头身后那排废楼越近，看得见的天越少（渐变很宽，看不出线）');
     };
     return mat;
   }
@@ -12839,7 +12839,7 @@ const CH14 = (() => {
       pushBox(C, x, y, z, w / 2, th / 2, d / 2, 0.01, [rx, ry, rz], conc());
       const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)).setPosition(x, y, z);
       for (let i = 0; i < bars; i++) {
-        const u = rr(-0.4, 0.4) * d, p0 = V3(w / 2 - 0.05, rr(-0.3, 0.3) * th, u), dir = V3(1, rr(-0.2, 0.6), rr(-0.4, 0.4)).normalize(), L = rr(0.25, 0.7);
+        const u = rr(-0.4, 0.4) * d, p0 = V3(w / 2 - 0.05, rr(-0.3, 0.3) * th, u), dir = V3(1, rr(-0.2, 0.6), rr(-0.4, 0.4)).normalize(), L = rr(0.2, 0.45);
         const p1 = p0.clone().addScaledVector(dir, L * 0.45), p2 = p1.clone().addScaledVector(dir, L * 0.3).add(V3(0, rr(-0.25, 0.3), rr(-0.2, 0.2))), p3 = p2.clone().add(V3(rr(0, 0.2), rr(-0.3, 0.1), rr(-0.15, 0.15)));
         rebar([p0, p1, p2, p3].map(p => p.applyMatrix4(m).toArray()));
       }
@@ -12862,32 +12862,35 @@ const CH14 = (() => {
     // 近处那一截墙脚下两边：堆着的碎砖
     for (let z = 3.6; z < 10; z += rr(0.7, 1.4)) for (const sd of [-1, 1]) if (rnd() < 0.8) { const r = rr(0.35, 0.75); heap(WX + sd * (T / 2 + r * 0.6), z, r, Math.min(hmax(z) * 0.85, r * 0.6)); }
     // 整条路的前景
-    for (let x = X - 16; x < X + 36; x += rr(0.7, 1.7)) {
+    //   连成一片：碎砖堆、断板一个挨一个，高度贴着“不挡孩子脚”的那条视线（hmax），在画面下沿连成一条黑色的剪影
+    for (let x = X - 16; x < X + 36; x += rr(0.35, 0.8)) {
       if (Math.abs(x - WX) < 1.2) continue;
-      const z = rr(2.8, 9.4), u = rnd(), hm = hmax(z);
-      if (u < 0.5) { const r = rr(0.4, 1.0); heap(x, z, r, Math.min(hm * rr(0.55, 0.95), r * 0.65)); }
-      else if (u < 0.78) { const th = rr(0.08, 0.15), d = rr(0.4, 0.9), w = rr(0.6, 1.4), rz = rr(-0.35, 0.35) * Math.min(1, hm / (w * 0.5)); slab(x, z, w, d, th, rr(-0.25, 0.25), rz, Math.floor(rr(1, 5))); }
+      const z = 3.6 + 4.8 * Math.sqrt(rnd()), u = rnd(), hm = hmax(z);   // 离镜头至少 2 米
+      if (u < 0.5) { const r = rr(0.5, 1.3); heap(x, z, r, Math.min(hmax(z + r * 0.75) * rr(0.7, 0.85), r * 0.9)); }   // 堆的近边也不能高过那条视线
+      else if (u < 0.78) { const th = rr(0.1, 0.18), d = rr(0.5, 1.0), w = rr(0.8, 1.8), rz = (rnd() < 0.5 ? -1 : 1) * Math.asin(Math.min(0.95, (hm - 0.15) * rr(0.6, 0.85) / w)); slab(x, z, w, d, th, rr(-0.12, 0.12), rz, Math.floor(rr(2, 6))); }
       else { chunk(x, z, rr(0.12, Math.min(0.35, hm * 0.5))); chunk(x + rr(-0.5, 0.5), z + rr(-0.4, 0.4), rr(0.08, 0.2)); }
-      if (rnd() < 0.5) chunk(x + rr(-0.6, 0.6), rr(2.6, 9.6), rr(0.04, 0.1));
+      if (rnd() < 0.5) chunk(x + rr(-0.6, 0.6), rr(2.6, 9.2), rr(0.04, 0.1));
     }
     // 一段只剩墙根的房子的墙，横在前景里，有几处断开
-    for (const [x0, x1] of [[X - 15, X - 9.5], [X - 7.8, X - 3], [X + 12, X + 17.5], [X + 20, X + 27]]) wallX(x0, x1, 6.4, x => 2 + 3.5 * (0.5 + 0.5 * Math.sin(x * 0.7)) * sstep(x0, x0 + 1.2, x) * sstep(x1, x1 - 1.2, x));
+    for (const [x0, x1] of [[X - 15, X - 9.5], [X - 7.8, X - 3], [X + 12, X + 17.5], [X + 20, X + 27]]) wallX(x0, x1, 6.4, x => 4 + 5 * (0.5 + 0.5 * Math.sin(x * 0.7)) * sstep(x0, x0 + 1.2, x) * sstep(x1, x1 - 1.2, x));
     // 隔一段一样高的东西：离镜头很近，一晃就过去
-    for (const [x, kind] of [[X - 11, 'pier'], [X - 1.5, 'slab'], [X + 4.2, 'bars'], [X + 14.5, 'pier'], [X + 23, 'slab']]) {
-      const z = rr(8.2, 9.3);
-      if (kind === 'pier') pier(x, z, rr(1.0, 1.4));
-      else if (kind === 'slab') { const th = 0.14, w = 1.1, h = 1.5, y = h / 2 * Math.cos(0.45) - 0.05;   // 斜靠着的一块板，上沿断口戳出钢筋
+    const TALL = []; for (let x = X - 15, i = 0; x < X + 36; x += rr(7, 11), i++) if (Math.abs(x - WX) > 1.5) TALL.push([x, ['pier', 'slab', 'bars', 'pier', 'slab'][i % 5]]);
+    for (const [x, kind] of TALL) {
+      const z = rr(6.0, 6.8);
+      if (kind === 'pier') pier(x, z, rr(0.75, 0.92));
+      else if (kind === 'slab') { const th = 0.14, w = 0.9, h = 0.95, y = h / 2 * Math.cos(0.45) - 0.05;   // 斜靠着的一块板，上沿断口戳出钢筋
         pushBox(C, x, y, z, w / 2, h / 2, th / 2, 0.01, [-0.45, rr(-0.3, 0.3), rr(-0.1, 0.1)], conc());
         for (let i = 0; i < 5; i++) { const bx0 = x + rr(-0.45, 0.45), by0 = h * Math.cos(0.45) - 0.08, bz0 = z - h / 2 * Math.sin(0.45); rebar([[bx0, by0, bz0], [bx0 + rr(-0.05, 0.05), by0 + rr(0.15, 0.3), bz0 - rr(0, 0.1)], [bx0 + rr(-0.25, 0.25), by0 + rr(0.25, 0.5), bz0 + rr(-0.2, 0.15)]], 0.011); }
         heap(x + rr(-0.3, 0.3), z + 0.4, 0.6, 0.35); }
-      else { mound(x, z, 0.5, 0.25, 0x5a5850); for (let i = 0; i < 7; i++) { const bx0 = x + rr(-0.35, 0.35), bz0 = z + rr(-0.2, 0.2), hh = rr(0.6, 1.5); rebar([[bx0, 0.1, bz0], [bx0 + rr(-0.05, 0.05), hh * 0.6, bz0], [bx0 + rr(-0.3, 0.3), hh, bz0 + rr(-0.2, 0.2)], [bx0 + rr(-0.5, 0.5), hh - rr(0, 0.3), bz0 + rr(-0.2, 0.2)]], 0.012); } }
+      else { mound(x, z, 0.5, 0.25, 0x5a5850); for (let i = 0; i < 7; i++) { const bx0 = x + rr(-0.35, 0.35), bz0 = z + rr(-0.2, 0.2), hh = rr(0.5, 0.9); rebar([[bx0, 0.1, bz0], [bx0 + rr(-0.05, 0.05), hh * 0.6, bz0], [bx0 + rr(-0.3, 0.3), hh, bz0 + rr(-0.2, 0.2)], [bx0 + rr(-0.5, 0.5), hh - rr(0, 0.3), bz0 + rr(-0.2, 0.2)]], 0.012); } }
     }
     // 镜头身后的一排废楼（在画面外，看不到）：只为了挡月光。墙头高低参差，有塌掉的缺口、窗洞，月光从那里漏到前景上
-    //   月亮的高度角约 29°，墙头高 h 的地方，影子往画面里伸 1.47h：楼离镜头很近、高 5.8–7.6 米，影子的边落在 z ≈ 1–3（镜头低，画面最下沿只到 z ≈ 6），孩子走的那一带照得到
+    //   月亮的高度角约 29°，墙头高 h 的地方，影子往画面里伸 1.47h：楼离镜头很近、高 4.2–5.8 米，影子的边落在 z ≈ 3–5：前景的废料在影子里，它们的顶在画面上正好衬着后面一条被照亮的地面，只剩一圈黑轮廓
     for (let x = X - 36; x < X + 52;) {
-      if (rnd() < 0.05) { x += rr(0.25, 0.8); continue; }                                       // 塌掉的缺口
-      const w = rr(0.25, 0.9), zb = 11.2 + 0.4 * Math.sin(x * 0.11), h = 6.0 + 1.1 * (0.5 + 0.5 * Math.sin(x * 0.23 + 1)) + rr(-0.45, 0.5), col = conc();
-      if (rnd() < 0.18) { const y1 = rr(3.2, 4.4), y2 = y1 + rr(0.6, 1.1);                     // 窗洞
+      const solidHere = x > WX - 6.5 && x < WX + 0.5;                                          // 这一段的影子落在近处那截墙上：不留缺口、不开窗，墙才整截在暗里
+      if (!solidHere && rnd() < 0.05) { x += rr(0.25, 0.8); continue; }                                       // 塌掉的缺口
+      const w = rr(0.25, 0.9), zb = 11.2 + 0.4 * Math.sin(x * 0.11), h = 4.5 + 0.9 * (0.5 + 0.5 * Math.sin(x * 0.23 + 1)) + rr(-0.35, 0.4), col = conc();
+      if (!solidHere && rnd() < 0.06) { const y1 = rr(3.6, 4.6), y2 = y1 + rr(0.35, 0.6);                     // 窗洞
         pushBox(C, x + w / 2, y1 / 2, zb, w / 2, y1 / 2, 0.18, 0, [0, 0, 0], col);
         if (h > y2 + 0.2) pushBox(C, x + w / 2, (y2 + h) / 2, zb, w / 2, (h - y2) / 2, 0.18, 0, [0, 0, rr(-0.05, 0.05)], col);
       } else pushBox(C, x + w / 2, h / 2, zb, w / 2, h / 2, 0.18, 0, [0, 0, rr(-0.03, 0.03)], col);
