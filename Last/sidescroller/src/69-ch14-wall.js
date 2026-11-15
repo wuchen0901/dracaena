@@ -27,8 +27,8 @@ const CH14 = (() => {
   solid({ x1: X + 30, x2: X + 31, y1: -2, y2: 30, noclimb: true });
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
-  // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去一点（±1.4 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
-  const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
+  // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去（±3 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
+  const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * 2.2 * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
   zpath(X - 14, X + 34, PZ_);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
@@ -66,7 +66,7 @@ const CH14 = (() => {
     float n3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
       return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),
                  mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
-    float pzf(float u) { return smoothstep(-22., -16., u) * (1. - smoothstep(20., 26., u)) * (0.9 * sin(u * 0.21 + 0.6) + 0.5 * sin(u * 0.083 + 2.0)); }
+    float pzf(float u) { return smoothstep(-22., -16., u) * (1. - smoothstep(20., 26., u)) * 2.2 * (0.9 * sin(u * 0.21 + 0.6) + 0.5 * sin(u * 0.083 + 2.0)); }
     float wallD(vec3 q) {
       float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
       float dz = max(0., -qz);
