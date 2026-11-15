@@ -4,6 +4,8 @@
 //    近处（镜头后面到 z = -42）：一块一块的砖，有倒角、顺砖丁砖、灰缝缩进去一点、砖面的颗粒和小坑、
 //         墙顶一排立砌的压顶砖、豁口是一阶一阶塌下去的，塌下来的砖散在墙脚
 //    远处（z = -42 往后）：一整条墙体，砖缝在着色器里画；豁口的轮廓还在
+//  画面：参考“雾里的剪影”那种做法 —— 雾是浅灰的，越远越被雾抬亮、越看不清；近处没有雾，前景是平的近黑剪影（不受光、没有纹理）；
+//    光是柔和的顶光，聚在孩子走的那一带，往镜头这边慢慢沉下去；颜色几乎全去掉，只有孩子身上有颜色；中景是雾里一层层的枯树、断柱。
 //  光：只有月光（不靠路灯，哪一章都能这样打光）。月亮在画面深处偏左、压得很低（高度角约 11°，影子拖出去是高度的五倍多），带影子：
 //    朝着镜头的面全是背光面；前景里靠近孩子的那一排废料高、往镜头这边的矮，前排的影子往镜头这边拖，盖住后面 —— 画面下半部分留黑。
 //    wallD 只管往远处：天光、月光往后很快暗下去，云缝里漏下来的几块月光慢慢飘过去
@@ -26,8 +28,8 @@ const CH14 = (() => {
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
-  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.45, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.35, 0.2, -0.92], rimC: 0x8090b0, rimI: 0,
-    dustC: 0xc8b89a, dustO: 0.1, wind: 0.03, ext: 1, sky: [0x04060a, 0x060810, 0x0a0e17, 0x0f141d, 0x0b0e14, 0x07090d], sunP: 0, stars: 0.55, cloud: 0, birds: 0, flies: 0, vig: 1.15,
+  const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
+    dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.42, sunY: 0.28, sunC: 0xc2cad0, sunP: 0.4, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 20, NIGHT); env(X + 60, NIGHT);
   FAR[OLD + 14] = ['owl', 'twig', 'owl'];
@@ -64,6 +66,7 @@ const CH14 = (() => {
     float wallD(vec3 q) {
       float dz = max(0., -q.z);
       float base = 0.04 + 0.96 * exp(-max(0., dz - 2.) / 9.);               // 孩子走的那一带最亮，往后很快暗下去
+      base *= 1. - 0.97 * smoothstep(0.8, 6.0, q.z + 2.2 * (n2(q.xz * vec2(0.35, 0.5)) - .5));   // 往镜头这边慢慢沉下去（渐变很宽，边是糊的、不齐的）
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
       float cl = n2(c2) * 0.65 + n2(c2 * 2.3 + 7.1) * 0.35;
       float gap = smoothstep(0.56, 0.7, cl) * smoothstep(14., 30., dz) * exp(-dz / 80.);
@@ -123,7 +126,8 @@ const CH14 = (() => {
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + GL_COMMON)
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q);
-          ${SURF[kind]}`)
+          ${SURF[kind]}
+          diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, 0.35);   // 颜色几乎去掉：只有孩子身上有颜色`)
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
         .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;');
     };
@@ -253,15 +257,16 @@ const CH14 = (() => {
     //   高度不能挡住孩子的脚：从镜头看过去，z 处的东西矮于 hmax(z) 就在孩子脚底下的画面里（离镜头越近，能越高）；
     //   隔一段才有一样高的（断砖垛、斜靠的板子、竖着的钢筋），离镜头很近，走过去一晃就过去了
     const CZ = 10.5, hmax = z => 1.17 - 0.111 * (CZ - z), hknee = z => 0.16 + 0.096 * z;   // hmax：不挡孩子的脚；hknee：顶多挡到孩子的脚踝
-    const C = { p: [], n: [], c: [] }, conc = () => new THREE.Color(0x5a5852).multiplyScalar(rr(0.7, 1.05));
-    const concMat = shade(lam(0xffffff, { vertexColors: true }), 3), rust = shade(lam(0x3a2a20), 3);
+    const B = { p: [], n: [], c: [] }, C = { p: [], n: [], c: [] }, conc = () => new THREE.Color(0x5a5852).multiplyScalar(rr(0.7, 1.05));
+    // 前景一律是平的近黑：不受光、没有纹理，只剩轮廓（雾还管它，所以离镜头远一点的稍微浅一点）
+    const concMat = new THREE.MeshBasicMaterial({ color: 0x0b0c0d }), rust = concMat; concMat.userData.own = true;
     const rebar = (pts, r = 0.009) => tube(R, pts, r, rust, 10);
     const mound = (x, z, r, h, col) => { const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.2, flat: 1, moss: 0.15, col }), concMat, x, 0, z); m.scale.set(r, h, r * rr(0.6, 0.9)); m.rotation.y = rr(0, 6.28); };
     const heap = (cx, cz, r, h) => {                                // 一堆碎砖：底下一个土堆垫着，上面乱码着整砖、半截砖
       mound(cx, cz, r * 0.85, h * 0.75, 0x3e3830);
       for (let i = 0, n = Math.round(r * r * 70 + 8); i < n; i++) {
         const a = rr(0, 6.28), d = Math.sqrt(rnd()) * r, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 0.75, top = h * (1 - (d / r) * (d / r));
-        pushBox(A, x, rr(top * 0.55, Math.max(0.03, top)) + 0.02, z, BD / 2, BH / 2, rnd() < 0.35 ? rr(0.04, 0.09) : BL / 2, 0, [rr(-0.7, 0.7), rr(0, 6.28), rr(-0.7, 0.7)], brickCol(0.1, 0.85));
+        pushBox(B, x, rr(top * 0.55, Math.max(0.03, top)) + 0.02, z, BD / 2, BH / 2, rnd() < 0.35 ? rr(0.04, 0.09) : BL / 2, 0, [rr(-0.7, 0.7), rr(0, 6.28), rr(-0.7, 0.7)], brickCol(0.1, 0.85));
       }
     };
     // 板面朝镜头这边倾斜（rx > 0）：背着月亮，板面是暗的
@@ -280,14 +285,14 @@ const CH14 = (() => {
       for (let r = 0, n = Math.round(h / PY); r < n; r++) for (const k of [-1, 1]) {
         if (r > n - 4 && rnd() < 0.35 + (r - n + 4) * 0.15) continue;
         const along = r % 2 ? [BL / 2, BD / 2] : [BD / 2, BL / 2], o = r % 2 ? [0, k * 0.058] : [k * 0.058, 0];
-        pushBox(A, x + o[0] + rr(-0.004, 0.004), r * PY + J + BH / 2, z + o[1], along[0], BH / 2, along[1], 0, [0, rr(-0.03, 0.03), 0], brickCol(r * PY, 0.85));
+        pushBox(B, x + o[0] + rr(-0.004, 0.004), r * PY + J + BH / 2, z + o[1], along[0], BH / 2, along[1], 0, [0, rr(-0.03, 0.03), 0], brickCol(r * PY, 0.85));
       }
     };
     const wallX = (x0, x1, zc, top) => {                           // 沿着 x 的一段残墙，只剩墙根，两皮砖厚，上沿参差
       for (let r = 0; r < 9; r++) for (const k of [-1, 1]) {
         const off = (r % 2) * PZ / 2;
         for (let x = x0 + off; x < x1; x += PZ) if (r < top(x) + rr(-0.6, 0.6))
-          pushBox(A, x + PZ / 2, r * PY + J + BH / 2, zc + k * 0.056, BL / 2 - rr(0, 0.003), BH / 2, BD / 2 - 0.002, 0, [0, rr(-0.01, 0.01), 0], brickCol(r * PY, 0.85));
+          pushBox(B, x + PZ / 2, r * PY + J + BH / 2, zc + k * 0.056, BL / 2 - rr(0, 0.003), BH / 2, BD / 2 - 0.002, 0, [0, rr(-0.01, 0.01), 0], brickCol(r * PY, 0.85));
       }
     };
     // 近处那一截墙脚下两边：堆着的碎砖
@@ -322,7 +327,7 @@ const CH14 = (() => {
         heap(x + rr(-0.3, 0.3), z + 0.4, 0.6, 0.35); }
       else { mound(x, z, 0.5, 0.25, 0x5a5850); for (let i = 0; i < 7; i++) { const bx0 = x + rr(-0.35, 0.35), bz0 = z + rr(-0.2, 0.2), hh = rr(0.5, 0.9); rebar([[bx0, 0.1, bz0], [bx0 + rr(-0.05, 0.05), hh * 0.6, bz0], [bx0 + rr(-0.3, 0.3), hh, bz0 + rr(-0.2, 0.2)], [bx0 + rr(-0.5, 0.5), hh - rr(0, 0.3), bz0 + rr(-0.2, 0.2)]], 0.012); } }
     }
-    v.debris = meshOf(C, concMat); R.add(v.debris);
+    v.debris = meshOf(C, concMat); R.add(v.debris); v.fgBricks = meshOf(B, concMat); R.add(v.fgBricks);
     const brickMat = shade(lam(0xffffff, { vertexColors: true }), 0);
     v.wall = meshOf(A, brickMat); R.add(v.wall);
     v.mortar = meshOf(M, brickMat); R.add(v.mortar);
@@ -341,7 +346,28 @@ const CH14 = (() => {
       // 一整片林子：树冠一团团挤在一起，顶上参差不齐，偶尔冒出一棵高一点的针叶树；糊一点，和天几乎分不开
       for (let x = X - 120; x < X + 140; x += rr(0.8, 1.8)) { const h = 5 + 3.5 * Math.sin(x * 0.05) + 2.5 * Math.sin(x * 0.17 + 1) + rr(-1, 1.5); disc(g, x, h - rr(0.5, 1.5), rr(1.2, 2.6)); box(g, x - 1, -2, 2.2, h - 1); }
       for (let x = X - 115; x < X + 135; x += rr(9, 26)) tree(g, x, 0, rr(10, 14), 'pine');
-    }, { fog: false, blur: 2.5, blurOnce: true });
+    }, { fog: true, blur: 2.5, blurOnce: true });
+    // 中景：雾里一层层的枯树、断柱，越远越被雾抬浅（布景板受雾）。墙两边让开
+    for (const [z, n] of [[-16, 9], [-30, 11], [-55, 14], [-90, 16]]) {
+      const half = 12 + (-z) * 0.5;
+      backdrop(X - half, X + 26 + half, -1, 22, z, 18, g => {
+        setInk(g, '#0d0f11');
+        for (let i = 0; i < n; i++) {
+          const x = rr(X - half, X + 26 + half); if (Math.abs(x - WX) < 2.5 + (-z) * 0.02) continue;
+          if (rnd() < 0.7) tree(g, x, -1, rr(9, 17), 'dead');
+          else { const w = rr(0.4, 0.9), h = rr(3, 9); poly(g, [[x - w, -1], [x + w, -1], [x + w * 0.9, h - rr(0, 1.2)], [x, h], [x - w * 0.8, h - rr(0.4, 1.8)]]); }   // 断了的柱子，顶上是斜茬
+        }
+      }, { fog: true });
+    }
+    // 前景偶尔一根很高的黑柱子（枯树干或断柱）：离镜头很近，横穿画面，一晃就过去
+    for (let x = X - 13; x < X + 34; x += rr(9, 14)) {
+      if (Math.abs(x - WX) < 2) continue;
+      const z = rr(5.6, 7.2);
+      if (rnd() < 0.6) {
+        const h = 9, t = add(R, cy(rr(0.1, 0.14), rr(0.16, 0.22), h, 8), concMat, x, h / 2, z, false); t.rotation.z = rr(-0.12, 0.12);
+        for (let k = 0; k < 3; k++) { const y = rr(2.5, 6), a = (rnd() < 0.5 ? -1 : 1) * rr(0.5, 1.1), L = rr(0.8, 2); tube(R, [[x, y, z], [x + Math.sin(a) * L * 0.5, y + L * 0.4, z + rr(-0.2, 0.2)], [x + Math.sin(a) * L, y + L * rr(0.6, 1), z + rr(-0.3, 0.3)]], rr(0.015, 0.035), concMat, 8); }
+      } else add(R, bx(rr(0.3, 0.45), 9, rr(0.3, 0.45)), concMat, x, 4.5, z, false).rotation.z = rr(-0.08, 0.08);
+    }
     V = v;
   }
 
