@@ -9,62 +9,64 @@
 //  看到的：这些身体正在被送进炉子，他自己也在里面。留下的问题：这些穿白衣服的人是谁？
 // ============================================================
 const E1 = (() => {
-  const MOUTH = 8, LIFT = 50, END = 80, V_BELT = 0.55, GAP = 7, NC = 7, LOOP = GAP * NC, RUN = LIFT - MOUTH, REACH = 40, HERO = 2;   // RUN：一辆车在输送带上走多远；HERO：主角躺在第几辆车里
-  const C = chapter({ n: 1, x0: -60, start: 28, name: '焚化炉', sub: '醒来', ground: 'concrete' });
-  terrain([-60, 0], [END, 0]);
-  ground(-60, 0x1b1a19); ground(END, 0x1b1a19);
+  const X = EX;                                            // 这一章的原点：整段《逃出工厂》的原点（60-kit.js）。下面的位置都是从这里量的
+  const MOUTH = X + 8, LIFT = X + 50, END = X + 80, V_BELT = 0.55, GAP = 7, NC = 7, LOOP = GAP * NC, RUN = LIFT - MOUTH, REACH = X + 40, HERO = 2;   // RUN：一辆车在输送带上走多远；HERO：主角躺在第几辆车里
+  const C = chapter({ n: 1, x0: X - 60, start: X + 28, name: '焚化炉', sub: '醒来', ground: 'concrete' });
+  terrain([X - 60, 0], [END, 0]);
+  ground(X - 60, 0x1b1a19); ground(END, 0x1b1a19);
   surface(MOUTH, LIFT + 2, 'metal');
-  solid({ id: 'furnace', x1: -10, x2: MOUTH - 0.9, y1: 0, y2: 14, noclimb: true });
+  solid({ id: 'furnace', x1: X - 10, x2: MOUTH - 0.9, y1: 0, y2: 14, noclimb: true });
   // 输送带上的推车：s 从升降台落到带子上以后走了多远。走到炉口（s = RUN）就进了炉子；剩下的一段（RUN..LOOP）它在升降台上从顶上放下来
   const S0 = [35.5, 28.5, 21.5, 14.5, 7.5, 0.5, 42.5];
-  const CARTS = S0.map((s, i) => solid({ id: 'bcart' + i, s, x: 0, y: 0, x1: 0, x2: 0, y1: 0, y2: CART.rail, off: false, snd: 'metal', fired: false }));
-  const crate = pushable({ id: 'e1crate', x: 60.5, w: 1.15, h: 0.95, min: 58.5, max: 70.0, snd: 'wood' });
+  // 位置在 update 里每帧算；算之前先关着（off），不然它们停在 x = 0 —— 那里是旧原型第一章（第九章）的地面，会挡住路
+  const CARTS = S0.map((s, i) => solid({ id: 'bcart' + i, s, x: 0, y: 0, x1: 0, x2: 0, y1: 0, y2: CART.rail, off: true, snd: 'metal', fired: false }));
+  const crate = pushable({ id: 'e1crate', x: X + 60.5, w: 1.15, h: 0.95, min: X + 58.5, max: X + 70.0, snd: 'wood' });
   const door = gate({ id: 'e1door', x: END });
-  const LEVER = { x: 70.0, pulled: false, t: 0, reach: 0 };
+  const LEVER = { x: X + 70.0, pulled: false, t: 0, reach: 0 };
   // st：sleep 还没开始（标题画面）/ intro 开场 / free 可以动了。t 开场过了多久；grace 回到存档点以后几秒里火烧不到
   const S = { st: 'sleep', t: 0, grace: 0, lie: 1, sit: 1 };
   const BELT = { v: 0, off: 0 };
   // 炉子：ph —— idle 关着 / warn 门开了 / fire 火卷出来 / cool 收回去。front 火头到哪了；next 离下一次自己喷还有多久（推车进炉的那一下另算）
   const FUR = { ph: 'idle', t: 0, front: MOUTH, next: 6.3, open: 0, heat: 0 };
   const BODS = CARTS.map((c, i) => bodiesFor(i === HERO ? 2 : 3));
-  const G = fig('guard', 17, { z: -1.75, hide: true });
+  const G = fig('guard', X + 17, { z: -1.75, hide: true });
   const FIGS = [...BODS.flat(), G];
   C.intro = () => { S.st = 'intro'; S.t = 0; ctl = false; $('fade').style.opacity = 1; };
 
   usable({ id: 'e1breaker', x: LEVER.x, r: 0.85, y0: 0.6, can: () => !LEVER.pulled,
     on() { LEVER.pulled = true; LEVER.reach = 0.7; door.want = 1; fx('lever'); fx('powerDown'); } });
-  checkpoint(26); checkpoint(38); checkpoint(54); checkpoint(66); checkpoint(76);
-  camKeys([-20, 22, 2.0, 3], [14, 22, 2.0, 2.6], [30, 21, 1.9, 1.2], [50, 21, 2.0, 1], [62, 21, 2.3, 1.5], [72, 21, 2.6, 0], [78, 19, 1.9, -1.2], [END + 0.4, 18.5, 1.8, -1]);
+  for (const x of [26, 38, 54, 66, 76]) checkpoint(X + x);
+  camKeys([X - 20, 22, 2.0, 3], [X + 14, 22, 2.0, 2.6], [X + 30, 21, 1.9, 1.2], [X + 50, 21, 2.0, 1], [X + 62, 21, 2.3, 1.5], [X + 72, 21, 2.6, 0], [X + 78, 19, 1.9, -1.2], [END + 0.4, 18.5, 1.8, -1]);
   // 光：暗，脏。主光几乎没有，炉口一阵一阵的红光是这一章最亮的东西
-  env(-60, { fog: 0x201816, fogD: 0.028, hemiS: 0x9c908c, hemiG: 0x18110e, hemiI: 0.8, keyC: 0xffd8bc, keyI: 0.5, keyDir: [0.2, 1, 0.35], rimC: 0xff9a6a, rimI: 0.95,
+  env(X - 60, { fog: 0x201816, fogD: 0.028, hemiS: 0x9c908c, hemiG: 0x18110e, hemiI: 0.8, keyC: 0xffd8bc, keyI: 0.5, keyDir: [0.2, 1, 0.35], rimC: 0xff9a6a, rimI: 0.95,
     dustC: 0xffc9a0, dustO: 0.45, wind: -0.03, ext: 0, vig: 1.12, aRoom: 1, roomF: 150, aHum: 0.35, aDrip: 0, aFar: 1, rvHall: 1 });
   env(END - 0.7, {});
 
   const onBelt = () => P.x > MOUTH && P.x < LIFT + 1 && P.y < 1.0;
   const shielded = () => CARTS.some(c => !c.off && P.x > c.x2 - 0.05 && P.x < c.x2 + 1.8);
-  hint(() => S.st === 'free' && !P.moved, '<b>←</b><b>→</b> 移动　　<b>空格</b> 跳出推车');
+  hint(() => S.st === 'free' && !P.moved && chapterAt(P.x) === C, '<b>←</b><b>→</b> 移动　　<b>空格</b> 跳出推车');   // 只在这一章：旧原型的第一章也从头教
   hint(() => S.st === 'free' && onBelt() && P.y < 0.5 && P.x < REACH && (FUR.ph === 'warn' || FUR.ph === 'fire' || FUR.open > 0.4) && !shielded(), '炉门开了 —— 躲到推车右边，贴着它');
-  hint(() => S.st === 'free' && onBelt() && P.x < 20 && P.x > MOUTH + 3 && !LEVER.pulled, '输送带在把你往炉口带 —— 往右走');
+  hint(() => S.st === 'free' && onBelt() && P.x < X + 20 && P.x > MOUTH + 3 && !LEVER.pulled, '输送带在把你往炉口带 —— 往右走');
   hint(() => !LEVER.pulled && P.y > 0.6 && Math.abs(P.x - LEVER.x) < 0.85, '按 <b>E</b> 拉下断电杆');
-  hint(() => !LEVER.pulled && crate.x >= 69 && P.x > 66 && P.x < 72 && P.y < 0.5 && P.mode !== 'push', '跳上箱子');
-  hint(() => !LEVER.pulled && crate.x < 69 && P.x > 68.6 && P.x < 71.6 && P.y < 0.5, '断电杆太高了，够不着');
-  hint(() => !LEVER.pulled && crate.x < 68 && P.x > 57.5 && P.x < 66 && Math.abs(P.x - crate.x) < 2.4 && P.mode !== 'push', '按住 <b>E</b> 推箱子 —— 地上的拖痕通向断电杆');
+  hint(() => !LEVER.pulled && crate.x >= X + 69 && P.x > X + 66 && P.x < X + 72 && P.y < 0.5 && P.mode !== 'push', '跳上箱子');
+  hint(() => !LEVER.pulled && crate.x < X + 69 && P.x > X + 68.6 && P.x < X + 71.6 && P.y < 0.5, '断电杆太高了，够不着');
+  hint(() => !LEVER.pulled && crate.x < X + 68 && P.x > X + 57.5 && P.x < X + 66 && Math.abs(P.x - crate.x) < 2.4 && P.mode !== 'push', '按住 <b>E</b> 推箱子 —— 地上的拖痕通向断电杆');
 
   // 灯：炉口的红光、跟着火头走的一团光；输送带上方几盏昏暗的吊灯；断电杆上的小红灯；检修门外的光
   const furL = pointLight({ p: [MOUTH + 0.8, 1.5, 0.4], c: 0xff5a22, i: 26, d: 26, dec: 1.3 });
   const flameL = pointLight({ p: [MOUTH, 1.1, 0.5], c: 0xff8a3a, i: 70, d: 13, dec: 1.4, on: 0 });
   const leverL = pointLight({ p: [LEVER.x, 2.9, 0.2], c: 0xff4a2a, i: 2.2, d: 5, dec: 2 });
   const doorL = pointLight({ p: [END - 1.0, 1.5, 0.5], c: 0xffc070, i: 6, d: 12, dec: 1.4, on: 0 });
-  const LAMPS = [20, 34, 48, 62, 73];
+  const LAMPS = [20, 34, 48, 62, 73].map(x => X + x);
   workLamps(LAMPS, { c: 0xffb070, i: 4.5 });
 
   let V = null;
   function* build(R) {
     const v = {}, brick = lam(0x2b221e), brick2 = lam(0x1d1715); brick.userData.own = brick2.userData.own = true;
-    hallLayers(-36, END + 1.5, { far: '#140e0d', win: '#3a1c14', mid: '#0c0808', near: '#080606', near2: '#1a100c' }, { lamps: LAMPS, cols: [14.5, 44.5, 56, 75.5], fore: [31.5, 64.2],
-      mid(g) { box(g, -6, 9, 9, 13); box(g, -8, 8.2, 13, 1.0); for (const x of [57, 66]) { poly(g, [[x, 4.2], [x + 3, 4.2], [x + 2.2, 1.8], [x + 0.8, 1.8]]); box(g, x + 0.2, 0, 0.2, 4.2); box(g, x + 2.6, 0, 0.2, 4.2); } } });
+    hallLayers(X - 36, END + 1.5, { far: '#140e0d', win: '#3a1c14', mid: '#0c0808', near: '#080606', near2: '#1a100c' }, { lamps: LAMPS, cols: [14.5, 44.5, 56, 75.5].map(x => X + x), fore: [31.5, 64.2].map(x => X + x),
+      mid(g) { box(g, X - 6, 9, 9, 13); box(g, X - 8, 8.2, 13, 1.0); for (const x of [X + 57, X + 66]) { poly(g, [[x, 4.2], [x + 3, 4.2], [x + 2.2, 1.8], [x + 0.8, 1.8]]); box(g, x + 0.2, 0, 0.2, 4.2); box(g, x + 2.6, 0, 0.2, 4.2); } } });
     yield;
-    floorSeams(R, -20, END - 1);
+    floorSeams(R, X - 20, END - 1);
     // 炉子：一整块砖砌的炉体，朝右开着一个口，输送带伸进去。口里面是一片烧红的光；门是一块往上提的铁板
     add(R, bx(15.9, 12, 12), brick, MOUTH - 8.95, 6, 0); add(R, bx(1.0, 12, 4.85), brick, MOUTH - 0.5, 6, -3.575); add(R, bx(1.0, 12, 4.85), brick, MOUTH - 0.5, 6, 3.575);
     add(R, bx(1.0, 9.4, 2.3), brick, MOUTH - 0.5, 2.6 + 4.7, 0); add(R, bx(0.5, 0.5, 2.9), brick2, MOUTH + 0.12, 2.85, 0); for (const z of [-1.4, 1.4]) add(R, bx(0.5, 2.6, 0.5), brick2, MOUTH + 0.12, 1.3, z);
@@ -95,8 +97,8 @@ const E1 = (() => {
     add(v.leverArm, cy(0.03, 0.03, 0.56, 8), MAT.dark, 0, 0.28, 0); add(v.leverArm, new THREE.SphereGeometry(0.075, 12, 8), lam(0xb0452e), 0, 0.58, 0);
     v.leverLamp = unlit(0xff4a2a); add(R, new THREE.SphereGeometry(0.075, 10, 8), v.leverLamp, LEVER.x, 2.92, -0.46, false);
     tube(R, [[LEVER.x, 2.7, -0.7], [LEVER.x - 0.4, 5.6, -1.8], [LEVER.x - 3, 7.2, -3.2], [LIFT + 1, 8.6, -0.9]], 0.035, MAT.dark);
-    v.crateG = mkCrate(R, crate, 'wood'); dragMarks(R, 60.1, 70.3);
-    add(R, bx(0.22, 0.14, 1.0), MAT.rust, 70.72, 0.07, 0).rotation.z = 0.5;
+    v.crateG = mkCrate(R, crate, 'wood'); dragMarks(R, X + 60.1, X + 70.3);
+    add(R, bx(0.22, 0.14, 1.0), MAT.rust, X + 70.72, 0.07, 0).rotation.z = 0.5;
     v.lampG = lampGlows(R, LAMPS, 0xffb070, 1.8);
     // 厂房尽头的墙和检修门
     divider(R, END); v.door = mkGateDoor(R, door);
@@ -114,9 +116,9 @@ const E1 = (() => {
     // 看守：从炉口那边沿着输送带走过来，在这一车旁边站住，用棍子拨两下，接着往右走远
     if (t > 2.4 && t < 15.5) {
       G.hide = false;
-      if (!G.met) { figAct(G, 'walk'); G.yawT = undefined; if (G.x > HC.x - 1.3) { G.met = t; G.vx = 0; } else figGo(G, 99, 1.3, dt); }
+      if (!G.met) { figAct(G, 'walk'); G.yawT = undefined; if (G.x > HC.x - 1.3) { G.met = t; G.vx = 0; } else figGo(G, X + 99, 1.3, dt); }
       else if (t < G.met + 2.9) { figAct(G, 'poke', { tx: P.x + 0.25, ty: P.y + 0.12, yawT: -0.95 }); G.vx = 0; }
-      else { figAct(G, 'walk'); G.yawT = undefined; figGo(G, 70, 1.35, dt); }
+      else { figAct(G, 'walk'); G.yawT = undefined; figGo(G, X + 70, 1.35, dt); }
     } else G.hide = true;
     S.lie = 1 - sstep(16.6, 18.4, t); S.sit = 1 - sstep(19.0, 19.9, t);
     if (t > 20) { S.st = 'free'; ctl = true; camOvr = null; G.hide = true; FUR.next = 5.2; }
@@ -162,7 +164,7 @@ const E1 = (() => {
       if (onBelt() && low && sh && (fire || FUR.ph === 'warn' || FUR.open > 0.5) && Math.abs(P.vx) < 1.2) HX.pose = crouchPose(sstep(0.3, 1, FUR.open));
       if (onBelt()) TIRED.rushT = 0.5;
     }
-    AUD.belt = Math.max(AUD.belt, sstep(46, 8, Math.abs(P.x - 26)) * clamp(BELT.v / V_BELT, 0, 1) * (1 - E.ext));
+    AUD.belt = Math.max(AUD.belt, sstep(46, 8, Math.abs(P.x - (X + 26))) * clamp(BELT.v / V_BELT, 0, 1) * (1 - E.ext));
     if (S.st === 'intro' && S.t < 15 && Math.floor(S.t / 4.2) !== Math.floor((S.t - dt) / 4.2)) fx('ebellFar', 1);        // 开场：远处隐约的铃声
     if (S.st === 'intro') AUD.wheels = 0.22 * (1 - sstep(1.5, 6, S.t));
     // 断电杆
@@ -191,11 +193,11 @@ const E1 = (() => {
   }
   function reset() {
     CARTS.forEach((c, i) => { c.s = S0[i]; c.fired = false; }); BODS.forEach((b, i) => cartBodies(b, LIFT - S0[i], 0));
-    placeBox(crate, 60.5); setGate(door, 0); Object.assign(LEVER, { pulled: false, t: 0, reach: 0 });
+    placeBox(crate, X + 60.5); setGate(door, 0); Object.assign(LEVER, { pulled: false, t: 0, reach: 0 });
     Object.assign(S, { st: 'sleep', t: 0, grace: 0, lie: 1, sit: 1 }); Object.assign(FUR, { ph: 'idle', t: 0, front: MOUTH, next: 6.3, open: 0, heat: 0 });
-    Object.assign(G, { x: 17, hide: true, met: 0, vx: 0, yawT: undefined }); figAct(G, 'walk'); BELT.v = 0;
+    Object.assign(G, { x: X + 17, hide: true, met: 0, vx: 0, yawT: undefined }); figAct(G, 'walk'); BELT.v = 0;
   }
-  function solve() { reset(); S.st = 'free'; LEVER.pulled = true; LEVER.t = 1; placeBox(crate, 70.0); setGate(door, 1); }
-  return defZone({ n: 1, vis: [-36, END + 1], build, update, reset, solve, unbuild() { V = null; },
+  function solve() { reset(); S.st = 'free'; LEVER.pulled = true; LEVER.t = 1; placeBox(crate, X + 70.0); setGate(door, 1); }
+  return defZone({ n: 1, vis: [X - 36, END + 1], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x < END) { S.grace = 3.5; if (FUR.ph !== 'fire') { FUR.ph = 'idle'; FUR.next = 5; } } }, S, FUR, CARTS, LEVER, crate, door, G });
 })();

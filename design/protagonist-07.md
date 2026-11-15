@@ -65,12 +65,12 @@
 - `Last/sidescroller/src/40-character-build.js`：`buildRobot07()` 是造型；`profileShape` / `slab` 把一圈侧面轮廓挤成实体，改躯干、靴子的形状只要改那几个轮廓点。颜色在 `M`，比例在 `D`。旧版小机器人保留为 `buildOldRobot()`，只为对比。
 - `Last/sidescroller/src/42-character-anim.js`：`A.cover` 是捂灯的姿势，文件末尾 `if (Lm)` 那一段是灯的全部行为。
 - `Last/sidescroller/src/60-ch1-factory.js`：`HX.hide` 决定什么时候捂灯（现在是：在矮墙影子里、光束在 4–8 米内、基本站住）。各章节每帧往 `HX` 里写 `hide` / `alert` / `energy` / `pose`，由 `90-main.js` 交给主角动画。
-- 改完运行 `bash Last/sidescroller/build.sh` 重新生成 `Last/sidescroller.html`。
+- 改完运行 `bash Last/sidescroller/build.sh` 重新生成 `Last/escape.html`（旧原型的章节是游戏的第 9–21 章）。
 - 在浏览器控制台里可以直接试颜色：`__g.hero().B.M.shell.color.setHex(0x85988b)`（自发光色是 `.emissive`）。
 
 ## 怎么看
 
-切换主角的按键已于 2026-11-12 删除。现在打开 `Last/sidescroller.html`，07 型机器人只在第一章上层通道和第三章的回收线上出现。
+切换主角的按键已于 2026-11-12 删除。现在打开 `Last/escape.html`，07 型机器人只在旧原型的第一章上层通道和第三章的回收线上出现（游戏里是第九章和第十一章）。
 
 ## 还没做
 

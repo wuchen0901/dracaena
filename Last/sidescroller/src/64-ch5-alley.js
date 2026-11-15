@@ -10,7 +10,7 @@
 // ============================================================
 const CH5 = (() => {
   const X = X5, BOT0 = X + 17.0, L_END = X + 17.95, R_END = X + 33.2, DOOR = X + 35.2, ELDER = X + 15.0, STATION = X + 7;
-  const C = chapter({ n: 5, x0: X + 0.5, start: X + 3, name: '维修巷', sub: '分配备用电池' });
+  const C = chapter({ n: OLD + 5, x0: X + 0.5, start: X + 3, name: '维修巷', sub: '分配备用电池' });
   C.ground = 'concrete';
   terrain([X6, 0]);
   ground(X + 4, 0x3f4446); ground(X6 - 6, 0x44494a);
@@ -193,5 +193,5 @@ const CH5 = (() => {
     reset(); const c = STORY.cleaner || 1; S.choice = c; S.t = 60; S.scan = 9; batt.locked = true; batt.off = true; setGate(door, 1); placeBox(batt, c === 1 ? L_END : R_END);
     if (c === 1) Object.assign(S, { bx: DOOR + 2.6, bz: -0.95, lamp: 1, coat: 1, latchT: 1 }); else S.coat = -1;
   }
-  return defZone({ n: 5, vis: [X - 4, X6 + 4], build, update, reset, solve, unbuild() { V = null; }, batt, door, S });
+  return defZone({ n: OLD + 5, vis: [X - 4, X6 + 4], build, update, reset, solve, unbuild() { V = null; }, batt, door, S });
 })();

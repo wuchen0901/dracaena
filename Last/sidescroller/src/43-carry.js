@@ -139,7 +139,7 @@ function poseCarry(dt) {
 
 // 在 hero.update 之后：把包摆到胯上、带子拉好；把灯泡放到手里（或者章节给的地方）；透光
 function stepCarry(dt) {
-  const inLN = chapterAt(P.x).n >= 12; CARRY.bag = inLN;                             // 包和灯泡只在《长夜》的章节里有（前十一章还是原来的故事）
+  const inLN = chapterAt(P.x).n >= OLD + 12; CARRY.bag = inLN;                       // 包和灯泡只在《长夜》的章节里有（旧原型的第十二、十三章）
   const showBag = inLN && state !== 'title';
   if (!CARRY.B || CARRY.B.h !== hero) { if (CARRY.B) { CARRY.B.g.parent?.remove(CARRY.B.g); } CARRY.B = hero.B.traveler?.group ? buildBag(hero) : null; }
   if (!CARRY.light) { CARRY.light = pointLight({ p: [0, 0, 0], c: 0xffe6c4, i: 5, d: 4, dec: 1.7, on: 0 }); CARRY.bagLight = pointLight({ p: [0, 0, 0], c: 0xffe2b6, i: 4, d: 3.2, dec: 1.7, on: 0 }); }

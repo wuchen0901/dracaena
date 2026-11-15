@@ -71,8 +71,9 @@ const ENV_NUM = ['fogD', 'hemiI', 'keyI', 'rimI', 'dustO', 'wind', 'ext', 'sunX'
   'aWind', 'aWhis', 'aLeaf', 'leafDry', 'aBug', 'aDrip', 'aFlow', 'aRoom', 'roomF', 'aHum', 'aCity', 'aFar', 'rvOut', 'rvHall', 'rvCave'];
 const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['sunC', 'cloudC'];
 const ENVKEYS = [];
-function env(x, o = {}) {
-  const prev = ENVKEYS[ENVKEYS.length - 1], raw = { ...(prev ? prev.raw : ENV0), ...o }, k = { x, raw };
+// 没写的项沿用上一个关键帧；fresh：从默认值（ENV0）重新算起 —— 一个故事的第一个关键帧用，不接着前一个故事的光
+function env(x, o = {}, fresh = false) {
+  const prev = fresh ? null : ENVKEYS[ENVKEYS.length - 1], raw = { ...(prev ? prev.raw : ENV0), ...o }, k = { x, raw };
   for (const f of ENV_NUM) k[f] = raw[f];
   for (const f of ENV_COL) k[f] = new THREE.Color(raw[f]);
   for (const f of ENV_RAW) k[f] = hex3(raw[f]);

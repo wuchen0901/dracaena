@@ -11,7 +11,7 @@
 const X11 = 1800;
 const CH11 = (() => {
   const X = X11;
-  const C = chapter({ n: 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯',
+  const C = chapter({ n: OLD + 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯',
     intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
@@ -446,7 +446,7 @@ const CH11 = (() => {
     if (envMod === mod) envMod = null;
   }
   function solve() { reset(); H.st = 'gone'; }
-  return defZone({ n: 11, vis: [X - 30, X + 170], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: OLD + 11, vis: [X - 30, X + 170], build, update, reset, solve, unbuild() { V = null; },
     // 回到存档点：灯从这一段的最右边重新朝这边扫过来
     respawn(c) { if (c.x > X - 10 && c.x < X + 160) { Object.assign(H, { exposure: 0, caught: 0, hid: Math.min(H.hid, 3) }); if (H.live) { H.lx = SWEEP[H.stage][1]; leg(SWEEP[H.stage][0]); } } }, H, COVERS, SWEEP, lit });
 })();

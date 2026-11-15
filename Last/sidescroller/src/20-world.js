@@ -5,14 +5,23 @@
 //  往这里登记地形、方块、可推的东西、闸门、机关和存档点
 // ============================================================
 const X1 = 0, X2 = 104, X3 = 260, X4 = 392, X5 = 478, X6 = 542, X7 = 656, X8 = 772;      // 各章的原点（世界 x）
+// 一共二十一章，排成一条路：第 1–8 章是《逃出工厂》（escape/，整段在世界的最左边，见 escape/60-kit.js 的 EX），
+// 第 9–21 章是旧原型《铁锈与微光》的十三章（src/6*-ch*.js，还在原来的位置，从 x = -60 起）。
+// 旧原型的第 k 章现在是第 OLD + k 章；旧文件里写章节号的地方都写成 OLD + k，文件名、注释里的“第几章”还是旧的编号
+const OLD = 8;
+const localN = n => n > OLD ? n - OLD : n;           // 这一章在它自己那个故事里是第几章：随机数种子、07 的灯按它算，两个故事怎么排都不变
 const CHAPTERS = [];                                 // { n, x0: 这一章从哪里算起, start: 出生点, name, sub }
-function chapter(o) { CHAPTERS.push(o); return o; }
+function chapter(o) {                                // 章节号必须就是它在表里的位置（startChapter、菜单都按这个找）
+  if (o.n !== CHAPTERS.length + 1) console.error(`章节号不对：《${o.name}》写的是第 ${o.n} 章，排在第 ${CHAPTERS.length + 1} 个`);
+  CHAPTERS.push(o); return o;
+}
 const chapterAt = x => { let c = CHAPTERS[0]; for (const k of CHAPTERS) if (x >= k.x0) c = k; return c; };
 
 // 故事进度：跨章节要记住的事（存进 localStorage，下次打开接着走）
 //   cat 救下了小猫 / fed 老人拿到了食物 / cleaner 1 = 电池给了清洁机器人，2 = 给了门 /
 //   pump 水泵通了电 / water 给幸存者和猫留了水 / wild 野地得到了水 / ending 1 = 修复，2 = 旁路
-//   《长夜》原型：bulb 灯泡在包里（第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
+//   《长夜》原型：bulb 灯泡在包里（旧第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
+//   《逃出工厂》加的两样在 escape/60-kit.js
 const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false, water: false, wild: false, ending: 0, bulb: false, room: 0 };
 const STORY = { ...STORY0 };
 
@@ -34,9 +43,10 @@ function groundBack(x1, x2, z) { GROUND_BACK.push([x1, x2, z]); }
 // 地面往镜头这边铺到哪里：登记过的一段 [x1, x2] 只铺到 z 为止；z 写 null 就整段不铺（山洞自己搭地面，前面是岩石的剖面）
 const GROUND_FRONT = [];
 function groundFront(x1, x2, z) { GROUND_FRONT.push([x1, x2, z]); }
-// ---- 洞顶：一条折线（只在有顶的地方登记）。头顶碰到它就停；压下来挡在人身边的那一段就是一面墙 ----
+// ---- 洞顶：折线（只在有顶的地方登记）。头顶碰到它就停；压下来挡在人身边的那一段就是一面墙 ----
+// 每调用一次 ceiling() 是单独的一段，两段之间没有顶（第六章卡车底下一段、旧原型山洞一段，中间隔着好几章）
 const CEIL = [];
-function ceiling(...pts) { for (const p of pts) CEIL.push(p); }
+function ceiling(...pts) { if (CEIL.length && pts.length) pts[0].gap = true; for (const p of pts) CEIL.push(p); }
 let _ci = 1;
 function ceilY(x) {                                  // 头顶的岩石有多低；没有洞顶的地方是无穷高
   const n = CEIL.length; if (n < 2 || x < CEIL[0][0] || x > CEIL[n - 1][0]) return Infinity;
@@ -44,6 +54,7 @@ function ceilY(x) {                                  // 头顶的岩石有多低
   while (i > 1 && x < CEIL[i - 1][0]) i--;
   while (i < n - 1 && x > CEIL[i][0]) i++;
   _ci = i; const a = CEIL[i - 1], b = CEIL[i];
+  if (b.gap) return x >= b[0] ? b[1] : Infinity;     // 落在两段之间
   return a[1] + (b[1] - a[1]) * clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
 }
 // ---- 能游泳的水：{ x1, x2, y 水面的高度 }。掉进去不再回到岸上，而是游起来（见 50-player.js）----

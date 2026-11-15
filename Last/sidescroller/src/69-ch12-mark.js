@@ -13,7 +13,7 @@ const X12 = 2200;
 const CH12 = (() => {
   const X = X12, BENCH = X + 4.2, INSP = BENCH + 0.5, DOOR = X + 9.4, STAND = BENCH - 0.42;
   const FIX = { x: BENCH, y: 1.0, z: 0.02 };                                         // 工作台上的检测灯座：灯泡挂在它下面（灯头朝上）
-  const C = chapter({ n: 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood',
+  const C = chapter({ n: OLD + 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood',
     intro() { CAT.state = 'none'; } });
   terrain([X - 60, 0], [X + 60, 0]);
   ground(X - 60, 0x3a2f25); ground(X + 60, 0x3a2f25);
@@ -141,7 +141,7 @@ const CH12 = (() => {
       camOvr = { d, yo: lerp(1.2, fy - P.y, S.look), xo: lerp(0.4, fx_ - P.x - cam.look, S.look) }; }
     inspL.on = 1;
     // 走出门：黑一下，到机房门口
-    if (state === 'play' && S.step === 3 && P.x > DOOR + 0.9) fadeOut(() => { startChapter(13, { keepBulb: true }); }, 1.2);
+    if (state === 'play' && S.step === 3 && P.x > DOOR + 0.9) fadeOut(() => { startChapter(OLD + 13, { keepBulb: true }); }, 1.2);
     const v = V; if (!v) return;
     v.fixLamp.color.setHex(S.power > 0.5 ? 0x9cff9a : 0x3a1a10);
     v.door.sync(door); v.out.material.opacity = 0.5 * door.open;
@@ -157,5 +157,5 @@ const CH12 = (() => {
     CARRY.state = 'set'; CARRY.at = FIX; CARRY.act = null; CARRY.holdAt = null; CARRY.wrap = 0; STORY.bulb = false;
   }
   function solve() { Object.assign(S, { step: 3, act: 0, t: 0, cut: 1, power: 0, insp: 0, look: 0, took: true }); setGate(door, 1); if (CARRY.bulb) CARRY.bulb.cut(1); }
-  return defZone({ n: 12, vis: [X - 6, DOOR + 6], build, update(dt) { update(dt); stepSparks(dt); }, reset, solve, unbuild() { V = null; }, S, door });
+  return defZone({ n: OLD + 12, vis: [X - 6, DOOR + 6], build, update(dt) { update(dt); stepSparks(dt); }, reset, solve, unbuild() { V = null; }, S, door });
 })();

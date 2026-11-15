@@ -6,9 +6,10 @@
 //  把空箱沿着拖痕推到断电杆下面，站上去拉下断电杆：输送带和压机停下，安全闸门升起
 // ============================================================
 const CH1 = (() => {
-  const C = chapter({ n: 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线' });
+  const C = chapter({ n: OLD + 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线' });
   C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
+  if (TERRAIN.length) groundFront(TERRAIN[TERRAIN.length - 1][0], -60, null);     // 左边接着《逃出工厂》那条路的尽头：中间空着的一千来米不铺地面
   terrain([-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [104, 0]);
   ground(-60, 0x1c2529); ground(103.9, 0x1c2529);
   solid({ id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 });
@@ -48,11 +49,11 @@ const CH1 = (() => {
     [89, 21.5, 2.5, 2.5], [96, 21.5, 2.6, 0.8], [99.5, 21, 2.5, -0.2], [102, 19, 1.9, -1.8], [104.4, 18, 1.7, -1.2]);
   // 整章的光：逆光。颜色还是默认的冷青灰，但环境光和主光压暗、从背后来的轮廓光提亮；
   // 最远的后墙和高窗比雾亮（见下面的布景板），站在它前面的东西都成了剪影
-  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1,
-    aRoom: 1, roomF: 200, aHum: 0.6, aDrip: 0.25, aFar: 1, rvHall: 1 });              // 声音：空厂房的低鸣和电流声，远处的铁器、铁链、泄气，零星的滴水；大厂房的混响
+  env(-60, { fog: 0x26353c, hemiI: 0.45, keyI: 0.5, rimI: 1.1,                     // true：旧原型的第一个关键帧，从默认的光算起，不接着《逃出工厂》结尾的光
+    aRoom: 1, roomF: 200, aHum: 0.6, aDrip: 0.25, aFar: 1, rvHall: 1 }, true);              // 声音：空厂房的低鸣和电流声，远处的铁器、铁链、泄气，零星的滴水；大厂房的混响
   env(104.7, {});                                        // 一直保持到出口那面黑墙；镜头穿过黑墙时换成第二章的晨光
 
-  hint(() => !P.moved, '<b>←</b><b>→</b> 移动');
+  hint(() => !P.moved && chapterAt(P.x) === C, '<b>←</b><b>→</b> 移动');                        // 只在这一章：《逃出工厂》的第一章也从头教
   hint(() => P.x > 5.5 && P.x < 9 && !P.jumped, '<b>空格</b> 跳跃');
   hint(() => !P.pushed && P.y < 0.5 && Math.abs(P.x - cart.x) < 2.6 && P.mode !== 'push', '按住 <b>E</b> 抓住推车，再按方向键推或拉');
   hint(() => P.y < 1.2 && cart.x > 36.6 && P.x > 32 && P.x < 38 && P.mode !== 'push', '跳上推车，再跳向高台的边缘');
@@ -498,6 +499,6 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
-    respawn(c) { if (c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
+  return defZone({ n: OLD + 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
+    respawn(c) { if (c.x >= -60 && c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();

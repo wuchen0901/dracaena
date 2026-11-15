@@ -218,23 +218,25 @@ Object.assign(sfx, {
   blub: () => snd('blub', { bus: 'fol', gain: R2(0.08, 0.16), rate: R2(0.85, 1.2), wet: 0.3 }),                         // 嘴边冒出一个气泡
 });
 
-// ---- 鸟、滴水、远处偶尔一下的声音：每一章一组 ----
-const BIRDS = { 2: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], 7: [['bird', 0.82], ['dove', 0.18]], 9: [['bird', 1]] };
-const FAR = { 1: ['clank', 'chain', 'steam', 'creak', 'hum2'], 2: ['woodpecker', 'crow', 'twig'], 3: ['crow', 'rattle', 'creak', 'crow'], 4: ['chime', 'shutter', 'pigeon'],
-  5: ['knock', 'zap', 'clank', 'pigeon'], 6: ['gurgle', 'knock', 'pigeon'], 7: ['bee', 'woodpecker', 'bee'], 8: ['relay', 'zap', 'hum2', 'relay'], '8o': ['owl', 'twig'], 9: ['pebbles', 'rumble', 'plop', 'pebbles'], 11: ['owl', 'twig', 'owl'] };
+// ---- 鸟、滴水、远处偶尔一下的声音：每一章一组（这里写的是旧原型的章节，OLD + k；《逃出工厂》的在 escape/85-fixups.js）----
+const BIRDS = { [OLD + 2]: [['bird', 0.55], ['dove', 0.3], ['woodpecker', 0.15]], [OLD + 7]: [['bird', 0.82], ['dove', 0.18]], [OLD + 9]: [['bird', 1]] };
+const FAR = { [OLD + 1]: ['clank', 'chain', 'steam', 'creak', 'hum2'], [OLD + 2]: ['woodpecker', 'crow', 'twig'], [OLD + 3]: ['crow', 'rattle', 'creak', 'crow'], [OLD + 4]: ['chime', 'shutter', 'pigeon'],
+  [OLD + 5]: ['knock', 'zap', 'clank', 'pigeon'], [OLD + 6]: ['gurgle', 'knock', 'pigeon'], [OLD + 7]: ['bee', 'woodpecker', 'bee'], [OLD + 8]: ['relay', 'zap', 'hum2', 'relay'], [`${OLD + 8}o`]: ['owl', 'twig'],
+  [OLD + 9]: ['pebbles', 'rumble', 'plop', 'pebbles'], [OLD + 11]: ['owl', 'twig', 'owl'] };
 const FARV = { clank: 0.2, chain: 0.13, steam: 0.08, creak: 0.11, hum2: 0.1, woodpecker: 0.13, crow: 0.13, twig: 0.11, rattle: 0.15, chime: 0.09, shutter: 0.1, pigeon: 0.1,
   knock: 0.16, zap: 0.06, gurgle: 0.13, bee: 0.08, relay: 0.12, owl: 0.1, pebbles: 0.15, rumble: 0.3, plop: 0.13 };
 const pickW = list => { let s = 0; for (const [, w] of list) s += w; let u = Math.random() * s; for (const [n, w] of list) if ((u -= w) <= 0) return n; return list[0][0]; };
 let farT = 5, strokePh = 0, heartT = 0, leafK = 0.5;
 function stepAmbient(dt) {
   const ch = chapterAt(P.x).n;
-  if (E.birds > 0.01 && Math.random() < E.birds * dt * 0.32) {
-    const b = pickW(BIRDS[ch] ?? BIRDS[9]);
+  const birds = BIRDS[ch] ?? (ch > OLD ? BIRDS[OLD + 9] : null);         // 旧原型里没单写的章节用山洞那一组；《逃出工厂》没写的章节没有鸟叫
+  if (birds && E.birds > 0.01 && Math.random() < E.birds * dt * 0.32) {
+    const b = pickW(birds);
     snd(b, { bus: 'amb', gain: R2(0.05, 0.14) * (b === 'dove' ? 0.8 : 1) * SND.vol.bird, pan: R2(-0.9, 0.9), lp: R2(5000, 11000), wet: R2(0.3, 0.9), rate: R2(0.94, 1.06) });
   }
   if (E.aDrip > 0.01 && Math.random() < E.aDrip * dt * 1.3) snd('drip', { bus: 'amb', gain: R2(0.03, 0.11) * SND.vol.amb, pan: R2(-0.8, 0.8), wet: 1.3, rate: R2(0.8, 1.25) });
   if (E.aFar > 0.01 && (farT -= dt * E.aFar) <= 0) {
-    farT = R2(6, 14); const pool = FAR[ch === 8 && E.ext > 0.5 ? '8o' : ch];
+    farT = R2(6, 14); const pool = FAR[ch === OLD + 8 && E.ext > 0.5 ? `${OLD + 8}o` : ch];   // 旧第八章出了门是夜里的野外
     if (pool) { const n = pool[Math.floor(Math.random() * pool.length)]; snd(n, { bus: 'amb', gain: (FARV[n] ?? 0.1) * R2(0.6, 1) * SND.vol.far, pan: R2(-0.85, 0.85), lp: R2(1800, 6000), wet: R2(0.9, 1.5), rate: R2(0.94, 1.06) }); }
   }
 }

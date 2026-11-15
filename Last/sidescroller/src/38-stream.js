@@ -31,7 +31,7 @@ function streamZones(cx, sync = false) {
   let stepped = false;
   for (const z of ZONES) {
     const want = cx > z.vis[0] - 75 && cx < z.vis[1] + 75;
-    if (want && !z.root) { z.root = new THREE.Group(); scene.add(z.root); z._seed = 1000 + z.n * 7919; z.ms = []; z.gen = z.build(z.root); }
+    if (want && !z.root) { z.root = new THREE.Group(); scene.add(z.root); z._seed = 1000 + localN(z.n) * 7919; z.ms = []; z.gen = z.build(z.root); }   // 种子按章节在自己故事里的序号：旧原型挪到第 9–21 章，布景的样子不变
     if (z.gen && (sync || !stepped)) { do zoneStep(z); while (sync && z.gen); stepped = true; }
     if (!want && z.root && !z.gen && (cx < z.vis[0] - 140 || cx > z.vis[1] + 140)) { if (z.unbuild) z.unbuild(); disposeTree(z.root); z.root = null; z.built = false; }
   }

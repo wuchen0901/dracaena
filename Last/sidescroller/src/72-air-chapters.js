@@ -10,7 +10,7 @@
 function airZone(n, vis, show, make) {
   const S = { sys: [], on: true, keep: null };
   const apply = () => { for (const s of S.sys) { const v = S.on && (!S.keep || S.keep.includes(s.name)); if (s.pts) s.pts.visible = v; if (s.root) s.root.visible = v; } };
-  const z = defZone({ n, vis, air: true,
+  const z = defZone({ n: OLD + n, vis, air: true,                                     // n 是旧原型的章节号
     *build(R) { S.sys = []; yield* make(R, S.sys); apply(); },
     update(dt) { if (!z.root) return; z.root.visible = camera.position.x > show[0] && camera.position.x < show[1]; if (z.root.visible) for (const s of S.sys) s.step(dt); },
     reset() { for (const s of S.sys) if (s.reset) s.reset(); }, solve() { z.reset(); },
@@ -20,7 +20,7 @@ function airZone(n, vis, show, make) {
 }
 // 停在布景板上画出来的东西顶上的一排鸟（剪影）。o.near：在 x 左右这么宽的范围里找最高的那一处（树枝的梢）；o.minY 比这还低的就不放
 function flat(zoneN, z, xs, o = {}) {
-  const top = x => boardTop(zoneN, z, x, o.yMax ?? 99, o.solid ?? 170);
+  const top = x => boardTop(OLD + zoneN, z, x, o.yMax ?? 99, o.solid ?? 170);        // zoneN 是旧原型的章节号
   return xs.map(x0 => {
     let x = x0, y = top(x0);
     if (o.near) for (let d = -o.near; d <= o.near; d += 0.08) { const yy = top(x0 + d); if (yy !== null && (y === null || yy > y + 0.02)) { x = x0 + d; y = yy; } }

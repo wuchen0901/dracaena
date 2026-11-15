@@ -7,7 +7,7 @@
 // ============================================================
 const CH3 = (() => {
   const X = X3, WALL = X + 44, PIT0 = X + 56.5, PIT1 = X + 58.7;
-  const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '围墙与废料场', sub: '越过围墙' });
+  const C = chapter({ n: OLD + 3, x0: X + 0.5, start: X + 3, name: '围墙与废料场', sub: '越过围墙' });
   C.ground = 'sand';                                                               // 脚步声：墙外的废料场是沙土；林子边是落叶，围墙里的场子是碎石；墙、残墙是水泥，货箱是铁的，旧箱子是木头的
   terrain([PIT0, 0], [PIT0 + 0.01, -3.6], [PIT1 - 0.01, -3.6], [PIT1, 0], [X4, 0]);
   ground(X + 10, 0x3c381d); ground(X + 30, 0x675d4b); ground(X + 70, 0x6a604e); ground(X4 - 6, 0x5a5750);      // 头一个：林子的地一直铺到这里，和第二章末尾是同一个颜色
@@ -173,6 +173,6 @@ const CH3 = (() => {
   }
   function reset() { placeBox(crate, X + 31); resetChase(); Object.assign(LINE, { phase: 'move', t: 0, ram: 0, lamp: 0 }); LINE.shells.forEach((s, i) => { s.x = BAY - 1.5 - i * GAP; }); }
   function solve() { placeBox(crate, WALL - 0.6); Object.assign(DOG, { x: DMAX, vx: 0, facing: 1, mode: 'bark', bite: 0, z: -0.35 }); S.safe = true; }
-  return defZone({ n: 3, vis: [X - 6, X4 + 6], build, update, reset, solve, unbuild() { V = null; },
-    respawn(c) { DOG.bite = 0; if (!S.safe && c.x >= X && c.x < X4 && STORY.ch === 3) resetChase(); }, crate, DOG, S, A, B, Cb });
+  return defZone({ n: OLD + 3, vis: [X - 6, X4 + 6], build, update, reset, solve, unbuild() { V = null; },
+    respawn(c) { DOG.bite = 0; if (!S.safe && c.x >= X && c.x < X4 && STORY.ch === OLD + 3) resetChase(); }, crate, DOG, S, A, B, Cb });
 })();

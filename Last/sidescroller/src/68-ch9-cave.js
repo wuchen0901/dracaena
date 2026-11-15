@@ -12,7 +12,7 @@
 const X9 = 1100;
 const CH9 = (() => {
   const X = X9;
-  const C = chapter({ n: 9, x0: X + 0.5, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
+  const C = chapter({ n: OLD + 9, x0: X + 0.5, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
     intro() { CAT.state = 'none'; } });                    // 小猫不进山洞（它怕水）
   C.ground = 'rock';                                                               // 脚步声：湿的岩石
   const A = (pts) => pts.map(([x, y]) => [X + x, y]);
@@ -257,12 +257,12 @@ const CH9 = (() => {
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending }));
     m.material.userData.own = true; m.renderOrder = order; m.frustumCulled = false; R.add(m); return m;
   }
-  SEC.forEach((S, k) => defZone({ n: 9, vis: [X + S.x1, X + S.x2], *build(R) { yield* buildSec(R, S, k); },
+  SEC.forEach((S, k) => defZone({ n: OLD + 9, vis: [X + S.x1, X + S.x2], *build(R) { yield* buildSec(R, S, k); },
     update(dt) { const V = S.V; if (!V) return; stepCaustics(V.caus, dt); for (const c of V.clouds) c.step(dt); for (const b of V.beams) b.material.opacity = b.userData.a * (0.85 + 0.15 * Math.sin(T * 0.7 + b.id)); },
     reset() {}, solve() {}, unbuild() { S.V = null; } }));
   // 整章：补光跟着主角走、颜色跟着段落换；水面亮线闪动的时间
   const fillC = new THREE.Color();
-  defZone({ n: 9, vis: [X - 16, X + 350], *build() {}, reset() {}, solve() {},
+  defZone({ n: OLD + 9, vis: [X - 16, X + 350], *build() {}, reset() {}, solve() {},
     update(dt) {
       SURF_U.uT.value = T;
       const S = secAt(P.x); fillC.setHex(S.fill); fillL.c.lerp(fillC, 1 - Math.exp(-3 * dt));
