@@ -12831,23 +12831,34 @@ const CH14 = (() => {
     v.far = meshOf(F, shade(lam(0x6a4436), 1)); R.add(v.far);
     yield;
     // ---- 地面：一整块，颜色在着色器里算（越远越暗也在那里） ----
-    // 远处的地面：一整块平的
+    // 地面：近处（z > -6）一块细的、远处一块粗的，用同一个高度函数，接缝对得上
     const groundMat = shade(lam(0xffffff), 2);
-    const gm = add(R, new THREE.PlaneGeometry(260, 404), groundMat, X + 70, 0, -208, false);
-    gm.rotation.x = -Math.PI / 2; gm.receiveShadow = true;
-    // 近处的地面（z > -6）：有起伏 —— 土包、浅坑、一道道压出来的辙，越靠镜头起伏越大。孩子走的那条路（|z| < 1）和墙脚保持平
     {
       const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
-      const hgt = (x, z) => {
-        const k = sstep(0.6, 1.7, Math.abs(z)) * sstep(0.35, 1.3, Math.abs(x - WX)) * (z < 0 ? sstep(-5.5, -3.5, z) : 1), amp = 0.4 + 0.25 * sstep(3, 9, z);   // 孩子身后到 z = -5.5 收平，和远处那块平地接上
+      // 孩子身前（z > 0）：土包、浅坑、一道道压出来的辙，越靠镜头起伏越大（不能高到挡住孩子的脚）。孩子走的那条路和墙脚保持平
+      const hFront = (x, z) => {
+        const k = sstep(0.6, 1.7, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
         return k * amp * (1.6 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.6 * (vn(x * 1.1 + 7, z * 1.3) - 0.5) + 0.25 * (vn(x * 3.1, z * 3.3 + 5) - 0.5) - 0.35 * Math.pow(Math.abs(Math.sin(z * 1.7 + vn(x * 0.2, 9) * 3)), 6));
       };
-      const x0 = X - 80, x1 = X + 120, z0 = -6, z1 = 20, d = 0.25, nx = Math.round((x1 - x0) / d), nz = Math.round((z1 - z0) / d);
-      const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx, nz); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
-      const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, hgt(p.getX(i), p.getZ(i)));
-      g.computeVertexNormals();
-      const near = new THREE.Mesh(g, groundMat); near.receiveShadow = near.castShadow = true; near.frustumCulled = false; R.add(near);
+      // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
+      const hBack = (x, z) => {
+        const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, Math.abs(x - WX)), A = 0.35 + 0.07 * Math.min(dz, 90);
+        const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
+        return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills);
+      };
+      const H = (x, z) => z >= 0 ? hFront(x, z) : hBack(x, z);
+      const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
+        const pos = [], idx = [], nx = xs.length;
+        for (const z of zs) for (const x of xs) pos.push(x, H(x, z), z);
+        for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+        const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
+      };
+      const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
+      grid(span(X - 80, X + 120, 0.25), span(-6, 20, 0.25));                         // 近处
+      const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
+      grid(span(X - 160, X + 240, 1), zs.reverse());
     }
     yield;
     // 很远的地方一排树的剪影，比天边那一点点亮光再黑一点：挡住视线，看不到头
