@@ -2,7 +2,7 @@
 // ============================================================
 //  手机触屏：纯手势，屏幕上不画按钮（像 INSIDE 的手机版）
 //  按住屏幕左右滑 = 走（滑得近是慢走，滑得远是跑）　往上一划 = 跳 / 攀爬
-//  长按（按住不动一会儿）= 抓住身边的东西，接着左右滑就推拉，松手放开　点一下 = 操作机关
+//  长按（按住不动一会儿）= 抓住身边的东西，接着左右滑就推拉，松手放开；按住型机关（机房）也是长按，手指不松就一直按着　点一下 = 操作机关
 //  在水里：手指往哪边滑就往哪边游（往下滑住不放 = 潜下去），松开手人慢慢浮上去
 //  右上角的黑边里三个小图标：选择章节 / 回到存档点 / 声音。竖着拿手机时盖一层“请把手机横过来”，游戏停住
 //  手势最后都折算成和键盘一样的 keys / pressed，玩家控制那边不用改。
@@ -61,10 +61,10 @@ function touchInput(dt) {
   let jNew = false;
   if (touchJump) { touchJump = false; jHold = 0.34; jNew = true; }  // 往上一划：“跳”按住 0.34 秒，跳满高度
   if (jHold > 0) { want.add('J'); jHold -= dt; }
-  // 长按：身边有能推拉的东西就抓住（手指不松就一直抓着），旁边是机关就操作一下
+  // 长按：身边有能推拉的东西就抓住（手指不松就一直抓着）；身边是按住型机关也一样，手指不松 E 就一直按着；旁边是普通机关就操作一下
   if (state === 'play' && ctl) for (const t of TOUCHES.values()) {
     if (t.icon >= 0 || t.grab || t.used || !t.still || now - t.t0 < TG.hold * 1000 || !P.grounded) continue;
-    if (P.mode === 'push' || (P.mode === 'normal' && findGrab())) t.grab = true;
+    if (P.mode === 'push' || P.mode === 'hold' || (P.mode === 'normal' && (findGrab() || findHold()))) t.grab = true;
     else if (P.mode === 'normal' && findUse()) { t.used = true; touchTap = true; }
   }
   for (const t of TOUCHES.values()) if (t.grab) want.add('E');

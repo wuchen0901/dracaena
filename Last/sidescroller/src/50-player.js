@@ -32,6 +32,20 @@ function findUse() {                              // 脚边够得着、现在能
   }
   return best;
 }
+// ---- 按住型机关：按住 E 一点点推进，松手就往回退，推到头才算数（《长夜》机房的检修柄、拧灯、拉闸三处共用）----
+// { x 站在哪里够得着, r 左右多远, can() 现在能不能用, rate(k) 按住时每秒推进多少（随推到哪里变：前半程快、后半程慢）,
+//   back(k) 松手以后每秒退多少, done(o) 推到头时调一次（之后 locked，不再退回）, keep 推到头也不算数（小窗：按着就停在头上，一松手照样回去）}
+// k 现在推到哪（0..1），on 这一刻有没有人按着
+const HOLDS = [];
+function holdable(o) { o.k = 0; o.on = false; o.locked = false; HOLDS.push(o); return o; }
+function findHold() {
+  let best = null, bd = 1e9;
+  for (const o of HOLDS) { const d = Math.abs(P.x - o.x); if (!o.locked && d < (o.r ?? 0.8) && d < bd && (!o.can || o.can())) { best = o; bd = d; } }
+  return best;
+}
+function stepHolds(dt) {                          // 没人按着的就往回退
+  for (const o of HOLDS) if (!o.on && !o.locked && o.k > 0) o.k = Math.max(0, o.k - (o.back ? o.back(o.k) : 1) * dt);
+}
 function findGrab() {                             // 身前或身后紧挨着的、可以推拉的东西
   for (const o of PUSHABLES) {
     if (o.locked || o.off || Math.abs(P.y - o.y1) > 0.06) continue;
@@ -130,6 +144,15 @@ function stepPlayer(dt) {
     return;
   }
 
+  if (P.mode === 'hold') {                        // 按着按住型机关：人站住不动，手搭在上面（手放在哪由章节给，见 HX.pose.hands）
+    const o = P.holdObj;
+    if (!keys.has('E') || !ctl || o.locked || (o.can && !o.can())) { P.mode = 'normal'; o.on = false; return; }
+    o.on = true; o.k = Math.min(1, o.k + o.rate(o.k) * dt); P.vx = 0;
+    if (o.face) P.facing = o.face;
+    if (o.stand !== undefined) P.x = damp(P.x, o.stand, 10, dt);
+    if (o.k >= 1 && !o.keep) { o.locked = true; o.on = false; P.mode = 'normal'; if (o.done) o.done(o); }
+    return;
+  }
   if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
   if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
@@ -188,7 +211,11 @@ function stepPlayer(dt) {
   if (ctl && P.grounded && keys.has('E')) {
     const g = findGrab();
     if (g) { P.mode = 'push'; P.grabObj = g[0]; P.grab = g[1]; P.facing = g[1]; g[0].v = 0; P.land = null; }
-    else if (pressed.has('E')) { const u = findUse(); if (u) { P.used = true; u.on(u); } }
+    else if (pressed.has('E')) {
+      const h = findHold();                       // 按住型机关要新按一下才开始：一直按着 E 走过去不算
+      if (h) { P.mode = 'hold'; P.holdObj = h; P.vx = 0; P.land = null; P.used = true; h.on = true; if (h.start) h.start(h); }
+      else { const u = findUse(); if (u) { P.used = true; u.on(u); } }
+    }
   }
   for (let i = CPS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CPS[i].x) { P.cp = i; break; }
 }
@@ -212,7 +239,8 @@ function stepFade(dt) {
   const f = fadeThen; fadeThen = null; state = 'play'; ctl = true; $('fade').style.opacity = 0; if (f) f();
 }
 function placePlayer(x, y) {
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
+  if (P.holdObj) P.holdObj.on = false;
+  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
   P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
 }
 function respawn() {

@@ -466,4 +466,4 @@ const CH8 = (() => {
   }
   return defZone({ n: 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
-function retryEnding() { CH8.retry(); }
+function retryEnding() { (endZone ?? CH8).retry(); }
