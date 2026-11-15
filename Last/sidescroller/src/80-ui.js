@@ -2,7 +2,7 @@
 // ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局
 // ============================================================
-const SAVE_KEY = 'rust-glimmer-save-v1';
+const SAVE_KEY = (typeof SAVE_ID === 'string' ? SAVE_ID : 'rust-glimmer') + '-save-v1';   // 《逃出工厂》那一份页面（escape/）有自己的存档，两边互不相干
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(STORY)); } catch (e) { /* 存不了也照常玩 */ } }
 function loadGame() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && s.ch >= 1 && s.ch <= CHAPTERS.length) Object.assign(STORY, STORY0, s); } catch (e) { /* 读不出来就从头开始 */ }
@@ -18,7 +18,7 @@ function updateHint() {
 // ---- 章节卡 ----
 const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三'];
 const chapEl = $('chap'); let chapT = 0;
-function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
+function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
 
 // ---- 声音开关的提示：右上角的黑边里淡淡地出现一会儿（现阶段默认静音，开始游戏时提醒一次按 M 打开）----
@@ -53,7 +53,7 @@ function startChapter(n, o = {}) {
 // ---- 章节菜单（Esc）----
 let menuOpen = false, menuSel = 0;
 const menuEl = $('menu'), menuList = $('menulist');
-function drawMenu() { menuList.innerHTML = CHAPTERS.map((c, i) => `<div class="it${i === menuSel ? ' sel' : ''}" data-i="${i}"><i>${CN[i]}</i><b>${c.name}</b><span>${c.sub}</span></div>`).join(''); }
+function drawMenu() { menuList.innerHTML = CHAPTERS.map((c, i) => `<div class="it${i === menuSel ? ' sel' : ''}" data-i="${i}"><i>${c.tag ?? CN[i]}</i><b>${c.name}</b><span>${c.sub}</span></div>`).join(''); }
 function toggleMenu(on = !menuOpen) {
   menuOpen = on; if (on) { menuSel = (state === 'title' ? STORY.ch : chapterAt(P.x).n) - 1; drawMenu(); }
   menuEl.classList.toggle('hide', !on);

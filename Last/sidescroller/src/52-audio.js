@@ -9,7 +9,7 @@
 let AC = null, master = null, MX = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
-const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）
+const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0, wheels: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）/ wheels 别人推着的推车的轮子声
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
 const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1, brush: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
@@ -323,7 +323,7 @@ function updateAudio(dt, stepNow) {
   setGain('flow', (E.aFlow * 0.115 + AUD.water * 0.1) * V, 0.4);
   setGain('spray', AUD.spray * 0.15, 0.3);
   // 机关和别的东西
-  setGain('cart', P.mode === 'push' && P.grabObj ? clamp(Math.abs(P.grabObj.v) * 0.45, 0, 0.5) : 0, 0.05);
+  setGain('cart', Math.max(P.mode === 'push' && P.grabObj ? clamp(Math.abs(P.grabObj.v) * 0.45, 0, 0.5) : 0, AUD.wheels), 0.05);
   let dg = 0; for (const gt of GATES) if (gt.open !== gt.want && Math.abs(gt.x - P.x) < 30) dg = 0.5;
   setGain('door', dg, 0.12);
   setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, t, 0.1);

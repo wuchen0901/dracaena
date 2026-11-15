@@ -947,6 +947,9 @@ const SKINS = {
 };
 const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 
+// 主角上衣的颜色：贴图里上衣是一整块米白，着色器照着颜色把它挑出来换掉（k = 0 不换，就是贴图原来的米白）。
+// 《逃出工厂》用它换“自己的衣服”和灰色工服（escape/60-kit.js）；旧原型里 k 一直是 0
+const HERO_TOP = { uTop: { value: new THREE.Color(0xc4beb0) }, uTopK: { value: 0 } };
 let travelerSource = null, travelerLoading = false;
 const travelerWaiters = [];
 function loadTravelerModel(done) {
@@ -1000,12 +1003,14 @@ function refineTravelerAppearance(model) {
     const tuneMaterial = original => {
       const material = original.clone();
       material.onBeforeCompile = shader => {
+        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK;
         shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nvarying float vCharacterReadability;')
           .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;');
-        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;')
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nuniform vec3 uTop;\nuniform float uTopK;')
+          .replace('#include <map_fragment>', '#include <map_fragment>\n{ float tMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), tMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));\nfloat tK = uTopK * smoothstep(0.13, 0.2, tMx) * (1.0 - smoothstep(0.25, 0.33, (tMx - tMn) / max(tMx, 1e-4)));\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTop * min(tMx / 0.55, 1.3), tK);\ntotalEmissiveRadiance += uTop * min(tMx / 0.55, 1.3) * tK * 0.3; }')   // 亮的、几乎没有颜色的那一块就是上衣；皮肤偏红、裤子和头发是深色，都不动。换上去的颜色带三成自发光：再暗的地方也认得出这一块颜色
           .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;');
       };
-      material.customProgramCacheKey = () => 'traveler-readability-v1';
+      material.customProgramCacheKey = () => 'traveler-readability-v3';
       return material;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tuneMaterial) : tuneMaterial(mesh.material);
@@ -1243,6 +1248,8 @@ function buildRobot07(o = {}) {
     // 脚平平地踩在地上时（绑定姿势），脚踝离地多高：落地蹲下时拿它来对齐前脚（见 42-character-anim.js）
     const ankle = traveler.bones.get('LeftFoot'); root.updateMatrixWorld(true);
     if (ankle) traveler.footY = ankle.node.getWorldPosition(new THREE.Vector3()).y - root.getWorldPosition(new THREE.Vector3()).y;
+    const hips = traveler.bones.get('Hips');                    // 胯离脚底多高：躺下时整个模型绕着它转（42-character-anim.js 的 pose.lie）
+    if (hips) traveler.hipH = hips.node.getWorldPosition(new THREE.Vector3()).y - root.getWorldPosition(new THREE.Vector3()).y;
   });
   return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp, traveler };
 }
@@ -1606,7 +1613,7 @@ function makeCharacter(kind, prev, o = {}) {
     const dir = s.facing, sp = Math.abs(s.vx), fwd = s.vx * dir, t = s.t;
     const push = s.mode === 'push', mant = s.mode === 'mantle';
     // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
-    const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0;
+    const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0, lie = q.lie || 0, lieA = lie * Math.PI / 2;   // lie：仰面躺着（1 = 放平）。上身从胯那里往后放倒，腿照 sit 摆在身前
     const brush = s.brush && s.mode !== 'swim' ? s.brush : null;             // 拨开路边的植物（48-brush.js 算好的）：手伸到身前 (hx, hy)，k 多大程度，hands 一只手还是两只，turn 手臂往外翻，bow 低头弯腰
     root.position.set(s.x, s.y, s.z ?? 0);
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
@@ -1627,7 +1634,7 @@ function makeCharacter(kind, prev, o = {}) {
     A.lc = damp(A.lc ?? 0, ld.c, 40, dt); A.hand = damp(A.hand ?? 0, ld.hand, 30, dt); A.trip = damp(A.trip ?? 0, ld.trip, 30, dt); A.ltuck = damp(A.ltuck ?? 0, ld.tuck, 40, dt);
     const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck;
     // 身子朝哪（见上面的 TURN）。摆好的姿势（坐下、弯腰、伸手够东西）都是照正侧面排的，这时候不转；q.turn 可以直接指定
-    const posed = !!(q.sit || q.bow || q.reach || q.arms || q.hands || limp), sw = s.swim || A.lastSwim;
+    const posed = !!(q.sit || q.bow || q.reach || q.arms || q.hands || limp || lie), sw = s.swim || A.lastSwim;
     const rest = s.grounded && sp < 0.05 && s.mode === 'normal' && !posed && !o.npc;
     if (rest) {                                                              // 站了一会儿就换个站法（不和上一个重样）
       A.restT += dt;
@@ -1700,7 +1707,7 @@ function makeCharacter(kind, prev, o = {}) {
     let stoopT = TL ? tk * (TL.stoop + 0.5 * Math.max(0, slope)) : 0;
     stoopT = lerp(stoopT, 0.92, restK) - 0.08 * heave * restK + 0.24 * stb + 0.08 * sigh - lerp(0.08, 0.14, restK) * gUp;
     A.stoop = damp(A.stoop, stoopT, 8, dt);
-    spine.rotation.z = -(A.lean + bl + landPitch + A.stoop) + hv;
+    spine.rotation.z = -(A.lean + bl + landPitch + A.stoop) + hv + lieA;
     // 上身绕竖直方向拧多少：走和跑的时候肩跟着同侧的手臂一前一后（胯反着来），再加上朝镜头多转的那一点
     const sway = -lerp(TURN.sway[0], TURN.sway[1], A.run) * A.mv * Math.cos(2 * Math.PI * A.ph - 0.35) * (1 - A.grip) * (1 - A.air) * (1 - A.swim) * TURN.k;
     A.twist = -dir * A.turn * TURN.chest * Math.max(A.mv, A.air) * (1 - A.swim);
@@ -1710,6 +1717,11 @@ function makeCharacter(kind, prev, o = {}) {
       B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY + A.sq - landDrop + sink;
       B.traveler.group.position.x = hipX + 0.05 * u * Math.sin(0.65 * landPitch);     // 上身从胯那里往前折，两条腿的根会往后挪一点：整个模型往前补回来
       B.traveler.group.rotation.z = -A.lean;
+      if (lieA) {                                                          // 躺下：整个模型绕着胯往后放平（胯留在原地），两条腿在下面按这个角度补回来
+        const h = B.traveler.hipH ?? D.hipY;
+        B.traveler.group.rotation.z = -A.lean * (1 - lie) + lieA; B.traveler.group.position.x += h * Math.sin(lieA);
+        B.traveler.group.position.y += h * (1 - Math.cos(lieA)) - (h - hipStand) * lie;   // 模型的胯比骨架的高一点：躺平了按模型的来，背才贴得住底下
+      }
     }
 
     // 腿：先算出脚踝的目标位置，再用 IK 解出大腿和膝盖的角度
@@ -1738,8 +1750,9 @@ function makeCharacter(kind, prev, o = {}) {
         tx = lerp(tx, LP.feet[i] * u, A.lc); ty = lerp(ty, D.ankle + (i ? LP.heel * u : 0), A.lc); pitch = lerp(pitch, i ? -0.5 : 0, A.lc);
       }
       if (sit) { tx = lerp(tx, (i ? 0.19 : 0.26) * u * (q.sitLeg ?? 1), sit); ty = lerp(ty, D.ankle, sit); pitch = lerp(pitch, 0, sit); }   // 坐着：两只脚搁在身前的地上
+      if (lie) { tx = lerp(tx, hipX + (D.thigh + D.shin) * (i ? 0.95 : 0.995), lie); ty = lerp(ty, hipY - 0.005 * u + (i ? 0.03 * u : 0), lie); }   // 躺着：两条腿伸直，和身子在一条线上
       const L = legs[i], [th, kn] = ik2(hipX, hipY - 0.005 * u, tx, ty, D.thigh, D.shin, true);
-      L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) + pitch;
+      L.hip.rotation.z = th; L.knee.rotation.z = kn; L.foot.rotation.z = -(th + kn) * (1 - lie) + pitch;   // 躺着的时候脚尖朝上，不去找平
       KNEE[i][0] = hipX + Math.sin(th) * D.thigh; KNEE[i][1] = hipY - 0.005 * u - Math.cos(th) * D.thigh;      // 膝盖在哪（弯腰撑膝盖时手放这里）
       if (A.ltuck > 0.001) {                                                 // 滚翻：两腿收到胸前
         const w = A.ltuck; L.hip.rotation.z = lerp(th, i ? 2.45 : 2.3, w); L.knee.rotation.z = lerp(kn, -2.55, w); L.foot.rotation.z = lerp(L.foot.rotation.z, 0.7, w);
@@ -1747,7 +1760,7 @@ function makeCharacter(kind, prev, o = {}) {
     }
 
     // 手臂：平时前后摆动；推车 / 攀爬时用 IK 伸向抓握点
-    const LB = A.lean + bl + landPitch + A.stoop, shX = hipX + Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;   // LB：上身一共往前倾了多少（累坏了弯腰、落地蹲下、累了弓腰）
+    const LB = A.lean + bl + landPitch + A.stoop - lieA, shX = hipX + Math.sin(LB) * D.shY, shY = hipY + Math.cos(LB) * D.shY - 0.012 * u;   // LB：上身一共往前倾了多少（累坏了弯腰、落地蹲下、累了弓腰）
     // 主角模型的上身一共往前倾了多少：整个模型前倾 lean，胯和三节脊椎再弯 lean 的三成五、弯腰、蹲下、弓腰，吸气时挺回来一点（见最后的 poseBone）。
     // 累了手臂顺着重力垂下来，要按这个把“垂直往下”换成相对上身的角度
     const tilt = 1.35 * A.lean + A.stoop + bl + landPitch - hv;
@@ -1906,7 +1919,7 @@ function makeCharacter(kind, prev, o = {}) {
       poseBone('Head', head.rotation.z * (1 - .35 * A.swim), head.rotation.y * .65);
       for (let i = 0; i < 2; i++) {
         const side = i ? 'Right' : 'Left';
-        poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh);                 // 胯折过去多少，大腿就补回来多少
+        poseBone(side + 'UpLeg', legs[i].hip.rotation.z + bh - lieA);                 // 胯折过去多少，大腿就补回来多少
         poseBone(side + 'Leg', legs[i].knee.rotation.z);
         poseBone(side + 'Foot', legs[i].foot.rotation.z);
       }
@@ -5330,7 +5343,7 @@ const SY = (() => {
 let AC = null, master = null, MX = null, noiseBuf = null, muted = true;   // 现阶段默认静音：每次打开游戏都是静音，玩家按 M 自己打开
 const loops = {};
 // 各章节每一帧往这里写“这个持续的声音现在该多响”（0..1），下面统一平滑地跟过去
-const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）
+const AUD = { hum: 0, humF: 52, belt: 0, water: 0, pump: 0, buzz: 0, sweep: 0, spray: 0, heli: 0, heliPan: 0, heliLP: 0, wheels: 0 };   // heli 直升机多响 / heliPan 在左边还是右边 / heliLP 离得多近（远了就闷）/ wheels 别人推着的推车的轮子声
 // voice：主角的呼吸声 —— A 只有气声 / B 带一点嗓音（“哈、哈”）/ C 闭着嘴，闷一些、轻一些。vol：几样东西各自的音量（听声音的工具页里可以调）
 const SND = { voice: 'A', vol: { amb: 1, step: 1, breath: 1, far: 1, bird: 1, brush: 1 } };
 const RV = { out: 0.22, hall: 0.4, cave: 0.55 };       // 三种空间各自的混响量（再乘上环境关键帧里的比例）
@@ -5644,7 +5657,7 @@ function updateAudio(dt, stepNow) {
   setGain('flow', (E.aFlow * 0.115 + AUD.water * 0.1) * V, 0.4);
   setGain('spray', AUD.spray * 0.15, 0.3);
   // 机关和别的东西
-  setGain('cart', P.mode === 'push' && P.grabObj ? clamp(Math.abs(P.grabObj.v) * 0.45, 0, 0.5) : 0, 0.05);
+  setGain('cart', Math.max(P.mode === 'push' && P.grabObj ? clamp(Math.abs(P.grabObj.v) * 0.45, 0, 0.5) : 0, AUD.wheels), 0.05);
   let dg = 0; for (const gt of GATES) if (gt.open !== gt.want && Math.abs(gt.x - P.x) < 30) dg = 0.5;
   setGain('door', dg, 0.12);
   setGain('hum', AUD.hum, 0.2); loops.hum.o.frequency.setTargetAtTime(AUD.humF, t, 0.1);
@@ -11932,7 +11945,7 @@ function stepWaterFx(dt) {
 // ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局
 // ============================================================
-const SAVE_KEY = 'rust-glimmer-save-v1';
+const SAVE_KEY = (typeof SAVE_ID === 'string' ? SAVE_ID : 'rust-glimmer') + '-save-v1';   // 《逃出工厂》那一份页面（escape/）有自己的存档，两边互不相干
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(STORY)); } catch (e) { /* 存不了也照常玩 */ } }
 function loadGame() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && s.ch >= 1 && s.ch <= CHAPTERS.length) Object.assign(STORY, STORY0, s); } catch (e) { /* 读不出来就从头开始 */ }
@@ -11948,7 +11961,7 @@ function updateHint() {
 // ---- 章节卡 ----
 const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三'];
 const chapEl = $('chap'); let chapT = 0;
-function showChapter(c) { chapEl.innerHTML = `<i>第${CN[c.n - 1]}章</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
+function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
 
 // ---- 声音开关的提示：右上角的黑边里淡淡地出现一会儿（现阶段默认静音，开始游戏时提醒一次按 M 打开）----
@@ -11983,7 +11996,7 @@ function startChapter(n, o = {}) {
 // ---- 章节菜单（Esc）----
 let menuOpen = false, menuSel = 0;
 const menuEl = $('menu'), menuList = $('menulist');
-function drawMenu() { menuList.innerHTML = CHAPTERS.map((c, i) => `<div class="it${i === menuSel ? ' sel' : ''}" data-i="${i}"><i>${CN[i]}</i><b>${c.name}</b><span>${c.sub}</span></div>`).join(''); }
+function drawMenu() { menuList.innerHTML = CHAPTERS.map((c, i) => `<div class="it${i === menuSel ? ' sel' : ''}" data-i="${i}"><i>${c.tag ?? CN[i]}</i><b>${c.name}</b><span>${c.sub}</span></div>`).join(''); }
 function toggleMenu(on = !menuOpen) {
   menuOpen = on; if (on) { menuSel = (state === 'title' ? STORY.ch : chapterAt(P.x).n) - 1; drawMenu(); }
   menuEl.classList.toggle('hide', !on);

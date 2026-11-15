@@ -16,6 +16,22 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 
 地址后面加 `?ch=5` 可以直接从第五章开始，`?ch=9` 直接进山洞，`?ch=10` 直接到吊绳那一章，`?ch=11` 直接到直升机搜人的那一章，`?ch=12` 从凿记号开始玩《长夜》原型 C，`?ch=13` 直接进机房（灯泡已经在包里）。
 
+## 《逃出工厂》故事灰模
+
+新故事（`design/environmental-escape-story.md`）2026-11-15 做了一版灰模，从头到尾七章加结尾都能玩。它是单独的一份页面，旧原型没有动：
+
+<http://127.0.0.1:8765/escape.html>
+
+地址后面加 `?ch=4` 直接从第四章开始（1 到 7 是七章，8 是结尾）；按 Esc 也能选章节。存档和旧原型分开（`escape-factory-save-v1`）。
+
+- 灰模的意思：先看故事的顺序、每一章的规矩走不走得通。人物是一套简单的小人，场景是方块和剪影，造型都没定；每一章比文稿估的短，整个走一遍十几分钟。
+- 多出来的两个按键：按住 `Shift` 慢走（第二章跟推车、第四章跟队伍、第五章在检修道上都要用）；按 `C` 换主角自己衣服的颜色（蓝 / 砖红 / 土黄 / 绿，故事文档里这一条还没定，先放着对比）。
+- 每一章做了什么、和文稿不一样的地方，记在故事文档的第十一节。
+- 源码：公共的部分还是 `Last/sidescroller/src/`（核心、角色、玩家、声音、界面），七章在 `Last/sidescroller/escape/`。`bash Last/sidescroller/build.sh` 一次拼出两份页面：`sidescroller.html`（旧原型）和 `escape.html`。
+- `escape/60-kit.js` 是七章共用的东西：路上的人（每种身体零件一个实例化的网格，几十个人只多十来次绘制）、推车、铁栏杆、卡车、手电和探照灯“盯住人”的规矩、厂房的墙和布景。
+- 为它在公共部分加的几处：`42-character-anim.js` 的 `pose.lie`（仰面躺着，开场用）；`40-character-build.js` 的 `HERO_TOP`（主角上衣在着色器里换色）；`52-audio.js` 的 `AUD.wheels`；`80-ui.js` 的存档名可以由页面自己定。旧原型里这些都不起作用。
+- 没做的：只在电脑上用自动玩家跑过，没有在手机上量帧数；声音只加了铃、炉口的火和几下闷响；旧的十三章没有拆。
+
 ## 《长夜》原型 C
 
 > 2026-11-15：《长夜》方案已废弃，故事换成 `design/environmental-escape-story.md`（《逃出工厂》）。这一段原型的代码还在，留作参考；下面提到的 `long-night-story.md` 已删除，可在 git 历史里查看。
@@ -51,8 +67,9 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 
 - `Last/sidescroller/src/`：原型的源码，按文件名顺序分段（核心、世界、布景、灯光、角色、地上的东西、玩家、声音、八个章节、空中的细节、界面、主循环）。`47-cave-kit.js` 是山洞的布景套件（岩石的剖面、后墙、水色、水面的亮线、光柱、焦散），`68-ch9-cave.js` 是第九章，`74-water-fx.js` 是水里的气泡、水花和波纹；游泳的操作在 `50-player.js` 最后一段，游泳的动作在 `42-character-anim.js`。`51-rope.js` 是绳子：挂着的绳子（一串小段，被风吹着、被人抓着时跟着人摆）、抓住 / 往上爬 / 往下滑 / 翻上旁边的台阶，以及把主角模型的两只手、两只脚摆到绳子上；`69-ch10-ropes.js` 是第十章。`46-ground.js` 是各章共用的地上的东西：石头、落叶、草和蕨（一张共用的图集）、树枝和倒木、泥、会映出画面的水洼，还有走近了会逃开的青蛙、蜥蜴和虫子。空中的细节在 `70-air.js`（光里的尘埃、落叶、风沙、虫子、远处的鸟群、萤火虫）、`71-air-birds.js`（会被惊飞的鸟）、`72-air-chapters.js`（每一章摆什么）。主角脚边（走的那条线前后两三米以内）的东西在 `48-feet-kit.js`（电缆、托盘、油桶、纸箱、管子、隔离桩、花盆、石笋……很多小零件烘成一个网格）、`49-feet-life.js`（会逃的老鼠和蚂蚱、跑过去被带起来的纸片和花瓣、被踢开的易拉罐）、`73-feet-chapters.js`（每一章分四组摆：脚下、身后、身前、会动的；地址后面加 `?feet=0` 一样都不摆）。
 - 画布上的柔边（虚化）一律用 `10-core.js` 的 `blurDraw`，不要用画布自带的 `ctx.filter = 'blur()'`：iPhone 上没有它，柔边会全变成硬边。
-- `Last/sidescroller/build.sh`：把 `src/` 拼成 `Last/sidescroller.html`。改完源码后运行 `bash Last/sidescroller/build.sh`。
-- `Last/sidescroller.html`：拼好的成品，浏览器打开的就是它。
+- `Last/sidescroller/build.sh`：把 `src/` 拼成 `Last/sidescroller.html`，再把 `src/` 里公共的部分和 `escape/` 拼成 `Last/escape.html`。改完源码后运行 `bash Last/sidescroller/build.sh`。
+- `Last/sidescroller.html`：拼好的旧原型。`Last/escape.html`：拼好的《逃出工厂》灰模（见上面）。
+- `Last/sidescroller/escape/`：《逃出工厂》七章和结尾的源码，一章一个文件，`60-kit.js` 是共用的。
 - `Last/models/hero.glb`：主角模型。
 - `Last/tools/`：出图和处理模型的小工具，用法写在各文件开头。`shot.mjs` 用无头 Chrome 截图，`model-sheet.html` 是模型效果图页面，`look-sheet.html` 是场景画面的对比图页面（同一屏换几套光色或布景，也能沿路截一遍游戏原样的画面），`look-sheet-ch7.html` 是第七章用的同一种页面（另外能把这一章的机关自动走一遍、截一小段连续的画面做动图），`ground-sheet.html` 是地上的东西的选项图页面（一格只开一样，也能把小动物逃开的样子截成动图、把一章地上会动的东西自动走一遍），`air-sheet.html` 是空中细节的画面页面（同一屏关掉和打开对比，也能截一小段连续的画面做动图），`feet-sheet.html` 是主角脚边那四组的选项图（每章一屏六格，也能出各章前后对比、动图，把每章会动的东西自动走一遍、检查切换章节时有没有漏掉释放），`daylight-sheet.html` 是“白天的六个办法”对比图（第七章那一屏，每格打开几条：太阳放低、空气透视、前景压暗、限制颜色、留出阴影区、形状做大），`cave-sheet.html` 是山洞水下的八套光色对比图（游戏外搭的粗模），`cave-route.html` 是第九章沿路的画面、动图和自动玩家从头游到尾的检查，`rope-route.html` 是第十章的同一种页面（沿路的画面、抓绳子 / 爬 / 翻上台阶的动图、自动玩家从头走到尾），`shrink-glb-textures.mjs` 缩小 GLB 贴图，`recolor-glb-top.mjs` 给主角换上衣颜色。`phone-check.html` 是手机检测页（见上面“在手机上看”），`webkit-shot.swift` 用 Mac 自带的 WebKit（iPhone 同一个引擎）把画面图页面存成 PNG，不用手机也能看 iPhone 上画出来的样子。
 - `design/`：故事、关卡和角色的设计文档与设定图。新故事是 `design/environmental-escape-story.md`（《逃出工厂》，2026-11-15 的正式稿：主角在运往焚化炉的推车上醒来，顺着工厂处理人的流程倒着逃出去，靠场景讲故事；现有十一章的机关怎么借、哪些要新做也写在里面，《长夜》和《塔》两个方案已废弃）；`design/story-and-puzzle-outline.md` 是旧的机器人 07 版本。较早的文档写的是已删除的 Cocos 版本，里面提到的 `assets/`、`preview/` 路径和音效生成脚本都已经不存在。
