@@ -67,7 +67,7 @@ const CH14 = (() => {
       float dz = max(0., -q.z);
       // 光就是不打：没有理由，画面要哪里黑哪里就黑
       float base = 0.04 + 0.96 * exp(-max(0., dz - 1.) / 6.);               // 孩子走的那一带最亮，往后很快暗下去
-      base *= 1. - smoothstep(0.2, 2.2, q.z + 0.7 * (n2(q.xz * vec2(0.6, 0.8)) - .5));   // 往镜头这边：两米之内压到纯黑（边稍微不齐）
+      base *= 1. - smoothstep(0.3, 2.8, q.z - 3.5 * q.y + 1.6 * (n2(q.xz * vec2(0.28, 0.4)) - .5) + 0.6 * (n2(q.xz * vec2(0.9, 1.1) + 3.) - .5));   // 往镜头这边：两米之内压到纯黑。鼓起来的地方多接一点光、凹下去的先黑，暗的边顺着地面起伏弯过去
       float hx = q.x - uHX;
       base *= mix(mix(0.1, 1., exp(-hx * hx / 7.)), 1., smoothstep(6., 18., dz));   // 近处只照孩子周围两三米（跟着孩子走）；远处不管
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
@@ -262,8 +262,24 @@ const CH14 = (() => {
     v.far = meshOf(F, shade(lam(0x6a4436), 1)); R.add(v.far);
     yield;
     // ---- 地面：一整块，颜色在着色器里算（越远越暗也在那里） ----
-    const gm = add(R, new THREE.PlaneGeometry(260, 430), shade(lam(0xffffff), 2), X + 70, 0, -197, false);
+    // 远处的地面：一整块平的
+    const groundMat = shade(lam(0xffffff), 2);
+    const gm = add(R, new THREE.PlaneGeometry(260, 404), groundMat, X + 70, 0, -208, false);
     gm.rotation.x = -Math.PI / 2; gm.receiveShadow = true;
+    // 近处的地面（z > -6）：有起伏 —— 土包、浅坑、一道道压出来的辙，越靠镜头起伏越大。孩子走的那条路（|z| < 1）和墙脚保持平
+    {
+      const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+        return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
+      const hgt = (x, z) => {
+        const k = sstep(0.6, 1.7, Math.abs(z)) * sstep(0.35, 1.3, Math.abs(x - WX)) * (z < 0 ? sstep(-5.5, -3.5, z) : 1), amp = 0.4 + 0.25 * sstep(3, 9, z);   // 孩子身后到 z = -5.5 收平，和远处那块平地接上
+        return k * amp * (1.6 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.6 * (vn(x * 1.1 + 7, z * 1.3) - 0.5) + 0.25 * (vn(x * 3.1, z * 3.3 + 5) - 0.5) - 0.35 * Math.pow(Math.abs(Math.sin(z * 1.7 + vn(x * 0.2, 9) * 3)), 6));
+      };
+      const x0 = X - 80, x1 = X + 120, z0 = -6, z1 = 20, d = 0.25, nx = Math.round((x1 - x0) / d), nz = Math.round((z1 - z0) / d);
+      const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx, nz); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
+      const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, hgt(p.getX(i), p.getZ(i)));
+      g.computeVertexNormals();
+      const near = new THREE.Mesh(g, groundMat); near.receiveShadow = near.castShadow = true; near.frustumCulled = false; R.add(near);
+    }
     yield;
     // 很远的地方一排树的剪影，比天边那一点点亮光再黑一点：挡住视线，看不到头
     backdrop(X - 120, X + 140, -2, 20, -215, 5, g => {
