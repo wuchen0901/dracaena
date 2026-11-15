@@ -8,7 +8,8 @@
 const E8 = (() => {
   const X = E7_X, TOP = X + 264, VZ = -118, FX = X + 214, FY = 2.6, SC = 0.5;   // VZ：远处那片谷地画在多深的地方（排在第七章那排远树前面）；FX、FY：工厂在哪；SC：工厂照这个比例缩小了画（画得近，看着远）
   const vx = x => FX + (x - FX) * SC, vy = y => FY + (y - FY) * SC;
-  const C = chapter({ n: 8, x0: X + 196, start: X + 198, name: '结尾', sub: '天快亮了', ground: 'grass', label: '结尾', tag: '尾' });
+  const C = chapter({ n: 8, x0: X + 196, start: X + 198, name: '结尾', sub: '天快亮了', ground: 'grass', label: '结尾', tag: '尾',
+    end: { h1: '逃出工厂', go: '按 R 再看一遍结尾　·　Esc 选择章节' } });             // 结局画面上的字（80-ui.js 的 endTexts；旧原型的写在网页里）
   surface(X + 208.4, X + 212.1, 'wade');
   // st：0 还在路上 / 1 到了坡顶，回头看。t 回头以后过了多久
   const S = { st: 0, t: 0, shown: false };
@@ -25,8 +26,8 @@ const E8 = (() => {
   function* build(R) {
     const v = {}, own = m => { m.userData.own = true; return m; };
     // 远处：一层层的丘陵；近一些是野地边上的树篱、几棵孤零零的树（朝工厂那一面是开阔的：不挡住回头看的那一眼）
-    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(x * 0.012 + 2) + 5 * Math.sin(x * 0.031), 4); }, { fog: false, fadeL: 30 });
-    backdrop(X + 180, X + 340, -4, 24, -70, 6, g => { setInk(g, '#232b2c'); ridge(g, X + 180, X + 340, -4, x => groundY(x) + 0.6 + 0.5 * Math.sin(x * 0.2) + rr(0, 0.4), 1.2); for (let x = X + 186; x < X + 336; x += rr(9, 22)) if (x > X + 244 || x < X + 190) tree(g, x, groundY(x) + 0.2, rr(5, 10), pick(['round', 'round', 'pine', 'dead'])); }, { fadeL: 8 });
+    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(ex(x) * 0.012 + 2) + 5 * Math.sin(ex(x) * 0.031), 4); }, { fog: false, fadeL: 30 });
+    backdrop(X + 180, X + 340, -4, 24, -70, 6, g => { setInk(g, '#232b2c'); ridge(g, X + 180, X + 340, -4, x => groundY(x) + 0.6 + 0.5 * Math.sin(ex(x) * 0.2) + rr(0, 0.4), 1.2); for (let x = X + 186; x < X + 336; x += rr(9, 22)) if (x > X + 244 || x < X + 190) tree(g, x, groundY(x) + 0.2, rr(5, 10), pick(['round', 'round', 'pine', 'dead'])); }, { fadeL: 8 });
     backdrop(X + 196, X + 300, -2, 14, -9, 14, g => { setInk(g, '#151b1a'); for (const x of [X + 203, X + 243, X + 272, X + 281]) tree(g, x, groundY(x) - 0.1, rr(6, 10), x > X + 260 ? 'dead' : 'round'); grass(g, X + 196, X + 300, x => groundY(x) - 0.05, 0.3, 0.9, 360); }, { fadeL: 4 });
     for (const [a, b] of [[X + 190, X + 250], [X + 250, X + 310]]) foreTufts(a, b, 8.7, { cols: ['#0c1210', '#101814', '#0a0f0d'], h: 1.0, fern: 0.1 });
     yield;
@@ -42,7 +43,7 @@ const E8 = (() => {
     yield;
     // 回头看见的那片谷地：平原上一座工厂，一根烟囱，围墙上一排灯；一条路从右边远处通到大门。平时不画，到了坡顶才慢慢显出来
     v.valley = backdrop(X + 110, X + 340, -6, 60, VZ, 4, g => {
-      setInk(g, '#2a3138'); ridge(g, X + 110, X + 340, -6, x => 3.2 + 1.2 * Math.sin(x * 0.03) + 0.6 * Math.sin(x * 0.11), 3);
+      setInk(g, '#2a3138'); ridge(g, X + 110, X + 340, -6, x => 3.2 + 1.2 * Math.sin(ex(x) * 0.03) + 0.6 * Math.sin(ex(x) * 0.11), 3);
       g.save(); g.translate(FX, FY); g.scale(SC, SC); g.translate(-FX, -FY);
       setInk(g, '#12161b');
       box(g, FX - 34, FY, 68, 7.5); box(g, FX - 28, FY + 7.5, 22, 5); box(g, FX + 2, FY + 7.5, 26, 3.4); box(g, FX - 44, FY, 96, 3.2);            // 厂房、围墙
@@ -87,3 +88,5 @@ const E8 = (() => {
   const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); }, retry, unbuild() { V = null; }, S });
   return ZONE;
 })();
+// 《逃出工厂》到这里载完。关卡随机数拨回到这八章载入之前（见 60-kit.js 的 ESC_SEED），后面旧原型的章节和单独拼的时候拿到一样的随机数
+_seed = ESC_SEED;

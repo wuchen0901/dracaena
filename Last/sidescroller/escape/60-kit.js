@@ -1,17 +1,20 @@
 
 // ============================================================
 //  《逃出工厂》灰模：七章共用的东西
-//  故事见 design/environmental-escape-story.md。这一份页面（Last/escape.html）只拼公共的源码和 escape/ 里的章节，
-//  旧原型的十三章不在里面（拼法见 build.sh）。画面是灰模：先看故事的顺序、每一章的规矩走不走得通，造型都还没定。
-//  这个文件里：页面上的字、存档、主角的衣服、路上的人（“小人”）、推车 / 铁栏杆 / 卡车、手电和探照灯、厂房的墙和远景、几样声音
+//  故事见 design/environmental-escape-story.md。这七章和结尾是游戏的第 1–8 章，后面接旧原型的十三章（第 9–21 章，见 20-world.js 的 OLD）。
+//  画面是灰模：先看故事的顺序、每一章的规矩走不走得通，造型都还没定。
+//  这个文件里：整段的位置、页面上的字、主角的衣服、路上的人（“小人”）、推车 / 铁栏杆 / 卡车、手电和探照灯、厂房的墙和远景、几样声音
 // ============================================================
-const SAVE_ID = 'escape-factory';                        // 存档单独一份，和旧原型互不相干（见 80-ui.js 的 SAVE_KEY）
+// 整段放在哪：旧原型的十三章从 x = -60 起往右排，这八章挪到它们左边，中间空出一千来米。各章的原点都从 EX 算起
+const EX = -2000;
+const ex = x => x - EX;                                    // 换回挪过来之前的 x：照 x 算的花样（远山的山脊线、地上的波纹）用它，整段挪了位置，样子还是原来的
+// 关卡那一套随机数（10-core.js 的 _seed）走到哪了：这八章载入时会用掉一些，载完在 68-e8-ending.js 里拨回来，旧原型的章节载入时拿到的随机数和原来一样
+const ESC_SEED = _seed;
 document.title = '逃出工厂 · 故事灰模';
-{ const t = $('title');
-  t.querySelector('h1').textContent = '逃出工厂'; t.querySelector('.sub').textContent = '故事灰模 · 七章';
+{ const t = $('title');                                   // 结局画面上的字写在第八章（68-e8-ending.js 的 end）
+  t.querySelector('h1').textContent = '逃出工厂'; t.querySelector('.sub').textContent = '故事灰模 · 二十一章（后十三章是旧原型）';
   t.querySelector('.keys').innerHTML = '<b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作　　按住 <b>Shift</b> 慢走<br>' +
-    '<b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换主角衣服的颜色';
-  $('end').querySelector('h1').textContent = '逃出工厂'; $('end').querySelector('.go').textContent = '按 R 再看一遍结尾　·　Esc 选择章节'; }
+    '<b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换主角衣服的颜色'; }
 // 跨章节要记住的事：own 主角自己的衣服是哪一种颜色（按 C 换）/ freed 第七章拉开了囚车的锁扣
 Object.assign(STORY0, { own: 0, freed: false }); Object.assign(STORY, { own: 0, freed: false });
 
@@ -377,8 +380,10 @@ Object.assign(sfx, {
 });
 
 // ---- 每帧都要做的：主角的衣服（换上、脱下是慢慢过渡的）；按 C 换自己衣服的颜色 ----
+// 只在这八章里。到了旧原型的章节，主角穿模型原来的衣服，按 C 也不管
 defZone({ n: 0, vis: [-1e9, 1e9], *build() {}, reset() {}, solve() {},
   update(dt) {
+    if (chapterAt(P.x).n > OLD) { HERO_TOP.uTopK.value = 0; return; }
     if (pressed.has('TINT') && state !== 'title') {
       STORY.own = (STORY.own + 1) % HERO_OWN.length; saveGame();
       sndEl.innerHTML = '主角自己的衣服：' + HERO_OWN[STORY.own][1]; sndEl.classList.add('on'); clearTimeout(sndTO); sndTO = setTimeout(() => sndEl.classList.remove('on'), 1800);

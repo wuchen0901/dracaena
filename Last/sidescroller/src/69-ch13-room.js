@@ -27,7 +27,7 @@ const CH13 = (() => {
   const L1 = X + 1.3, WIN = X + 2.75, WIN_Y = 2.72, LEV = X + 3.9, L2 = X + 5.4, CON = X + 7.5, SOCK = X + 10.45, SOCK_Y = 1.32, L3 = X + 11.8, FAULT = X + 12.6,
     ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 92;
   const BACK = -3.0, CH_Z = -0.72;                                                      // 后墙在哪；老人和椅子在走道后面一点（孩子从他身前走过去）
-  const C = chapter({ n: 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal',
+  const C = chapter({ n: OLD + 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal',
     intro() { CAT.state = 'none'; } });
   terrain([X - 40, 0], [X + 140, 0]);
   ground(X - 40, 0x1b1f22); ground(X + 140, 0x1b1f22);
@@ -101,7 +101,7 @@ const CH13 = (() => {
     fit: () => { hit(1500, 3, 0.08, 0.04); tone(880, 880, 0.03, 0.12); },
     bell: (f = 740, v = 1) => { for (let n = 0; n < 3; n++) for (const [m, a] of [[1, 0.1], [2.4, 0.045], [4.1, 0.025], [5.9, 0.012]]) tone(f * m, f * m * 0.996, a * v, 2.6, 'sine', n * 0.95); },
   });
-  FAR[13] = ['relay', 'creak', 'hum2', 'relay'];
+  FAR[OLD + 13] = ['relay', 'creak', 'hum2', 'relay'];
 
   // ---- 头顶的星灯：几排等距的灯座挂在缆索上，一起慢慢往右挪；钩形星群在机房正上方，少了钩尖那一颗 ----
   // rows：[高, 深, 间距]；HOOK：钩形星群各颗的位置（相对 SOCK），最后一颗（钩尖）是空的 —— 它的灯座就是检修位上那只
@@ -619,6 +619,6 @@ const CH13 = (() => {
     saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
   function respawn() { if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; } S.cmpT = -1; }
-  const ZONE = defZone({ n: 13, vis: [X - 12, CITY + 18], build, update, reset, solve, retry, respawn, unbuild() { V = null; }, S, END, lever, screw, pull });
+  const ZONE = defZone({ n: OLD + 13, vis: [X - 12, CITY + 18], build, update, reset, solve, retry, respawn, unbuild() { V = null; }, S, END, lever, screw, pull });
   return ZONE;
 })();

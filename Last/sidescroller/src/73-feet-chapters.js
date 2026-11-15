@@ -13,7 +13,7 @@ const FEET_OFF = new URLSearchParams(location.search).get('feet') === '0';      
 function feetZone(n, vis, make) {
   const S = { groups: {}, life: null, on: null };
   const apply = () => { for (const k in S.groups) S.groups[k].visible = !S.on || S.on.includes(k); };
-  const z = defZone({ n, vis, feet: true,
+  const z = defZone({ n: OLD + n, vis, feet: true,                                    // n 是旧原型的章节号（下面的种子也按它算，样子不变）
     *build(R) {
       S.groups = {}; for (const k of FEET_GROUPS) { const g = new THREE.Group(); g.name = 'feet-' + k; R.add(g); S.groups[k] = g; }
       S.life = groundLife(S.groups.alive, n * 31 + 7);

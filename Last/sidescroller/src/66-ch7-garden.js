@@ -15,7 +15,7 @@
 // ============================================================
 const CH7 = (() => {
   const X = X7, ENTRY = X + 1.2, ARM = X + 31.0, DOOR = X + 34.4, VALVE = X + 41, SENSOR = X + 56, GATE = X + 61.5, W0 = X + 46.5, W1 = X + 60;
-  const C = chapter({ n: 7, x0: X + 0.5, start: X + 3, name: '管理花园', sub: '让野地重新得到水' });
+  const C = chapter({ n: OLD + 7, x0: X + 0.5, start: X + 3, name: '管理花园', sub: '让野地重新得到水' });
   C.ground = 'grass';                                                              // 脚步声：草地；野地干得开裂是土，长起来以后又是草（见下面的 surface）
   terrain([X8, 0]);
   ground(X + 2, 0x80bd56); ground(X + 44.5, 0x80bd56); ground(X + 47, 0xc2a05c); ground(X + 60, 0xc2a05c); ground(X + 64, 0x7fbb4c); ground(X8 - 4, 0x7fbb4c);
@@ -644,5 +644,5 @@ const CH7 = (() => {
   }
   function reset() { placeBox(branch, X + 21.5); setGate(door, 0); setGate(relay, 0); Object.assign(S, { jam: false, snipT: 0, snip: 0, vine: 0.15, valve: 0, vk: 0, g: 0, cat: 0 }); if (V) for (const b of V.birds) { b.st = 'perch'; b.g.visible = true; b.g.rotation.y = b.face > 0 ? 0 : Math.PI; b.wait = b.wait || b.x0 > X + 46 && b.x0 < GATE + 0.5; } }
   function solve() { placeBox(branch, X + 30.4); setGate(door, 1); setGate(relay, 1); Object.assign(S, { jam: true, snipT: 0, snip: 0.55, vine: 1, valve: 1, vk: 1, g: 1, cat: 9 }); if (V) for (const b of V.birds) if (b.wait) { b.wait = false; b.st = 'perch'; b.g.visible = true; } }
-  return defZone({ n: 7, vis: [X - 6, X8 + 4], build, update, reset, solve, unbuild() { V = null; }, branch, door, relay, S });
+  return defZone({ n: OLD + 7, vis: [X - 6, X8 + 4], build, update, reset, solve, unbuild() { V = null; }, branch, door, relay, S });
 })();

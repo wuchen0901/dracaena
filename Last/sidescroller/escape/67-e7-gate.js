@@ -103,11 +103,11 @@ const E7 = (() => {
     // ---------------- 布景板：夜里的山谷 ----------------
     // 最远的一层山
     backdrop(X - 330, X + 540, -8, 60, -380, 2, g => {
-      setInk(g, PAL.far); ridge(g, X - 330, X + 540, -8, x => 20 + 11 * Math.sin(x * 0.0105 + 1) + 6 * Math.sin(x * 0.027) + 3 * Math.sin(x * 0.071 + 2), 4);
+      setInk(g, PAL.far); ridge(g, X - 330, X + 540, -8, x => 20 + 11 * Math.sin(ex(x) * 0.0105 + 1) + 6 * Math.sin(ex(x) * 0.027) + 3 * Math.sin(ex(x) * 0.071 + 2), 4);
     }, { fog: false });
     // 近一层的丘陵，上面一排高压线塔
     backdrop(X - 230, X + 420, -6, 42, -190, 3, g => {
-      const top = x => 8 + 5 * Math.sin(x * 0.019 + 2) + 3 * Math.sin(x * 0.047) + 1.2 * Math.sin(x * 0.13);
+      const top = x => 8 + 5 * Math.sin(ex(x) * 0.019 + 2) + 3 * Math.sin(ex(x) * 0.047) + 1.2 * Math.sin(ex(x) * 0.13);
       setInk(g, PAL.mid); ridge(g, X - 230, X + 420, -6, top, 3);
       const pylon = (x, y, h) => {
         const w = h * 0.15, leg = t => w * (t < 0.72 ? 1 - 0.75 * t / 0.72 : 0.25 * (1 - (t - 0.72) / 0.28));
@@ -123,14 +123,14 @@ const E7 = (() => {
     yield;
     // 野地尽头的一排林子
     backdrop(X - 210, X + 380, -3, 26, -125, 6, g => {   // （x 到 X + 380：结尾回头看的那一眼里，它在工厂后面）
-      setInk(g, PAL.wood); ridge(g, X - 210, X + 380, -3, x => 3 + 1.5 * Math.sin(x * 0.05) + rr(0, 0.8), 2);
+      setInk(g, PAL.wood); ridge(g, X - 210, X + 380, -3, x => 3 + 1.5 * Math.sin(ex(x) * 0.05) + rr(0, 0.8), 2);
       for (let x = X - 206; x < X + 376; x += rr(2.6, 6.5)) tree(g, x, 1.5, rr(9, 16), rnd() < 0.45 ? 'pine' : 'round');
     }, { fog: false });
     yield;
     // 田埂：一道长满灌木的土坎，几棵孤零零的树；塌了一半的谷仓和一座水塔
     backdrop(X - 70, X + 210, -2, 17, -26, 14, g => {
       setInk(g, PAL.near);
-      ridge(g, X - 70, X + 210, -2, x => 0.9 + 0.5 * Math.sin(x * 0.21) + rr(0, 0.35), 0.7);
+      ridge(g, X - 70, X + 210, -2, x => 0.9 + 0.5 * Math.sin(ex(x) * 0.21) + rr(0, 0.35), 0.7);
       for (let x = X - 64; x < X + 206; x += rr(14, 34)) if (x < X + 58 || x > X + 110) tree(g, x, 0.6, rr(4, 8), pick(['round', 'dead', 'round', 'pine']));
       poly(g, [[X + 62, 0.5], [X + 62, 4.6], [X + 65.2, 7.4], [X + 68.4, 5.2], [X + 70.2, 4.1], [X + 70.2, 0.5]]);            // 谷仓：一边的屋顶塌下去了
       g.clearRect(X + 63.4, 0.8, 1.9, 2.5); g.clearRect(X + 64.6, 4.7, 1.0, 0.9); for (let x = X + 66.4; x < X + 69.8; x += 0.55) g.clearRect(x, 1.2, 0.12, rr(1.6, 3.2));
@@ -163,8 +163,8 @@ const E7 = (() => {
     // 沥青的边被草一点点吃进来；一块块深浅不一的补丁，褪了色的中线和边线，裂缝
     for (const [a, b] of [[X - 8.2, X + 42], [X + 42, X + 108]]) groundDecal(a, b, -2.8, 3.0, 40, g => {
       g.fillStyle = 'rgba(44,48,53,0.95)'; g.beginPath(); g.moveTo(a, -2.3);
-      for (let x = a; x <= b; x += 0.5) g.lineTo(x, -2.3 + 0.16 * Math.sin(x * 1.3) + 0.1 * Math.sin(x * 3.1 + 1));
-      for (let x = b; x >= a; x -= 0.5) g.lineTo(x, 2.5 + 0.2 * Math.sin(x * 0.9 + 2) + 0.12 * Math.sin(x * 2.7));
+      for (let x = a; x <= b; x += 0.5) g.lineTo(x, -2.3 + 0.16 * Math.sin(ex(x) * 1.3) + 0.1 * Math.sin(ex(x) * 3.1 + 1));
+      for (let x = b; x >= a; x -= 0.5) g.lineTo(x, 2.5 + 0.2 * Math.sin(ex(x) * 0.9 + 2) + 0.12 * Math.sin(ex(x) * 2.7));
       g.closePath(); g.fill();
       for (let i = 0; i < (b - a) * 0.5; i++) { g.fillStyle = rnd() < 0.5 ? `rgba(0,0,0,${rr(0.08, 0.22).toFixed(2)})` : `rgba(140,150,156,${rr(0.04, 0.1).toFixed(2)})`; g.fillRect(rr(a, b), rr(-2.0, 1.6), rr(0.6, 2.6), rr(0.3, 1.2)); }
       g.fillStyle = 'rgba(196,198,186,0.36)'; for (let x = Math.ceil(a / 6) * 6; x < b - 3; x += 6) if (rnd() < 0.8) g.fillRect(x, 0.62, 3, 0.13);
@@ -174,7 +174,7 @@ const E7 = (() => {
     }, { fadeL: 0, fadeR: b > X + 100 ? 5 : 0 });
     // 过了断桥，沥青没了，只剩两道车辙
     groundDecal(X + 103, X + 152, -2.2, 2.4, 30, g => {
-      for (const z0 of [-0.75, 0.75]) { g.strokeStyle = 'rgba(20,18,14,0.5)'; g.lineWidth = 0.55; g.beginPath(); for (let x = X + 103; x <= X + 152; x += 0.6) { const z = z0 + 0.25 * Math.sin(x * 0.4) + 0.1 * Math.sin(x * 1.3); x === X + 103 ? g.moveTo(x, z) : g.lineTo(x, z); } g.stroke(); }
+      for (const z0 of [-0.75, 0.75]) { g.strokeStyle = 'rgba(20,18,14,0.5)'; g.lineWidth = 0.55; g.beginPath(); for (let x = X + 103; x <= X + 152; x += 0.6) { const z = z0 + 0.25 * Math.sin(ex(x) * 0.4) + 0.1 * Math.sin(ex(x) * 1.3); x === X + 103 ? g.moveTo(x, z) : g.lineTo(x, z); } g.stroke(); }
     }, { fadeL: 4, fadeR: 4 });
     yield;
     // 野地里的草：路边矮，越往远处越高；路上的裂缝里也钻出来几丛。受光照 —— 探照灯扫到哪，哪里的草就亮起来

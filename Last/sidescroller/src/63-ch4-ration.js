@@ -12,7 +12,7 @@ const CITY_ENV = { fog: 0xaeb5b4, fogD: 0.0085, hemiS: 0xeef2f1, hemiG: 0x4a4d4e
   aWind: 0.45, aWhis: 0, aLeaf: 0, aBug: 0, aCity: 0.8, aFar: 0.7, aRoom: 0, aHum: 0, aDrip: 0, aFlow: 0, rvOut: 1, rvHall: 0.12, rvCave: 0, birds: 0 };   // 声音：楼群之间的风，城市很低的远声，远处的广播提示音、卷帘门、鸽子
 const CH4 = (() => {
   const X = X4, KIOSK = X + 12, ELDER = X + 13.7, WORKER = X + 16.6, POLE = X + 24, MARK = X + 22.4, BARR = X + 37;
-  const C = chapter({ n: 4, x0: X + 0.5, start: X + 3, name: '配给街', sub: '让镜头看不见' });
+  const C = chapter({ n: OLD + 4, x0: X + 0.5, start: X + 3, name: '配给街', sub: '让镜头看不见' });
   C.ground = 'concrete';                                                           // 脚步声：路面；运输箱是铁的
   terrain([X5, 0]);
   ground(X + 4, 0x55585a); ground(X5 - 4, 0x4d5052);
@@ -173,5 +173,5 @@ const CH4 = (() => {
   }
   function reset() { placeBox(crate, X + 30); setGate(shutter, 0); barr.noclimb = true; Object.assign(S, { down: false, t: 0, hide: 0, deny: 3, pack: [WORKER - 0.4, 1.08, -0.3] }); }
   function solve() { placeBox(crate, BARR - 0.6); setGate(shutter, 1); barr.noclimb = false; Object.assign(S, { down: true, t: 60, hide: 0, deny: 1e9, pack: [ELDER + 0.36, 0.98, -0.4] }); }
-  return defZone({ n: 4, vis: [X - 6, X5 + 6], build, update, reset, solve, unbuild() { V = null; }, crate, shutter, S });
+  return defZone({ n: OLD + 4, vis: [X - 6, X5 + 6], build, update, reset, solve, unbuild() { V = null; }, crate, shutter, S });
 })();

@@ -11,7 +11,7 @@
 const X10 = 1500;
 const CH10 = (() => {
   const X = X10;
-  const C = chapter({ n: 10, x0: X + 0.5, start: X + 3, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
+  const C = chapter({ n: OLD + 10, x0: X + 0.5, start: X + 3, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
     intro() { CAT.state = 'none'; } });
   const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5;
   terrain([X - 30, 0], [X + 29.9, 0], [X + 30.1, DITCH], [X + 32.85, DITCH], [X + 33.05, 0], [X + 150, 0]);
@@ -268,6 +268,6 @@ const CH10 = (() => {
     for (const s of V.lampG) s.material.opacity = s.userData.a0 * f;
   }
   function reset() { for (const r of [R1, R2, R3]) ropeReset(r); }
-  return defZone({ n: 10, vis: [X - 10, END + 4], build: function* (R) { yield* build(R); for (const s of V.lampG) s.userData.a0 = s.material.opacity; }, update, reset, solve() {},
+  return defZone({ n: OLD + 10, vis: [X - 10, END + 4], build: function* (R) { yield* build(R); for (const s of V.lampG) s.userData.a0 = s.material.opacity; }, update, reset, solve() {},
     unbuild() { V = null; }, R1, R2, R3, S1, S2, S3, DECO, NEAR });
 })();

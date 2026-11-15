@@ -12,7 +12,7 @@
 // ============================================================
 const CH8 = (() => {
   const X = X8, D1 = X + 20, D2 = X + 44, D3 = X + 70, EX = X + 96, DOCK = X + 79, SOCK_L = X + 80.65, SOCK_R = X + 90.4, OUT = X + 98.2;
-  const C = chapter({ n: 8, x0: X + 0.5, start: X + 4, name: '生态中枢', sub: '分配最后的能源' });
+  const C = chapter({ n: OLD + 8, x0: X + 0.5, start: X + 4, name: '生态中枢', sub: '分配最后的能源' });
   C.ground = 'concrete';                                                           // 脚步声：中枢里是磨光的地面；出了门是坡上的草（见下面）；导电桥、电池是铁的
   terrain([EX + 2.1, 0], [X + 104, 0.4], [X + 116, 1.6], [X + 126, 2.4], [X + 140, 2.6], [X + 220, 2.6]);
   ground(X - 0.2, 0x556040); ground(X + 0.2, 0x1e282e); ground(EX + 0.6, 0x1e282e); ground(EX + 1, 0x3f4636); ground(X + 220, 0x3f4636);
@@ -371,7 +371,7 @@ const CH8 = (() => {
     END.choice = c; END.t = 0; batt.locked = true; STORY.ending = c; saveGame(); fx('dock');
     if (c === 1) { ctl = false; autoDir = 0; } else fx('powerUp');
   }
-  const ch7Root = () => { const z = ZONES.find(z => z.n === 7); return z && z.root; };
+  const ch7Root = () => { const z = ZONES.find(z => z.n === OLD + 7); return z && z.root; };
   function update(dt) {
     // 镜头进了中枢以后把第七章的布景整个藏起来：它的树一直画到门里面，远山一直画到中枢背后（出了门会在天上留一道残影）
     { const r = ch7Root(); if (r) r.visible = camera.position.x < X + 2.5; }
@@ -464,6 +464,6 @@ const CH8 = (() => {
     placePlayer(D3 + 3); P.cp = cpAt(P.x); if (STORY.cat) catPlace(P.x - 0.9, 0); ctl = true; autoDir = 0; state = 'play'; camOvr = null;
     $('end').classList.add('hide'); $('fade').style.opacity = 0; saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
-  return defZone({ n: 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
+  return defZone({ n: OLD + 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
 function retryEnding() { (endZone ?? CH8).retry(); }

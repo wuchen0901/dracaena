@@ -21,7 +21,7 @@
 // 要通过本地服务器打开（和原型同源才能读到它的画面）：http://127.0.0.1:8771/tools/tired-sheet.html?layout=log&scen=climb
 // 导出：node Last/tools/shot.mjs "<网址>" out.png <宽> <高>
 // 网址参数：
-//   scen —— climb / run / stop / plain；seed 随机数种子（换一个数，小动作出现的时机就不一样）；game 换一个游戏文件（默认 sidescroller.html）
+//   scen —— climb / run / stop / plain；seed 随机数种子（换一个数，小动作出现的时机就不一样）；game 换一个游戏文件（默认 escape.html）
 //   layout —— log 每 0.5 秒在控制台报一行：位置、速度、疲劳、走法比重、喘得多凶（BR.ex）、两种弯腰各弯了多少（rk 累的撑膝盖 / bend 喘气的弯腰）、正在做的小动作 /
 //             bones 每帧报出主角模型全部骨头位置的校验和（n 帧，一秒 30 帧）：拿两个版本（game=…）的输出一比，就知道动作是不是一模一样 /
 //             film 连续画面排成一张图，拿去切成动图（fps=10，from 从第几格开始，n 拍几格，w / h 每格大小，cols 一行几格，z 放大几倍，hud=0 不画角上的说明）
@@ -43,7 +43,7 @@ const S = SCEN[q.get('scen') || 'climb'];
 const keysAt = t => typeof S.keys === 'function' ? S.keys(t) : S.keys;   // 这一刻按着哪些键（t 是第几秒）
 function setup() {
   const T = G.TIRED, A = G.hero().A;
-  G.ch(S.ch); G.tp(S.x ?? G.CHAPTERS[S.ch - 1].start); G.P.facing = 1;
+  G.ch(S.ch); G.tp(S.x ?? G.CHAPTERS[G.OLD + S.ch - 1].start); G.P.facing = 1;
   if (T) { Object.assign(A, { tk: 0, rk: 0, stoop: 0 }); T.seed = num('seed', 20261113); T.mix = [1, 0, 0]; }   // 没有“累”的旧版本（game=…）就不管这些
   G.step(0.4);
   if (S.pre) S.pre();
@@ -121,9 +121,9 @@ const LAYOUTS = {
   // 冒烟测试：九章各从开头按住“跑”（隔一会儿跳一下，翻过矮的东西）跑 sec 秒，看有没有报错、累到什么程度、在哪里累的
   smoke() {
     size(400, 100); const T = G.TIRED, out = [];
-    for (const c of G.CHAPTERS) {
+    for (const c of G.CHAPTERS.slice(G.OLD)) {                     // 旧原型的十三章（游戏里排在 OLD 章之后）
       try {
-        G.ch(c.n); G.tp(c.start); G.step(0.3);
+        G.ch(c.n - G.OLD); G.tp(c.start); G.step(0.3);
         let maxF = 0, firstX = null, modes = new Set();
         for (let i = 0; i < num('sec', 40) * 4; i++) {
           G.hold(i % 12 === 11 ? ['R', 'J'] : ['R'], 0.25); modes.add(G.P.mode);
@@ -145,10 +145,10 @@ function load() {
       if (hero && !t0) t0 = performance.now();                            // 游戏起来了才开始计时（three.js 从网上下载，有时候要等很久）
       const modelIn = hero && hero.B.traveler?.model, late = performance.now() - t0 > 150000;   // 主角的模型是另外加载的：等它到了再画，机器忙的时候要等很久，最多再等 150 秒
       if (hero && !modelIn && late) console.warn('主角模型没有加载出来，画面里是顶替的机器人');
-      if (hero && (modelIn || late)) { G = w.__g; G.begin(); G.paused = true; G.step(0.3); done(); }
+      if (hero && (modelIn || late)) { G = w.__g.old; G.begin(); G.paused = true; G.step(0.3); done(); }
       else setTimeout(wait, 100);
     };
-    frame.src = '../' + (q.get('game') || 'sidescroller.html') + '?sheet=' + Date.now();
+    frame.src = '../' + (q.get('game') || 'escape.html') + '?sheet=' + Date.now();
   });
 }
 

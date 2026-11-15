@@ -7,7 +7,7 @@
 // ============================================================
 const CH2 = (() => {
   const X = X2, CX0 = X + 104, CX1 = CX0 + 5.2, BED = -3.6, LOW = -3.25, HIGH = -0.42;      // 水渠的两岸、渠底、低水位、高水位
-  const C = chapter({ n: 2, x0: X + 0.6, start: X + 3.5, name: '林地水闸', sub: '恢复水道' });
+  const C = chapter({ n: OLD + 2, x0: X + 0.6, start: X + 3.5, name: '林地水闸', sub: '恢复水道' });
   C.ground = 'dirt';                                                               // 脚步声：坡上是土路，林子里是土上一层落叶（forest），路上两片湿泥（见 FAR_SIDE 后面）
   terrain([X + 2.1, 0.0875], [X + 6, 0.25], [X + 14, 1.0], [X + 20, 1.3], [X + 26, 2.6], [X + 32, 3.0], [X + 46, 3.0], [X + 54, 2.2], [X + 64, 0.9], [X + 76, 0.2], [X + 82, 0],
     [CX0, 0], [CX0 + 0.01, BED], [CX1 - 0.01, BED], [CX1, 0], [X3, 0]);
@@ -754,5 +754,5 @@ const CH2 = (() => {
   function reset() { Object.assign(W, { open: false, t: 0, k: 0, level: LOW, lamp: 0, flown: 0, bank: -1 }); placeTimber(); if (V) V.life.reset(); }
   function solve() { Object.assign(W, { open: true, t: 7, k: 1, level: HIGH, lamp: 1, flown: 99, bank: 1 }); placeTimber(); }
   // 卸载：乌鸦的三张姿势是轮流换到材质上的，卸载时材质上只挂着其中一张（跟着材质一起释放），另外两张要在这里释放
-  return defZone({ n: 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.crowTexs) t.dispose(); V = null; }, W, timber, view: () => V });
+  return defZone({ n: OLD + 2, vis: [X, X3 + 4], build, update, reset, solve, unbuild() { if (V) for (const t of V.crowTexs) t.dispose(); V = null; }, W, timber, view: () => V });
 })();

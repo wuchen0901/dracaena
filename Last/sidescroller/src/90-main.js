@@ -90,6 +90,10 @@ const DBG = window.__g = { P, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZON
       else { const o = {}; for (const k in acc) { const [ss, n, pk] = acc[k]; o[k] = [+(10 * Math.log10(ss / n + 1e-18)).toFixed(1), +(20 * Math.log10(pk + 1e-9)).toFixed(1)]; } res(o); } };
       requestAnimationFrame(tick); });
   } };
+// 工具页（Last/tools/）都是为旧原型做的，里面的章节号还按旧原型的 1–13 写：它们用 __g.old —— 和 __g 是同一个接口，只是 ch(n)、zone(n) 的 n 按旧原型算。
+// 要拿章节号自己比的地方（CHAPTERS、ZONES 里的 n、STORY.ch）加上 OLD
+DBG.OLD = OLD;
+DBG.old = new Proxy(DBG, { get: (t, k) => k === 'ch' ? n => t.ch(n + OLD) : k === 'zone' ? n => t.zone(n + OLD) : t[k] });
 
 let lastT = performance.now(), frameN = 0;
 function frame(now) {

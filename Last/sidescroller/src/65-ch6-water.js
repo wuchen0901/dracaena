@@ -8,7 +8,7 @@
 // ============================================================
 const CH6 = (() => {
   const X = X6, PAD_A = X + 9.0, PAD_B = X + 14.0, PUMP = X + 18.5, GATE = X + 41, LEAK = X + 50, PERCH = X + 55.4, MAN = X + 61.6, Z0 = X + 57.0, Z1 = X + 59.0;
-  const C = chapter({ n: 6, x0: X + 0.5, start: X + 3, name: '供水街区', sub: '把水送到需要它的地方' });
+  const C = chapter({ n: OLD + 6, x0: X + 0.5, start: X + 3, name: '供水街区', sub: '把水送到需要它的地方' });
   C.ground = 'concrete';
   terrain([X7, 0]);
   ground(X + 4, 0x4d5052); ground(X + 70, 0x4d5052); ground(X7 - 8, 0x4c5540);
@@ -183,5 +183,5 @@ const CH6 = (() => {
   }
   function reset() { placeBox(coil, PAD_A); placeBox(lid, X + 46.6); setGate(door, 0); Object.assign(S, { pump: false, k: 0, fill: 0, ph: 0, t: 0, shoo: 0, morsel: 0, grow: 0 }); }
   function solve() { placeBox(coil, PAD_B); placeBox(lid, STORY.water ? Z1 - 0.4 : X + 46.6); setGate(door, 1); Object.assign(S, { pump: true, k: 1, fill: STORY.water ? 1 : 0, ph: STORY.water ? 5 : 9, t: 9, shoo: 0, morsel: 1, grow: 1 }); }
-  return defZone({ n: 6, vis: [X - 6, X7 + 6], build, update, reset, solve, unbuild() { V = null; }, coil, lid, door, S });
+  return defZone({ n: OLD + 6, vis: [X - 6, X7 + 6], build, update, reset, solve, unbuild() { V = null; }, coil, lid, door, S });
 })();
