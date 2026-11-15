@@ -12594,7 +12594,6 @@ const CH14 = (() => {
   const MI = 0.016;                                            // 灰缝比砖面缩进去多少
   const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'dirt',
     intro() { CAT.state = 'none'; } });
-  terrain([X - 60, 0], [X + 60, 0]);
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
   groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
@@ -12604,6 +12603,13 @@ const CH14 = (() => {
   // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去（±3 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
   const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * 2.2 * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
   zpath(X - 14, X + 34, PZ_);
+  // 大起伏：整片地面（连孩子走的那条路）一起缓缓地高低起伏，±0.45 米，一个坡十来米长；墙脚附近收平（墙是平着砌的），章节两头收回 0。
+  //   孩子脚下的物理地形就按它登记（沿着那条弯路取值），所以走起来是真的上坡下坡。细碎的起伏只在路两边（见 build 里的 hFront / hBack）
+  const vh = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + 17.3) * 43758.5453; return t - Math.floor(t); };
+  const vn2 = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+    return lerp(lerp(vh(ix, iz), vh(ix + 1, iz), u), lerp(vh(ix, iz + 1), vh(ix + 1, iz + 1), u), w); };
+  const BIG = (x, z) => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * sstep(0.35, 1.8, Math.abs(u)) * (0.75 * (vn2(x * 0.11, z * 0.14) - 0.5) + 0.22 * (vn2(x * 0.37 + 5, z * 0.4) - 0.5)); };
+  { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.5) pts.push([x, BIG(x, PZ_(x))]); terrain(...pts); }
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
     dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.42, sunY: 0.28, sunC: 0xc2cad0, sunP: 0.4, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
@@ -12641,12 +12647,12 @@ const CH14 = (() => {
       return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),
                  mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
     float pzf(float u) { return smoothstep(-22., -16., u) * (1. - smoothstep(20., 26., u)) * 2.2 * (0.9 * sin(u * 0.21 + 0.6) + 0.5 * sin(u * 0.083 + 2.0)); }
-    float wallD(vec3 q) {
+    float wallD(vec3 q, float hy) {                                          // hy：高出周围大起伏多少（地面传细起伏的高度，别的传 q.y）
       float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
       float dz = max(0., -qz);
       // 光就是不打：没有理由，画面要哪里黑哪里就黑
       float base = 0.04 + 0.96 * exp(-max(0., dz - 1.) / 6.);               // 孩子走的那一带最亮，往后很快暗下去
-      base *= 1. - smoothstep(0.3, 2.8, qz - 3.5 * q.y + 1.6 * (n2(q.xz * vec2(0.28, 0.4)) - .5) + 0.6 * (n2(q.xz * vec2(0.9, 1.1) + 3.) - .5));   // 往镜头这边：两米之内压到纯黑。鼓起来的地方多接一点光、凹下去的先黑，暗的边顺着地面起伏弯过去
+      base *= 1. - smoothstep(0.3, 2.8, qz - 3.5 * hy + 1.6 * (n2(q.xz * vec2(0.28, 0.4)) - .5) + 0.6 * (n2(q.xz * vec2(0.9, 1.1) + 3.) - .5));   // 往镜头这边：两米之内压到纯黑。鼓起来的地方多接一点光、凹下去的先黑，暗的边顺着地面起伏弯过去
       float hx = q.x - uHX;
       base *= mix(mix(0.1, 1., exp(-hx * hx / 7.)), 1., smoothstep(6., 18., dz));   // 近处只照孩子周围两三米（跟着孩子走）；远处不管
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
@@ -12696,18 +12702,18 @@ const CH14 = (() => {
     mat.customProgramCacheKey = () => 'ch14-' + kind;
     mat.onBeforeCompile = sh => {
       sh.uniforms.uT = WU.uT; sh.uniforms.uHX = WU.uHX;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;' + (kind === 2 ? ' attribute float aDet; varying float vDet;' : ''))
         .replace('#include <fog_vertex>', `#include <fog_vertex>
           vec4 wp14 = vec4(transformed, 1.0); vec3 wn14 = objectNormal;
           #ifdef USE_INSTANCING
             wp14 = instanceMatrix * wp14; wn14 = mat3(instanceMatrix) * wn14;
           #endif
-          vWP = (modelMatrix * wp14).xyz; vWN = normalize(mat3(modelMatrix) * wn14);`);
+          vWP = (modelMatrix * wp14).xyz; vWN = normalize(mat3(modelMatrix) * wn14);${kind === 2 ? ' vDet = aDet;' : ''}`);
       const lb = THREE.ShaderChunk.lights_fragment_begin, hook = 'getDirectionalLightInfo( directionalLight, directLight );';
       if (!lb.includes(hook)) console.warn('第二十一章：three.js 的光照代码变了，月光不会跟着压暗');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + GL_COMMON)
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + GL_COMMON + (kind === 2 ? '\nvarying float vDet;' : ''))
         .replace('#include <color_fragment>', `#include <color_fragment>
-          vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q);
+          vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q, ${kind === 2 ? 'vDet' : 'q.y'});
           ${SURF[kind]}
           diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, 0.35);   // 颜色几乎去掉：只有孩子身上有颜色`)
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
@@ -12848,7 +12854,7 @@ const CH14 = (() => {
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
       // 孩子身前（z > 0）：土包、浅坑、一道道压出来的辙，越靠镜头起伏越大（不能高到挡住孩子的脚）。孩子走的那条路和墙脚保持平
       const hFront = (x, z) => {
-        const k = sstep(0.6, 1.7, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
+        const k = sstep(0.35, 1.4, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
         return k * amp * (1.6 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.6 * (vn(x * 1.1 + 7, z * 1.3) - 0.5) + 0.25 * (vn(x * 3.1, z * 3.3 + 5) - 0.5) - 0.35 * Math.pow(Math.abs(Math.sin(z * 1.7 + vn(x * 0.2, 9) * 3)), 6));
       };
       // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
@@ -12857,12 +12863,12 @@ const CH14 = (() => {
         const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
         return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills);
       };
-      const H = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 起伏按离那条弯路多远来算
+      const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
-        const pos = [], idx = [], nx = xs.length;
-        for (const z of zs) for (const x of xs) pos.push(x, H(x, z), z);
+        const pos = [], det = [], idx = [], nx = xs.length;
+        for (const z of zs) for (const x of xs) { const d = DET(x, z); pos.push(x, BIG(x, z) + d, z); det.push(d); }
         for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
-        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aDet', new THREE.Float32BufferAttribute(det, 1)); g.setIndex(idx); g.computeVertexNormals();
         const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
