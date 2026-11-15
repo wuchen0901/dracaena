@@ -4,9 +4,10 @@
 //    近处（镜头后面到 z = -42）：一块一块的砖，有倒角、顺砖丁砖、灰缝缩进去一点、砖面的颗粒和小坑、
 //         墙顶一排立砌的压顶砖、豁口是一阶一阶塌下去的，塌下来的砖散在墙脚
 //    远处（z = -42 往后）：一整条墙体，砖缝在着色器里画；豁口的轮廓还在
-//  光：一盏旧路灯照着翻墙的地方（唯一一盏带影子的灯，借第一章那台机器的探照灯）；
-//    月光和天光只照得到近处，往远处很快暗下去，云缝里漏下来的几块月光慢慢飘过去（wallD）；
-//    远处再有两盏路灯，一盏比一盏暗 —— 亮、暗、一块月光、暗、一点灯、黑
+//  光：只有月光（不靠路灯，哪一章都能这样打光）。月亮在左后方、画面外面，从墙的远端那边斜着照过来，带影子：
+//    朝着镜头的那些面本来就背着光，墙和废料的影子都往镜头这边拖过来。
+//    再用 wallD 决定天光、月光在每一处还剩多少：孩子走的那一带最亮；镜头跟前压到几乎全黑（前景的废料只剩轮廓）；
+//    往远处很快暗下去，云缝里漏下来的几块月光慢慢飘过去 —— 黑、亮、暗、一块月光、暗、黑
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
 const X14 = 2600;
@@ -16,7 +17,6 @@ const CH14 = (() => {
   const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，跳一下就过去
   const Z1 = 18, ZN = -42, Z0 = -330;                          // 墙从镜头后面 Z1 一直到 Z0；ZN 以前一块块砖搭，以后是一整条
   const MI = 0.016;                                            // 灰缝比砖面缩进去多少
-  const LAMP = [WX - 2.75, 0, -3.1], HEAD = [WX - 2.05, 4.35, -3.1];
   const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'dirt',
     intro() { CAT.state = 'none'; } });
   terrain([X - 60, 0], [X + 60, 0]);
@@ -27,14 +27,12 @@ const CH14 = (() => {
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
-  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x5d6c86, hemiG: 0x14120f, hemiI: 1.2, keyC: 0xa9bcdc, keyI: 1.3, keyDir: [0.5, 0.75, -0.55], rimC: 0x7a8aa8, rimI: 0.3,
+  const NIGHT = { fog: 0x07090d, fogD: 0.011, hemiS: 0x4a5a78, hemiG: 0x100f0d, hemiI: 0.45, keyC: 0xb8c8e6, keyI: 3.8, keyDir: [-0.6, 0.62, -0.7], rimC: 0x8090b0, rimI: 0.25,
     dustC: 0xc8b89a, dustO: 0.1, wind: 0.03, ext: 1, sky: [0x04060a, 0x060810, 0x0a0e17, 0x0f141d, 0x0b0e14, 0x07090d], sunP: 0, stars: 0.55, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 20, NIGHT); env(X + 60, NIGHT);
   FAR[OLD + 14] = ['owl', 'twig', 'owl'];
-  // 远处的两盏路灯（不带影子）：一盏在墙右边，一盏更远、在左边
-  const FARL = [[WX + 2.3, -37, 1], [WX - 2.4, -96, -1]];
-  for (const [x, z, s] of FARL) spotLight({ p: [x - s * 0.7, 4.3, z], t: [x - s * 1.3, 0, z + 0.6], c: 0xffbf80, i: z > -60 ? 7 : 6, d: 9, a: 0.62, pen: 0.85 });
+
 
   // ---- 豁口：{ z 在哪, w 半宽, d 塌下去几层, p 形状（小于 1 圆，大于 1 尖）} ----
   // 玩法平面（z = 0）上那一截要整整齐齐，跳过去的高度才是定的
@@ -66,12 +64,12 @@ const CH14 = (() => {
                  mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
     float wallD(vec3 q) {
       float dz = max(0., -q.z);
-      float base = 0.03 + 0.5 * exp(-max(0., dz - 3.) / 10.);              // 近处有天光，往后很快暗下去
-      base *= 1. - 0.88 * smoothstep(1.2, 4.5, q.z);                         // 镜头跟前压得很暗：近处那一截墙和前景成了黑影，眼睛先落在中间
+      float base = 0.04 + 0.96 * exp(-max(0., dz - 2.) / 9.);               // 孩子走的那一带最亮，往后很快暗下去
+      base *= 1. - 0.93 * smoothstep(0.9, 3.2, q.z);                         // 镜头跟前压得很暗：近处那一截墙和前景成了黑影，眼睛先落在中间
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
       float cl = n2(c2) * 0.65 + n2(c2 * 2.3 + 7.1) * 0.35;
       float gap = smoothstep(0.56, 0.7, cl) * smoothstep(14., 30., dz) * exp(-dz / 80.);
-      return (base + 3.6 * gap) * (1. - smoothstep(80., 210., dz));
+      return (base + 1.4 * gap) * (1. - smoothstep(80., 210., dz));
     }`;
   const SURF = [
     // 0 一块块的砖、灰缝、塌下来的砖：颗粒、小坑、朝上的面长青苔、墙面上的雨痕和地衣、墙脚泛白的盐霜
@@ -177,15 +175,6 @@ const CH14 = (() => {
   const CLINKER = new THREE.Color(0x3a2a2a), PATCH = new THREE.Color(0x6a5e4c);
   const brickCol = (y, k = 1) => { const u = rnd(), c = (u < 0.05 ? CLINKER.clone() : u < 0.065 ? PATCH.clone() : pick(BRICK).clone()).multiplyScalar(rr(0.82, 1.12) * k); return c.multiplyScalar(0.62 + 0.38 * sstep(0, 0.3, y)); };   // 偶尔一块过火的深色砖、一块后来补上的灰黄砖；墙脚返潮，暗下去
 
-  // 一团叶子：一片片都是同一个网格的实例，投影子（叶子挡光才有碎碎的影子边）
-  function leafMass(parent, pts, s = 1) {
-    const mesh = new THREE.InstancedMesh(leafGeo(), lam(0xffffff, { side: THREE.DoubleSide }), pts.length); mesh.material.userData.own = true;
-    const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(), cc = new THREE.Color(), LC = [0x26321c, 0x1e2a17, 0x2f3a20, 0x333a1e, 0x22301e];
-    pts.forEach((u, i) => { ee.set(rr(-1.2, 1.2), rr(0, 6.28), rr(-0.6, 0.6)); qq.setFromEuler(ee); const sc = rr(0.09, 0.15) * s;
-      M4.compose(u, qq, V3(sc, sc, sc)); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.set(pick(LC)).multiplyScalar(rr(0.8, 1.2))); });
-    mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere();
-    mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; parent.add(mesh); return mesh;
-  }
   let V = null;
   function* build(R) {
     const v = {};
@@ -303,7 +292,7 @@ const CH14 = (() => {
       }
     };
     // 近处那一截墙脚下两边：堆着的碎砖
-    for (let z = 2.6; z < 10; z += rr(0.7, 1.4)) for (const sd of [-1, 1]) if (rnd() < 0.8) { const r = rr(0.35, 0.75); heap(WX + sd * (T / 2 + r * 0.6), z, r, Math.min(hmax(z) * 0.85, r * 0.6)); }
+    for (let z = 3.6; z < 10; z += rr(0.7, 1.4)) for (const sd of [-1, 1]) if (rnd() < 0.8) { const r = rr(0.35, 0.75); heap(WX + sd * (T / 2 + r * 0.6), z, r, Math.min(hmax(z) * 0.85, r * 0.6)); }
     // 整条路的前景
     for (let x = X - 16; x < X + 36; x += rr(0.7, 1.7)) {
       if (Math.abs(x - WX) < 1.2) continue;
@@ -338,33 +327,6 @@ const CH14 = (() => {
     { const pts = []; for (let i = 0; i < 140; i++) { const s = rnd() < 0.5 ? -1 : 1; pts.push([WX + s * (T / 2 + Math.pow(rnd(), 2) * 1.4 + 0.02), rr(-10, 10), rr(0.012, 0.035)]); }
       pebbles(R, pts.filter(([x, z]) => !(Math.abs(z) < 0.45 && Math.abs(x - WX) < 1.3)), { cols: [0x5a5650, 0x4c4842, 0x625c52, 0x3f3b36] }); }
     yield;
-    // ---- 路灯：近处一盏照着翻墙的地方，远处两盏（只是一点光和光底下的一小块） ----
-    const iron = shade(lam(0x1c1e20), 3);
-    const lampPost = (x, z, s, k) => {
-      const hx = x - s * 0.7;
-      add(R, cy(0.05, 0.075, 4.45, 10), iron, x, 2.22, z);
-      add(R, cy(0.1, 0.12, 0.35, 10), iron, x, 0.17, z);
-      tube(R, [[x, 4.3, z], [x - s * 0.15, 4.55, z], [x - s * 0.5, 4.6, z], [hx, 4.5, z]], 0.028, iron, 12);
-      const shadeM = add(R, cy(0.07, 0.24, 0.16, 14), iron, hx, 4.42, z); shadeM.castShadow = false;
-      add(R, new THREE.SphereGeometry(0.055, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe2b0, fog: false }), hx, 4.33, z, false).material.userData.own = true;
-      const g1 = glow(R, 0xffd49a, 0.7, 0.95 * k, hx, 4.3, z), g2 = glow(R, 0xffb46a, 4.2, 0.2 * k, hx, 4.25, z, GLOW_SOFT);
-      for (const g of [g1, g2]) g.material.userData.own = true;
-      return { g1, g2, k };
-    };
-    v.lamp = lampPost(LAMP[0], LAMP[2], -1, 1);
-    // 挡光：灯头朝镜头这一边有一片看不见的遮挡，只投影子、不画出来（原来是灯臂上垂下来的爬藤，画面里不要藤了）。
-    //   它的下沿顺着“从灯泡往外、斜着往下”的那条线：往孩子脚下照的陡光从下面过去，往近处那一截墙照的平一点的光被挡掉 ——
-    //   近处的墙落进碎碎的暗影里；影子的边是一片片叶子的形状，不是一条直线
-    {
-      const pts = [], bx_ = HEAD[0], by = HEAD[1] - 0.02, bz = HEAD[2];
-      while (pts.length < 3600) {
-        const dz = rr(0.25, 1.45), x = bx_ + rr(-1.0, 1.0) * (0.8 + dz * 0.9), lo = by - 0.8 * dz + rr(-0.12, 0.22) + 0.25 * Math.max(0, Math.abs(x - bx_) - 0.6);
-        const y = rr(lo, by + 0.35 + rr(0, 0.25)); if (rnd() < 0.25 && y > lo + 0.5) continue;   // 上面稀一点，下沿密
-        pts.push(V3(x, y, bz + dz));
-      }
-      v.shade = leafMass(R, pts, 1.3); v.shade.material.colorWrite = false; v.shade.material.depthWrite = false; v.shade.receiveShadow = false;
-    }
-    v.farLamps = FARL.map(([x, z, s], i) => lampPost(x, z, s, i ? 0.35 : 0.6));
     // 很远的地方一排树的剪影，比天边那一点点亮光再黑一点：挡住视线，看不到头
     backdrop(X - 120, X + 140, -2, 20, -215, 5, g => {
       setInk(g, '#030405'); box(g, X - 120, -2, 260, 2.6);
@@ -375,22 +337,13 @@ const CH14 = (() => {
     V = v;
   }
 
-  let shNear = false;
-  function nearShadow(on) {                 // 借来的探照灯：这一章里影子要从灯跟前算起，亮度按距离的平方衰减（真的路灯那样，中心亮、四周慢慢暗）；走开就还回去
-    if (on === shNear) return; shNear = on; beam.shadow.camera.near = on ? 0.05 : 6; beam.shadow.camera.updateProjectionMatrix(); beam.decay = on ? 2 : 0;
-  }
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 36;
-    nearShadow(here);
     if (!here) return;
     WU.uT.value = T;
     // 镜头不越过墙：离墙近的时候，镜头留在孩子这一边（不然墙伸到镜头跟前的那一段会挡住人）
     if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
-    // 旧路灯：偶尔轻轻地闪一下
-    const fl = 1 - 0.18 * Math.pow(Math.max(0, Math.sin(T * 0.7) * Math.sin(T * 5.3 + 1)), 6) - 0.05 * Math.max(0, Math.sin(T * 31)) * Math.pow(Math.max(0, Math.sin(T * 0.23)), 20);
-    beam.position.set(HEAD[0], HEAD[1], HEAD[2]); beam.target.position.set(WX - 0.55, 0, -1.4);
-    beam.angle = 1.22; beam.penumbra = 0.55; beam.intensity = 170 * fl; beam.color.setHex(0xffa45a);   // 张角放得很大，明暗主要靠距离衰减：从灯底下往外一点点暗下去
-    if (V) { V.lamp.g1.material.opacity = 0.95 * fl; V.lamp.g2.material.opacity = 0.2 * fl; }
+
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; nearShadow(false); } });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; } });
 })();
