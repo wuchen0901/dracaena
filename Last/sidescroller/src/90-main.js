@@ -6,9 +6,10 @@ const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0, lift: 0 };     // lift：
 let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
 let camOvr = null;                                 // 过场时由章节临时接管镜头：{ d 距离, yo 高度偏移, xo 水平偏移, lift 抬高（不写就是 0）}
 function placeCamera() {
-  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d); camera.lookAt(cam.x, cam.y, 0);
-  key.target.position.set(cam.x, P.y, 0); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
-  rim.target.position.set(cam.x, P.y, 0); rim.position.set(cam.x - 6, P.y + 5, -10);
+  const pz = pathZ(cam.x);                         // 路往前后弯：镜头只跟一部分，人往镜头这边走就真的近一点
+  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d + pz * 0.35); camera.lookAt(cam.x, cam.y, pz);
+  key.target.position.set(cam.x, P.y, pz); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
+  rim.target.position.set(cam.x, P.y, pz); rim.position.set(cam.x - 6, P.y + 5, pz - 10);
 }
 function updateCamera(dt) {
   const [d, yo, xo, lift = 0] = closeUp ? [5.4, 0.66, 0] : camOvr ? [camOvr.d, camOvr.yo, camOvr.xo, camOvr.lift ?? 0] : camKey(P.x);
@@ -48,7 +49,7 @@ function sim(dt) {
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   poseCarry(dt);                                                         // 《长夜》：从包里取灯泡、收回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
-  hero.update(dt, { x: P.x, y: P.y, vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
+  hero.update(dt, { x: P.x, y: P.y, z: pathZ(P.x), yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
     tired: TIRED.k, tiredMix: TIRED.mix, rest: TIRED.rest, wipeT: TIRED.wipeT, lookT: TIRED.lookT, stbT: TIRED.stbT,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,

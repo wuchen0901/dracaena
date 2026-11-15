@@ -27,6 +27,9 @@ const CH14 = (() => {
   solid({ x1: X + 30, x2: X + 31, y1: -2, y2: 30, noclimb: true });
   solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   checkpoint(X + 2); checkpoint(WX + 1.4);
+  // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去一点（±1.4 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
+  const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
+  zpath(X - 14, X + 34, PZ_);
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
     dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.42, sunY: 0.28, sunC: 0xc2cad0, sunP: 0.4, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
@@ -63,11 +66,13 @@ const CH14 = (() => {
     float n3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
       return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),
                  mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+    float pzf(float u) { return smoothstep(-22., -16., u) * (1. - smoothstep(20., 26., u)) * (0.9 * sin(u * 0.21 + 0.6) + 0.5 * sin(u * 0.083 + 2.0)); }
     float wallD(vec3 q) {
-      float dz = max(0., -q.z);
+      float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
+      float dz = max(0., -qz);
       // 光就是不打：没有理由，画面要哪里黑哪里就黑
       float base = 0.04 + 0.96 * exp(-max(0., dz - 1.) / 6.);               // 孩子走的那一带最亮，往后很快暗下去
-      base *= 1. - smoothstep(0.3, 2.8, q.z - 3.5 * q.y + 1.6 * (n2(q.xz * vec2(0.28, 0.4)) - .5) + 0.6 * (n2(q.xz * vec2(0.9, 1.1) + 3.) - .5));   // 往镜头这边：两米之内压到纯黑。鼓起来的地方多接一点光、凹下去的先黑，暗的边顺着地面起伏弯过去
+      base *= 1. - smoothstep(0.3, 2.8, qz - 3.5 * q.y + 1.6 * (n2(q.xz * vec2(0.28, 0.4)) - .5) + 0.6 * (n2(q.xz * vec2(0.9, 1.1) + 3.) - .5));   // 往镜头这边：两米之内压到纯黑。鼓起来的地方多接一点光、凹下去的先黑，暗的边顺着地面起伏弯过去
       float hx = q.x - uHX;
       base *= mix(mix(0.1, 1., exp(-hx * hx / 7.)), 1., smoothstep(6., 18., dz));   // 近处只照孩子周围两三米（跟着孩子走）；远处不管
       vec2 c2 = vec2(q.x * 0.03 + uT * 0.016, q.z * 0.045);                  // 云缝：几块月光，慢慢飘过去
@@ -104,7 +109,7 @@ const CH14 = (() => {
     float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, mid = n2(g * 2.1 + 1.3), fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
     vec3 c = mix(${v3(0x342b23)}, ${v3(0x463b2c)}, smoothstep(0.35, 0.8, big));
     c = mix(c, ${v3(0x34332f)}, smoothstep(0.5, 0.9, mid) * 0.45);
-    c = mix(c, ${v3(0x3a3329)}, (1. - smoothstep(0.3, 1.1, abs(q.z + 0.05 + 0.2 * (n2(g * 0.9) - .5)))) * 0.55);
+    c = mix(c, ${v3(0x3a3329)}, (1. - smoothstep(0.3, 1.1, abs(q.z - pzf(q.x) + 0.05 + 0.2 * (n2(g * 0.9) - .5)))) * 0.55);
     c *= mix(1., 0.75 + 0.35 * fine + 0.2 * (fine2 - .5), fd);
     float wall = abs(q.x) - ${(T / 2).toFixed(3)};
     c *= mix(0.45, 1., smoothstep(0., 0.42, wall));
@@ -278,7 +283,7 @@ const CH14 = (() => {
         const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
         return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills);
       };
-      const H = (x, z) => z >= 0 ? hFront(x, z) : hBack(x, z);
+      const H = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 起伏按离那条弯路多远来算
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
         const pos = [], idx = [], nx = xs.length;
         for (const z of zs) for (const x of xs) pos.push(x, H(x, z), z);

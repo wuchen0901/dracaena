@@ -64,6 +64,11 @@ function ceilY(x) {                                  // 头顶的岩石有多低
 const WATERS = [];
 function water(o) { WATERS.push(o); return o; }
 const waterAt = x => { for (const w of WATERS) if (x > w.x1 && x < w.x2) return w; return null; };
+// ---- 路在前后（z）方向上的弯：各章登记 [x1, x2, f(x)]，f 给出这一段路往镜头这边（+）或往远处（-）偏多少米 ----
+// 玩法照旧只管 x、y（碰撞不变）；画面里主角、镜头、影子跟着路弯。没登记的地方是 0
+const ZPATH = [];
+function zpath(x1, x2, f) { ZPATH.push([x1, x2, f]); }
+const pathZ = x => { for (const p of ZPATH) if (x >= p[0] && x <= p[1]) return p[2](x); return 0; };
 const GROUND = [];                                   // 地面颜色的关键点 [x, 颜色]，中间线性过渡
 function ground(x, hex) { GROUND.push([x, new THREE.Color(hex)]); }
 function groundColor(x, out) {

@@ -150,7 +150,7 @@ function makeCharacter(kind, prev, o = {}) {
     if (A.swim > 0.002 && sw) turnT = lerp(turnT, TURN.float * sw.top * (1 - sstep(0.15, 0.9, Math.hypot(sw.vx, sw.vy))), A.swim);   // 在水里只有浮在水面上踩水时才转过来
     if (posed) turnT = 0;
     A.turn = damp(A.turn, (q.turn ?? turnT) * TURN.k, rest ? 2.6 : 7, dt);
-    const yaw0 = A.yaw; A.yaw = damp(A.yaw, dir > 0 ? -A.turn : -Math.PI + A.turn, 12, dt); root.rotation.y = A.yaw;
+    const yaw0 = A.yaw; A.yaw = damp(A.yaw, dir > 0 ? -A.turn : -Math.PI + A.turn, 12, dt); root.rotation.y = A.yaw + (s.yawOff ?? 0);   // yawOff：路往前后弯的时候，顺着路的方向转一点
     const dYaw = Math.abs(A.yaw - yaw0);                                     // 原地转：转得越快脚抬得越高，每转过 100 度左右两只脚各挪一步
     A.tph = (A.tph + dYaw / 1.75) % 1; A.pivot = damp(A.pivot, clamp(dYaw / Math.max(dt, 1e-4) / 1.4, 0, 1) * (1 - A.mv) * (1 - A.air) * (1 - A.swim), 16, dt);
     // 喘气（53-breath.js）：br.chest 肺里有多满，br.ex 有多累，br.bend 要不要弯下腰撑着膝盖。
