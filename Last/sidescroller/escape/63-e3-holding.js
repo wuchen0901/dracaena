@@ -10,7 +10,7 @@
 // ============================================================
 const E3 = (() => {
   const X = EX + 180, END = X + 110, BZ = -1.75, CAGE_H = 2.6, WZ = -2.6;          // BZ：铁笼正面的栏杆 / WZ：笼顶上看守走的那一道
-  const C = chapter({ n: 3, x0: X + 0.5, start: X + 3, name: '暂存', sub: '他们会怕', ground: 'concrete' });
+  const C = chapter({ n: 2, x0: X + 0.5, start: X + 3, name: '暂存', sub: '他们会怕', ground: 'concrete' });   // 游戏里的第 2 章（焚化炉删掉以后）
   terrain([END, 0]); ground(X + 1, 0x1c1b18); ground(END, 0x1c1b18);
   const CAGES = [0, 1, 2, 3, 4, 5].map(k => X + 10 + 7 * k), CW = 6.4, DOORX = [X + 45.4, X + 46.6];    // 六只铁笼各自的左边；第六只的门
   // 前半段挡光的东西：两摞货箱
@@ -220,7 +220,7 @@ const E3 = (() => {
     Object.assign(WG, { x: X + 12, face: 1, vx: 0 }); Object.assign(WAT, { wait: 0, dir: 1, ax: X + 12 }); Object.assign(W, { ex: 0, caught: 0 });
   }
   function solve() { reset(); S.ev = 7; DOG.st = 'gate'; DOG.x = GATE.x - 0.95; DOG.z = -0.45; DOG.mode = 'bark'; setGate(GATE, 0); placeBox(crate, X + 67.4); }
-  return defZone({ n: 3, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: 2, vis: [X - 2, END + 1], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) {
       if (c.x < X || c.x > END) return;
       Object.assign(W, { ex: 0, caught: 0 });
