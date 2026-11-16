@@ -478,7 +478,8 @@ const CH14 = (() => {
       const [c, g] = mkCanvas(64, 256);
       for (let y = 0; y < 256; y++) { const a = Math.pow(Math.sin(Math.PI * y / 256), 0.7) * (1 - y / 300); const gr = g.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, y, 64, 1); }
       const st = canvasTex(c);
-      v.shafts = [[-9, -20, 4, 0.06], [-4, -26, 6, 0.05], [1, -34, 5, 0.045], [-14, -30, 7, 0.04]].map(([ox, dz, w, op], i) => {
+      // 钉在世界里固定的位置（沿着这一章一路排开），人走过去它们留在原地
+      v.shafts = [[X - 10, -20, 4, 0.06], [X - 2, -27, 6, 0.05], [X + 7, -22, 5, 0.055], [X + 14, -33, 7, 0.045], [X + 22, -24, 4, 0.05], [X + 31, -30, 6, 0.045], [X + 40, -26, 5, 0.05]].map(([ox, dz, w, op], i) => {
         const mat = new THREE.MeshBasicMaterial({ map: i ? st.clone() : st, color: 0xd6dcdc, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
         mat.userData.own = true; if (i) mat.map.needsUpdate = true;
         const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 34), mat); m.rotation.z = -0.42; m.renderOrder = 36; m.frustumCulled = false; R.add(m);
@@ -488,7 +489,6 @@ const CH14 = (() => {
     V = v;
   }
 
-  const rimL = pointLight({ p: [X, 1.6, -1], c: 0xdde6ee, i: 3.2, d: 2.6, dec: 2, on: 0 });   // 孩子背后一盏很小的冷光：把轮廓从雾里勾出来
   const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 36;
@@ -498,9 +498,9 @@ const CH14 = (() => {
     if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
     // 孩子的上衣：暗红（全画面唯一一块有颜色的地方）。逃出工厂那几章的衣服逻辑在 escape/60-kit.js，它先跑、到了旧原型的章节会关掉；这里在它后面再打开
     HERO_TOP.uTop.value.setHex(0x4e1a15); HERO_TOP.uTopK.value = 1;
-    { const hz0 = pathZ(P.x); rimL.p[0] = P.x - P.facing * 0.5; rimL.p[1] = P.y + 1.35; rimL.p[2] = hz0 - 0.9; rimL.on = 1; }
+    HERO_RIM.uRimK.value = 0.1;                        // 孩子身上一圈淡淡的边缘亮光：把轮廓从雾里勾出来（只画在孩子身上，不照亮别的）
     const v = V; if (!v || !v.fogs) return;
-    for (const sh of v.shafts) { sh.m.position.set(cam.x + sh.ox, 9, cam.pz + sh.dz); sh.m.material.opacity = sh.op * (0.6 + 0.4 * Math.sin(T * 0.21 + sh.ph)) * (0.8 + 0.3 * (GUST.v ?? 0.6)); }
+    for (const sh of v.shafts) { sh.m.position.set(sh.ox, 9, sh.dz); sh.m.material.opacity = sh.op * (0.65 + 0.35 * Math.sin(T * 0.13 + sh.ph)); }   // 位置固定；亮度只随时间慢慢地起伏，和人怎么动无关
     const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
     // 雾片：跟着镜头，花纹钉在世界上、再慢慢地往右飘
     for (const f of v.fogs) { f.m.position.set(cam.x, f.h / 2 - 0.6 + Math.max(0, -f.dz) * 0.05, cam.pz + f.dz); f.t.offset.x = (cam.x + T * f.sp * (0.6 + g)) / 140 + f.ph; }
@@ -536,5 +536,5 @@ const CH14 = (() => {
       M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); L.mesh.setMatrixAt(o.i, M4); L.mesh.instanceMatrix.needsUpdate = true; }
 
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; rimL.on = 0; } });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; } });
 })();

@@ -385,6 +385,7 @@ Object.assign(sfx, {
 // 只在这八章里。到了旧原型的章节，主角穿模型原来的衣服，按 C 也不管
 defZone({ n: 0, vis: [-1e9, 1e9], *build() {}, reset() {}, solve() {},
   update(dt) {
+    HERO_RIM.uRimK.value = 0;                          // 轮廓光：默认关着，要的章节在自己的 update 里打开（它们在这一段后面跑）
     if (chapterAt(P.x).n > OLD) { HERO_TOP.uTopK.value = 0; return; }
     if (pressed.has('TINT') && state !== 'title') {
       STORY.own = (STORY.own + 1) % HERO_OWN.length; saveGame();

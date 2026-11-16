@@ -18,6 +18,8 @@ const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 // 主角上衣的颜色：贴图里上衣是一整块米白，着色器照着颜色把它挑出来换掉（k = 0 不换，就是贴图原来的米白）。
 // 《逃出工厂》用它换“自己的衣服”和灰色工服（escape/60-kit.js）；旧原型里 k 一直是 0
 const HERO_TOP = { uTop: { value: new THREE.Color(0xc4beb0) }, uTopK: { value: 0 } };
+// 主角的轮廓光：只画在主角身上的一圈边缘亮光（不是灯，不会照亮地面）。各章节每一帧自己打开（逃出工厂那段衣服逻辑每帧先把它关掉）
+const HERO_RIM = { uRim: { value: new THREE.Color(0xc8d2da) }, uRimK: { value: 0 } };
 let travelerSource = null, travelerLoading = false;
 const travelerWaiters = [];
 function loadTravelerModel(done) {
@@ -71,14 +73,14 @@ function refineTravelerAppearance(model) {
     const tuneMaterial = original => {
       const material = original.clone();
       material.onBeforeCompile = shader => {
-        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK;
+        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK; shader.uniforms.uRim = HERO_RIM.uRim; shader.uniforms.uRimK = HERO_RIM.uRimK;
         shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nvarying float vCharacterReadability;')
           .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;');
-        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nuniform vec3 uTop;\nuniform float uTopK;')
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nuniform vec3 uTop;\nuniform float uTopK;\nuniform vec3 uRim;\nuniform float uRimK;')
           .replace('#include <map_fragment>', '#include <map_fragment>\n{ float tMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), tMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));\nfloat tK = uTopK * smoothstep(0.13, 0.2, tMx) * (1.0 - smoothstep(0.25, 0.33, (tMx - tMn) / max(tMx, 1e-4)));\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTop * min(tMx / 0.55, 1.3), tK);\ntotalEmissiveRadiance += uTop * min(tMx / 0.55, 1.3) * tK * 0.3; }')   // 亮的、几乎没有颜色的那一块就是上衣；皮肤偏红、裤子和头发是深色，都不动。换上去的颜色带三成自发光：再暗的地方也认得出这一块颜色
-          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;');
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
       };
-      material.customProgramCacheKey = () => 'traveler-readability-v3';
+      material.customProgramCacheKey = () => 'traveler-readability-v4';
       return material;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tuneMaterial) : tuneMaterial(mesh.material);
