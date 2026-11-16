@@ -483,11 +483,20 @@ const CH14 = (() => {
       gx.globalCompositeOperation = 'destination-in'; const fade = gx.createLinearGradient(0, 0, 0, 256); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(0.55, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0.85)'); gx.fillStyle = fade; gx.fillRect(0, 0, 1024, 256);
       const tex = canvasTex(c); tex.wrapS = THREE.RepeatWrapping;
       const LAY = [[-2.5, 2.4, 0.1, 0.35], [-6, 4, 0.15, 0.25], [-12, 6.5, 0.18, 0.16], [-22, 10, 0.2, 0.1], [-38, 14, 0.2, 0.07]].slice(0, LOW ? 3 : 5);
+      // 每一层雾由一段段固定在世界里的雾片拼成（沿着这一章排开，两头淡出、互相叠着接上），位置完全不跟镜头动；只有花纹自己随风往右飘
+      const [mc, mg] = mkCanvas(128, 8); { const gr = mg.createLinearGradient(0, 0, 128, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.25, '#fff'); gr.addColorStop(0.75, '#fff'); gr.addColorStop(1, '#000'); mg.fillStyle = gr; mg.fillRect(0, 0, 128, 8); }
+      const sideFade = new THREE.CanvasTexture(mc); sideFade.channel = 1;                 // 两头淡出：用第二套 UV（每一段自己的 0..1）
       v.fogs = LAY.map(([dz, h, op, sp], i) => {
         const t = tex.clone(); t.needsUpdate = true; t.wrapS = THREE.RepeatWrapping;
-        const mat = new THREE.MeshBasicMaterial({ map: t, color: 0x9aa2a8, transparent: true, opacity: op, depthWrite: false, fog: true }); mat.userData.own = true;
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(140, h), mat); m.renderOrder = 30 + i; m.frustumCulled = false; R.add(m);
-        return { m, t, dz, h, sp, ph: rr(0, 1) };
+        const mat = new THREE.MeshBasicMaterial({ map: t, alphaMap: sideFade, color: 0x9aa2a8, transparent: true, opacity: op, depthWrite: false, fog: true }); mat.userData.own = true;
+        const W = 36;
+        for (let xc = X - 45; xc < X + 85; xc += 24) {
+          const z = PZ_(xc) + dz, geo = new THREE.PlaneGeometry(W, h), uv = geo.attributes.uv, pos = geo.attributes.position;
+          geo.setAttribute('uv1', uv.clone());                                             // 每一段自己的 0..1：给两头淡出用
+          for (let k = 0; k < uv.count; k++) uv.setX(k, (pos.getX(k) + xc) / 140);         // 花纹按世界 x 取：几段接起来是连着的
+          const m = new THREE.Mesh(geo, mat); m.position.set(xc, v.gy(xc, z) + h / 2 - 0.6, z); m.renderOrder = 30 + i; R.add(m);
+        }
+        return { t, sp, ph: rr(0, 1) };
       });
     }
     // ---- 风吹起来的几片叶子、脚下扬起的灰：先把物件备好，每一帧在 update 里动 ----
@@ -528,7 +537,7 @@ const CH14 = (() => {
     for (const sh of v.shafts) { sh.m.position.set(sh.ox, 9, sh.dz); sh.m.material.opacity = sh.op * (0.65 + 0.35 * Math.sin(T * 0.13 + sh.ph)); }   // 位置固定；亮度只随时间慢慢地起伏，和人怎么动无关
     const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
     // 雾片：跟着镜头，花纹钉在世界上、再慢慢地往右飘
-    for (const f of v.fogs) { f.m.position.set(cam.x, f.h / 2 - 0.6 + Math.max(0, -f.dz) * 0.05, cam.pz + f.dz); f.t.offset.x = (cam.x + T * f.sp * (0.6 + g)) / 140 + f.ph; }
+    for (const f of v.fogs) f.t.offset.x = T * f.sp * (0.6 + g) / 140 + f.ph;   // 雾片的位置是固定的，只有花纹随风慢慢往右飘
     // 风吹起来的叶子：从画面左边进来，一边翻一边往右飘，落到地上就收走
     const B = v.blow; B.next -= dt * (0.4 + g);
     if (B.next <= 0) { B.next = rr(0.4, 2.2); const b = B.list.find(o => !o.on); if (b) Object.assign(b, { on: true, t: 0, x: cam.x - 8, y: rr(0.6, 2.6), z: cam.pz + rr(-4, -0.5), vx: rr(1.6, 3.2), vy: rr(-0.2, 0.3), sp: rr(3, 9), ph: rr(0, 6.28) }); }
