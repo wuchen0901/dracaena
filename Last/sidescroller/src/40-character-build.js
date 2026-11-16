@@ -40,6 +40,70 @@ function loadTravelerModel(done) {
 
 // 载入以后的整形（磨平、换鞋、换手、换头）在 40-character-hero.js 的 refineTravelerAppearance
 
+// ---- 换一个现成的人物模型试试（对比用，2026-11-16）----
+// 地址后面加 ?hero=soldier（或 michelle / xbot / rpm，或者一个 .glb 的地址）：主角换成这个模型，动作还是游戏自己的那一套
+// （程序化的，或者加 ?mocap=1 换成动捕），灯光、雾、后期都不变。拿来分清楚画面不好是模型、动作还是美工的问题。
+// 这几个模型都是 three.js 官方示例里的（Mixamo 的骨架），运行的时候直接从 GitHub 上 three.js 的 r170 版本读，仓库里不放这些文件。
+// 加 ?heroflat=1 去掉贴图，每块材质换成一个平涂的颜色、只有漫反射（和现在的主角一样）：看形状本身，不看贴图。
+// 不加 ?hero= 的时候这一段什么都不做。对比页：Last/tools/hero-compare.html
+const HERO_TEST_BASE = 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/';
+const HERO_TEST_LIB = {
+  soldier: { file: 'Soldier.glb', name: 'Soldier（Mixamo 的 Vanguard，一万一千面，带贴图）' },
+  michelle: { file: 'Michelle.glb', name: 'Michelle（Mixamo，两万八千面，便装，带贴图）' },
+  xbot: { file: 'Xbot.glb', name: 'Xbot（Mixamo 的白色假人，没有贴图）' },
+  rpm: { file: 'readyplayer.me.glb', name: 'Ready Player Me 的样例人物（一万六千面，带贴图）' },
+};
+const HERO_TEST = (() => {
+  const q = new URLSearchParams(location.search), v = q.get('hero');
+  if (!v || v === '0' || v === 'hero') return null;
+  const lib = HERO_TEST_LIB[v];
+  return { key: v, url: lib ? HERO_TEST_BASE + lib.file : new URL(v, import.meta.url).href, name: lib ? lib.name : v, flat: q.get('heroflat') === '1' };
+})();
+let heroTestSource = null;
+function loadHeroTest(done) {
+  const go = src => loadTravelerModel(ref => done(src, ref));          // 原来的主角也要载入：拿它的骨架当姿势的参照
+  if (heroTestSource) { go(heroTestSource); return; }
+  new GLTFLoader().load(HERO_TEST.url, gltf => { heroTestSource = gltf.scene; go(heroTestSource); }, undefined, error => {
+    console.warn('换用的主角模型读不到（' + HERO_TEST.url + '），还用原来的主角', error);
+    loadTravelerModel(src => done(src, null));
+  });
+}
+// 把换来的模型改成游戏的动作认得的样子：
+//   1 骨头改名：Mixamo 的 mixamorig:Hips → Hips；脊椎三节是倒着编号的（Mixamo 的 Spine / Spine1 / Spine2 是主角的 Spine02 / Spine01 / Spine），Neck → neck，HeadTop_End → head_end
+//   2 摆成主角的绑定姿势：游戏里每节骨头的转动都是“比绑定姿势多转多少”，Mixamo 的模型是 T 字站着的，不改两只手会一直平伸着。
+//     从胯往下一节一节，把每节骨头转到和主角绑定姿势里那一节指向同一个方向，以后就把这个姿势当成它的绑定姿势
+//   3 主角身上有、它没有的几个点（脸前面的 headfront、头顶的 head_end，手按额头、看东西的时候要用）照主角的位置按身高比例补上
+function prepHeroTest(model, ref) {
+  const RN = { Spine: 'Spine02', Spine1: 'Spine01', Spine2: 'Spine', Neck: 'neck', HeadTop_End: 'head_end' };
+  model.traverse(o => { if (o.isBone) { const n = o.name.replace(/^mixamorig\d*:?/, ''); o.name = RN[n] ?? n; } });
+  const R = cloneSkeleton(ref), V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
+  const bones = root => { const m = new Map(); root.traverse(o => { if (o.isBone && !m.has(o.name)) m.set(o.name, o); }); return m; };
+  const T = bones(model), H = bones(R);
+  model.updateMatrixWorld(true); R.updateMatrixWorld(true);
+  const tb = new THREE.Box3().setFromObject(model, true), hb = new THREE.Box3().setFromObject(R, true), k = tb.getSize(V()).y / Math.max(1e-6, hb.getSize(V()).y);
+  model.userData.heroH = tb.getSize(V()).y;
+  for (const [n, h] of H) {                                             // H 是按从胯往下的顺序存的：先转父节点，再转子节点
+    const t = T.get(n), c = MC_CHILD[n];
+    if (!t || !c || !T.has(c) || !H.has(c)) continue;
+    const dt = T.get(c).getWorldPosition(V()).sub(t.getWorldPosition(V())).normalize(), dh = H.get(c).getWorldPosition(V()).sub(h.getWorldPosition(V())).normalize();
+    const w = Q().setFromUnitVectors(dt, dh).multiply(t.getWorldQuaternion(Q()));
+    t.quaternion.copy(t.parent.getWorldQuaternion(Q()).invert().multiply(w)); t.updateMatrixWorld(true);
+  }
+  for (const [n, h] of H) {
+    if (T.has(n) || !h.parent?.isBone || !T.has(h.parent.name)) continue;
+    const p = T.get(h.parent.name), off = h.getWorldPosition(V()).sub(h.parent.getWorldPosition(V())).multiplyScalar(k);
+    const b = new THREE.Bone(); b.name = n; p.add(b); b.position.copy(p.worldToLocal(p.getWorldPosition(V()).add(off))); b.updateMatrixWorld(true); T.set(n, b);
+  }
+  if (HERO_TEST.flat) {                                                 // 去掉贴图：每块材质取贴图的平均颜色，换成只有漫反射的
+    const avg = m => {
+      const c = (m.color ? m.color.clone() : new THREE.Color(1, 1, 1)), img = m.map?.image;
+      if (img && img.width) { const [, g] = mkCanvas(16, 16); g.drawImage(img, 0, 0, 16, 16); const d = g.getImageData(0, 0, 16, 16).data; let r = 0, gg = 0, bb = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; bb += d[i + 2]; } const s = 255 * d.length / 4; c.multiply(new THREE.Color().setRGB(r / s, gg / s, bb / s, THREE.SRGBColorSpace)); }
+      return new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
+    };
+    model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(avg) : avg(o.material); });
+  }
+}
+
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
   if (kind === 'K') return buildKid();
@@ -249,9 +313,9 @@ function buildRobot07(o = {}) {
     return { hip, knee, foot };
   });
   const traveler = { group: null, baseY: 0, model: null, bones: new Map() };
-  if (!npc) loadTravelerModel(source => {
+  if (!npc) (HERO_TEST ? loadHeroTest : loadTravelerModel)((source, ref) => {
     const model = cloneSkeleton(source);
-    refineTravelerAppearance(model);
+    if (ref) prepHeroTest(model, ref); else refineTravelerAppearance(model);
     model.updateMatrixWorld(true);
     model.traverse(node => { if (node.isSkinnedMesh) { node.skeleton.update(); node.frustumCulled = false; } });
     const bounds = new THREE.Box3().setFromObject(model, true), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
