@@ -32,7 +32,7 @@ function soundNote(first) {
 
 // ---- 从某一章的开头开始 ----
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
-// 下面是旧原型的几章（OLD + k）：旧第十二章（凿记号）跳过去，就算灯泡已经在包里；旧第十三章（机房）回到选择之前。《逃出工厂》的一条在 escape/85-fixups.js
+// 下面是旧原型的几章（OLD + k）：旧第十二章（凿记号）跳过去，就算灯泡已经揣在怀里；旧第十三章（机房）回到选择之前。《逃出工厂》的一条在 escape/85-fixups.js
 const SKIP = { [OLD + 3]: s => { s.cat = true; }, [OLD + 4]: s => { s.fed = true; }, [OLD + 5]: s => { s.cleaner = s.cleaner || 1; }, [OLD + 6]: s => { s.pump = true; s.water = true; }, [OLD + 7]: s => { s.wild = true; },
   [OLD + 12]: s => { s.bulb = true; } };
 const UNDO = { [OLD + 3]: s => { s.cat = false; }, [OLD + 4]: s => { s.fed = false; }, [OLD + 5]: s => { s.cleaner = 0; }, [OLD + 6]: s => { s.pump = false; s.water = false; }, [OLD + 7]: s => { s.wild = false; },

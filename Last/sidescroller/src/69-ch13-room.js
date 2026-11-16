@@ -4,7 +4,7 @@
 //  先单独放在最后，从章节菜单进（和第九到第十一章一样）；灰模，先验证信息的顺序，美术以后再说。
 //  一屏宽的小屋子，老人一直坐在里面，不站起来拦人。孩子从左往右走，三段线路把三层事实依次显出来，每一段只是一次很短的操作：
 //    一 · 合上第一道闸刀：观察窗的检修机构有了电。按住检修柄往下带 —— 屋里先断电，锁销退出，配重把小遮板拉开一道缝。
-//         白光挤进来，照出窗边的旧焦痕；包里的灯泡被照透，屋里备用的灯泡一齐亮起来，只有老人桌边那只旧灯没亮。
+//         白光挤进来，照出窗边的旧焦痕；怀里的灯泡被照透，屋里备用的灯泡一齐亮起来，只有老人桌边那只旧灯没亮。
 //         一松手，弹簧把手柄和遮板带回去，电又来了。老人一直望着那道光
 //    二 · 合上第二道闸刀：控制台醒过来，屏幕一块块亮出孩子认得的地方（侧窗、钟表街、断桥），巡逻图上来路封着、去机房的维护通道留空；
 //         旁边一排释放杆，有一根扳在释放的位置，连着停在检修位的那只空灯座（夹口朝下张着），旁边一块小屏画着落星的滑道。
@@ -17,7 +17,7 @@
 //  后半程明显更慢、更重，有自己的声音和画面（夹口在合、锁销在退），拉闸的后半程老人撑起半个身子，举起挡光片。选择前没有倒计时。
 //    拧回去：夹口咬死，那根释放杆自己弹回去，灯座沿着缆索升上去补齐钩形星群。旁边又一处故障亮起来。淡出 ——
 //         椅子上坐着的是孩子，调整杆拉近了，椅背上搭着老人的外套。工作铃，城里的窗一扇扇亮起来；下一次宵禁，一个屋顶上的卷帘抬起了一条缝
-//    拉闸：锁销脱出，配重落下去，外壳的遮光板慢慢分开，白光从越来越宽的缝里涌进来。孩子和老人成了剪影，包里的灯泡雪亮，
+//    拉闸：锁销脱出，配重落下去，外壳的遮光板慢慢分开，白光从越来越宽的缝里涌进来。孩子和老人成了剪影，怀里的灯泡雪亮，
 //         刚断了电的星灯也一排排自己亮起来。画面全白，只剩风声
 //  结局后面不写结局名和说明；按 R 回到选择之前
 // ============================================================
@@ -403,7 +403,7 @@ const CH13 = (() => {
     // 控制：取放灯泡、对灯、结局的时候不能动
     const lock = busy() || END.c > 0;
     if (state === 'play') { if (lock) { ctl = false; S.locked = true; } else if (S.locked) { ctl = true; S.locked = false; } }
-    // 灯泡拿在手上，按方向键就先收回包里
+    // 灯泡拿在手上，按方向键就先揣回怀里
     if (CARRY.state === 'out' && !CARRY.act && P.mode !== 'hold' && !END.c && S.cmpT < 0 && (keys.has('L') || keys.has('R') || keys.has('J'))) carryStart('in');
 
     // ---- 一 · 小窗 ----
@@ -602,7 +602,7 @@ const CH13 = (() => {
   function stepDust(dt) { if (!V) return; for (const d of V.dust) { if (d.t > 1.4) { d.s.material.opacity = 0; continue; } d.t += dt; d.vy -= 1.6 * dt; d.s.position.x += d.vx * dt; d.s.position.y += d.vy * dt; d.s.material.opacity = 0.5 * (1 - d.t / 1.4); } }
 
   function resetEnd() {
-    if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到包里（只在演过结局以后：从菜单跳到第十二章时不要动它）
+    if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到怀里（只在演过结局以后：从菜单跳到第十二章时不要动它）
     Object.assign(END, { c: 0, t: 0, shown: false, step: 0 }); STORY.room = 0;
     screw.k = 0; screw.locked = false; screw.on = false; pull.k = 0; pull.locked = false; pull.on = false;
     envMod = null; { const w = $('white'); w.style.transition = 'none'; w.style.opacity = 0; void w.offsetWidth; w.style.transition = ''; } $('fade').style.opacity = 0; $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
