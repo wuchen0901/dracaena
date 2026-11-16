@@ -18,7 +18,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二', '二十三'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
