@@ -101,7 +101,7 @@ function jumpKey(tab, v, out) {                                            // �
 // 走、跑、跳：身子转得少一些，上身再多拧一点（chest：上身比胯多转几成），头转回去看着前面的路；
 // 走和跑的时候肩和胯反着拧（sway：走 / 跑时拧多少）；原地转身、换站法的时候两只脚跟着一下一下挪。
 // 网址后面加 ?turn=0 回到原来的正侧面（对比的时候用），?turn=0.5 就是只转一半
-const TURN = { k: +(new URLSearchParams(location.search).get('turn') ?? 1), stand: 0.5, idle: [0.32, 0.72, -0.45, 0.58, 0.96, 0.4, -0.3, 0.66], walk: 0.34, run: 0.24, air: 0.3, float: 0.6, chest: 0.5, sway: [0.16, 0.26] };
+const TURN = { k: +(new URLSearchParams(location.search).get('turn') ?? 1), stand: 0.5, idle: [0.32, 0.72, -0.45, 0.58, 0.96, 0.4, -0.3, 0.66], walk: 0.34, run: 0.24, air: 0.3, float: 0.6, chest: 0.5, sway: [0.16, 0.26], w: 14 };
 const _shv = new THREE.Vector3();                                         // 拨叶子时量肩膀的位置（48-brush.js）
 function armLengths(tv) {                                                    // 模型手臂的长度（肩到肘、肘到腕），和姿势无关
   const p = n => tv.bones.get(n).node.getWorldPosition(new THREE.Vector3()), s = p('RightArm'), e = p('RightForeArm'), h = p('RightHand');
@@ -142,6 +142,7 @@ function makeCharacter(kind, prev, o = {}) {
   A.tk ??= 0; A.rk ??= 0; A.stoop ??= 0;
   // 跳跃：jl 哪条腿提在前面，jk 是不是跳起来的（不是就是从边上掉下去），jm 横着有多快，airA 手臂上腾空姿势占几成（落地以后退得比腿慢），
   // jleg 两条腿这一刻的腾空姿势（平滑过的），ja / jav / jb / jbv 两只手臂的弹簧：肩、肘的角度和角速度
+  A.yawV ??= 0;                                                             // 转身的角速度
   A.pk ??= 0;                                                               // 起跳前蹲下去了多少（离地以后很快蹬直）
   A.brk ??= 0;                                                              // 刹住脚步的程度（松开方向键、带着惯性停下来的那一小段）
   A.jl ??= 0; A.jk ??= 0; A.jm ??= 0; A.airA ??= 0; A.wasAir ??= false; A.jleg ??= [[0, 0, 0], [0, 0, 0]];
@@ -192,7 +193,10 @@ function makeCharacter(kind, prev, o = {}) {
     if (A.swim > 0.002 && sw) turnT = lerp(turnT, TURN.float * sw.top * (1 - sstep(0.15, 0.9, Math.hypot(sw.vx, sw.vy))), A.swim);   // 在水里只有浮在水面上踩水时才转过来
     if (posed) turnT = 0;
     A.turn = damp(A.turn, (q.turn ?? turnT) * TURN.k, rest ? 2.6 : 7, dt);
-    const yaw0 = A.yaw; A.yaw = damp(A.yaw, dir > 0 ? -A.turn : -Math.PI + A.turn, 12, dt); root.rotation.y = A.yaw + (s.yawOff ?? 0);   // yawOff：路往前后弯的时候，顺着路的方向转一点
+    // 转身不是一开始最快、越转越慢（以前那样，按下反方向的头一帧就甩过去二三十度），是起得慢、中间快、收得慢：一根不回弹的弹簧拉着转（TURN.w 越大转得越快，掉头大约 0.3 秒）
+    const yaw0 = A.yaw, yawT = dir > 0 ? -A.turn : -Math.PI + A.turn;
+    for (let n = Math.max(1, Math.ceil(dt * 120)), h = dt / n, k = 0; k < n; k++) { A.yawV += ((yawT - A.yaw) * TURN.w * TURN.w - 2 * TURN.w * A.yawV) * h; A.yaw += A.yawV * h; }
+    root.rotation.y = A.yaw + (s.yawOff ?? 0);   // yawOff：路往前后弯的时候，顺着路的方向转一点
     const dYaw = Math.abs(A.yaw - yaw0);                                     // 原地转：转得越快脚抬得越高，每转过 100 度左右两只脚各挪一步
     A.tph = (A.tph + dYaw / 1.75) % 1; A.pivot = damp(A.pivot, clamp(dYaw / Math.max(dt, 1e-4) / 1.4, 0, 1) * (1 - A.mv) * (1 - A.air) * (1 - A.swim), 16, dt);
     // 喘气（53-breath.js）：br.chest 肺里有多满，br.ex 有多累，br.bend 要不要弯下腰撑着膝盖。

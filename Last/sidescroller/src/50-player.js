@@ -6,6 +6,10 @@ const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
 // 松开方向键以后怎么停下来：速度按比例往下掉（k，每秒掉掉几倍），再加一点固定的减速（a，米/秒²）让它停得干脆、不拖尾巴。
 // 跑着松手往前带半米、不到半秒停住，走着松手带十几厘米（以前是 0.07 秒就掉了六成多的速度，跑着也只带二十厘米，像被钉在地上）
 const STOP = { k: 5, a: 2 };
+// 按反方向掉头：在地上正往一边走着跑着的时候按另一边，先刹住再往回走（k、a 和 STOP 一样的算法，刹得比松手猛一些）；
+// 还冲得比 flip（米/秒）快的时候人还朝着原来的方向（在刹车），慢下来了才转过身去。
+// 跑着掉头往前多冲三十厘米、0.27 秒刹住，再过四分之一秒往回跑起来（以前 0.08 秒速度就反过来了，只多冲十厘米，人像被弹回去的）。腾空的时候不管这些
+const SKID = { k: 7, a: 4, flip: 1.3 };
 // 起跳前先蹲一下蓄力：按下跳以后人不是立刻离地，先屈膝往下一沉（动作见 42-character-anim.js 的 JUMP.prep），过这么多秒才蹬起来。
 // [站着, 跑着]：站着跳蹲得久一点、看得清；跑着跳只是最后一步踩实了蹬出去，蹲得短，免得冲到边上才离地（跑着多冲出去 0.2 米）。
 // 蹲的这一小会儿照样能走能跑；已经离了地才按跳（刚走出边缘的那 0.1 秒）来不及蹲，直接跳；蹲的时候走出了边缘，到时候照样跳起来，不会吃掉这一跳。
@@ -178,8 +182,9 @@ function stepPlayer(dt) {
   // 腾空时不按方向键：横着的速度原样留着，顺着起跳时的那条抛物线落下去（以前一松手就在半空刹住、直直掉下来）；按着方向键还是能在空中带一点方向
   // 在地上松开方向键：不是一下子钉住，带着惯性刹一小段（见上面的 STOP）。过场里自己走的（!ctl）照旧很快站住，站的位置才对得上
   if (P.grounded && !d && lp === null && ctl) { P.vx = damp(P.vx, 0, STOP.k, dt); P.vx -= Math.sign(P.vx) * Math.min(Math.abs(P.vx), STOP.a * dt); }
+  else if (P.grounded && d && lp === null && ctl && P.vx * d < 0) { P.vx = damp(P.vx, 0, SKID.k, dt); P.vx -= Math.sign(P.vx) * Math.min(Math.abs(P.vx), SKID.a * dt); }   // 按着反方向：先刹住（见上面的 SKID）
   else P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? (d ? 3.5 : 0) : lp !== null || d ? 9 : 14, dt);
-  if (d && lc > 0.5) { P.facing = d; P.moved = true; }
+  if (d && lc > 0.5) { if (!(P.grounded && ctl && lp === null && P.vx * d < -SKID.flip)) P.facing = d; P.moved = true; }   // 还往另一边冲得快的时候先不转身
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 
   if (P.jumpBuf > 0 && !(P.prep > 0) && (P.grounded || P.coyote > 0) && P.speedK > 0.5 && lh < 0.35 && lc > 0.5) {
