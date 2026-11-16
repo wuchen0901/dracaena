@@ -36,7 +36,39 @@ const CH14 = (() => {
   const vn2 = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
     return lerp(lerp(vh(ix, iz), vh(ix + 1, iz), u), lerp(vh(ix, iz + 1), vh(ix + 1, iz + 1), u), w); };
   const BIG = (x, z) => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * sstep(0.4, 3.2, Math.abs(u)) * (2.0 * (vn2(x * 0.11, z * 0.14) - 0.5) + 0.5 * (vn2(x * 0.37 + 5, z * 0.4) - 0.5)); };
-  { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.5) pts.push([x, BIG(x, PZ_(x))]); terrain(...pts); }
+  // ---- 路面的石块（和着色器里的 stone14 一样的算法）----
+  //   地面碎开了：相邻的石块一高一低错开，有的被拱歪、整块斜着，有的自己中间又裂成两半、两半一高一低。缝的两边有高低差，看得到石块的侧面。
+  //   孩子走的那条路上错得少（几厘米），往两边越来越乱
+  const fr = v => v - Math.floor(v);
+  const h21 = (x, y) => { let px = fr(x * 123.34), py = fr(y * 456.21); const d = px * (px + 45.32) + py * (py + 45.32); px += d; py += d; return fr(px * py); };
+  const stoneCell = (qx, qz) => {
+    const u = qx / S14, v = qz / S14, i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j; let d1 = 9, d2 = 9, id = 0, cx = 0, cz = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const ci = i + di, cj = j + dj, rx = di + h21(ci, cj) - fu, rz = dj + h21(ci + 5.3, cj + 9.1) - fv, d = rx * rx + rz * rz;
+      if (d < d1) { d2 = d1; d1 = d; id = h21(ci + 2.7, cj + 6.1); cx = (ci + h21(ci, cj)) * S14; cz = (cj + h21(ci + 5.3, cj + 9.1)) * S14; } else if (d < d2) d2 = d;
+    }
+    return [(Math.sqrt(d2) - Math.sqrt(d1)) * S14 * 0.5, id, cx, cz];
+  };
+  // grooves：要不要把缝陷下去（地面的几何要，物理地形不要 —— 不然走起来一颠一颠）
+  const STONE = (x, z, grooves = true) => {
+    const ax = Math.abs(x - WX); if (ax < T / 2 + 0.03) return 0;                         // 墙底下
+    const zr = z - PZ_(x), off = sstep(0.4, 2.4, Math.abs(zr)), [e, id, cx, cz] = stoneCell(x - WX, z), lx = x - WX - cx, lz = z - cz;
+    const a = fr(id * 7.13), b = fr(id * 13.7), c = fr(id * 3.31);
+    let tilt = 0.08 + 0.32 * off;
+    if (fr(id * 31.1) < 0.2) tilt += 0.3 * off;                                           // 被拱起一边、整块斜着的
+    let hgt = (a - 0.5) * (0.06 + 0.26 * off) + (b - 0.5) * tilt * lx + (c - 0.5) * tilt * lz;
+    let groove = 0;
+    if (fr(id * 17.7) < 0.45) {                                                            // 这块石头自己又裂成两半，两半一高一低、各歪一点
+      const ang = fr(id * 3.9) * 6.2832, sd = lx * Math.cos(ang) + lz * Math.sin(ang), side = sd > 0 ? 1 : -1;
+      hgt += side * (fr(id * 5.9) - 0.5) * (0.03 + 0.09 * off) + side * (fr(id * 8.3) - 0.5) * 0.12 * off * Math.abs(sd);
+      groove -= (0.012 + 0.03 * off) * (1 - sstep(0, 0.02 + 0.01 * off, Math.abs(sd)));
+    }
+    if (grooves) groove += -(0.035 + 0.085 * off) * (1 - sstep(0, 0.05 + 0.04 * off, e)) - 0.015 * (1 - sstep(0, 0.13, e));   // 缝陷下去（错得多的地方更宽更深），石头的边磨圆
+    else groove = 0;
+    return (hgt + groove) * sstep(T / 2 + 0.03, 0.6, ax);
+  };
+  // 孩子脚下的物理地形：大起伏 + 路上石块的高低（不算缝），沿着那条弯路每 0.15 米取一次、左右平均一下
+  { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.15) { const z = PZ_(x); pts.push([x, BIG(x, z) + (STONE(x - 0.06, z, false) + STONE(x, z, false) + STONE(x + 0.06, z, false)) / 3]); } terrain(...pts); }
   // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
@@ -89,13 +121,13 @@ const CH14 = (() => {
     }
     float rockH(vec3 q, float ck) { return 0.55 * n3(q * 7.) + 0.3 * n3(q * 19. + 2.) + 0.15 * n3(q * 48. + 5.) - 1.1 * ck; }   // 石头表面的高低：几层起伏，裂缝处陷下去
     // 路面的石块：二维的格子，每格一块石头。返回 x 到边的距离（米，0 就在缝上），y 这块石头的编号（0..1）
-    vec2 stone14(vec2 qx) {
-      vec2 u = qx / ${S14.toFixed(3)}, i = floor(u), f = fract(u); float d1 = 9., d2 = 9., id = 0.;
+    vec4 stone14(vec2 qx) {                                                 // x 到边的距离（米），y 编号，zw 这块石头的中心
+      vec2 u = qx / ${S14.toFixed(3)}, i = floor(u), f = fract(u), cen = vec2(0.); float d1 = 9., d2 = 9., id = 0.;
       for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) {
-        vec2 o = vec2(float(k), float(j)), c = i + o, r = o + vec2(h21(c), h21(c + vec2(5.3, 9.1))) - f; float d = dot(r, r);
-        if (d < d1) { d2 = d1; d1 = d; id = h21(c + vec2(2.7, 6.1)); } else if (d < d2) d2 = d;
+        vec2 o = vec2(float(k), float(j)), c = i + o, jt = vec2(h21(c), h21(c + vec2(5.3, 9.1))), r = o + jt - f; float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; id = h21(c + vec2(2.7, 6.1)); cen = (c + jt) * ${S14.toFixed(3)}; } else if (d < d2) d2 = d;
       }
-      return vec2((sqrt(d2) - sqrt(d1)) * ${(S14 * 0.5).toFixed(3)}, id);
+      return vec4((sqrt(d2) - sqrt(d1)) * ${(S14 * 0.5).toFixed(3)}, id, cen);
     }
     float wallD(vec3 q, float hy) {                                          // hy：高出周围大起伏多少（地面传细起伏的高度，别的传 q.y）
       float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
@@ -138,8 +170,10 @@ const CH14 = (() => {
     diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
     // 2 地面：路面本身就是石头 —— 一块块嵌在地里的石块、露出来的岩床，彼此高低不平、互相咬合；缝里才是一点暗色的土、碎石和积下来的落叶、水
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
-    vec2 g = q.xz, st = stone14(g);
-    float top = smoothstep(0.012, 0.045, st.x) * mix(1., 0.6, smoothstep(10., 30., distance(vWP, cameraPosition)));   // 1 在石面上，0 在缝里（远处缝糊成一片，不闪）
+    vec2 g = q.xz; vec4 st = stone14(g);
+    float split = 0.;                                                                                          // 石块自己裂开的那一道
+    if (fract(st.y * 17.7) < 0.45) { float ang = fract(st.y * 3.9) * 6.2832; split = 1. - smoothstep(0.004, 0.02, abs(dot(g - st.zw, vec2(cos(ang), sin(ang))))); }
+    float top = smoothstep(0.012, 0.045, st.x) * (1. - 0.85 * split) * mix(1., 0.6, smoothstep(10., 30., distance(vWP, cameraPosition)));   // 1 在石面上，0 在缝里（远处缝糊成一片，不闪）
     float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
     // 石面：每块石头自己的深浅、偏暖偏冷，颗粒、小坑、地衣、边上磨亮一点
     vec3 sc = mix(${v3(0x46464a)}, ${v3(0x5d5b56)}, st.y) * (0.85 + 0.3 * big);
@@ -398,35 +432,16 @@ const CH14 = (() => {
         const crag = A * 0.5 * Math.pow(1 - Math.abs(2 * vn(x * 0.09 + 11, z * 0.08) - 1), 3);          // 一道道突出来的岩脊
         return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
       };
-      // 路面的石块（和着色器里的 stone14 一样的算法）：每块石头自己的高低、倾斜；边磨圆，缝陷下去。孩子走的那条路上石块平整、高低差很小，往两边越来越乱
-      const fr = v => v - Math.floor(v);
-      const h21 = (x, y) => { let px = fr(x * 123.34), py = fr(y * 456.21); const d = px * (px + 45.32) + py * (py + 45.32); px += d; py += d; return fr(px * py); };
-      const stoneCell = (qx, qz) => {
-        const u = qx / S14, v = qz / S14, i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j; let d1 = 9, d2 = 9, id = 0, cx = 0, cz = 0;
-        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-          const ci = i + di, cj = j + dj, rx = di + h21(ci, cj) - fu, rz = dj + h21(ci + 5.3, cj + 9.1) - fv, d = rx * rx + rz * rz;
-          if (d < d1) { d2 = d1; d1 = d; id = h21(ci + 2.7, cj + 6.1); cx = (ci + h21(ci, cj)) * S14; cz = (cj + h21(ci + 5.3, cj + 9.1)) * S14; } else if (d < d2) d2 = d;
-        }
-        return [(Math.sqrt(d2) - Math.sqrt(d1)) * S14 * 0.5, id, cx, cz];
-      };
-      const STONE = (x, z) => {
-        const ax = Math.abs(x - WX); if (ax < T / 2 + 0.03) return 0;                       // 墙底下
-        const zr = z - PZ_(x), off = sstep(0.4, 2.4, Math.abs(zr)), [e, id, cx, cz] = stoneCell(x - WX, z);
-        const a = fr(id * 7.13), b = fr(id * 13.7), c = fr(id * 3.31), tilt = 0.035 + 0.28 * off;
-        const hgt = (a - 0.5) * (0.02 + 0.17 * off) + (b - 0.5) * tilt * (x - WX - cx) + (c - 0.5) * tilt * (z - cz);
-        const groove = -(0.03 + 0.06 * off) * (1 - sstep(0, 0.05, e)) - 0.018 * (1 - sstep(0, 0.13, e));   // 缝陷下去，石头的边磨圆
-        return (hgt + groove) * sstep(T / 2 + 0.03, 0.6, ax);
-      };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
-      const grid = (xs, zs, stones) => {                                   // stones：把路面的石块也做进几何里（近处那一块才做，远处网格太粗）                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
+      const grid = (xs, zs, stones, mat = groundMat) => {                                   // stones：把路面的石块也做进几何里（近处那一块才做，远处网格太粗）                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
         const pos = [], det = [], idx = [], nx = xs.length;
         for (const z of zs) for (const x of xs) { const d = DET(x, z) + (stones ? STONE(x, z) : 0); pos.push(x, BIGG(x, z) + d, z); det.push(d); }
         for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aDet', new THREE.Float32BufferAttribute(det, 1)); g.setIndex(idx); g.computeVertexNormals();
-        const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
+        const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.2 : 0.12; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true);   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.2 : 0.12; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
