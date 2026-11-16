@@ -1,7 +1,7 @@
 // 水下实验室：海床闸门 → 潜水通道 → 内部水井 → 干燥实验区。
-const CH15 = (() => {
+const CH16 = (() => {
   const X = 2800;
-  chapter({ n: OLD + 15, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', intro() { CAT.state = 'none'; } });
+  chapter({ n: OLD + 16, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', intro() { CAT.state = 'none'; } });
   terrain([X - 30, 0], [X + 5, 0], [X + 6, -6], [X + 22, -6], [X + 23, -2.6], [X + 42, -2.6]);
   ground(X - 30, 0x152c30); ground(X + 42, 0x243a40);
   const sea = water({ x1: X + 5.05, x2: X + 18, y: -0.4, bot: -6 });
@@ -44,7 +44,7 @@ const CH15 = (() => {
     for(let x=20;x<39;x+=5){const l=new THREE.PointLight(0x8edfd3,1.8,8);l.position.set(X+x,-.1,1);R.add(l);block(x,.15,1.2,.08,.2,0x9accc4);}
     yield;
   }
-  return defZone({ n: OLD+15, vis:[X-10,X+44], build, update() {
+  return defZone({ n: OLD+16, vis:[X-10,X+44], build, update() {
     if(doorMesh) doorMesh.position.y = -4.75+hatch.open*(hatch.h+.15);
     if(lamp) lamp.material.color.setHex(powered?0x91ffe1:0x19483f);
     // 两个水面高度不同，穿过通道时切换到对应水体。
