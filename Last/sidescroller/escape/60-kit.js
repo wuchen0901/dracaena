@@ -14,7 +14,7 @@ const ex = x => x - EX;                                    // 换回挪过来之
 const ESC_SEED = _seed;
 document.title = '逃出工厂 · 故事灰模';
 { const t = $('title');                                   // 结局画面上的字写在结尾那一章（69-e9-ending.js 的 end）
-  t.querySelector('h1').textContent = '逃出工厂'; t.querySelector('.sub').textContent = '故事灰模 · 二十二章（后十四章是旧原型）';
+  t.querySelector('h1').textContent = '逃出工厂'; t.querySelector('.sub').textContent = '故事灰模 · 二十三章（后十五章是旧原型和试验关）';
   t.querySelector('.keys').innerHTML = '<b>←</b><b>→</b> 或 <b>A</b><b>D</b> 移动　　<b>空格</b> 跳跃 / 攀爬　　按住 <b>E</b> 推拉　·　按 <b>E</b> 操作　　按住 <b>Shift</b> 慢走<br>' +
     '<b>Esc</b> 选择章节　　<b>R</b> 回到存档点　　<b>V</b> 近看主角　　<b>M</b> 打开声音　　<b>C</b> 换主角衣服的颜色'; }
 // 跨章节要记住的事：own 主角自己的衣服是哪一种颜色（按 C 换）/ freed 第七章拉开了囚车的锁扣
