@@ -11323,12 +11323,143 @@ const CH10 = (() => {
   return defZone({ n: OLD + 10, vis: [X - 10, END + 4], build: function* (R) { yield* build(R); for (const s of V.lampG) s.userData.a0 = s.material.opacity; }, update, reset, solve() {},
     unbuild() { V = null; }, R1, R2, R3, S1, S2, S3, DECO, NEAR });
 })();
+// 夜搜专用造型。真实几何接受场景灯光；不把概念图当作背景或游戏画面。
+function searchAircraft(parent, detail = true) {
+  const own = m => { m.userData.own = true; return m; };
+  const metal = own(new THREE.MeshStandardMaterial({ color: 0x596972, roughness: 0.58, metalness: 0.18 }));
+  const dark = own(new THREE.MeshStandardMaterial({ color: 0x26343e, roughness: 0.7, metalness: 0.12 }));
+  const edge = own(new THREE.MeshStandardMaterial({ color: 0x81929a, roughness: 0.46, metalness: 0.25 }));
+  const glass = own(new THREE.MeshStandardMaterial({ color: 0x152e3c, roughness: 0.22, metalness: 0.25, emissive: 0x172b39, emissiveIntensity: 0.38, side: THREE.DoubleSide }));
+  const o = {}, heli = grp(parent), tilt = grp(heli);
+  const body = [[-2.05, 0.2, 0.2, 0.22], [-1.55, 0.06, 0.55, 0.57], [-0.85, 0.02, 0.74, 0.8],
+    [0.25, 0.02, 0.8, 0.84], [1.05, -0.02, 0.76, 0.79], [1.65, -0.12, 0.62, 0.66], [2.2, -0.28, 0.37, 0.43], [2.5, -0.34, 0.09, 0.12], [2.54, -0.34, 0.005, 0.005]];
+  const at = (x, a, offset = 0) => {
+    let i = 1; while (i < body.length - 1 && x > body[i][0]) i++;
+    const b = body[i - 1], c = body[i], t = clamp((x - b[0]) / (c[0] - b[0]), 0, 1);
+    return [x, lerp(b[1], c[1], t) + Math.cos(a) * (lerp(b[2], c[2], t) + offset), Math.sin(a) * (lerp(b[3], c[3], t) + offset)];
+  };
+  const skin = (rows, mat) => {
+    const p = [], uv = [], ix = [], N = 32;
+    rows.forEach(([x, y, ry, rz], j) => {
+      for (let i = 0; i <= N; i++) { const a = i / N * Math.PI * 2; p.push(x, y + Math.cos(a) * ry, Math.sin(a) * rz); uv.push(j / (rows.length - 1), i / N); }
+    });
+    for (let j = 1; j < rows.length; j++) for (let i = 0; i < N; i++) { const a = (j - 1) * (N + 1) + i, b = a + N + 1; ix.push(a, a + 1, b, a + 1, b + 1, b); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(ix); g.computeVertexNormals();
+    return add(tilt, g, mat, 0, 0, 0, false);
+  };
+  skin(body, metal);
+  skin([[-7.0, 0.9, 0.065, 0.065], [-6.3, 0.8, 0.11, 0.1], [-4.2, 0.49, 0.2, 0.18], [-1.7, 0.16, 0.31, 0.3]], metal);
+  // 座舱玻璃贴着机身的曲面，用窗框分出前窗和舱门，避免黑色球形鼻子。
+  const pane = (x0, x1, a0, a1) => {
+    const p = [], ix = [], nx = 5, na = 5;
+    for (let x = 0; x <= nx; x++) for (let a = 0; a <= na; a++) p.push(...at(lerp(x0, x1, x / nx), lerp(a0, a1, a / na), 0.015));
+    for (let x = 0; x < nx; x++) for (let a = 0; a < na; a++) { const i = x * (na + 1) + a; ix.push(i, i + 1, i + na + 1, i + 1, i + na + 2, i + na + 1); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); geo.setIndex(ix); geo.computeVertexNormals(); add(tilt, geo, glass, 0, 0, 0, false);
+    if (detail) {
+      const pts = [];
+      for (let k = 0; k <= 5; k++) pts.push(at(lerp(x0, x1, k / 5), a0, 0.035));
+      for (let k = 1; k <= 5; k++) pts.push(at(x1, lerp(a0, a1, k / 5), 0.035));
+      for (let k = 1; k <= 5; k++) pts.push(at(lerp(x1, x0, k / 5), a1, 0.035));
+      for (let k = 1; k <= 5; k++) pts.push(at(x0, lerp(a1, a0, k / 5), 0.035));
+      tube(tilt, pts, 0.024, edge, 36);
+    }
+  };
+  for (const s of [-1, 1]) {
+    pane(1.13, 2.12, s * 0.47, s * 1.49);
+    pane(0.3, 1.02, s * 0.63, s * 1.66);
+    pane(-0.95, 0.15, s * 0.73, s * 1.68);
+    if (detail) {
+      const seam = [];
+      for (let k = 0; k <= 10; k++) seam.push(at(lerp(-1.1, 0.2, k / 10), s * 2.22, 0.025));
+      seam.push(at(0.2, s * 1.7, 0.025)); tube(tilt, seam, 0.012, dark, 20);
+      const handle = at(-0.75, s * 1.94, 0.04); add(tilt, bx(0.17, 0.028, 0.035), edge, ...handle, false);
+      for (let k = 0; k < 12; k++) {
+        const q = at(-1.3 + k * 0.25, s * 2.0, 0.022); add(tilt, new THREE.SphereGeometry(0.014, 5, 3), edge, ...q, false);
+      }
+    }
+    // 发动机整流罩、排气管和散热格栅。
+    add(tilt, new THREE.SphereGeometry(1, 16, 10), metal, -0.5, 0.86, s * 0.38, false).scale.set(1.14, 0.29, 0.27);
+    add(tilt, cy(0.12, 0.14, 0.48, 12, 1, true), dark, -1.45, 0.87, s * 0.4, false).rotation.z = Math.PI / 2;
+    if (detail) for (let k = 0; k < 7; k++) add(tilt, bx(0.025, 0.16, 0.025), dark, -0.8 + k * 0.075, 0.94, s * 0.63, false).rotation.z = -0.3;
+    const skid = [[-1.3, -1.07, s * 0.9], [-0.9, -1.22, s * 0.95], [1.65, -1.22, s * 0.95], [2.0, -1.13, s * 0.95], [2.15, -0.99, s * 0.92]];
+    tube(tilt, skid, 0.045, edge, 24);
+    for (const x of [-0.6, 1.1]) tube(tilt, [[x, -0.48, s * 0.57], [x - 0.14, -0.99, s * 0.83], [x - 0.12, -1.2, s * 0.95]], 0.038, dark, 12);
+  }
+  const fin = new THREE.Shape(); fin.moveTo(-6.75, 0.72); fin.lineTo(-7.1, 2.1); fin.lineTo(-7.47, 2.23); fin.lineTo(-7.23, 0.66); fin.lineTo(-7.35, 0.12); fin.lineTo(-6.92, 0.19); fin.closePath();
+  add(tilt, new THREE.ExtrudeGeometry(fin, { depth: 0.075, bevelEnabled: true, bevelSegments: 1, steps: 1, bevelSize: 0.025, bevelThickness: 0.02 }), metal, 0, 0, -0.0375, false);
+  add(tilt, bx(0.7, 0.045, 1.8), metal, -5.9, 0.64, 0, false).rotation.z = 0.08;
+  add(tilt, cy(0.065, 0.09, 0.55, 12), edge, -0.15, 1.3, 0, false);
+  add(tilt, new THREE.SphereGeometry(0.18, 12, 8), dark, -0.15, 1.54, 0, false).scale.y = 0.5;
+  const blade = own(new THREE.MeshBasicMaterial({ color: 0x18232a, transparent: true, opacity: 0.7, depthWrite: false }));
+  const [rotorCanvas, rg] = mkCanvas(128, 128), blur = rg.createRadialGradient(64, 64, 0, 64, 64, 64);
+  blur.addColorStop(0, 'rgba(255,255,255,0)'); blur.addColorStop(0.18, 'rgba(255,255,255,.12)');
+  blur.addColorStop(0.7, 'rgba(255,255,255,.4)'); blur.addColorStop(0.94, 'rgba(255,255,255,.2)'); blur.addColorStop(1, 'rgba(255,255,255,0)');
+  rg.fillStyle = blur; rg.fillRect(0, 0, 128, 128);
+  const disc = own(new THREE.MeshBasicMaterial({ map: canvasTex(rotorCanvas), color: 0x81959e, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+  o.rotor = grp(tilt, -0.15, 1.57, 0);
+  for (let i = 0; i < 4; i++) { const g = grp(o.rotor); g.rotation.y = i * Math.PI / 2; add(g, bx(4.9, 0.018, 0.17), blade, 2.55, 0, 0, false).rotation.y = 0.025; }
+  add(o.rotor, new THREE.CircleGeometry(5.0, 48), disc, 0, 0.015, 0, false).rotation.x = -Math.PI / 2;
+  o.tailRotor = grp(tilt, -7.07, 0.97, 0.16);
+  for (let i = 0; i < 4; i++) { const m = add(o.tailRotor, bx(1.5, 0.075, 0.025), blade, 0, 0, 0, false); m.rotation.z = i * Math.PI / 2; }
+  add(o.tailRotor, new THREE.CircleGeometry(0.75, 24), disc, 0, 0, 0, false);
+  if (detail) {
+    tube(tilt, [[-0.95, 0.69, 0], [-1.28, 1.3, 0]], 0.014, dark, 8);
+    tube(tilt, [[-0.55, -0.71, 0], [-0.75, -1.03, 0]], 0.016, dark, 8);
+  }
+  o.pod = grp(tilt, 1.75, -0.78, 0);
+  add(o.pod, new THREE.SphereGeometry(0.23, 16, 12), dark, 0, 0, 0, false);
+  add(o.pod, new THREE.CircleGeometry(0.17, 20), own(unlit(0xeaf4f6, { fog: false })), 0, 0, 0.22, false);
+  o.navR = glow(tilt, 0xff3a28, 0.26, 0.85, -0.3, 0.11, 0.84);
+  o.navG = glow(tilt, 0x3cff7a, 0.23, 0.45, -0.3, 0.11, -0.84);
+  o.strobe = glow(tilt, 0xffffff, 0.8, 0, -7.37, 2.21, 0);
+  o.beacon = glow(tilt, 0xff3020, 0.6, 0.1, -0.7, 1.12, 0);
+  heli.visible = false; o.heli = heli; o.tilt = tilt; return o;
+}
+
+// 合并成一批真实草叶，不使用重复的透明方片。根部保持不动，叶尖随阵风摆动。
+function searchMeadow(parent, list) {
+  const pos = [], col = [], normal = [], root = [], indices = [], color = new THREE.Color();
+  withSeed(11163 + list.length, () => {
+    for (const [x, y, z, kind, size, tint] of list) {
+      const density = 0.55 + 0.22 * Math.sin(x * 0.61 + z * 0.7) + 0.22 * Math.sin(x * 1.57 - z * 1.1);
+      if (rnd() > density) continue;
+      for (let b = 0; b < 5; b++) {
+        const h = size * rr(0.35, 1.2), lean = rr(-0.6, 0.6) * h, width = h * rr(0.016, 0.035), xx = x + rr(-0.2, 0.2), zz = z + rr(-0.13, 0.13), off = pos.length / 3;
+        color.copy(tint).multiplyScalar(rr(0.75, 1.25));
+        for (let k = 0; k <= 3; k++) {
+          const t = k / 3, cx = xx + lean * t * t, cy = y + h * t, w = width * (1 - t) + 0.0002;
+          for (const s of [-1, 1]) { pos.push(cx + s * w, cy, zz); normal.push(0, 0.7, 0.7); root.push(y); col.push(color.r * (0.55 + 0.45 * t), color.g * (0.55 + 0.45 * t), color.b * (0.55 + 0.45 * t)); }
+          if (k < 3) { const i = off + k * 2; indices.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
+        }
+        if (kind === 'seed' && b < 2) for (let k = 0; k < 4; k++) {
+          const t = 0.78 + k * 0.045, cx = xx + lean * t * t, cy = y + h * t, i = pos.length / 3, s = k % 2 ? 1 : -1;
+          pos.push(cx, cy, zz, cx + s * h * 0.035, cy + h * 0.04, zz, cx, cy + h * 0.025, zz);
+          for (let j = 0; j < 3; j++) { normal.push(0, 1, 0); root.push(y); col.push(color.r * 1.3, color.g * 1.25, color.b * 1.1); } indices.push(i, i + 1, i + 2);
+        }
+      }
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setAttribute('aRoot', new THREE.Float32BufferAttribute(root, 1)); geo.setIndex(indices);
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }); mat.userData.own = true;
+  const time = { value: 0 }, wind = { value: 0 };
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uMeadowT = time; sh.uniforms.uMeadowWind = wind;
+    sh.vertexShader = 'attribute float aRoot; uniform float uMeadowT, uMeadowWind;\n' + sh.vertexShader;
+    sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float h = max(0.0, position.y - aRoot);
+      transformed.x += h * h * uMeadowWind * sin(uMeadowT * 1.4 + position.x * 1.7 + position.z * 0.8);`);
+  };
+  mat.customProgramCacheKey = () => 'search-meadow-v1';
+  const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true;
+  mesh.onBeforeRender = () => { time.value = T; wind.value = 0.045 * (0.7 + 0.46 * GUST.v); }; parent.add(mesh); return mesh;
+}
 
 // ============================================================
 //  第十一章 · 夜搜：直升机在找主角
 //  （和第九、第十章一样先单独放在最后，从章节菜单进；故事定下来以后再挪到该放的地方）
 //  夜里，一条荒废的公路穿过野地。远处传来旋翼声：一架直升机飞过来，机头下面的探照灯罩着一块地面，沿着公路来回地找；
-//  远处的野地上还有六架，前后错开排着，各扫各的一条地 —— 是在一片一片地搜。
+//  远处的野地上还有五架，前后错开排着，各扫各的一条地 —— 是在一片一片地搜。
 //  路边有四处灯照不进去的地方：候车亭、锈穿了一面的集装箱、铁皮棚、断桥底下。等灯扫过去，跑到下一处；
 //  在没遮没挡的地方被灯罩住半秒多，就算被发现，回到最近的存档点（每一处里面都有一个）。
 //  躲进断桥底下以后，直升机压低了在桥头来回找一阵；找不到，掉头飞走。风停了，蟋蟀和萤火虫又回来
@@ -11340,7 +11471,7 @@ const CH11 = (() => {
     intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
-  ground(X - 70, 0x2f3a2e); ground(X + 200, 0x2f3a2e);
+  ground(X - 70, 0x1e2b30); ground(X + 200, 0x1e2b30);
   surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
   solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
   solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
@@ -11370,11 +11501,11 @@ const CH11 = (() => {
   const H = { st: 'calm', t: 0, stage: 0, live: false, lx: X + 47, l0: X + 47, l1: X + 47, ls: 0, lD: 1, c: X + 46, bx: X + 47, r: 2.3, exposure: 0, caught: 0, hid: 0, low: 0, k: 0, near: 0, gust: false,
     pos: V3(...FAR_IN), vel: V3(), p0: V3(), aim: V3(X + 62, 0, -120), aim0: V3(), yaw: -1.57, roll: 0, pitch: 0, lamp: [0, 0, 0], tgt: [0, 0, 0], on: 0 };
 
-  // 不止一架：远处的野地上还有六架，前后错开排着，各沿着自己的一条地来回扫 —— 是在一片一片地搜，不是专门冲着主角来的。
-  // 排法（照 Last/tools/heli-concept.html 那幅目标画面）：左右交替、一架比一架远，斜着排成一条线往远处退。越远飞得越高一点，在画面上正好排在同一条线上（都在天边的林子上面）、一架比一架小，
-  // 一直退到天边的林子跟前 —— 地上的光斑也就从近到远连成一条搜索线。来回飞得不宽，画面里同时看得见五六架
+  // 不止一架：远处的野地上还有五架，前后错开，各沿着自己的一条地来回扫。
+  // 按 generated_images/heli-search-target.png 的层次错开高度与深度，留出天空的空隙，
+  // 地上的光斑从近到远分成不同搜索带，近处主机仍是视觉中心。
   // 它们只是画面和声音，照不到公路上。[离头顶那一架来回飞的中点多远, 多高, 多深, 来回飞多宽, 错开多少]；跟着头顶那一架一起来、一起往前挪、一起走
-  const WING = [[24, 14.5, -48, 8, 0.0], [-26, 16, -60, 10, 5.2], [40, 17.5, -74, 12, 1.2], [-38, 19, -88, 12, 2.1], [8, 20.5, -100, 14, 3.3], [30, 21.5, -110, 14, 4.0], [-22, 22.5, -118, 16, 0.7]]
+  const WING = [[25, 13, -65, 8, 0.0], [-30, 20, -78, 10, 5.2], [48, 16, -135, 12, 1.2], [-23, 30, -148, 12, 2.1], [3, 29, -205, 14, 3.3]]
     .map(([dx, y, z, span, ph]) => ({ dx, y, z, span, ph, pos: V3(), aim: V3(), p0: V3(), yaw: -1.57, sp: 0, left: false }));
   function stepWing(w, dt, arr, hunt) {
     const s = T * 0.22 + w.ph, sx = H.c + w.dx + w.span / 2 * Math.sin(s), sy = w.y + 0.5 * Math.sin(T * 0.6 + w.ph), sz = w.z + 3 * Math.sin(T * 0.17 + w.ph * 2), px = w.pos.x, pz = w.pos.z;
@@ -11399,9 +11530,9 @@ const CH11 = (() => {
   camKeys([X - 12, 19, 1.8, 0.5], [X + 8, 19.5, 1.9, 1.2], [X + 18, 21, 2.4, 2], [X + 30, 27, 4.2, 2.5], [X + 86, 27, 4.2, 2.5], [X + 96, 25, 3.7, 0], [X + 103, 25, 3.7, 1.5],
     [X + 116, 21, 2.3, 1.5], [X + 150, 20, 2.0, 0]);
   // 夜：月亮在左后方，光是冷的、暗的，影子朝着镜头；天边一层发亮的雾，山和树都是比天暗的剪影。画面里最亮的东西是那盏探照灯
-  env(X - 60, { fog: 0x1a2738, fogD: 0.0075, hemiS: 0x7a98c8, hemiG: 0x0e1218, hemiI: 0.6, keyC: 0xa8c0e8, keyI: 0.6, keyDir: [-0.5, 0.75, -0.6], rimC: 0x8fb0e0, rimI: 0.45,
-    dustC: 0xb8c8e0, dustO: 0.22, wind: -0.25, ext: 1, sky: [0x070c18, 0x0c1426, 0x15223a, 0x1f3050, 0x2a3f60, 0x121b2a], sunX: -0.33, sunY: 0.13, sunC: 0xe4ecff, sunP: 0.5,
-    stars: 1.5, cloud: 0.4, cloudC: 0x3c4e6c, birds: 0, flies: 0.75, vig: 1,
+  env(X - 60, { fog: 0x192932, fogD: 0.006, hemiS: 0x8ba4b7, hemiG: 0x10191e, hemiI: 0.54, keyC: 0xb5c9d5, keyI: 0.68, keyDir: [-0.5, 0.75, -0.6], rimC: 0xa4c1cf, rimI: 0.65,
+    dustC: 0xb8c8d0, dustO: 0.15, wind: -0.25, ext: 1, sky: [0x080e16, 0x111d28, 0x1a2b38, 0x273c49, 0x344b56, 0x182830], sunX: -0.33, sunY: 0.13, sunC: 0xc8d7de, sunP: 0.32,
+    stars: 0.35, cloud: 0.65, cloudC: 0x344954, birds: 0, flies: 0.75, vig: 0.85,
     aWind: 0.4, aWhis: 0, aLeaf: 0.4, leafDry: 0.35, aBug: 0.9, aDrip: 0, aFlow: 0, aRoom: 0, roomF: 210, aHum: 0, aCity: 0, aFar: 0.45, rvOut: 1, rvHall: 0, rvCave: 0 });   // 声音：夜风吹着草，满地的蟋蟀，远处一只猫头鹰
   env(X + 200, {});
 
@@ -11420,7 +11551,41 @@ const CH11 = (() => {
 
   function* build(R) {
     const v = {}, own = m => { m.userData.own = true; return m; }, M = (c, o) => own(lam(c, o));
-    const PAL = { far: '#182840', mid: '#111f33', wood: '#0a1524', near: '#070f1a' };
+    const PAL = { far: '#22343f', mid: '#192c36', wood: '#10232d', near: '#09171e' };
+    const mistFoot = (g, a, b, lo, hi, top) => {
+      g.save(); g.globalCompositeOperation = 'destination-in';
+      const gr = g.createLinearGradient(0, lo, 0, hi); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,1)');
+      g.fillStyle = gr; g.fillRect(a, lo, b - a, top - lo); g.restore();
+    };
+    // 这一镜的林线：针叶、细枝和有缺口的树冠；局部种子不会改变别的布景。
+    const searchTree = (g, x, y, h, kind) => withSeed(Math.round(x * 97 + h * 43), () => {
+      line(g, [[x, y], [x + h * 0.012, y + h]], h * 0.018);
+      if (kind === 'pine') {
+        for (let k = 0; k < 26; k++) {
+          const t = k / 26, yy = y + h * (0.98 - t * 0.79), w = h * (0.015 + t * 0.2);
+          for (const s of [-1, 1]) {
+            if (rnd() < 0.09) continue;
+            const reach = w * rr(0.5, 1.18), droop = h * rr(0.01, 0.04);
+            line(g, [[x, yy + h * 0.025], [x + s * reach * 0.55, yy], [x + s * reach, yy - droop]], h * 0.005);
+            for (let j = 0; j < 9; j++) {
+              const q = j / 9, bx = x + s * reach * q, by = yy - droop * q;
+              const len = h * rr(0.018, 0.05) * (1 - q * 0.5);
+              line(g, [[bx - s * len * 0.25, by + len], [bx, by], [bx + s * len * 0.8, by - len * 0.35]], h * rr(0.004, 0.011));
+            }
+          }
+        }
+      } else {
+        for (let k = 0; k < 19; k++) {
+          const t = k / 19, s = k % 2 ? 1 : -1, yy = y + h * (0.24 + t * 0.69), dx = s * h * (0.27 - t * 0.18) * rr(0.7, 1.3);
+          line(g, [[x, yy], [x + dx * 0.5, yy + h * 0.09], [x + dx, yy + h * rr(0.12, 0.2)]], h * 0.008);
+          for (let j = 0; j < 7; j++) {
+            const xx = x + dx * (0.35 + j * 0.1), yb = yy + h * (0.08 + j * 0.017);
+            line(g, [[xx, yb], [xx + s * h * 0.035, yb + h * 0.065]], h * 0.003);
+            if (kind !== 'dead') for (let n = 0; n < 6; n++) { g.beginPath(); g.ellipse(xx + rr(-0.04, 0.04) * h, yb + rr(0.02, 0.08) * h, h * rr(0.007, 0.022), h * rr(0.004, 0.014), rr(-1, 1), 0, Math.PI * 2); g.fill(); }
+          }
+        }
+      }
+    });
     // ---------------- 布景板：夜里的山谷 ----------------
     // 最远的一层山
     backdrop(X - 330, X + 540, -8, 60, -380, 2, g => {
@@ -11445,14 +11610,22 @@ const CH11 = (() => {
     // 野地尽头的一排林子
     backdrop(X - 210, X + 380, -3, 26, -125, 6, g => {
       setInk(g, PAL.wood); ridge(g, X - 210, X + 380, -3, x => 3 + 1.5 * Math.sin(x * 0.05) + rr(0, 0.8), 2);
-      for (let x = X - 206; x < X + 376; x += rr(2.6, 6.5)) tree(g, x, 1.5, rr(9, 16), rnd() < 0.45 ? 'pine' : 'round');
+      for (let x = X - 206; x < X + 376; x += rr(2.0, 4.5)) searchTree(g, x, 1.5, rr(7, 15), rnd() < 0.75 ? 'pine' : 'round');
+      mistFoot(g, X - 210, X + 380, -3, 4, 26);
+    }, { fog: false });
+    yield;
+    backdrop(X - 150, X + 300, -2, 19, -66, 12, g => {
+      setInk(g, '#10212a');
+      ridge(g, X - 150, X + 300, -2, x => 0.7 + Math.sin(x * 0.05), 2);
+      for (let x = X - 146; x < X + 296; x += rr(3, 7)) searchTree(g, x, 0, rr(4, 11), rnd() < 0.7 ? 'pine' : 'dead');
+      mistFoot(g, X - 150, X + 300, -2, 3, 19);
     }, { fog: false });
     yield;
     // 田埂：一道长满灌木的土坎，几棵孤零零的树；塌了一半的谷仓和一座水塔
     backdrop(X - 70, X + 210, -2, 17, -26, 14, g => {
       setInk(g, PAL.near);
       ridge(g, X - 70, X + 210, -2, x => 0.9 + 0.5 * Math.sin(x * 0.21) + rr(0, 0.35), 0.7);
-      for (let x = X - 64; x < X + 206; x += rr(14, 34)) if (x < X + 58 || x > X + 110) tree(g, x, 0.6, rr(4, 8), pick(['round', 'dead', 'round', 'pine']));
+      for (let x = X - 64; x < X + 206; x += rr(14, 34)) if (x < X + 58 || x > X + 110) searchTree(g, x, 0.6, rr(4, 7), pick(['pine', 'dead', 'round', 'pine']));
       poly(g, [[X + 62, 0.5], [X + 62, 4.6], [X + 65.2, 7.4], [X + 68.4, 5.2], [X + 70.2, 4.1], [X + 70.2, 0.5]]);            // 谷仓：一边的屋顶塌下去了
       g.clearRect(X + 63.4, 0.8, 1.9, 2.5); g.clearRect(X + 64.6, 4.7, 1.0, 0.9); for (let x = X + 66.4; x < X + 69.8; x += 0.55) g.clearRect(x, 1.2, 0.12, rr(1.6, 3.2));
       box(g, X + 74.2, 6.2, 3.4, 2.7); poly(g, [[X + 74, 8.9], [X + 77.8, 8.9], [X + 75.9, 10.2]]);                            // 水塔
@@ -11488,6 +11661,19 @@ const CH11 = (() => {
       for (let i = 0; i < 7; i++) twig(g, rr(X - 30, X - 10.5), rr(0.4, 1.6), rr(-1.3, 1.3), rr(1, 2.4), 0.1, 3);
     }, { fog: false });
     for (const [a, b] of [[X - 30, X + 36], [X + 36, X + 102], [X + 102, X + 168]]) foreTufts(a, b, 8.7, { cols: ['#050a0f', '#070d13', '#04080c'], h: 1.0, fern: 0.15 });
+    // 候车亭镜头左沿的近树：稀疏枝条把视线引回光束，中间留给主角与掩体。
+    backdrop(X + 24, X + 42, -1, 18, 4, 65, g => withSeed(11160, () => {
+      setInk(g, '#050d12');
+      const branch = (x, y, len, angle, width, depth) => {
+        const ex = x + Math.sin(angle) * len, ey = y + Math.cos(angle) * len;
+        line(g, [[x, y], [lerp(x, ex, 0.48) - width * 0.4, lerp(y, ey, 0.48)], [ex, ey]], width);
+        if (depth > 0) {
+          branch(ex, ey, len * rr(0.55, 0.78), angle + rr(-0.3, 0.25), width * 0.58, depth - 1);
+          branch(lerp(x, ex, 0.72), lerp(y, ey, 0.72), len * rr(0.4, 0.65), angle + (depth % 2 ? 1 : -1) * rr(0.45, 0.95), width * 0.4, depth - 1);
+        } else for (let i = 0; i < 7; i++) { g.beginPath(); g.ellipse(ex + rr(-0.35, 0.35), ey + rr(-0.2, 0.3), rr(0.04, 0.1), rr(0.025, 0.05), rr(-1, 1), 0, Math.PI * 2); g.fill(); }
+      };
+      branch(X + 26, -1, 7, 0.25, 0.55, 5);
+    }), { fog: false, order: 4000 });
     yield;
 
     // ---------------- 地面：一条荒废的公路 ----------------
@@ -11511,22 +11697,50 @@ const CH11 = (() => {
     // 野地里的草：路边矮，越往远处越高；路上的裂缝里也钻出来几丛。受光照 —— 探照灯扫到哪，哪里的草就亮起来
     const EMB = [COVERS[3][0] - 3.6, COVERS[3][1] + 3.6];                                           // 断桥后面的路堤占着的那一段
     const bare = (x, z) => (z < -2.9 && x > EMB[0] && x < EMB[1]) || (z > -1.7 && z < 1.5 && COVERS.some(([a, b]) => x > a - 0.9 && x < b + 0.9));
-    const gcol = () => new THREE.Color(pick([0x4c5c3c, 0x56664a, 0x435236, 0x5f6a48])).multiplyScalar(rr(0.85, 1.1));
-    for (const [z0, z1, per, h0, h1] of [[-2.7, -5, 3.2, 0.35, 0.8], [-5, -12, 5, 0.6, 1.1], [-12, -29, 5, 0.9, 1.6], [2.9, 5, 3, 0.35, 0.75], [5, 9.6, 3, 0.5, 1.0], [-2.2, 2.4, 0.4, 0.14, 0.3]]) {
+    const gcol = () => new THREE.Color(pick([0x718584, 0x82918a, 0x536b72, 0x8c9380])).multiplyScalar(rr(0.8, 1.05));
+    for (const [z0, z1, per, h0, h1] of [[-2.7, -5, 4, 0.25, 0.75], [-5, -12, 4, 0.4, 1.0], [-12, -29, 4, 0.6, 1.4], [2.9, 5, 3, 0.25, 0.65], [5, 9.6, 3, 0.4, 1.1], [-2.2, 2.4, 0.25, 0.1, 0.22]]) {
       const list = [];
       for (let i = 0, n = Math.round(230 * per); i < n; i++) {
         const x = rr(X - 58, X + 172), z = rr(z0, z1), k = rnd(); if (bare(x, z) || (z0 === -2.2 && (Math.abs(z) < 0.3 || x > X + 104))) continue;
         list.push([x, groundY(x), z, k < 0.68 ? 'grass' : k < 0.84 ? 'dry' : k < 0.97 ? 'seed' : 'fern', rr(h0, h1), gcol()]);
       }
-      plants(R, list); yield;
+      searchMeadow(R, list); yield;
     }
     // 路边几块半埋的石头，路上的碎石
     for (const [x, z, s] of [[X + 7.5, -2.9, 0.5], [X + 20.4, 3.3, 0.6], [X + 47, -3.2, 0.45], [X + 67.2, 3.4, 0.7], [X + 86.5, -3.0, 0.5], [X + 112, 2.6, 0.6], [X + 133, -2.4, 0.8]]) rock(R, x, z, s, { moss: 0.4 });
     { const pts = []; for (let i = 0; i < 380; i++) { const x = rr(X - 20, X + 150), z = rnd() < 0.5 ? rr(-2.6, -1.7) : rr(1.8, 2.9); pts.push([x, z, rr(0.02, 0.06)]); } pebbles(R, pts); }
     yield;
 
+    // 月光里零碎的湿路面：只画细小、不连续的亮纹，让路仍然是粗糙沥青。
+    withSeed(11308, () => {
+      const wetRoad = groundDecal(X + 26, X + 104, -1.9, 3.0, 60, g => {
+      for (let i = 0; i < 1700; i++) {
+        const x = rr(X + 26, X + 104), z = rr(-1.8, 2.9);
+        if (Math.sin(x * 1.7 + z * 4) + Math.sin(x * 0.5 - z * 7) < 0.3) continue;
+        g.fillStyle = `rgba(153,181,192,${rr(0.15, 0.5)})`;
+        g.fillRect(x, z, rr(0.04, 1.2), rr(0.012, 0.045));
+      }
+      }, { lift: 0.018, fadeL: 3, fadeR: 3 });
+      wetRoad.material.emissive.setHex(0x698590); wetRoad.material.emissiveIntensity = 0.28;
+      wetRoad.material.emissiveMap = wetRoad.material.map;
+    });
+
     // ---------------- 路边的东西 ----------------
     const conc = M(0x5a6368), conc2 = M(0x454d52), rust = M(0x6a4634), rust2 = M(0x4a3a31), tin = M(0x4a4640), wood = M(0x4c3c2c), poleM = M(0x1b1a18), earth = M(0x2a3428), tar = M(0x2a2e33);
+    withSeed(11039, () => {
+      const [c, g] = mkCanvas(512, 512);
+      g.fillStyle = '#89918e'; g.fillRect(0, 0, 512, 512);
+      for (let i = 0; i < 8500; i++) {
+        g.fillStyle = rnd() < 0.5 ? `rgba(17,29,30,${rr(0.03, 0.16)})` : `rgba(223,224,211,${rr(0.02, 0.16)})`;
+        g.fillRect(rr(0, 512), rr(0, 512), rr(1, 9), rr(1, 5));
+      }
+      for (let i = 0; i < 85; i++) {
+        const x = rr(0, 512), y = rr(0, 60), h = rr(25, 400), gr = g.createLinearGradient(0, y, 0, y + h);
+        gr.addColorStop(0, 'rgba(14,28,26,.13)'); gr.addColorStop(1, 'rgba(14,28,26,0)');
+        g.fillStyle = gr; g.fillRect(x, y, rr(1, 6), h);
+      }
+      conc.map = canvasTex(c);
+    });
     // 电线杆：一路排过去，有的歪了；电线垂着，有一档断了，耷拉到地上
     const POLES = [X - 2, X + 16, X + 34, X + 50, X + 66, X + 84, X + 106, X + 124, X + 142].map((x, i) => [x, [0.03, -0.05, 0.02, 0.09, -0.03, 0.04, -0.12, 0.05, -0.02][i]]);
     const armAt = ([x, lean], s) => [x - Math.sin(lean) * 6.3 + s * 0.7, groundY(x) + Math.cos(lean) * 6.3, -4.4];
@@ -11555,6 +11769,14 @@ const CH11 = (() => {
       for (const x of [a + 0.05, b - 0.05]) add(R, cy(0.045, 0.045, 2.5, 8), MAT.dark, x, 1.25, 1.2);
       add(R, bx(w - 0.8, 0.07, 0.42), wood, cx, 0.46, -0.85); for (const x of [a + 0.7, b - 0.7]) add(R, bx(0.08, 0.46, 0.38), MAT.dark, x, 0.23, -0.85);
       add(R, cy(0.035, 0.035, 2.7, 8), poleM, b + 1.3, 1.35, -1.0); add(R, bx(0.5, 0.5, 0.04), M(0x3f4c5a), b + 1.3, 2.45, -1.0).rotation.z = 0.06;
+      // 脱落的旧告示、积水污痕和破损顶沿，给藏身处一个可辨认的尺度。
+      backdrop(a, b, 0.05, 2.48, -1.135, 90, g => withSeed(11040, () => {
+        g.fillStyle = 'rgba(183,181,157,.3)'; poly(g, [[a + 0.35, 1.15], [a + 0.95, 1.12], [a + 0.98, 2.0], [a + 0.38, 2.04]]);
+        g.fillStyle = 'rgba(23,36,33,.55)';
+        for (let i = 0; i < 80; i++) g.fillRect(rr(a, b), 0.05, rr(0.01, 0.08), rr(0.04, 0.3));
+        g.strokeStyle = 'rgba(9,18,21,.6)'; line(g, [[b - 0.8, 2.4], [b - 0.95, 2.0], [b - 0.85, 1.8], [b - 1.1, 1.5]], 0.014);
+      }), { lit: true });
+      withSeed(11041, () => { for (let i = 0; i < 24; i++) add(R, bx(rr(0.03, 0.18), rr(0.015, 0.05), 0.04), conc2, rr(a, b), 2.51, 1.42, false); });
     }
     yield;
     // 二 集装箱：朝镜头的那块侧板早就锈穿、掉在地上了，两头的门也没了，只剩后面的波纹板、顶和四根角柱
@@ -11600,35 +11822,35 @@ const CH11 = (() => {
     yield;
 
     // ---------------- 直升机 ----------------
-    const hull = M(0x10161b), hull2 = M(0x080c10), glass = M(0x0a1117, { emissive: 0x0c1826, emissiveIntensity: 0.6 });
-    // 搭一架：主角头顶那一架和远处的几架是同一个样子
-    const mkHeli = () => { const o = {}, heli = grp(R), tilt = grp(heli);                 // heli：在哪、朝哪；tilt：机头压下去多少、侧倾多少。机头朝 +x
-    add(tilt, new THREE.SphereGeometry(1, 20, 14), hull, 0.4, 0, 0, false).scale.set(2.2, 0.82, 0.82);                             // 机身：细长，不是一只蛋
-    add(tilt, new THREE.SphereGeometry(1, 16, 12), glass, 1.5, -0.1, 0, false).scale.set(1.05, 0.66, 0.7);                       // 座舱的玻璃
-    add(tilt, bx(1.7, 0.4, 0.7), hull2, -0.1, 0.85, 0, false); add(tilt, cy(0.07, 0.07, 0.7, 8), hull2, 0.2, 1.3, 0, false);       // 发动机罩、旋翼轴
-    add(tilt, cy(0.1, 0.24, 5.2, 10), hull, -4.1, 0.3, 0, false).rotation.z = Math.PI / 2 - 0.06;                                 // 尾梁
-    add(tilt, bx(0.7, 1.4, 0.06), hull, -6.5, 0.95, 0, false).rotation.z = -0.4; add(tilt, bx(0.6, 0.05, 1.5), hull, -5.7, 0.5, 0, false);   // 垂尾、平尾
-    for (const z of [-0.95, 0.95]) {                                                                                               // 滑橇
-      add(tilt, cy(0.04, 0.04, 3.4, 6), hull2, 0.5, -1.2, z * 0.8, false).rotation.z = Math.PI / 2;
-      for (const x of [-0.4, 1.4]) add(tilt, bx(0.06, 0.6, 0.06), hull2, x, -0.92, z * 0.66, false).rotation.x = -Math.sign(z) * 0.38;
-    }
-    const blade = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.4, depthWrite: false }));
-    const disc = own(new THREE.MeshBasicMaterial({ color: 0x0a0f14, transparent: true, opacity: 0.06, depthWrite: false, side: THREE.DoubleSide }));
-    o.rotor = grp(tilt, 0.2, 1.62, 0);                                                                                             // 旋翼：三片桨叶 + 一个淡淡的圆盘（转起来的那一团影子）
-    for (let i = 0; i < 3; i++) { const g = grp(o.rotor); g.rotation.y = i * 2.0944; add(g, bx(5.3, 0.03, 0.18), blade, 2.65, 0, 0, false); }
-    add(o.rotor, new THREE.CircleGeometry(5.3, 40), disc, 0, 0.02, 0, false).rotation.x = -Math.PI / 2;
-    o.tailRotor = grp(tilt, -6.6, 1.0, 0.16); add(o.tailRotor, bx(1.7, 0.1, 0.03), blade, 0, 0, 0, false); add(o.tailRotor, new THREE.CircleGeometry(0.85, 20), disc, 0, 0, 0, false);
-    o.pod = grp(tilt, 1.75, -0.78, 0);                                                                                              // 机头下面的探照灯
-    add(o.pod, new THREE.SphereGeometry(0.26, 12, 10), hull2, 0, 0, 0, false); add(o.pod, new THREE.CircleGeometry(0.2, 16), unlit(0xeaf4f6, { fog: false }), 0, 0, 0.27, false);
-    o.navR = glow(tilt, 0xff3a28, 0.9, 0.9, 0.6, -0.1, 0.86); o.navG = glow(tilt, 0x3cff7a, 0.9, 0.9, 0.6, -0.1, -0.86);           // 两侧的航行灯
-    o.strobe = glow(tilt, 0xffffff, 2.2, 0, -6.8, 1.6, 0); o.beacon = glow(tilt, 0xff3020, 2.0, 0.1, 0.1, 1.15, 0);   // 防撞灯在背上：剪影顶上一点红，远远就看得见               // 尾巴上的频闪灯、肚子下面的防撞灯
-    heli.visible = false; o.heli = heli; o.tilt = tilt; return o; };
+    const mkHeli = (detail = true) => searchAircraft(R, detail);
     Object.assign(v, mkHeli());
+    // 沿视线看圆锥表面的夹角淡出边缘，去掉硬三角形轮廓；保留原有的屋顶裁剪。
+    // 只改本章材质，不影响别处的探照灯。缓慢变化的条纹让光穿过薄雾。
+    v.beamTime = { value: 0 };
+    const softenBeam = mat => {
+      mat.onBeforeCompile = shader => {
+        shader.uniforms.uSearchTime = v.beamTime;
+        shader.vertexShader = 'varying vec3 vSearchNormal, vSearchView; varying vec2 vSearchUv;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+          vSearchNormal = normalize(normalMatrix * normal);
+          vSearchView = -(modelViewMatrix * vec4(position, 1.0)).xyz;
+          vSearchUv = uv;`);
+        shader.fragmentShader = 'uniform float uSearchTime; varying vec3 vSearchNormal, vSearchView; varying vec2 vSearchUv;\n' + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace('#include <alphamap_fragment>', `#include <alphamap_fragment>
+          float facing = abs(dot(normalize(vSearchNormal), normalize(vSearchView)));
+          float edge = smoothstep(0.02, 0.5, facing);
+          float veil = 0.77 + 0.13 * sin(vSearchUv.y * 48.0 + sin(vSearchUv.x * 31.0) * 2.0 - uSearchTime * 0.65)
+            + 0.1 * sin(vSearchUv.y * 113.0 + vSearchUv.x * 57.0 + uSearchTime * 0.4);
+          diffuseColor.a *= edge * veil * smoothstep(0.0, 0.12, vSearchUv.y);`);
+      };
+      mat.customProgramCacheKey = () => 'heli-soft-beam-v1';
+      return mat;
+    };
     v.cones = [];                                          // 看得见的光柱：两层半透明的圆锥叠在一起
-    for (const [k, op] of [[1, 0.075], [0.4, 0.13]]) {                // 外面一层淡的，里面一道亮的芯
+    for (const [k, op] of [[1, 0.16], [0.55, 0.075]]) {                // 宽而柔的外层，亮芯也不留硬边
       const geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L * k, CONE_L, 28, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
       const m = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xd8ecf2, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false, clippingPlanes: CLIP, clipIntersection: true })));
-      m.renderOrder = 60; m.userData.a = op; m.visible = false; R.add(m); v.cones.push(m);
+      softenBeam(m.material); m.renderOrder = 60; m.userData.a = op; m.visible = false; R.add(m); v.cones.push(m);
     }
     v.glare = glow(R, 0xdfeef2, 6, 0, 0, 0, 0, GLOW_SOFT); v.core = glow(R, 0xffffff, 1.3, 0, 0, 0, 0);                             // 灯头正对着镜头时的那一团眩光
     // 灯扫在远处野地上的那一块亮斑（离得太远，真的灯光照不到那里）
@@ -11636,25 +11858,41 @@ const CH11 = (() => {
     v.spot.rotation.x = -Math.PI / 2; v.spot.renderOrder = 3; v.spot.visible = false; R.add(v.spot);
     // 远处的几架：一字排开，各扫各的一条地。真的灯光照不到那么远，只画光柱、灯头的光和地上的亮斑
     v.wing = WING.map(() => {
-      const o = mkHeli(), geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L, CONE_L, 20, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
+      const o = mkHeli(false), geo = new THREE.ConeGeometry(Math.tan(ANG) * CONE_L, CONE_L, 20, 1, true); geo.translate(0, -CONE_L / 2, 0); geo.rotateX(-Math.PI / 2);
       o.cone = new THREE.Mesh(geo, own(new THREE.MeshBasicMaterial({ map: beamGradTex(), color: 0xd8ecf2, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })));
-      o.cone.renderOrder = 60; o.cone.visible = false; R.add(o.cone);
+      softenBeam(o.cone.material); o.cone.renderOrder = 60; o.cone.visible = false; R.add(o.cone);
       o.glare = glow(R, 0xdfeef2, 4, 0, 0, 0, 0, GLOW_SOFT);
       o.spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own(new THREE.MeshBasicMaterial({ map: GLOW, color: 0xcfe2ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
       o.spot.rotation.x = -Math.PI / 2; o.spot.renderOrder = 3; o.spot.visible = false; R.add(o.spot);
       return o;
     });
     // 野地上贴着地的一层低雾：远处几架的光柱打进去就亮起来，天边的林子脚下也蒙一层（目标画面里最要紧的空气感）
-    { const [c, g] = mkCanvas(64, 128), gr = g.createLinearGradient(0, 0, 0, 128);
-      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.8, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 64, 128);
-      g.globalCompositeOperation = 'destination-in'; const gx = g.createLinearGradient(0, 0, 64, 0);   // 左右两头淡出去：只蒙在野地上，进了林子就没有了
-      gx.addColorStop(0, 'rgba(0,0,0,0)'); gx.addColorStop(0.25, 'rgba(0,0,0,1)'); gx.addColorStop(0.75, 'rgba(0,0,0,1)'); gx.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gx; g.fillRect(0, 0, 64, 128); const tex = canvasTex(c);
-      for (const [z, h, op] of [[-121, 10, 0.34], [-95, 6, 0.16], [-60, 3.5, 0.07]]) {
+    { const [c, g] = mkCanvas(512, 128), gr = g.createLinearGradient(0, 0, 0, 128);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.42, 'rgba(255,255,255,0.65)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.8)'); gr.addColorStop(0.8, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 512, 128);
+      const mist = g.getImageData(0, 0, 512, 128);
+      for (let y = 0; y < 128; y++) for (let x = 0; x < 512; x++) {
+        const drift = Math.sin(x * 0.033 + y * 0.08) * 0.23 + Math.sin(x * 0.073 - y * 0.12) * 0.17;
+        mist.data[(y * 512 + x) * 4 + 3] *= 0.6 + drift;
+      }
+      g.putImageData(mist, 0, 0);
+      g.globalCompositeOperation = 'destination-in'; const gx = g.createLinearGradient(0, 0, 512, 0);   // 左右两头淡出去：只蒙在野地上，进了林子就没有了
+      gx.addColorStop(0, 'rgba(0,0,0,0)'); gx.addColorStop(0.25, 'rgba(0,0,0,1)'); gx.addColorStop(0.75, 'rgba(0,0,0,1)'); gx.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gx; g.fillRect(0, 0, 512, 128); const tex = canvasTex(c);
+      for (const [z, h, op] of [[-121, 12, 0.3], [-65, 7, 0.22], [-30, 3.5, 0.13]]) {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(230, h), own(new THREE.MeshBasicMaterial({ map: tex, color: 0x5a7394, transparent: true, opacity: op, depthWrite: false, fog: false })));
-        m.position.set(X + 0, h * 0.3, z); m.renderOrder = 2; R.add(m);
+        m.position.set(X + 50, h * 0.3, z); m.renderOrder = 2; R.add(m);
       }
     }
+    // 搜索灯照在路上的破碎倒光；亮斑沿光的落点移动，在屋顶下熄灭。
+    withSeed(11042, () => {
+      const [c, g] = mkCanvas(256, 256);
+      for (let i = 0; i < 450; i++) {
+        const x = rr(0, 256), y = rr(0, 256), a = Math.pow(Math.max(0, 1 - Math.abs(x - 128) / 128), 2);
+        g.fillStyle = `rgba(202,226,229,${a * rr(0.1, 0.65)})`; g.fillRect(x, y, rr(1, 16), rr(0.5, 2));
+      }
+      v.wet = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own(new THREE.MeshBasicMaterial({ map: canvasTex(c), color: 0xc9e1e5, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })));
+      v.wet.rotation.x = -Math.PI / 2; v.wet.scale.set(5.5, 4, 1); v.wet.renderOrder = 4; R.add(v.wet);
+    });
     renderer.localClippingEnabled = true;                  // 只有光柱的材质带着裁剪面，别的东西不受影响
     v.tower = glow(R, 0xff3828, 5, 0.9, X + 118, 47, -379);                                                                        // 远山上一座铁塔顶上的红灯
     V = v;
@@ -11667,7 +11905,7 @@ const CH11 = (() => {
     if (envMod === mod && H.k < 0.002) envMod = null;
     if (H.st === 'calm' && state === 'play') { AUD.heli = 0.045 * sstep(X + 4, X + 20, P.x); AUD.heliLP = 0.1; AUD.heliPan = 0.5; }   // 还没看见它，先听见很远的旋翼声
     bounceL.on = 0;
-    if (V) { V.heli.visible = false; for (const c of V.cones) c.visible = false; V.glare.material.opacity = V.core.material.opacity = 0; V.spot.visible = false; for (const o of V.wing) { o.heli.visible = o.cone.visible = o.spot.visible = false; o.glare.material.opacity = 0; } }
+    if (V) { V.heli.visible = false; for (const c of V.cones) c.visible = false; V.glare.material.opacity = V.core.material.opacity = 0; V.spot.visible = false; V.wet.material.opacity = 0; for (const o of V.wing) { o.heli.visible = o.cone.visible = o.spot.visible = false; o.glare.material.opacity = 0; } }
   }
   // 灯的下一趟：从现在的位置扫到 to。路程短，用的时间也短
   function leg(to) { H.l0 = H.lx; H.l1 = to; H.ls = 0; H.lD = Math.max(1.2, Math.abs(to - H.lx) / (H.stage === COVERS.length ? V_PROBE : V_SWEEP)); }
@@ -11721,7 +11959,10 @@ const CH11 = (() => {
     }
     H.vel.copy(H.pos).sub(_a).divideScalar(Math.max(dt, 1e-4));
     // 机头朝着飞的方向；来回找的时候掉头总是从朝着镜头的那一边转过去。飞得越快机头压得越低，转弯时侧倾
-    const y0 = H.yaw; H.yaw = damp(H.yaw, Math.atan2(-H.vel.z - (hunt ? 2.5 : 0), H.vel.x), 1.6, dt);
+    const y0 = H.yaw;
+    // 搜索时侧向悬停，灯头自己转动；避免每次扫描折返都把机身变成一个圆。
+    const heading = hunt ? -Math.PI + 0.38 + Math.sin(T * 0.23) * 0.12 : Math.atan2(-H.vel.z, H.vel.x);
+    H.yaw = damp(H.yaw, heading, 1.6, dt);
     H.roll = damp(H.roll, clamp(-(H.yaw - y0) / Math.max(dt, 1e-4) * 0.35, -0.35, 0.35), 3, dt);
     H.pitch = damp(H.pitch, -0.05 - clamp(Math.hypot(H.vel.x, H.vel.z) * 0.02, 0, 0.3), 2, dt);
     const lx = H.pos.x + 1.75 * Math.cos(H.yaw), ly = H.pos.y - 0.78, lz = H.pos.z - 1.75 * Math.sin(H.yaw);                  // 灯头在哪
@@ -11743,6 +11984,10 @@ const CH11 = (() => {
     if (H.st === 'leave' && H.t < 8) camOvr = { d: 28, yo: 5.0, xo: -5 };                                                     // 镜头往左上方让一让：看着它飞走
 
     if (!v) return;
+    v.beamTime.value = T;
+    v.wet.position.set(H.aim.x, groundY(H.aim.x) + 0.035, 0.5);
+    v.wet.material.color.copy(beam.color);
+    v.wet.material.opacity = fade * 0.4 * sstep(-10, -2, H.aim.z) * (inCover(H.aim.x) ? 0 : 1);
     v.heli.visible = true; v.heli.position.copy(H.pos); v.heli.rotation.y = H.yaw; v.tilt.rotation.set(H.roll, 0, H.pitch);
     v.rotor.rotation.y += dt * 41; v.tailRotor.rotation.z += dt * 63;
     _a.set(lx, ly, lz); const len = _a.distanceTo(H.aim) + 0.8;
@@ -11767,7 +12012,7 @@ const CH11 = (() => {
       const w = WING[i], wl = _b.set(w.pos.x + 1.75 * Math.cos(w.yaw), w.pos.y - 0.78, w.pos.z - 1.75 * Math.sin(w.yaw)), wn = wl.distanceTo(w.aim) + 0.8, we = clamp((wl.y - w.aim.y) / wn, 0.08, 1), wr = wn * Math.tan(ANG) * 2.6;
       o.heli.visible = true; o.heli.position.copy(w.pos); o.heli.rotation.y = w.yaw; o.tilt.rotation.set(0, 0, -0.05 - clamp(w.sp * 0.02, 0, 0.3));
       o.rotor.rotation.y += dt * 41; o.tailRotor.rotation.z += dt * 63; o.pod.lookAt(w.aim);
-      o.cone.visible = fade > 0.01; o.cone.position.copy(wl); o.cone.lookAt(w.aim); o.cone.scale.setScalar(wn / CONE_L); o.cone.material.opacity = 0.11 * fade;
+      o.cone.visible = fade > 0.01; o.cone.position.copy(wl); o.cone.lookAt(w.aim); o.cone.scale.setScalar(wn / CONE_L); o.cone.material.opacity = 0.17 * fade * (1 - i * 0.09);
       o.glare.position.copy(wl); o.glare.material.opacity = 0.75 * fade;
       o.spot.visible = fade > 0.01; o.spot.position.set(w.aim.x, groundY(w.aim.x) + 0.06, w.aim.z); o.spot.scale.set(wr * 1.4, wr * 1.4 / we, 1); o.spot.material.opacity = 0.8 * fade;
       const b2 = (T + i * 0.37) % 1.3; o.strobe.material.opacity = b2 < 0.06 || (b2 > 0.16 && b2 < 0.22) ? 1 : 0; o.beacon.material.opacity = (T + i * 0.3) % 0.9 < 0.12 ? 0.95 : 0.1;
@@ -13730,7 +13975,7 @@ airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
 // （萤火虫在环境里：直升机一来就不见了，它飞走以后再出来）
 airZone(11, [X11 - 30, X11 + 170], [X11 - 60, X11 + 200], function* (R, sys) {
   const H = CH11.H, wash = () => 7 * H.near * clamp((camera.position.x - H.pos.x) / 7, -1, 1);       // 旋翼的风：背着直升机往两边吹
-  sys.push(litDust(R, 420, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 1.25, shade: s => CH11.lit(s.x, s.y, s.z) }])); yield;   // 顶下面的灰照不到，不亮
+  sys.push(litDust(R, 260, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 0.65, shade: s => CH11.lit(s.x, s.y, s.z) }], { size: 0.4 })); yield;   // 细尘只托出光束，不像一串大雪花；顶下面的灰照不到
   const ax = V3(), d = V3();
   sys.push(airCloud(R, 240, { name: 'wash', order: 44,
     init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x7f8c9a); },
