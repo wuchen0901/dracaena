@@ -13192,7 +13192,9 @@ const CH14 = (() => {
     return [Math.min(B[0], m[0]), fr(m[1] + B[1] * 0.37), m[2], m[3], 0];
   };
   // grooves：要不要把缝陷下去（地面的几何要，物理地形不要 —— 不然走起来一颠一颠）
+  const STONES_ON = false;                                     // 路面不再分成一块块的石头（不要裂缝）：一整片起伏的岩面
   const STONE = (x, z, grooves = true) => {
+    if (!STONES_ON) return 0;
     const ax = Math.abs(x - WX); if (ax < T / 2 + 0.03) return 0;                         // 墙底下
     const zr = z - PZ_(x), off = sstep(0.4, 2.4, Math.abs(zr)), [e, id, cx, cz, whole] = stoneCell(x - WX, z), lx = x - WX - cx, lz = z - cz;
     const a = fr(id * 7.13), b = fr(id * 13.7), c = fr(id * 3.31);
@@ -13324,30 +13326,21 @@ const CH14 = (() => {
       diffuseColor.rgb *= 1. - 0.4 * smoothstep(0.5, 0.85, n2(vec2(q.z * 7., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${TOP.toFixed(3)}, q.y);
     }
     diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
-    // 2 地面：路面本身就是石头 —— 一块块嵌在地里的石块、露出来的岩床，彼此高低不平、互相咬合；缝里才是一点暗色的土、碎石和积下来的落叶、水
+    // 2 地面：一整片岩面，没有裂缝。深浅、偏暖偏冷都是大片慢慢变；近处有颗粒、小坑、地衣；低洼处积水
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
-    vec2 g = q.xz; vec4 st = stone14(g); bool whole14 = st.y >= 10.; float sid = whole14 ? st.y - 10. : st.y;
-    float split = 0.;                                                                                          // 石块自己裂开的那一道
-    if (fract(sid * 17.7) < (whole14 ? 0.55 : 0.15)) { float ang = fract(sid * 3.9) * 6.2832; split = 1. - smoothstep(0.004, 0.02, abs(dot(g - st.zw, vec2(cos(ang), sin(ang))))); }
-    float top = smoothstep(0.012, 0.045, st.x) * (1. - 0.85 * split) * mix(1., 0.6, smoothstep(10., 30., distance(vWP, cameraPosition)));   // 1 在石面上，0 在缝里（远处缝糊成一片，不闪）
-    float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
-    // 石面：每块石头自己的深浅、偏暖偏冷，颗粒、小坑、地衣、边上磨亮一点
-    vec3 sc = mix(${v3(0x46464a)}, ${v3(0x5d5b56)}, sid) * (0.85 + 0.3 * big);
-    sc = mix(sc, sc * vec3(1.06, 1.0, 0.93), step(0.5, fract(sid * 7.3)));
-    sc *= mix(1., 0.74 + 0.4 * fine + 0.22 * (fine2 - .5), fd);
-    sc *= 1. - 0.3 * smoothstep(0.78, 0.9, n3(vec3(g * 38., 4.))) * fd;
-    sc = mix(sc, ${v3(0x8a8d80)}, smoothstep(0.6, 0.8, n3(vec3(g * 3.5 + sid * 9., 2.)) * 0.7 + n3(vec3(g * 13., 6.)) * 0.3) * 0.18);
-    sc *= 1. + 0.12 * (1. - smoothstep(0.03, 0.09, st.x));                                                      // 石头的边被踩磨得亮一点
-    // 缝：暗色的土和碎屑
-    vec3 gc = ${v3(0x26221d)} * (0.7 + 0.5 * n3(vec3(g * 30., 7.)));
-    vec3 c = mix(gc, sc, top);
-    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.35 * top);                                   // 低洼处的石面也暗一些
+    vec2 g = q.xz;
+    float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5)), tone = n2(g * 0.35 + 11.);
+    vec3 c = mix(${v3(0x46464a)}, ${v3(0x5d5b56)}, tone) * (0.85 + 0.3 * big);
+    c = mix(c, c * vec3(1.06, 1.0, 0.93), smoothstep(0.4, 0.6, n2(g * 0.22 + 5.)));
+    c *= mix(1., 0.74 + 0.4 * fine + 0.22 * (fine2 - .5), fd);
+    c *= 1. - 0.3 * smoothstep(0.78, 0.9, n3(vec3(g * 38., 4.))) * fd;
+    c = mix(c, ${v3(0x8a8d80)}, smoothstep(0.6, 0.8, n3(vec3(g * 3.5, 2.)) * 0.7 + n3(vec3(g * 13., 6.)) * 0.3) * 0.18);
+    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.35);                                        // 低洼处暗一些
     float wall = abs(q.x) - ${(T / 2).toFixed(3)};
     c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
-    // 水：积在缝里、低洼的石窝里；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
-    wet14 = clamp((1. - top) * 0.8 * smoothstep(0.45, 0.7, n2(g * 0.9 + 4.)) + 0.7 * smoothstep(-0.06, -0.16, vDet) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)), 0., 1.);
+    wet14 = clamp(0.7 * smoothstep(-0.06, -0.16, vDet) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)), 0., 1.);   // 水只积在低洼的石窝里
     c = mix(c, c * 0.4, wet14);
-    gb14 = (top * 0.022 + (0.6 * fine + 0.4 * fine2) * 0.004 * top) * (0.3 + 0.7 * fd);                     // 凹凸：石面高、缝低，石面上还有细颗粒（在 normal_fragment_maps 里用）
+    gb14 = ((0.6 * fine + 0.4 * fine2) * 0.004 + 0.012 * n2(g * 2.5 + 1.)) * (0.3 + 0.7 * fd);                 // 凹凸：细颗粒和缓缓的小起伏
     diffuseColor.rgb = c;`,
     // 3 其它（灯杆）：只跟着压暗
     ``,
@@ -13597,13 +13590,13 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.2 : 0.12; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.4 : 0.22; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
       const gy = (x, z) => BIGG(x, z) + DET(x, z) + STONE(x, z);
-      const inGap = (x, z) => stoneCell(x - WX, z)[0] < 0.045;
+      const inGap = (x, z) => STONES_ON && stoneCell(x - WX, z)[0] < 0.045;
       const rockMat = shade(lam(0xffffff, { vertexColors: true }), 4, 0.6), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3, 0.95);
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
