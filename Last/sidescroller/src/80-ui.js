@@ -18,7 +18,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二', '二十三', '二十四', '二十五', '二十六'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十', '三十一', '三十二', '三十三', '三十四', '三十五', '三十六'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -117,7 +117,8 @@ const menuEl = $('menu'), menuList = $('menulist');
 function drawMenu() {
   const it = i => { const c = CHAPTERS[i]; return `<div class="it${i === menuSel ? ' sel' : ''}" data-i="${i}"><i>${c.tag ?? CN[i]}</i><b>${c.name}</b><span>${c.sub}</span></div>`; };
   const col = (title, a, b) => `<div class="col"><div class="grp">${title}</div>${Array.from({ length: b - a }, (_, k) => it(a + k)).join('')}</div>`;
-  menuList.innerHTML = col('逃出工厂', 0, OLD) + col('铁锈与微光 · 旧原型', OLD, CHAPTERS.length);
+  const deep = CHAPTERS.findIndex(c => c.grp === 'deep'), d0 = deep < 0 ? CHAPTERS.length : deep;   // 第三列：工厂深处（第 25 章起，src/69-h*.js）
+  menuList.innerHTML = col('逃出工厂', 0, OLD) + col('铁锈与微光 · 旧原型', OLD, d0) + (d0 < CHAPTERS.length ? col('工厂深处', d0, CHAPTERS.length) : '');
 }
 function toggleMenu(on = !menuOpen) {
   menuOpen = on; if (on) { menuSel = (state === 'title' ? STORY.ch : chapterAt(P.x).n) - 1; drawMenu(); }

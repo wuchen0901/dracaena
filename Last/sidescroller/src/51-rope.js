@@ -170,7 +170,7 @@ function ropeBody(r, s) {
 // 往 side 那边，身边够得着的高台：边缘离身子不太远，台面在脚下面一点到肩膀之间，台上站得下
 function ropeLedge(side) {
   for (const s of SOLIDS) {
-    if (s.off || s.noclimb || s.plat || s.x2 - s.x1 < 0.6) continue;
+    if (s.off || s.noclimb || (s.plat && !s.ledge) || s.x2 - s.x1 < 0.6) continue;   // 悬空的架子（plat）一般不算，标了 ledge 的算（第 29 章竖井里的铁架子）
     const ex = side > 0 ? s.x1 : s.x2, gap = (ex - P.x) * side, h = s.y2 - P.y;
     if (gap < P.hw - 0.08 || gap > ROPE.ledge || h < -0.6 || h > 0.95) continue;
     if (sideHit(ex + side * (P.hw + 0.14), s.y2 + 0.02) || ceilY(ex + side * 0.4) < s.y2 + P.H) continue;
