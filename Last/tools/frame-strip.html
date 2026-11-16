@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>几屏游戏画面 · 竖着排</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  #game{position:fixed;left:0;top:4000px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 某一章的几屏原始画面，从上往下排成一张图（没有叠暗角、颗粒）。用来看改动前后的样子。
+// 网址参数：ch 旧原型里的章节号（默认 14，就是游戏里的第 21 章）；xs 主角站在哪几个 x（逗号隔开）；t 每屏先走几秒；game 另一份拼好的页面
+// 导出：node Last/tools/shot.mjs "http://127.0.0.1:8781/tools/frame-strip.html?ch=14&xs=2604,2612" out.png 1920 2160
+const q = new URLSearchParams(location.search), CH = +(q.get('ch') || 14), XS = (q.get('xs') || '2604').split(',').map(Number), T = +(q.get('t') || 1.5);
+const FW = 1920, FH = 1080, sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+sheet.width = FW; sheet.height = FH * XS.length;
+function start() {
+  const G = frame.contentWindow.__g.old; G.begin(); G.paused = true; G.step(0.3); G.ch(CH);
+  XS.forEach((x, i) => { G.tp(x); G.step(T); G.renderer.render(G.scene, G.camera); ctx.drawImage(G.renderer.domElement, 0, i * FH, FW, FH); });
+  console.log('搭建每一步的毫秒数 ' + JSON.stringify(G.zone(CH).ms));
+  window.__sheetDone = true;
+}
+const T0 = performance.now();
+frame.addEventListener('load', function wait() {
+  const w = frame.contentWindow, hero = w.__ready && w.__g && w.__g.hero(), modelIn = hero && (hero.kind !== 'R' || hero.B.traveler?.model);
+  if (hero && (modelIn || performance.now() - T0 > 20000)) { try { start(); } catch (e) { console.error('没画完：' + (e && e.stack || e)); window.__sheetDone = true; } }
+  else setTimeout(wait, 100);
+});
+frame.src = '../' + (q.get('game') || 'escape.html') + '?sheet=' + Date.now();
+</script>
+</body>
+</html>

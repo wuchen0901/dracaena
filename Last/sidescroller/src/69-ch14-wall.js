@@ -17,7 +17,8 @@ const CH14 = (() => {
   const T = 0.34, BL = 0.215, BH = 0.065, BD = 0.1025, J = 0.011, PZ = BL + J, PY = BH + J, NC = 11, CAPH = 0.1;
   const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，跳一下就过去
   const Z1 = 18, ZN = -42, Z0 = -330;                          // 墙从镜头后面 Z1 一直到 Z0；ZN 以前一块块砖搭，以后是一整条
-  const MI = 0.016;                                            // 灰缝比砖面缩进去多少
+  const MI = 0.016;
+  const S14 = 0.62;                                            // 路面石块的大小（米）                                            // 灰缝比砖面缩进去多少
   const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel',   // 脚步声：山上的碎石
     intro() { CAT.state = 'none'; } });
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
@@ -35,7 +36,47 @@ const CH14 = (() => {
   const vn2 = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
     return lerp(lerp(vh(ix, iz), vh(ix + 1, iz), u), lerp(vh(ix, iz + 1), vh(ix + 1, iz + 1), u), w); };
   const BIG = (x, z) => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * sstep(0.4, 3.2, Math.abs(u)) * (2.0 * (vn2(x * 0.11, z * 0.14) - 0.5) + 0.5 * (vn2(x * 0.37 + 5, z * 0.4) - 0.5)); };
-  { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.5) pts.push([x, BIG(x, PZ_(x))]); terrain(...pts); }
+  // ---- 路面的石块（和着色器里的 stone14 一样的算法）----
+  //   地面碎开了：相邻的石块一高一低错开，有的被拱歪、整块斜着，有的自己中间又裂成两半、两半一高一低。缝的两边有高低差，看得到石块的侧面。
+  //   孩子走的那条路上错得少（几厘米），往两边越来越乱
+  const fr = v => v - Math.floor(v);
+  const h21 = (x, y) => { let px = fr(x * 123.34), py = fr(y * 456.21); const d = px * (px + 45.32) + py * (py + 45.32); px += d; py += d; return fr(px * py); };
+  // 一层格子：S 多大，o 用哪一组随机数（大岩板和中块各用一组，互不相干）
+  const cellL = (qx, qz, S, o) => {
+    const u = qx / S, v = qz / S, i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j; let d1 = 9, d2 = 9, id = 0, cx = 0, cz = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const ci = i + di + o, cj = j + dj + o, jx = h21(ci, cj), jz = h21(ci + 5.3, cj + 9.1), rx = di + jx - fu, rz = dj + jz - fv, d = rx * rx + rz * rz;
+      if (d < d1) { d2 = d1; d1 = d; id = h21(ci + 2.7, cj + 6.1); cx = (i + di + jx) * S; cz = (j + dj + jz) * S; } else if (d < d2) d2 = d;
+    }
+    return [(Math.sqrt(d2) - Math.sqrt(d1)) * S * 0.5, id, cx, cz];
+  };
+  // 路面：先铺两米左右的大岩板，大小不一；大约一半整块，另一半碎成大小不等的中块。返回 [到边的距离, 编号, 中心 x, 中心 z, 是不是整块大岩板]
+  const stoneCell = (qx, qz) => {
+    const B = cellL(qx, qz, S14 * 3.4, 31);
+    if (fr(B[1] * 11.3) < 0.5) return [...B, 1];
+    const m = cellL(qx, qz, S14 * 1.35, 0);
+    return [Math.min(B[0], m[0]), fr(m[1] + B[1] * 0.37), m[2], m[3], 0];
+  };
+  // grooves：要不要把缝陷下去（地面的几何要，物理地形不要 —— 不然走起来一颠一颠）
+  const STONE = (x, z, grooves = true) => {
+    const ax = Math.abs(x - WX); if (ax < T / 2 + 0.03) return 0;                         // 墙底下
+    const zr = z - PZ_(x), off = sstep(0.4, 2.4, Math.abs(zr)), [e, id, cx, cz, whole] = stoneCell(x - WX, z), lx = x - WX - cx, lz = z - cz;
+    const a = fr(id * 7.13), b = fr(id * 13.7), c = fr(id * 3.31);
+    let tilt = (0.08 + 0.32 * off) * (whole ? 0.4 : 1);                                // 大岩板歪得少（一歪就是整米的高低差）
+    if (fr(id * 31.1) < 0.2) tilt += 0.3 * off;                                           // 被拱起一边、整块斜着的
+    let hgt = (a - 0.5) * (0.06 + 0.26 * off) + (b - 0.5) * tilt * lx + (c - 0.5) * tilt * lz;
+    let groove = 0;
+    if (fr(id * 17.7) < (whole ? 0.55 : 0.15)) {                                                            // 这块石头自己又裂成两半，两半一高一低、各歪一点
+      const ang = fr(id * 3.9) * 6.2832, sd = lx * Math.cos(ang) + lz * Math.sin(ang), side = sd > 0 ? 1 : -1;
+      hgt += side * (fr(id * 5.9) - 0.5) * (0.03 + 0.09 * off) + side * (fr(id * 8.3) - 0.5) * 0.12 * off * Math.abs(sd);
+      groove -= (0.012 + 0.03 * off) * (1 - sstep(0, 0.02 + 0.01 * off, Math.abs(sd)));
+    }
+    if (grooves) groove += -(0.035 + 0.085 * off) * (1 - sstep(0, 0.05 + 0.04 * off, e)) - 0.015 * (1 - sstep(0, 0.13, e));   // 缝陷下去（错得多的地方更宽更深），石头的边磨圆
+    else groove = 0;
+    return (hgt + groove) * sstep(T / 2 + 0.03, 0.6, ax);
+  };
+  // 孩子脚下的物理地形：大起伏 + 路上石块的高低（不算缝），沿着那条弯路每 0.15 米取一次、左右平均一下
+  { const pts = []; for (let x = X - 60; x <= X + 60.001; x += 0.15) { const z = PZ_(x); pts.push([x, BIG(x, z) + (STONE(x - 0.06, z, false) + STONE(x, z, false) + STONE(x + 0.06, z, false)) / 3]); } terrain(...pts); }
   // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
@@ -87,6 +128,29 @@ const CH14 = (() => {
       return sqrt(d2) - sqrt(d1);
     }
     float rockH(vec3 q, float ck) { return 0.55 * n3(q * 7.) + 0.3 * n3(q * 19. + 2.) + 0.15 * n3(q * 48. + 5.) - 1.1 * ck; }   // 石头表面的高低：几层起伏，裂缝处陷下去
+    // 路面的石块：二维的格子，每格一块石头。返回 x 到边的距离（米，0 就在缝上），y 这块石头的编号（0..1）
+    vec4 cellL14(vec2 qx, float S, float o) {                                // 一层格子（和 JS 的 cellL 一样）
+      vec2 u = qx / S, i = floor(u), f = fract(u), cen = vec2(0.); float d1 = 9., d2 = 9., id = 0.;
+      for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) {
+        vec2 o2 = vec2(float(k), float(j)), c = i + o2 + o, jt = vec2(h21(c), h21(c + vec2(5.3, 9.1))), r = o2 + jt - f; float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; id = h21(c + vec2(2.7, 6.1)); cen = (i + o2 + jt) * S; } else if (d < d2) d2 = d;
+      }
+      return vec4((sqrt(d2) - sqrt(d1)) * S * 0.5, id, cen);
+    }
+    vec4 stone14(vec2 qx) {                                                 // 大岩板，一半碎成中块（和 JS 的 stoneCell 一样）。x 到边的距离，y 编号，zw 中心
+      vec4 B = cellL14(qx, ${(S14 * 3.4).toFixed(4)}, 31.);
+      if (fract(B.y * 11.3) < 0.5) return vec4(B.x, B.y + 10., B.zw);   // 整块的大岩板：编号加 10 做记号
+      vec4 m = cellL14(qx, ${(S14 * 1.35).toFixed(4)}, 0.);
+      return vec4(min(B.x, m.x), fract(m.y + B.y * 0.37), m.zw);
+    }
+    vec4 stone14old(vec2 qx) {
+      vec2 u = qx / ${S14.toFixed(3)}, i = floor(u), f = fract(u), cen = vec2(0.); float d1 = 9., d2 = 9., id = 0.;
+      for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) {
+        vec2 o = vec2(float(k), float(j)), c = i + o, jt = vec2(h21(c), h21(c + vec2(5.3, 9.1))), r = o + jt - f; float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; id = h21(c + vec2(2.7, 6.1)); cen = (c + jt) * ${S14.toFixed(3)}; } else if (d < d2) d2 = d;
+      }
+      return vec4((sqrt(d2) - sqrt(d1)) * ${(S14 * 0.5).toFixed(3)}, id, cen);
+    }
     float wallD(vec3 q, float hy) {                                          // hy：高出周围大起伏多少（地面传细起伏的高度，别的传 q.y）
       float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
       float dz = max(0., -qz);
@@ -126,35 +190,30 @@ const CH14 = (() => {
       diffuseColor.rgb *= 1. - 0.4 * smoothstep(0.5, 0.85, n2(vec2(q.z * 7., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${TOP.toFixed(3)}, q.y);
     }
     diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
-    // 2 地面：山上的岩石 —— 灰色岩面、岩层的纹理、裂开的石缝、地衣斑点；凹处积着碎石和水
+    // 2 地面：路面本身就是石头 —— 一块块嵌在地里的石块、露出来的岩床，彼此高低不平、互相咬合；缝里才是一点暗色的土、碎石和积下来的落叶、水
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
-    vec2 g = q.xz;
-    float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, mid = n2(g * 2.1 + 1.3), fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
-    vec3 c = mix(${v3(0x45454a)}, ${v3(0x5c5b57)}, smoothstep(0.3, 0.8, big));                 // 岩面：深浅不一的灰
-    c = mix(c, ${v3(0x3a3936)}, smoothstep(0.55, 0.85, mid) * 0.6);
-    float steep = 1. - smoothstep(0.55, 0.9, vWN.y);                                                   // 陡的面上看得到岩层
-    float strata = smoothstep(0.75, 0.95, abs(sin(q.y * 9. + q.x * 0.6 + n2(g * 0.8) * 4.)));
-    c *= 1. - 0.35 * strata * (0.3 + 0.7 * steep);
-    c *= mix(1., 0.72 + 0.4 * fine + 0.25 * (fine2 - .5), fd);                                        // 石面的颗粒
-    // 石缝：一格格裂开，近处看得清
-    vec2 cg = g * vec2(1.3, 2.1) + 1.1 * vec2(n2(g * 0.7), n2(g * 0.7 + 5.)), ci = floor(cg), cf = fract(cg); float d1 = 9., d2 = 9.;   // 扭过的格子：裂缝长短不一、方向不齐
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-      vec2 o = vec2(float(i), float(j)), p = o + vec2(h21(ci + o), h21(ci + o + 7.3)) - cf; float d = dot(p, p);
-      if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
-    }
-    float crack = (1. - smoothstep(0., 0.012 + 0.035 * n2(g * 2.3), sqrt(d2) - sqrt(d1))) * smoothstep(0.4, 0.65, n2(g * vec2(0.45, 0.6) + 9.)) * smoothstep(0.3, 0.55, n2(g * 3.7 + 2.));   // 只在一部分地方裂开，一条条断断续续，不像铺的石板
-    c *= 1. - 0.6 * crack * (0.4 + 0.6 * fd);
-    c = mix(c, ${v3(0x8a8d80)}, smoothstep(0.88, 0.94, n3(vec3(g * 6., 2.))) * (1. - steep) * 0.2);   // 地衣：浅色的斑点，长在朝上的石面
-    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.6);                             // 凹处积着碎石，暗一些
-    // 远处：真的碎石、落叶不放了，纹理里画出它们的印象 —— 深色的碎石点、零星的黄褐色斑点，成片出现；近处的真东西淡出时，这些正好浮现
-    float farK = 1. - fd, patchK = smoothstep(0.35, 0.72, n2(g * vec2(0.35, 0.45) + 40.));
-    c *= 1. - 0.45 * smoothstep(0.72, 0.86, n2(g * 4.5 + 17.)) * patchK * farK;
-    c = mix(c, ${v3(0x6a4a24)}, smoothstep(0.8, 0.9, n2(g * 3.7 + 29.)) * patchK * farK * 0.55);
+    vec2 g = q.xz; vec4 st = stone14(g); bool whole14 = st.y >= 10.; float sid = whole14 ? st.y - 10. : st.y;
+    float split = 0.;                                                                                          // 石块自己裂开的那一道
+    if (fract(sid * 17.7) < (whole14 ? 0.55 : 0.15)) { float ang = fract(sid * 3.9) * 6.2832; split = 1. - smoothstep(0.004, 0.02, abs(dot(g - st.zw, vec2(cos(ang), sin(ang))))); }
+    float top = smoothstep(0.012, 0.045, st.x) * (1. - 0.85 * split) * mix(1., 0.6, smoothstep(10., 30., distance(vWP, cameraPosition)));   // 1 在石面上，0 在缝里（远处缝糊成一片，不闪）
+    float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
+    // 石面：每块石头自己的深浅、偏暖偏冷，颗粒、小坑、地衣、边上磨亮一点
+    vec3 sc = mix(${v3(0x46464a)}, ${v3(0x5d5b56)}, sid) * (0.85 + 0.3 * big);
+    sc = mix(sc, sc * vec3(1.06, 1.0, 0.93), step(0.5, fract(sid * 7.3)));
+    sc *= mix(1., 0.74 + 0.4 * fine + 0.22 * (fine2 - .5), fd);
+    sc *= 1. - 0.3 * smoothstep(0.78, 0.9, n3(vec3(g * 38., 4.))) * fd;
+    sc = mix(sc, ${v3(0x8a8d80)}, smoothstep(0.6, 0.8, n3(vec3(g * 3.5 + sid * 9., 2.)) * 0.7 + n3(vec3(g * 13., 6.)) * 0.3) * 0.18);
+    sc *= 1. + 0.12 * (1. - smoothstep(0.03, 0.09, st.x));                                                      // 石头的边被踩磨得亮一点
+    // 缝：暗色的土和碎屑
+    vec3 gc = ${v3(0x26221d)} * (0.7 + 0.5 * n3(vec3(g * 30., 7.)));
+    vec3 c = mix(gc, sc, top);
+    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.35 * top);                                   // 低洼处的石面也暗一些
     float wall = abs(q.x) - ${(T / 2).toFixed(3)};
     c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
-    // 水：积在凹下去的石窝里，一块一块的；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
-    wet14 = clamp(0.7 * smoothstep(-0.06, -0.18, vDet) + 0.6 * smoothstep(0.82, 0.9, n2(g * 0.45 + 21.)), 0., 1.) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)) * smoothstep(0.35, 0.6, n2(g * 0.7 + 13.));
+    // 水：积在缝里、低洼的石窝里；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
+    wet14 = clamp((1. - top) * 0.8 * smoothstep(0.45, 0.7, n2(g * 0.9 + 4.)) + 0.7 * smoothstep(-0.06, -0.16, vDet) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)), 0., 1.);
     c = mix(c, c * 0.4, wet14);
+    gb14 = (top * 0.022 + (0.6 * fine + 0.4 * fine2) * 0.004 * top) * (0.3 + 0.7 * fd);                     // 凹凸：石面高、缝低，石面上还有细颗粒（在 normal_fragment_maps 里用）
     diffuseColor.rgb = c;`,
     // 3 其它（灯杆）：只跟着压暗
     ``,
@@ -168,6 +227,14 @@ const CH14 = (() => {
     diffuseColor.rgb *= 1. - 0.38 * smoothstep(0.76, 0.9, n3(q * 46. + 1.)) * fd;
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x8f9284)}, smoothstep(0.62, 0.8, n3(q * 4.5 + 9.) * 0.7 + n3(q * 16. + 3.) * 0.3) * smoothstep(0.2, 0.7, vWN.y + 0.3) * 0.22);   // 地衣：一片片淡淡的，不是一颗颗白点
     diffuseColor.rgb *= 1. - 0.3 * smoothstep(0.62, 0.86, n2(vec2((q.x + q.z) * 5., q.y * 0.9))) * (1. - smoothstep(0.5, 0.9, vWN.y));`,
+    // 5 岩板：几乎不画纹理 —— 像样子全靠形状和光（朝上的平面接天光、侧面暗、板缝里的 AO 烘在顶点色里）。表面只有很淡的大片深浅、近处一点颗粒、
+    //   朝上的面一片片淡淡的地衣、侧面雨水流下来的暗痕
+    `float fd = 1. - smoothstep(4., 24., distance(vWP, cameraPosition));
+    float up5 = smoothstep(0.55, 0.9, vWN.y), sd5 = 1. - up5;
+    diffuseColor.rgb *= 0.88 + 0.18 * n3(q * 0.8 + 3.) + 0.1 * (n3(q * 2.9 + 8.) - .5);
+    diffuseColor.rgb *= mix(1., 0.93 + 0.1 * n3(q * 24. + 1.) + 0.05 * (n3(q * 75. + 6.) - .5), 0.3 + 0.7 * fd);
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x9a9c92)}, up5 * smoothstep(0.6, 0.78, n3(q * 2.2 + 5.) * 0.7 + n3(q * 9. + 2.) * 0.3) * 0.16);
+    diffuseColor.rgb *= 1. - 0.3 * sd5 * smoothstep(0.55, 0.85, n2(vec2((q.x + q.z) * 3.5, q.y * 0.6) + 7.));`,
   ];
   function shade(mat, kind, sat = 0.35) {          // sat：保留多少颜色（0 全灰，1 原样）。大部分东西都很灰；落叶、树枝这些小东西留一点颜色
     mat.userData.own = true;
@@ -185,15 +252,20 @@ const CH14 = (() => {
       if (!lb.includes(hook)) console.warn('第二十一章：three.js 的光照代码变了，月光不会跟着压暗');
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + GL_COMMON + (kind === 2 ? '\nvarying float vDet;' : ''))
         .replace('#include <color_fragment>', `#include <color_fragment>
-          float wet14 = 0.; vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q, ${kind === 2 ? 'vDet' : 'q.y'});
+          float wet14 = 0., gb14 = 0.; vec3 q = vWP - vec3(${WX.toFixed(2)}, 0., 0.); float wD = wallD(q, ${kind === 2 ? 'vDet' : 'q.y'});
           ${SURF[kind]}
           diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, ${sat.toFixed(2)});   // 去掉大部分颜色：只留一点点，小东西上的颜色看得出区别`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           totalEmissiveRadiance += fogColor * wet14 * (0.2 + 0.8 * pow(1. - max(dot(normalize(cameraPosition - vWP), vec3(0., 1., 0.)), 0.), 4.)) * 0.22 * smoothstep(0.15, 0.7, wD);`)   // 水渍映出雾
-        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>' + (kind === 4 ? `
+        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>' + (kind === 2 ? `
+          { vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
+            vec2 dH = vec2(dFdx(gb14), dFdy(gb14)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 路面的凹凸：石块的边接光，缝里暗` : kind === 4 ? `
           { float bh = rockH(q, ck14) * 0.014 * (0.25 + 0.75 * fd);
             vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
-            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 石头表面的凹凸：光照下每个小凸起一边亮一边暗，裂缝里暗` : ''))
+            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 石头表面的凹凸：光照下每个小凸起一边亮一边暗，裂缝里暗` : kind === 5 ? `
+          { float bh = (0.6 * n3(q * 4.) + 0.4 * n3(q * 15. + 3.)) * 0.006 * (0.3 + 0.7 * fd);
+            vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
+            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 岩板：很浅的起伏，平面还是平的` : ''))
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
         .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;')
         .replace('#include <opaque_fragment>', '{ float gL = dot(outgoingLight, vec3(.299, .587, .114)); outgoingLight *= mix(vec3(0.9, 0.98, 1.1), vec3(1.07, 1.0, 0.9), smoothstep(0.015, 0.2, gL)); }   // 调色：暗处偏一点冷青，亮处偏一点暖\n#include <opaque_fragment>');
@@ -383,20 +455,21 @@ const CH14 = (() => {
         return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
       };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
-      const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
+      const grid = (xs, zs, stones, mat = groundMat) => {                                   // stones：把路面的石块也做进几何里（近处那一块才做，远处网格太粗）                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
         const pos = [], det = [], idx = [], nx = xs.length;
-        for (const z of zs) for (const x of xs) { const d = DET(x, z); pos.push(x, BIGG(x, z) + d, z); det.push(d); }
+        for (const z of zs) for (const x of xs) { const d = DET(x, z) + (stones ? STONE(x, z) : 0); pos.push(x, BIGG(x, z) + d, z); det.push(d); }
         for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aDet', new THREE.Float32BufferAttribute(det, 1)); g.setIndex(idx); g.computeVertexNormals();
-        const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
+        const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.4 : 0.25; grid(span(X - 80, X + 120, gd), span(-6, 20, gd));   // 近处
+      const gd = LOW ? 0.2 : 0.12; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
-      const gy = (x, z) => BIGG(x, z) + DET(x, z);
+      const gy = (x, z) => BIGG(x, z) + DET(x, z) + STONE(x, z);
+      const inGap = (x, z) => stoneCell(x - WX, z)[0] < 0.045;
       const rockMat = shade(lam(0xffffff, { vertexColors: true }), 4, 0.6), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3, 0.95);
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
@@ -410,40 +483,113 @@ const CH14 = (() => {
           if (tries > 60 || rnd() < p) return [x, z];
         }
       };
-      // 左边到头：一面山岩挡住路（左边那堵空气墙就在它跟前）
-      for (let k = 0; k < 9; k++) {
-        const x = X - 13.2 + rr(-0.6, 0.5) - k * 0.05, z = PZ_(X - 12) + rr(-4, 0.7), sz = rr(0.7, 1.4) * (k < 3 ? 1.3 : 1);   // 只放在路上和路后面：放到镜头跟前会把人挡住
-        const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 2 : 3, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
-        m.scale.set(sz * rr(0.8, 1.2), sz * rr(1.1, 1.8), sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
-      }
-      // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
-      {
-        const pts = [];
-        for (let k = 0, nk = LOW ? 22 : 34; k < nk; k++) {
-          const dz = 6 + Math.pow(rnd(), 1.3) * 55, cx = rr(X - 30 - dz * 0.3, X + 60 + dz * 0.3), cz = -dz;
-          if (Math.abs(cx - WX) < 2.5 + dz * 0.12) continue;
-          for (let j = 0, nj = Math.floor(rr(2, 7)); j < nj; j++) { const x = cx + rr(-1.5, 1.5) * (1 + dz * 0.03), z = cz + rr(-1.2, 1.2) * (1 + dz * 0.03);
-            pts.push([x, z, rr(0.18, 0.5) * (1 + dz * 0.03) * (j ? rr(0.4, 1) : 1)]); }
+      // ---- 岩板：一层层的基岩从坡里露出来，一块块平的、有直边的厚板，顺着同一个倾角一排排叠上去（像瓦片，后一排压着前一排） ----
+      //   像不像真的，靠的是形状和光，不是纹理：大平面朝上接天光是浅灰，侧面背光是暗的；上沿一圈窄窄的倒角斜着接光，勾出每块板的边；
+      //   板缝里、压在别的板底下的地方暗下去（环境遮蔽，按真的几何算好烘进顶点色）；整片岩层倾角一致，看起来是一整块地层裂开的，不是随手摆的石头
+      const slabMat = shade(lam(0xffffff, { vertexColors: true }), 5, 0.5);
+      const HEMI = []; for (let i = 0, nh = LOW ? 8 : 14; i < nh; i++) { const t = (i + 0.5) / nh, r = Math.sqrt(t), a = i * 2.39996; HEMI.push([r * Math.cos(a), Math.sqrt(1 - t), r * Math.sin(a)]); }   // 半球上的方向（按余弦分布）：算 AO 用
+      const hull2 = pts => {                                           // 平面上一圈点的凸包（逆时针）
+        pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+        for (const p of pts) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+        for (const p of pts.slice().reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+        return lo.slice(0, -1).concat(up.slice(0, -1));
+      };
+      // o：x, z 第一排在哪；ux, uz 往哪个方向叠上去；w 横着多宽；rows 几排；run 每排往里退多少；rise 每排高多少；h0 第一排高出地面多少；
+      //    s 石板大小；dip 往外倾多少（弧度）；zr 给了就是沿着弯路：每块板的 z 跟着路走（路后面 zr 米）；loose 上面再散几块松动的薄板；col 颜色
+      const slabBank = o => {
+        const S = [], cxv = -o.uz, czv = o.ux, yaw = Math.atan2(-o.ux, -o.uz), s = o.s ?? 1;
+        const slab = (x, z, yTop, sw, sd, D, dip, yawJ, roll, lift = 0) => {   // 一块板：本地坐标里顶面在 y = 0，往下 D 米
+          let poly; do { const n = 4 + Math.floor(rnd() * 3), P = [];
+            for (let i = 0; i < n; i++) { const a = (i + rr(-0.42, 0.42)) / n * 6.2832 + 0.4; P.push([Math.cos(a) * sw / 2 * rr(0.85, 1.2), Math.sin(a) * sd / 2 * rr(0.85, 1.2)]); }
+            poly = hull2(P); } while (poly.length < 4);
+          const m = new THREE.Matrix4().compose(V3(x, yTop + lift, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(dip, yaw + yawJ, roll, 'YXZ')), V3(1, 1, 1));
+          const rad = Math.max(sw, sd) / 2;
+          S.push({ poly, D, m, inv: m.clone().invert(), c: V3(0, -D / 2, 0).applyMatrix4(m), r: Math.hypot(rad, D / 2) + 0.05, tone: rr(0.85, 1.12), warm: rnd() < 0.5 });
+        };
+        const ground0 = gy(o.x, o.z), DIP = o.dip ?? Math.atan2(o.rise, o.run) * 0.85;   // 板顺着坡躺：倾角差不多就是坡的角度，顶面才朝着镜头、接得到天光
+        for (let r = 0; r < o.rows; r++) {
+          const wr = o.w * (1 - r * (o.taper ?? 0.07));
+          for (let c = -wr / 2 + rr(-0.2, 0.2) * s; c < wr / 2;) {
+            const sw = rr(0.8, 2.1) * s, sd = o.run * rr(1.3, 1.8), mid = c + sw / 2, along = r * o.run + sd * 0.3 + rr(-0.08, 0.08) * s;
+            let x = o.x + o.ux * along + cxv * mid, z = o.z + o.uz * along + czv * mid;
+            if (o.zr !== undefined) z = PZ_(x) + o.zr + o.uz * along;
+            const g = gy(x, z), yTop = Math.max(ground0 + (o.h0 ?? 0.2) + r * o.rise + rr(-0.3, 0.3) * o.rise, g + 0.12);
+            slab(x, z, yTop, sw, sd, yTop - g + 0.7, DIP + rr(-0.08, 0.08), rr(-0.2, 0.2), rr(-0.1, 0.1));
+            c += sw * rr(0.72, 0.95);
+          }
         }
-        const geos = [7, 19, 31].map(sdd => rockS(sdd, { sd: 1, amp: 0.35, flat: 0.65, moss: 0.4, mossCol: 0x45602a, col: 0x46453f })), per = Math.ceil(pts.length / 3);
-        geos.forEach((geo, gi) => {
-          const part = pts.slice(gi * per, gi * per + per), mesh = new THREE.InstancedMesh(geo, rockMat, part.length);
-          part.forEach(([x, z, sz], i) => { ee.set(rr(-0.2, 0.2), rr(0, 6.28), rr(-0.2, 0.2)); qq.setFromEuler(ee);
-            M4.compose(V3(x, gy(x, z) + sz * 0.15, z), qq, V3(sz * rr(1, 1.5), sz * rr(0.6, 0.9), sz * rr(0.8, 1.2))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1))); });
-          mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+        // 碎下来的：坡脚几块薄板，平躺在地上；上面几块松动的，斜得厉害一点
+        for (let k = 0, nk = o.rubble ?? 5; k < nk; k++) {
+          const c = rr(-0.5, 0.5) * o.w, back = rr(-0.9, -0.2) * o.run, sw = rr(0.25, 0.6) * s, x = o.x + o.ux * back + cxv * c;
+          const z = o.zr !== undefined ? PZ_(x) + o.zr + o.uz * back : o.z + o.uz * back + czv * c, g = gy(x, z), t = rr(0.06, 0.14) * s;
+          slab(x, z, g + t * 0.6, sw, sw * rr(0.6, 1), t + 0.08, rr(-0.15, 0.25), rr(-1.5, 1.5), rr(-0.15, 0.15));
+        }
+        for (let k = 0, nk = o.loose ?? 2; k < nk && S.length; k++) {
+          const b = S[Math.floor(rnd() * Math.min(S.length, 4 * o.rows))], p = V3(rr(-0.2, 0.2), 0, rr(-0.1, 0.25)).applyMatrix4(b.m), t = rr(0.07, 0.16) * s, sw = rr(0.4, 0.9) * s;
+          slab(p.x, p.z, p.y + t * 0.5, sw, sw * rr(0.6, 0.9), t, rr(0.2, 0.45), rr(-1, 1), rr(-0.2, 0.2));
+        }
+        // 每块板的点在不在里面：变回这块板的本地坐标，看高度和平面上的凸多边形
+        const inside = (b, p) => {
+          const l = p.clone().applyMatrix4(b.inv); if (l.y > 0 || l.y < -b.D) return false;
+          const P = b.poly; for (let i = 0; i < P.length; i++) { const a = P[i], c = P[(i + 1) % P.length]; if ((c[0] - a[0]) * (l.z - a[1]) - (c[1] - a[1]) * (l.x - a[0]) < 0) return false; }
+          return true;
+        };
+        // 搭网格：顶面（分几圈，AO 才有地方落）、倒角、侧面（横竖都分几段）。平的法线，每个面一个
+        const pos = [], nor = [], col = [], tri = [], base = new THREE.Color(o.col ?? 0x777671), WARM = new THREE.Color(0x5e5348), COOL = new THREE.Color(0x4a5258);
+        S.forEach((b, bi) => {
+          const P = b.poly, n = P.length, bev = Math.min(0.045 * s, b.D * 0.3), cx = P.reduce((a, p) => a + p[0], 0) / n, cz = P.reduce((a, p) => a + p[1], 0) / n;
+          const T = P.map(([x, z]) => { const dx = x - cx, dz = z - cz, l = Math.hypot(dx, dz) || 1; return [x - dx / l * bev * 1.3, z - dz / l * bev * 1.3]; });
+          const L = (x, y, z) => V3(x, y, z).applyMatrix4(b.m), mid = L(cx, -b.D / 2, cz);
+          const quad = (a, c, d, e) => { tri.push([a, c, d, bi, mid], [a, d, e, bi, mid]); };
+          const ring = f => T.map(([x, z]) => L(cx + (x - cx) * f, 0, cz + (z - cz) * f)), r0 = L(cx, 0, cz), r1 = ring(0.45), r2 = ring(0.8), r3 = ring(1);
+          for (let i = 0; i < n; i++) { const j = (i + 1) % n; tri.push([r0, r1[i], r1[j], bi, mid]); quad(r1[i], r2[i], r2[j], r1[j]); quad(r2[i], r3[i], r3[j], r2[j]); }
+          const ys = [-bev, -bev - 0.12, -bev - 0.35, -bev - 0.8].filter((y, k) => k === 0 || y > -b.D + 0.03); ys.push(-b.D);
+          for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n, a = P[i], c = P[j], m2 = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+            quad(r3[i], L(a[0], -bev, a[1]), L(c[0], -bev, c[1]), r3[j]);                       // 倒角
+            for (let k = 0; k < ys.length - 1; k++) for (const [u, v] of [[a, m2], [m2, c]]) quad(L(u[0], ys[k], u[1]), L(u[0], ys[k + 1], u[1]), L(v[0], ys[k + 1], v[1]), L(v[0], ys[k], v[1]));
+          }
         });
-      }
-      // 大一点的石块：一块块单独的，半埋在土里
-      for (let i = 0, nb = LOW ? 90 : 150; i < nb; i++) {
-        const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
-        const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 1 : 2, flat, amp: rr(0.25, 0.42), moss: rr(0.1, 0.8), mossCol: 0x4f6a2e, col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
-        m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
-      }
-      // 碎石子：一个带实例的网格，路上也有一些
+        const e1 = V3(0, 0, 0), e2 = V3(0, 0, 0), fn = V3(0, 0, 0), tq = V3(0, 0, 0), bt = V3(0, 0, 0), sp = V3(0, 0, 0), cc2 = new THREE.Color(), aoCache = new Map();
+        const ao = (p, nv, own) => {                                    // 这一点四周有多少被别的板、地面挡住：沿半球上的方向走几步，看落在不在别的板里、地底下
+          const key = [p.x * 200, p.y * 200, p.z * 200, nv.x * 3, nv.y * 3, nv.z * 3].map(Math.round).join() + ',' + own; if (aoCache.has(key)) return aoCache.get(key);
+          tq.set(Math.abs(nv.y) < 0.9 ? 0 : 1, Math.abs(nv.y) < 0.9 ? 1 : 0, 0).cross(nv).normalize(); bt.copy(nv).cross(tq);
+          let hit = 0, tot = 0;
+          for (const [hx, hy, hz] of HEMI) for (const d of (LOW ? [0.15, 0.5] : [0.1, 0.28, 0.6])) {
+            sp.copy(p).addScaledVector(tq, hx * d).addScaledVector(nv, hy * d + 0.01).addScaledVector(bt, hz * d); tot++;
+            if (sp.y < gy(sp.x, sp.z) - 0.02) { hit++; continue; }
+            for (let k = 0; k < S.length; k++) { const b = S[k]; if (k === own || b.c.distanceToSquared(sp) > b.r * b.r) continue; if (inside(b, sp)) { hit++; break; } }
+          }
+          const v = 1 - hit / tot; aoCache.set(key, v); return v;
+        };
+        for (const [a, b, c, bi, mid] of tri) {
+          e1.subVectors(b, a); e2.subVectors(c, a); fn.crossVectors(e1, e2).normalize();
+          let A = [a, b, c]; if (fn.dot(e1.set((a.x + b.x + c.x) / 3 - mid.x, (a.y + b.y + c.y) / 3 - mid.y, (a.z + b.z + c.z) / 3 - mid.z)) < 0) { A = [a, c, b]; fn.negate(); }   // 法线朝外
+          const sb = S[bi];
+          for (const p of A) {
+            pos.push(p.x, p.y, p.z); nor.push(fn.x, fn.y, fn.z);
+            const occ = ao(p, fn, bi), soil = 0.55 + 0.45 * sstep(0, 0.4, p.y - gy(p.x, p.z));   // 贴地的地方被泥土和潮气染暗
+            cc2.copy(base).lerp(sb.warm ? WARM : COOL, 0.3).multiplyScalar(sb.tone * soil * (0.22 + 0.78 * Math.pow(occ, 1.25)));
+            col.push(cc2.r, cc2.g, cc2.b);
+          }
+        }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        const mesh = new THREE.Mesh(g, slabMat); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh); return mesh;
+      };
+      // 左边到头：一面层层的岩坡挡住路，往左一排排高上去（左边那堵空气墙就在它跟前）；只放在路上和路后面：放到镜头跟前会把人挡住
+      slabBank({ x: X - 12.2, z: PZ_(X - 12) - 1.6, ux: -1, uz: 0, w: 5.6, rows: 5, run: 0.65, rise: 0.45, h0: 0.2, s: 1.2, loose: 3, rubble: 7 }); yield;
+      // 路后面露出来的几片岩层：孩子走过时，灯光正好照到它们
+      slabBank({ x: X + 1, z: 0, zr: -1.7, ux: 0, uz: -1, w: 4.6, rows: 4, run: 0.75, rise: 0.42, h0: 0.1, s: 1.1 }); yield;
+      slabBank({ x: X + 17, z: 0, zr: -2.1, ux: 0, uz: -1, w: 6, rows: 5, run: 0.8, rise: 0.5, h0: 0.12, s: 1.3, loose: 3 }); yield;
+      slabBank({ x: X + 27, z: 0, zr: -1.5, ux: 0, uz: -1, w: 3.8, rows: 3, run: 0.7, rise: 0.38, h0: 0.08, s: 1 });
+      yield;
+      // 碎石子：只在石块之间的缝里（散放在地上的大石块去掉了：路面本身就是石头）
+      const gspot = onPath => { for (let t = 0; t < 14; t++) { const r = spot(onPath); if (inGap(r[0], r[1])) return r; } return spot(onPath); };
       {
         const n = LOW ? 450 : 900, geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
         for (let i = 0; i < n; i++) {
-          const [x, z] = spot(rnd() < 0.18), sz = rr(0.012, 0.05);
+          const [x, z] = gspot(rnd() < 0.25), sz = rr(0.01, 0.035);
           ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + sz * 0.15, z), qq, V3(sz * rr(0.9, 1.5), sz * rr(0.5, 0.8), sz * rr(0.8, 1.2))); mesh.setMatrixAt(i, M4);
           mesh.setColorAt(i, cc.set(pick([0x4a4945, 0x3f3e3b, 0x55524b, 0x353431])).multiplyScalar(rr(0.8, 1.15)));
@@ -457,7 +603,7 @@ const CH14 = (() => {
           let x, z;
           if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
           else if (rnd() < 0.6) { x = rr(X - 15, X + 34); z = PZ_(x) + (rnd() < 0.5 ? -1 : 1) * rr(0.3, 1.8); }   // 多半在路两边一两米之内（被照亮的那一带）
-          else [x, z] = spot(rnd() < 0.12);
+          else [x, z] = rnd() < 0.8 ? gspot(rnd() < 0.15) : spot(rnd() < 0.12);   // 落叶多半卡在缝里
           const sz = rr(0.08, 0.16), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
           ee.set(rr(-0.08, 0.08), rr(0, 6.28), up); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + 0.012 + Math.abs(Math.sin(up)) * sz * 0.4, z), qq, V3(sz, sz * 0.5, sz)); mesh.setMatrixAt(i, M4);
