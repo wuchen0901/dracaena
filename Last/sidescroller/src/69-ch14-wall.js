@@ -135,6 +135,10 @@ const CH14 = (() => {
     c *= 1. - 0.6 * crack * (0.4 + 0.6 * fd);
     c = mix(c, ${v3(0x8a8d80)}, smoothstep(0.88, 0.94, n3(vec3(g * 6., 2.))) * (1. - steep) * 0.2);   // 地衣：浅色的斑点，长在朝上的石面
     c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.6);                             // 凹处积着碎石，暗一些
+    // 远处：真的碎石、落叶不放了，纹理里画出它们的印象 —— 深色的碎石点、零星的黄褐色斑点，成片出现；近处的真东西淡出时，这些正好浮现
+    float farK = 1. - fd, patchK = smoothstep(0.35, 0.72, n2(g * vec2(0.35, 0.45) + 40.));
+    c *= 1. - 0.45 * smoothstep(0.72, 0.86, n2(g * 4.5 + 17.)) * patchK * farK;
+    c = mix(c, ${v3(0x6a4a24)}, smoothstep(0.8, 0.9, n2(g * 3.7 + 29.)) * patchK * farK * 0.55);
     float wall = abs(q.x) - ${(T / 2).toFixed(3)};
     c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
     // 水：积在凹下去的石窝里，一块一块的；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
@@ -334,13 +338,34 @@ const CH14 = (() => {
       const gy = (x, z) => BIGG(x, z) + DET(x, z);
       const rockMat = shade(lam(0xffffff, { vertexColors: true }), 3, 0.6), leafMat = shade(lam(0xffffff, { side: THREE.DoubleSide }), 3, 0.95);
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
-      const spot = (onPath) => {                                       // 随便找一处：x 在这一章里，z 在那条弯路前后几米
-        for (;;) {
-          const x = rr(X - 15, X + 34), zr = onPath ? rr(-0.45, 0.45) : (rnd() < 0.5 ? -1 : 1) * (0.45 + Math.pow(rnd(), 1.4) * 4.5);
+      // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
+      const clump = (x, z) => sstep(0.35, 0.72, vn(x * 0.35 + 40, z * 0.45)) * 0.85 + 0.15;
+      const spot = (onPath, reach = 4.5) => {                          // 随便找一处：x 在这一章里，z 在那条弯路前后几米
+        for (let tries = 0; ; tries++) {
+          const x = rr(X - 15, X + 34), zr = onPath ? rr(-0.45, 0.45) : (rnd() < 0.5 ? -1 : 1) * (0.45 + Math.pow(rnd(), 1.2) * reach * 1.4);
           if (Math.abs(x - WX) < 0.3 && Math.abs(zr) < 1) continue;   // 翻墙的地方空着
-          return [x, PZ_(x) + zr];
+          const z = PZ_(x) + zr, edge = reach * (0.7 + 0.6 * vn(x * 0.25 + 7, 3));   // 到哪为止：沿着路各处不一样
+          const p = onPath ? 1 : clump(x, z) * sstep(edge, edge * 0.6, Math.abs(zr)) * (DET(x, z) < -0.04 ? 1.6 : 1);
+          if (tries > 60 || rnd() < p) return [x, z];
         }
       };
+      // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
+      {
+        const pts = [];
+        for (let k = 0, nk = LOW ? 22 : 34; k < nk; k++) {
+          const dz = 6 + Math.pow(rnd(), 1.3) * 55, cx = rr(X - 30 - dz * 0.3, X + 60 + dz * 0.3), cz = -dz;
+          if (Math.abs(cx - WX) < 2.5 + dz * 0.12) continue;
+          for (let j = 0, nj = Math.floor(rr(2, 7)); j < nj; j++) { const x = cx + rr(-1.5, 1.5) * (1 + dz * 0.03), z = cz + rr(-1.2, 1.2) * (1 + dz * 0.03);
+            pts.push([x, z, rr(0.18, 0.5) * (1 + dz * 0.03) * (j ? rr(0.4, 1) : 1)]); }
+        }
+        const geos = [7, 19, 31].map(sd => rockGeo(sd, { detail: 0, amp: 0.35, flat: 0.65, moss: 0.4, mossCol: 0x45602a, col: 0x46453f })), per = Math.ceil(pts.length / 3);
+        geos.forEach((geo, gi) => {
+          const part = pts.slice(gi * per, gi * per + per), mesh = new THREE.InstancedMesh(geo, rockMat, part.length);
+          part.forEach(([x, z, sz], i) => { ee.set(rr(-0.2, 0.2), rr(0, 6.28), rr(-0.2, 0.2)); qq.setFromEuler(ee);
+            M4.compose(V3(x, gy(x, z) + sz * 0.15, z), qq, V3(sz * rr(1, 1.5), sz * rr(0.6, 0.9), sz * rr(0.8, 1.2))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1))); });
+          mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+        });
+      }
       // 大一点的石块：一块块单独的，半埋在土里
       for (let i = 0, nb = LOW ? 90 : 150; i < nb; i++) {
         const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
