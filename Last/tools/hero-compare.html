@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模型对比</title>
+<style>
+  :root { --bg: #0b0f11; --fg: #d9d6cf; --dim: #8b8a85; --line: #2a2f33; --hot: #e3b45a; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p { margin: 4px 0; color: var(--dim); }
+  #view { display: block; width: 100%; height: auto; background: #000; border: 1px solid var(--line); margin: 12px 0 8px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0; }
+  .bar b { color: var(--dim); font-weight: 400; min-width: 3em; }
+  button { background: #161b1e; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  button.on { border-color: var(--hot); color: var(--hot); }
+  #status { color: var(--dim); font-variant-numeric: tabular-nums; }
+  /* 四个游戏装在看不见的地方：页面只拿它们的画面 */
+  iframe { position: fixed; left: -3000px; top: 0; width: 960px; height: 540px; border: 0; }
+  ul { color: var(--dim); padding-left: 20px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>模型 × 动作 对比</h1>
+  <p>四格是同一个游戏、同一段路、同一套灯光和后期，按键和时间完全一样。上一排是现在的主角（models/hero.glb），下一排换成一个现成的、做得比较好的人物模型；左一列是游戏自己程序化的动作，右一列是地上走和跑换成 Mixamo 的动捕（?mocap=1）。</p>
+  <canvas id="view" width="1280" height="1280"></canvas>
+  <div class="bar"><b>模型</b><span id="model"></span></div>
+  <div class="bar"><b>贴图</b><span id="flat"></span></div>
+  <div class="bar"><b>动作</b><span id="scen"></span></div>
+  <div class="bar"><b>速度</b><span id="speed"></span></div>
+  <div class="bar"><b>镜头</b><span id="zoom"></span></div>
+  <div class="bar"><b></b><button id="pause">暂停</button><button id="stepb">单步 →</button><span id="status">载入中…</span></div>
+  <ul>
+    <li>怎么看：上下两排差得多 → 是模型的问题；左右两列差得多 → 是动作的问题；四格都不好看 → 多半是画面（光、颜色、镜头、场景）的问题。</li>
+    <li>换来的模型都是成年人的比例，缩到了主角的身高（1.24 米），所以头显得小、腿显得长 —— 比的是做工（形体、布料、贴图），不是比例。</li>
+    <li>“平涂”去掉贴图，每块材质换成一个颜色、只有漫反射，和现在的主角一样：这样比的只是形状。</li>
+    <li>模型从 GitHub 上 three.js 的示例（r170）直接读，要联网；Mixamo 的模型只拿来对比，正式用之前要再看授权。</li>
+    <li>键盘：空格 暂停 / 继续，→ 单步。</li>
+  </ul>
+</main>
+<iframe id="f0"></iframe>
+<iframe id="f1"></iframe>
+<iframe id="f2"></iframe>
+<iframe id="f3"></iframe>
+<script>
+// 用法（通过本地服务器打开）：http://127.0.0.1:8765/tools/hero-compare.html?model=soldier&scen=run
+// 导出成图片：node Last/tools/shot.mjs "<上面的网址>" generated_images/xxx.png 1312 1600
+const q = new URLSearchParams(location.search), game = q.get('game') || '../escape.html';
+const cv = document.getElementById('view'), ctx = cv.getContext('2d'), PW = 640, PH = 640;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+// 场景和 mocap-compare.html 一样：旧原型第四章开头那段平地
+const SCEN = {
+  idle: { name: '站着', len: 8, keys: t => [] },
+  run: { name: '跑', len: 6, keys: t => ['R'] },
+  walk: { name: '走', len: 9, keys: t => ['R', 'S'] },
+  runstop: { name: '跑停跑', len: 7, keys: t => t < 2.6 || t > 4.4 ? ['R'] : [] },
+  jump: { name: '跑跳跑', len: 6, keys: t => (t % 2) > 1.2 && (t % 2) < 1.35 ? ['R', 'J'] : ['R'] },
+};
+const MODELS = [['soldier', 'Soldier'], ['michelle', 'Michelle'], ['xbot', 'Xbot 假人'], ['rpm', 'Ready Player Me']];
+const SPEEDS = [[1, '1×'], [0.5, '½'], [0.25, '¼'], [0.1, '1/10']];
+const ZOOMS = [[4, '近'], [2.6, '中'], [1.6, '远']];
+const st = { model: q.get('model') || 'soldier', flat: q.get('flat') || '0', scen: q.get('scen') || 'run', speed: 1, zoom: +(q.get('zoom') || 4), paused: false, t: 0, step: false };
+// 四格：[第几排, 第几列]。排 0 现在的主角，排 1 换来的模型；列 0 程序化，列 1 动捕
+const CELL = [[0, 0], [0, 1], [1, 0], [1, 1]];
+const G = [null, null, null, null];
+function buttons(id, list, key, cb) {
+  const el = document.getElementById(id);
+  for (const [v, label] of list) {
+    const b = document.createElement('button'); b.textContent = label;
+    b.onclick = () => { st[key] = v; for (const x of el.children) x.classList.toggle('on', x === b); cb && cb(); };
+    if (st[key] == v) b.classList.add('on'); el.appendChild(b);
+  }
+}
+buttons('model', MODELS, 'model', () => reloadTest());
+buttons('flat', [['0', '原样（带贴图）'], ['1', '平涂']], 'flat', () => reloadTest());
+buttons('scen', Object.entries(SCEN).map(([k, s]) => [k, s.name]), 'scen', () => restart());
+buttons('speed', SPEEDS, 'speed');
+buttons('zoom', ZOOMS, 'zoom');
+const pauseB = document.getElementById('pause');
+pauseB.onclick = () => { st.paused = !st.paused; pauseB.textContent = st.paused ? '继续' : '暂停'; };
+document.getElementById('stepb').onclick = () => { st.paused = true; pauseB.textContent = '继续'; st.step = true; };
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); pauseB.onclick(); } if (e.code === 'ArrowRight') { e.preventDefault(); document.getElementById('stepb').onclick(); } });
+
+function src(i) {
+  const [row, col] = CELL[i], p = new URLSearchParams({ mocap: col ? '1' : '0', link: '0' });
+  if (row) { p.set('hero', st.model); p.set('heroflat', st.flat); }
+  return game + '?' + p;
+}
+function load(i) {
+  return new Promise(ok => {
+    const f = document.getElementById('f' + i), col = CELL[i][1];
+    f.onload = function wait() {
+      const w = f.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+      if (!hero || !hero.B.traveler?.model || (col && !w.__g.MOCAP.data)) { setTimeout(wait, 100); return; }
+      const g = w.__g.old; g.begin(); g.paused = true; ok(g);
+    };
+    f.src = src(i);
+  });
+}
+let X0 = 0, gen = 0;
+function restart() {
+  if (G.some(g => !g)) return;
+  st.t = 0;
+  for (const g of G) { g.ch(4); g.P.facing = 1; g.step(0.4); }
+  X0 = G[0].P.x;
+  for (const g of G) { g.tp(X0); g.P.facing = 1; g.P.vx = 0; g.step(0.2); }
+}
+function reloadTest() {
+  const my = ++gen; G[2] = G[3] = null; status.textContent = '载入中…';
+  Promise.all([load(2), load(3)]).then(gs => { if (my !== gen) return; G[2] = gs[0]; G[3] = gs[1]; restart(); });
+}
+// 游戏自己的镜头放大 z 倍（setViewOffset 只画主角周围一块，分辨率不降），画到第 i 格
+function grab(g, i) {
+  const [row, col] = CELL[i], cam = g.camera, c = g.renderer.domElement, FW = c.width, FH = c.height, z = st.zoom;
+  cam.clearViewOffset(); cam.updateMatrixWorld();
+  const p = new g.THREE.Vector3(g.P.x, g.P.y + 0.62, 0).project(cam);
+  const hx = (p.x * 0.5 + 0.5) * FW * z, hy = (0.5 - p.y * 0.5) * FH * z;
+  const ox = clamp(hx - FW / 2, 0, FW * z - FW), oy = clamp(hy - FH / 2, 0, FH * z - FH);
+  cam.setViewOffset(FW * z, FH * z, ox, oy, FW, FH);
+  g.renderer.render(g.scene, cam);
+  cam.clearViewOffset();
+  const sw = Math.min(FW, FH), sx = clamp(hx - ox - sw / 2, 0, FW - sw), sy = clamp(hy - oy - sw / 2, 0, FH - sw);
+  ctx.drawImage(c, sx, sy, sw, sw, col * PW, row * PH, PW, PH);
+}
+function label(i, text, sub) {
+  const [row, col] = CELL[i], x = col * PW, y = row * PH;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x, y, PW, 54);
+  ctx.fillStyle = '#e8e4da'; ctx.font = `600 21px ${FONT}`; ctx.fillText(text, x + 16, y + 27);
+  ctx.fillStyle = '#a9a69e'; ctx.font = `14px ${FONT}`; ctx.fillText(sub, x + 16, y + 46);
+}
+const status = document.getElementById('status');
+const MNAME = Object.fromEntries(MODELS);
+let last = performance.now();
+function frame(now) {
+  const real = Math.min(0.05, (now - last) / 1000); last = now;
+  if (G.every(g => g)) {
+    if (!st.paused || st.step) {
+      const dt = st.step ? 1 / 60 * st.speed : real * st.speed, S = SCEN[st.scen];
+      const n = Math.max(1, Math.round(dt / (1 / 120))), h = dt / n;   // 四格用同样的小步长推进
+      for (let k = 0; k < n; k++) { const keys = S.keys(st.t); for (const g of G) g.hold(keys, h, h); st.t += h; }
+      if (st.t > S.len) restart();
+      st.step = false;
+    }
+    for (let i = 0; i < 4; i++) grab(G[i], i);
+    ctx.fillStyle = '#000'; ctx.fillRect(PW - 1, 0, 2, 2 * PH); ctx.fillRect(0, PH - 1, 2 * PW, 2);
+    const tm = MNAME[st.model] + (st.flat === '1' ? ' · 平涂' : ' · 原样');
+    label(0, '现在的主角 · 程序化', 'models/hero.glb + 42-character-anim.js');
+    label(1, '现在的主角 · 动捕', 'models/hero.glb + Mixamo 的 walk / run');
+    label(2, tm + ' · 程序化', '换来的模型 + 游戏自己的动作');
+    label(3, tm + ' · 动捕', '换来的模型 + Mixamo 的 walk / run');
+    status.textContent = `${SCEN[st.scen].name} · ${st.t.toFixed(2)} 秒 · 速度 ${Math.abs(G[0].P.vx).toFixed(2)} 米/秒`;
+    window.__sheetDone = true;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+Promise.all([0, 1, 2, 3].map(load)).then(gs => { gs.forEach((g, i) => G[i] = g); restart(); });
+</script>
+</body>
+</html>
