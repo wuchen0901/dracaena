@@ -4556,6 +4556,10 @@ const STOP = { k: 5, a: 2 };
 // 还冲得比 flip（米/秒）快的时候人还朝着原来的方向（在刹车），慢下来了才转过身去。
 // 跑着掉头往前多冲三十厘米、0.27 秒刹住，再过四分之一秒往回跑起来（以前 0.08 秒速度就反过来了，只多冲十厘米，人像被弹回去的）。腾空的时候不管这些
 const SKID = { k: 7, a: 4, flip: 1.3 };
+// 起步：在地上按下方向键，不是头一帧就窜出去（以前头一下的加速度最大，每秒 30 米/秒，0.08 秒就到了全速的一半），
+// 先匀着加速，快到全速了再缓下来。t：照这个加速度从站着加到全速要几秒（实际 0.4 秒到九成快；走和跑一样久，因为加速度跟着要到的速度算）。
+// 只管加速：慢下来（跑改成走）、腾空时带方向、过场里自己走的都照旧
+const START = { t: 0.4 };
 // 起跳前先蹲一下蓄力：按下跳以后人不是立刻离地，先屈膝往下一沉（动作见 42-character-anim.js 的 JUMP.prep），过这么多秒才蹬起来。
 // [站着, 跑着]：站着跳蹲得久一点、看得清；跑着跳只是最后一步踩实了蹬出去，蹲得短，免得冲到边上才离地（跑着多冲出去 0.2 米）。
 // 蹲的这一小会儿照样能走能跑；已经离了地才按跳（刚走出边缘的那 0.1 秒）来不及蹲，直接跳；蹲的时候走出了边缘，到时候照样跳起来，不会吃掉这一跳。
@@ -4729,7 +4733,10 @@ function stepPlayer(dt) {
   // 在地上松开方向键：不是一下子钉住，带着惯性刹一小段（见上面的 STOP）。过场里自己走的（!ctl）照旧很快站住，站的位置才对得上
   if (P.grounded && !d && lp === null && ctl) { P.vx = damp(P.vx, 0, STOP.k, dt); P.vx -= Math.sign(P.vx) * Math.min(Math.abs(P.vx), STOP.a * dt); }
   else if (P.grounded && d && lp === null && ctl && P.vx * d < 0) { P.vx = damp(P.vx, 0, SKID.k, dt); P.vx -= Math.sign(P.vx) * Math.min(Math.abs(P.vx), SKID.a * dt); }   // 按着反方向：先刹住（见上面的 SKID）
-  else P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? (d ? 3.5 : 0) : lp !== null || d ? 9 : 14, dt);
+  else {
+    const v0 = P.vx; P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? (d ? 3.5 : 0) : lp !== null || d ? 9 : 14, dt);
+    if (P.grounded && d && lp === null && ctl) { const lim = speed / START.t * dt; if ((P.vx - v0) * d > lim) P.vx = v0 + d * lim; }   // 起步：加速度有个上限（见上面的 START）
+  }
   if (d && lc > 0.5) { if (!(P.grounded && ctl && lp === null && P.vx * d < -SKID.flip)) P.facing = d; P.moved = true; }   // 还往另一边冲得快的时候先不转身
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 

@@ -24,6 +24,7 @@
 //   rows=stand,walk,run 拍哪几种情况：stand 原地跳 / walk 走着跳 / run 跑着跳（一直按着 →）
 //        顺带也拍松开方向键以后怎么停下来（见 Last/sidescroller/src/50-player.js 的 STOP）：stop 跑着松手 / wstop 走着松手 —— 这两种 0 是松手的那一刻，不按跳
 //        还有按反方向掉头（50-player.js 的 SKID）：turn 跑着掉头 / wturn 走着掉头 —— 0 是松开 →、按下 ← 的那一刻
+//        还有从站着起步（50-player.js 的 START）：go 起步跑 / wgo 起步走 —— 0 是按下 → 的那一刻
 //   d 镜头离多远，yo 对准离地多高，az 镜头绕到主角前面多少度（0 正侧面，90 正前面）；chap=1&x=3 在哪一章的哪里拍
 const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'strip';
 const num = (k, d) => q.get(k) === null ? d : +q.get(k);
@@ -32,23 +33,23 @@ const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",s
 let G = null, NOMODEL = false;
 const ROWS = (q.get('rows') || 'stand,walk,run').split(',').map(c => ({ c }));
 const CHAP = num('chap', 1), X0 = num('x', 3);
-const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳', stop: '跑着松手', wstop: '走着松手', turn: '跑着掉头', wturn: '走着掉头' };
+const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳', stop: '跑着松手', wstop: '走着松手', turn: '跑着掉头', wturn: '走着掉头', go: '起步跑', wgo: '起步走' };
 
 // ---- 一次跳跃：站好（或者先走、跑起来），按一下跳，按固定的小步往前推；每到 want 里的一个时刻就交给 shoot 拍一格 ----
 // 时刻都相对按下跳的那一刻（按下以后人先蹲一下蓄力，过零点零几秒才离地：见 Last/sidescroller/src/50-player.js 的 JUMP_PREP）
-const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'], stop: ['R'], wstop: ['R', 'S'], turn: ['R'], wturn: ['R', 'S'] };
-const isStop = row => row.c === 'stop' || row.c === 'wstop', isTurn = row => row.c === 'turn' || row.c === 'wturn', noJump = row => isStop(row) || isTurn(row);
+const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'], stop: ['R'], wstop: ['R', 'S'], turn: ['R'], wturn: ['R', 'S'], go: [], wgo: [] };
+const isStop = row => row.c === 'stop' || row.c === 'wstop', isTurn = row => row.c === 'turn' || row.c === 'wturn', isGo = row => row.c === 'go' || row.c === 'wgo', noJump = row => isStop(row) || isTurn(row) || isGo(row);
 const ALLK = ['R', 'L', 'S', 'J'];
 function setup(row) {
   for (const k of ALLK) G.keys.delete(k);
   G.ch(CHAP); G.tp(X0); G.P.facing = 1; G.step(0.6);
   for (const k of KEYS[row.c]) G.keys.add(k);
-  G.step(row.c === 'stand' ? 0.3 : 1.0, DT);
+  G.step(KEYS[row.c].length ? 1.0 : 0.3, DT);
   row.y0 = G.P.y; row.x0 = G.P.x;
 }
 function run(row, want, shoot) {
   setup(row);
-  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0; row.offT = null; row.offX = 0; row.flipT = null; row.zeroT = null; row.backT = null;
+  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0; row.offT = null; row.offX = 0; row.flipT = null; row.zeroT = null; row.backT = null; row.halfT = null; row.nearT = null; row.d3 = null;
   const P = G.P;
   // 往前推到 to 秒。G.step 每叫一次都要画一遍游戏画面，所以拍图时一段只叫一次（中间按 1/120 秒一小步算），高度、距离在每段末尾记一次；
   // 自检（row.fine）要量得准，一小步叫一次。offT 按下跳以后多久离地，air 腾空多久，far 离地以后往前多远（松手的两种：松手以后往前多远）
@@ -58,6 +59,11 @@ function run(row, want, shoot) {
       G.step(m * DT, DT); t += m * DT;
       if (!pressedAt) continue;
       if (isStop(row)) { row.far = P.x - row.x0; if (row.stopT === null && P.vx === 0) row.stopT = t; continue; }
+      if (isGo(row)) {                                                      // 起步：多久到全速的一半、九成，头 0.3 秒走出去多远
+        const full = row.c === 'go' ? 3.3 : 1.25; row.far = P.x - row.x0;
+        if (row.halfT === null && P.vx >= 0.5 * full) row.halfT = t; if (row.nearT === null && P.vx >= 0.9 * full) row.nearT = t; if (row.d3 === null && t >= 0.3 - 1e-6) row.d3 = P.x - row.x0;
+        continue;
+      }
       if (isTurn(row)) {                                                    // 掉头：又往前冲了多远，多久转过身、多久站住、多久往回跑到原来的九成快
         row.far = Math.max(row.far, P.x - row.x0);
         if (row.flipT === null && P.facing < 0) row.flipT = t; if (row.zeroT === null && P.vx <= 0) row.zeroT = t; if (row.backT === null && P.vx <= -0.9 * row.v0) row.backT = t;
@@ -70,7 +76,7 @@ function run(row, want, shoot) {
   for (const w of want.slice().sort((a, b) => a - b)) {
     if (!pressedAt && w > 0) {
       adv(0); pressedAt = true; row.x0 = P.x; row.y0 = P.y; row.v0 = P.vx;
-      if (isStop(row)) { G.keys.delete('R'); G.keys.delete('S'); } else if (isTurn(row)) { G.keys.delete('R'); G.keys.add('L'); } else { G.pressed.add('J'); G.keys.add('J'); }
+      if (isStop(row)) { G.keys.delete('R'); G.keys.delete('S'); } else if (isTurn(row)) { G.keys.delete('R'); G.keys.add('L'); } else if (isGo(row)) { G.keys.add('R'); if (row.c === 'wgo') G.keys.add('S'); } else { G.pressed.add('J'); G.keys.add('J'); }
     }
     adv(w); if (pressedAt && t > 0.1) G.keys.delete('J');
     shoot(i++, t);
@@ -103,15 +109,15 @@ const LAYOUTS = {
     const ts = (q.get('ts') || (ROWS.every(noJump) ? '-0.05,0.03,0.07,0.12,0.18,0.25,0.33,0.42,0.55,0.75' : '-0.05,0.04,0.08,0.11,0.14,0.18,0.25,0.34,0.44,0.55,0.66,0.74,0.8,0.88,1.0')).split(',').map(Number);
     const cw = num('cw', 170), ch = num('ch', 300), LW = 150, HEAD = 112, TOP = 30;
     size(LW + ts.length * cw, HEAD + TOP + ROWS.length * ch);
-    const stops = ROWS.every(isStop), turns = ROWS.every(isTurn);
-    label(q.get('title') || (stops ? '松开方向键 · 怎么停下来' : turns ? '按反方向 · 怎么掉头' : '跳跃 · 从起跳到落地'), 40, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
-    label(q.get('note') || `游戏里实拍：每一行是一种情况；从左往右是连续的时刻（秒，0 是${stops ? '松开方向键' : turns ? '按下反方向' : '按下跳'}的那一刻）。`, 40, 76, { size: 14, weight: 400, color: '#8fa0a0', shadow: false });
+    const stops = ROWS.every(isStop), turns = ROWS.every(isTurn), gos = ROWS.every(isGo);
+    label(q.get('title') || (stops ? '松开方向键 · 怎么停下来' : turns ? '按反方向 · 怎么掉头' : gos ? '按下方向键 · 怎么起步' : '跳跃 · 从起跳到落地'), 40, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+    label(q.get('note') || `游戏里实拍：每一行是一种情况；从左往右是连续的时刻（秒，0 是${stops ? '松开方向键' : turns ? '按下反方向' : gos ? '按下方向键' : '按下跳'}的那一刻）。`, 40, 76, { size: 14, weight: 400, color: '#8fa0a0', shadow: false });
     ts.forEach((t, j) => label(`${t > 0 ? '+' : ''}${t.toFixed(2)}`, LW + j * cw + cw / 2, HEAD + 20, { align: 'center', size: 14, color: '#9fb0b0', shadow: false }));
     ROWS.forEach((row, r) => {
       const y = HEAD + TOP + r * ch;
       run(row, ts, j => grab(LW + j * cw + 1, y + 1, cw - 2, ch - 2, row));
       label(NAME[row.c], 30, y + ch / 2, { size: 21, weight: 600, color: '#f1f5f4', shadow: false });
-      label(isStop(row) ? `滑了 ${row.far.toFixed(2)} 米` : isTurn(row) ? `又冲了 ${row.far.toFixed(2)} 米` : `高 ${row.top.toFixed(2)} 米`, 30, y + ch / 2 + 26, { size: 13, weight: 400, color: '#8fa0a0', shadow: false });
+      label(isStop(row) ? `滑了 ${row.far.toFixed(2)} 米` : isTurn(row) ? `又冲了 ${row.far.toFixed(2)} 米` : isGo(row) ? `${(row.nearT ?? 0).toFixed(2)} 秒到九成快` : `高 ${row.top.toFixed(2)} 米`, 30, y + ch / 2 + 26, { size: 13, weight: 400, color: '#8fa0a0', shadow: false });
     });
   },
   // 几种情况并排成一格，连续拍下来，拿去切成动图
@@ -144,6 +150,7 @@ const LAYOUTS = {
         });
       });
       if (isStop(row)) say(`${NAME[row.c]}：松手时每秒 ${row.v0.toFixed(2)} 米，又往前滑了 ${row.far.toFixed(3)} 米，${row.stopT === null ? '1.2 秒还没停住' : row.stopT.toFixed(3) + ' 秒停住'}`);
+      else if (isGo(row)) { const f = v => v === null ? '—' : v.toFixed(3); say(`${NAME[row.c]}：${f(row.halfT)} 秒到全速的一半，${f(row.nearT)} 秒到九成，头 0.3 秒走出去 ${f(row.d3)} 米`); }
       else if (isTurn(row)) { const f = v => v === null ? '—' : v.toFixed(3); say(`${NAME[row.c]}：按反方向时每秒 ${row.v0.toFixed(2)} 米，又往前冲了 ${row.far.toFixed(3)} 米，${f(row.flipT)} 秒转过身，${f(row.zeroT)} 秒站住，${f(row.backT)} 秒往回到了九成快`); }
       else say(`${NAME[row.c]}：按下跳 ${(row.offT ?? 0).toFixed(3)} 秒后离地，高 ${row.top.toFixed(3)} 米，离地以后远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
       if (tv?.model) say(`　手脚相对胯每帧最多挪（厘米）：${names.map((n, j) => `${n} ${(worst[j] * 100).toFixed(1)}（${at[j].toFixed(2)} 秒）`).join('，')}；上下摆的幅度（厘米）：${names.map((n, j) => `${n} ${((span[j][1] - span[j][0]) * 100).toFixed(0)}`).join('，')}`);
