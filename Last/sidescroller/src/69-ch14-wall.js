@@ -226,6 +226,36 @@ const CH14 = (() => {
     const v = {};
     // 手机（触屏）上降一档：地面网格放粗、砖不倒角、地上的东西减量、雾片少两层。地址后面加 ?low=1 在电脑上也能看这一档
     const LOW = new URLSearchParams(location.search).get('low') === '1' || (typeof touchMode !== 'undefined' && touchMode);
+    // 石头：圆润、风化过的样子（公共的 rockGeo 是一个个平面，棱角太硬）。几层大小不同的起伏叠出形状，法线按共用的顶点平均 —— 表面是平滑过渡的；
+    //   底部压平（坐在地上），颜色随起伏有深浅，朝上的地方长青苔。sd：细分几次（近处 2–3，远处、成堆的、手机上 1）
+    const rockS = (seed, o = {}) => {
+      const g = new THREE.IcosahedronGeometry(1, o.sd ?? 2), p = g.attributes.position, amp = o.amp ?? 0.25, flat = o.flat ?? 0.7, mk = o.moss ?? 0.5;
+      const hh = (x, y, z) => { const t = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + seed * 13.17) * 43758.5453; return t - Math.floor(t); };
+      const vn3 = (x, y, z) => { const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z), fx = x - ix, fy = y - iy, fz = z - iz, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
+        const L = (a, b, t) => a + (b - a) * t, c = (dx, dy, dz) => hh(ix + dx, iy + dy, iz + dz);
+        return L(L(L(c(0, 0, 0), c(1, 0, 0), u), L(c(0, 1, 0), c(1, 1, 0), u), v), L(L(c(0, 0, 1), c(1, 0, 1), u), L(c(0, 1, 1), c(1, 1, 1), u), v), w); };
+      const nv = new Float32Array(p.count);
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        const n = 0.55 * vn3(x * 1.4 + 3, y * 1.4, z * 1.4) + 0.3 * vn3(x * 3.2, y * 3.2 + 7, z * 3.2) + 0.15 * vn3(x * 7, y * 7, z * 7 + 2);
+        const k = 1 + amp * (2 * n - 1); let yy = y * k * flat; if (yy < -0.25 * flat) yy = -0.25 * flat + (yy + 0.25 * flat) * 0.35;   // 底部压平
+        p.setXYZ(i, x * k, yy, z * k); nv[i] = n;
+      }
+      // 平滑的法线：同一个位置的几个顶点（相邻的面各有一份）把面法线加起来再平均
+      const key = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4), acc = new Map(), a = V3(0, 0, 0), b = V3(0, 0, 0), c = V3(0, 0, 0);
+      for (let i = 0; i < p.count; i += 3) {
+        a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+        const fn = b.clone().sub(a).cross(c.clone().sub(a));
+        for (let j = 0; j < 3; j++) { const kk = key(i + j); const v = acc.get(kk); if (v) v.add(fn); else acc.set(kk, fn.clone()); }
+      }
+      const nrm = new Float32Array(p.count * 3), col = new Float32Array(p.count * 3), base = new THREE.Color(o.col ?? 0x4a4945), moss = new THREE.Color(o.mossCol ?? 0x45602a), cc = new THREE.Color();
+      for (let i = 0; i < p.count; i++) {
+        const v = acc.get(key(i)).clone().normalize(); nrm.set([v.x, v.y, v.z], i * 3);
+        const m = sstep(0.35, 0.8, v.y) * mk * sstep(0.45, 0.65, nv[i] + 0.15 * hh(i, 1, 2));
+        cc.copy(base).multiplyScalar(0.78 + 0.4 * nv[i]).lerp(moss, m); col.set([cc.r, cc.g, cc.b], i * 3);
+      }
+      g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
+    };
     const A = { p: [], n: [], c: [], mottle: true }, M = { p: [], n: [], c: [] }, F = { p: [], n: [], c: [] };
     // ---- 近处：一层一层地砌。第 5 层是丁砖（砖头朝外），其余是顺砖，上下错开半块 ----
     for (let r = 0; r < NC; r++) {
@@ -354,7 +384,7 @@ const CH14 = (() => {
       // 左边到头：一面山岩挡住路（左边那堵空气墙就在它跟前）
       for (let k = 0; k < 9; k++) {
         const x = X - 13.2 + rr(-0.6, 0.5) - k * 0.05, z = PZ_(X - 12) + rr(-4, 0.7), sz = rr(0.7, 1.4) * (k < 3 ? 1.3 : 1);   // 只放在路上和路后面：放到镜头跟前会把人挡住
-        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
+        const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 2 : 3, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
         m.scale.set(sz * rr(0.8, 1.2), sz * rr(1.1, 1.8), sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
       }
       // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
@@ -366,7 +396,7 @@ const CH14 = (() => {
           for (let j = 0, nj = Math.floor(rr(2, 7)); j < nj; j++) { const x = cx + rr(-1.5, 1.5) * (1 + dz * 0.03), z = cz + rr(-1.2, 1.2) * (1 + dz * 0.03);
             pts.push([x, z, rr(0.18, 0.5) * (1 + dz * 0.03) * (j ? rr(0.4, 1) : 1)]); }
         }
-        const geos = [7, 19, 31].map(sd => rockGeo(sd, { detail: 0, amp: 0.35, flat: 0.65, moss: 0.4, mossCol: 0x45602a, col: 0x46453f })), per = Math.ceil(pts.length / 3);
+        const geos = [7, 19, 31].map(sdd => rockS(sdd, { sd: 1, amp: 0.35, flat: 0.65, moss: 0.4, mossCol: 0x45602a, col: 0x46453f })), per = Math.ceil(pts.length / 3);
         geos.forEach((geo, gi) => {
           const part = pts.slice(gi * per, gi * per + per), mesh = new THREE.InstancedMesh(geo, rockMat, part.length);
           part.forEach(([x, z, sz], i) => { ee.set(rr(-0.2, 0.2), rr(0, 6.28), rr(-0.2, 0.2)); qq.setFromEuler(ee);
@@ -377,12 +407,12 @@ const CH14 = (() => {
       // 大一点的石块：一块块单独的，半埋在土里
       for (let i = 0, nb = LOW ? 90 : 150; i < nb; i++) {
         const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
-        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: rnd() < 0.6 ? 0 : 1, flat, amp: rr(0.25, 0.42), moss: rr(0.1, 0.8), mossCol: 0x4f6a2e, col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
+        const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 1 : 2, flat, amp: rr(0.25, 0.42), moss: rr(0.1, 0.8), mossCol: 0x4f6a2e, col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
         m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
       }
       // 碎石子：一个带实例的网格，路上也有一些
       {
-        const n = LOW ? 450 : 900, geo = rockGeo(11, { detail: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
+        const n = LOW ? 450 : 900, geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
         for (let i = 0; i < n; i++) {
           const [x, z] = spot(rnd() < 0.18), sz = rr(0.012, 0.05);
           ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
@@ -417,7 +447,7 @@ const CH14 = (() => {
           pts.push([WX + sd * (T / 2 + rr(0.0, 0.1)), z, rr(0.13, 0.24), rr(0.06, 0.16)]);
           if (rnd() < 0.18) pts.push([WX + sd * (T / 2 + rr(0.15, 0.45)), z + rr(-0.2, 0.2), rr(0.18, 0.4), rr(0.1, 0.25)]);   // 偶尔一块大的靠在墙脚
         }
-        const geo = rockGeo(23, { detail: 0, amp: 0.22, flat: 0.75, moss: 0.9, mossCol: 0x45602a, col: 0x4c4b46 }), mesh = new THREE.InstancedMesh(geo, rockMat, pts.length);
+        const geo = rockS(23, { sd: LOW ? 1 : 2, amp: 0.22, flat: 0.75, moss: 0.9, mossCol: 0x45602a, col: 0x4c4b46 }), mesh = new THREE.InstancedMesh(geo, rockMat, pts.length);
         pts.forEach(([x, z, w, h], i) => {
           ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15)); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + h * 0.35, z), qq, V3(w * rr(0.9, 1.3), h, w * rr(0.8, 1.1))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1)));
@@ -440,7 +470,7 @@ const CH14 = (() => {
             if (rnd() < 0.6) { const q0 = p1.clone().lerp(p2, 0.5), b = a + rr(-1, 1); put(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([q0, V3(q0.x + Math.cos(b) * L * 0.3, q0.y + L * 0.3, q0.z), V3(q0.x + Math.cos(b) * L * 0.5, q0.y + L * 0.55, q0.z + rr(-0.3, 0.3))]), 4, r * 0.15, 4), m4.identity()); }
           }
         };
-        const spire = (x, y, z, h) => { const w = h * rr(0.35, 0.6); put(rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.38, flat: 1, moss: 0 }), m4.compose(V3(x, y + h * 0.3, z), qq.setFromEuler(ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15))), V3(w, h * 0.55, w * rr(0.6, 1)))); };   // 一堆坑坑洼洼的岩石，矮而宽
+        const spire = (x, y, z, h) => { const w = h * rr(0.35, 0.6); put(rockS(Math.floor(rr(0, 9999)), { sd: 2, amp: 0.38, flat: 1, moss: 0 }), m4.compose(V3(x, y + h * 0.3, z), qq.setFromEuler(ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15))), V3(w, h * 0.55, w * rr(0.6, 1)))); };   // 一堆坑坑洼洼的岩石，矮而宽
         for (const [z0, n] of [[-13, 9], [-24, 11], [-42, 13], [-70, 15]]) for (let i = 0; i < n; i++) {
           const z = z0 + rr(-4, 4), x = rr(X - 18 + z0 * 0.35, X + 40 - z0 * 0.35);
           if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;             // 墙两边让开，墙一路伸进雾里
