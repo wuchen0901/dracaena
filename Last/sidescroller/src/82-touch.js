@@ -59,7 +59,7 @@ function touchInput(dt) {
   if (mx) { const dx = mx.x - mx.ox; want.add(dx > 0 ? 'R' : 'L'); if (Math.abs(dx) < TG.run * u) want.add('S'); }
   if (swim && my) want.add(my.y < my.oy ? 'J' : 'DOWN');          // 水里：往上滑往上游，往下滑潜下去
   let jNew = false;
-  if (touchJump) { touchJump = false; jHold = 0.34; jNew = true; }  // 往上一划：“跳”按住 0.34 秒，跳满高度
+  if (touchJump) { touchJump = false; jHold = 0.34; jNew = true; }  // 往上一划：“跳”按住 0.34 秒（以前是为了跳满高度；现在每一跳都一样高，不看按多久，这一下只是照旧留着）
   if (jHold > 0) { want.add('J'); jHold -= dt; }
   // 长按：身边有能推拉的东西就抓住（手指不松就一直抓着）；身边是按住型机关也一样，手指不松 E 就一直按着；旁边是普通机关就操作一下
   if (state === 'play' && ctl) for (const t of TOUCHES.values()) {
