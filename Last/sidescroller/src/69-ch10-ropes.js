@@ -21,6 +21,7 @@ const CH10 = (() => {
   const S2 = solid({ id: 'step2', x1: X + 32.95, x2: X + 60, y1: DITCH, y2: H2, snd: 'concrete' });
   const S3 = solid({ id: 'step3', x1: X + 60, x2: END, y1: 0, y2: H3, snd: 'concrete' });
   solid({ x1: END - 1.35, x2: END - 0.9, y1: H3, y2: 40, noclimb: true });             // 最高一级的边上有一道矮墙和栏杆，走到这里为止
+  chapterExit(OLD + 10, () => P.x > END - 4 && P.y > H3 - 0.3);                     // 在最高一级上走到矮墙跟前：黑一下，接到下一章（夜搜）
   // 三根能抓的绳子：挂在吊臂顶端的滑轮下面，离台阶的墙一米
   const R1 = rope({ x: X + 13.0, top: H1 + 1.95, bot: 1.95 });
   const R2 = rope({ x: X + 31.95, top: H2 + 1.95, bot: 3.35 });

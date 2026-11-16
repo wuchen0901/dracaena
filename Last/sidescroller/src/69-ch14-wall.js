@@ -32,6 +32,7 @@ const CH14 = (() => {
   groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
   solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
+  chapterExit(OLD + 14, () => P.x > X + 55);                  // 翻过第二道墙、走到头：黑一下，接到下一章（高台）
   solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：太高，也太薄，扒不上去
   checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);

@@ -109,6 +109,10 @@ function camKey(x) {
   const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
+// 出口：两章在世界里不挨着（中间隔着空气墙、几百米空地）的时候，走到这一章的尽头 cond() 成立，就黑一下接到下一章的开头（80-ui.js 的 nextChapter）。
+// 挨着的章节不用登记，一直往右走就进了下一章；演结局的章节（结局画面上按回车）也不用登记
+const EXITS = [];
+function chapterExit(n, cond) { EXITS.push({ n, cond }); }
 // 脚下是什么（脚步声用，见 52-audio.js）：每一章一个默认的（章节对象上的 ground），这里登记例外的几段 [x1, x2, 种类]，种类也可以是 x => 种类。
 // 后登记的盖住先登记的。站在方块上时看方块自己的 snd（没写就是 wood）。种类：concrete 水泥 / metal 铁板 / wood 木头 / dirt 土路 / forest 林子里的地 /
 // leaves 干落叶 / grass 草地 / gravel 碎石 / sand 沙土 / mud 湿泥 / rock 湿岩石 / puddle 水洼 / wade 蹚水
