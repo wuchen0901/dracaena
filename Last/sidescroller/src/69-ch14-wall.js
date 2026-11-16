@@ -168,6 +168,14 @@ const CH14 = (() => {
     diffuseColor.rgb *= 1. - 0.38 * smoothstep(0.76, 0.9, n3(q * 46. + 1.)) * fd;
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x8f9284)}, smoothstep(0.62, 0.8, n3(q * 4.5 + 9.) * 0.7 + n3(q * 16. + 3.) * 0.3) * smoothstep(0.2, 0.7, vWN.y + 0.3) * 0.22);   // 地衣：一片片淡淡的，不是一颗颗白点
     diffuseColor.rgb *= 1. - 0.3 * smoothstep(0.62, 0.86, n2(vec2((q.x + q.z) * 5., q.y * 0.9))) * (1. - smoothstep(0.5, 0.9, vWN.y));`,
+    // 5 岩板：几乎不画纹理 —— 像样子全靠形状和光（朝上的平面接天光、侧面暗、板缝里的 AO 烘在顶点色里）。表面只有很淡的大片深浅、近处一点颗粒、
+    //   朝上的面一片片淡淡的地衣、侧面雨水流下来的暗痕
+    `float fd = 1. - smoothstep(4., 24., distance(vWP, cameraPosition));
+    float up5 = smoothstep(0.55, 0.9, vWN.y), sd5 = 1. - up5;
+    diffuseColor.rgb *= 0.88 + 0.18 * n3(q * 0.8 + 3.) + 0.1 * (n3(q * 2.9 + 8.) - .5);
+    diffuseColor.rgb *= mix(1., 0.93 + 0.1 * n3(q * 24. + 1.) + 0.05 * (n3(q * 75. + 6.) - .5), 0.3 + 0.7 * fd);
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x9a9c92)}, up5 * smoothstep(0.6, 0.78, n3(q * 2.2 + 5.) * 0.7 + n3(q * 9. + 2.) * 0.3) * 0.16);
+    diffuseColor.rgb *= 1. - 0.3 * sd5 * smoothstep(0.55, 0.85, n2(vec2((q.x + q.z) * 3.5, q.y * 0.6) + 7.));`,
   ];
   function shade(mat, kind, sat = 0.35) {          // sat：保留多少颜色（0 全灰，1 原样）。大部分东西都很灰；落叶、树枝这些小东西留一点颜色
     mat.userData.own = true;
@@ -193,7 +201,10 @@ const CH14 = (() => {
         .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>' + (kind === 4 ? `
           { float bh = rockH(q, ck14) * 0.014 * (0.25 + 0.75 * fd);
             vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
-            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 石头表面的凹凸：光照下每个小凸起一边亮一边暗，裂缝里暗` : ''))
+            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 石头表面的凹凸：光照下每个小凸起一边亮一边暗，裂缝里暗` : kind === 5 ? `
+          { float bh = (0.6 * n3(q * 4.) + 0.4 * n3(q * 15. + 3.)) * 0.006 * (0.3 + 0.7 * fd);
+            vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
+            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 岩板：很浅的起伏，平面还是平的` : ''))
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
         .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;')
         .replace('#include <opaque_fragment>', '{ float gL = dot(outgoingLight, vec3(.299, .587, .114)); outgoingLight *= mix(vec3(0.9, 0.98, 1.1), vec3(1.07, 1.0, 0.9), smoothstep(0.015, 0.2, gL)); }   // 调色：暗处偏一点冷青，亮处偏一点暖\n#include <opaque_fragment>');
@@ -410,12 +421,107 @@ const CH14 = (() => {
           if (tries > 60 || rnd() < p) return [x, z];
         }
       };
-      // 左边到头：一面山岩挡住路（左边那堵空气墙就在它跟前）
-      for (let k = 0; k < 9; k++) {
-        const x = X - 13.2 + rr(-0.6, 0.5) - k * 0.05, z = PZ_(X - 12) + rr(-4, 0.7), sz = rr(0.7, 1.4) * (k < 3 ? 1.3 : 1);   // 只放在路上和路后面：放到镜头跟前会把人挡住
-        const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 2 : 3, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
-        m.scale.set(sz * rr(0.8, 1.2), sz * rr(1.1, 1.8), sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
-      }
+      // ---- 岩板：一层层的基岩从坡里露出来，一块块平的、有直边的厚板，顺着同一个倾角一排排叠上去（像瓦片，后一排压着前一排） ----
+      //   像不像真的，靠的是形状和光，不是纹理：大平面朝上接天光是浅灰，侧面背光是暗的；上沿一圈窄窄的倒角斜着接光，勾出每块板的边；
+      //   板缝里、压在别的板底下的地方暗下去（环境遮蔽，按真的几何算好烘进顶点色）；整片岩层倾角一致，看起来是一整块地层裂开的，不是随手摆的石头
+      const slabMat = shade(lam(0xffffff, { vertexColors: true }), 5, 0.5);
+      const HEMI = []; for (let i = 0, nh = LOW ? 8 : 14; i < nh; i++) { const t = (i + 0.5) / nh, r = Math.sqrt(t), a = i * 2.39996; HEMI.push([r * Math.cos(a), Math.sqrt(1 - t), r * Math.sin(a)]); }   // 半球上的方向（按余弦分布）：算 AO 用
+      const hull2 = pts => {                                           // 平面上一圈点的凸包（逆时针）
+        pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+        for (const p of pts) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+        for (const p of pts.slice().reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+        return lo.slice(0, -1).concat(up.slice(0, -1));
+      };
+      // o：x, z 第一排在哪；ux, uz 往哪个方向叠上去；w 横着多宽；rows 几排；run 每排往里退多少；rise 每排高多少；h0 第一排高出地面多少；
+      //    s 石板大小；dip 往外倾多少（弧度）；zr 给了就是沿着弯路：每块板的 z 跟着路走（路后面 zr 米）；loose 上面再散几块松动的薄板；col 颜色
+      const slabBank = o => {
+        const S = [], cxv = -o.uz, czv = o.ux, yaw = Math.atan2(-o.ux, -o.uz), s = o.s ?? 1;
+        const slab = (x, z, yTop, sw, sd, D, dip, yawJ, roll, lift = 0) => {   // 一块板：本地坐标里顶面在 y = 0，往下 D 米
+          let poly; do { const n = 4 + Math.floor(rnd() * 3), P = [];
+            for (let i = 0; i < n; i++) { const a = (i + rr(-0.42, 0.42)) / n * 6.2832 + 0.4; P.push([Math.cos(a) * sw / 2 * rr(0.85, 1.2), Math.sin(a) * sd / 2 * rr(0.85, 1.2)]); }
+            poly = hull2(P); } while (poly.length < 4);
+          const m = new THREE.Matrix4().compose(V3(x, yTop + lift, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(dip, yaw + yawJ, roll, 'YXZ')), V3(1, 1, 1));
+          const rad = Math.max(sw, sd) / 2;
+          S.push({ poly, D, m, inv: m.clone().invert(), c: V3(0, -D / 2, 0).applyMatrix4(m), r: Math.hypot(rad, D / 2) + 0.05, tone: rr(0.85, 1.12), warm: rnd() < 0.5 });
+        };
+        const ground0 = gy(o.x, o.z), DIP = o.dip ?? Math.atan2(o.rise, o.run) * 0.85;   // 板顺着坡躺：倾角差不多就是坡的角度，顶面才朝着镜头、接得到天光
+        for (let r = 0; r < o.rows; r++) {
+          const wr = o.w * (1 - r * (o.taper ?? 0.07));
+          for (let c = -wr / 2 + rr(-0.2, 0.2) * s; c < wr / 2;) {
+            const sw = rr(0.8, 2.1) * s, sd = o.run * rr(1.3, 1.8), mid = c + sw / 2, along = r * o.run + sd * 0.3 + rr(-0.08, 0.08) * s;
+            let x = o.x + o.ux * along + cxv * mid, z = o.z + o.uz * along + czv * mid;
+            if (o.zr !== undefined) z = PZ_(x) + o.zr + o.uz * along;
+            const g = gy(x, z), yTop = Math.max(ground0 + (o.h0 ?? 0.2) + r * o.rise + rr(-0.3, 0.3) * o.rise, g + 0.12);
+            slab(x, z, yTop, sw, sd, yTop - g + 0.7, DIP + rr(-0.08, 0.08), rr(-0.2, 0.2), rr(-0.1, 0.1));
+            c += sw * rr(0.72, 0.95);
+          }
+        }
+        // 碎下来的：坡脚几块薄板，平躺在地上；上面几块松动的，斜得厉害一点
+        for (let k = 0, nk = o.rubble ?? 5; k < nk; k++) {
+          const c = rr(-0.5, 0.5) * o.w, back = rr(-0.9, -0.2) * o.run, sw = rr(0.25, 0.6) * s, x = o.x + o.ux * back + cxv * c;
+          const z = o.zr !== undefined ? PZ_(x) + o.zr + o.uz * back : o.z + o.uz * back + czv * c, g = gy(x, z), t = rr(0.06, 0.14) * s;
+          slab(x, z, g + t * 0.6, sw, sw * rr(0.6, 1), t + 0.08, rr(-0.15, 0.25), rr(-1.5, 1.5), rr(-0.15, 0.15));
+        }
+        for (let k = 0, nk = o.loose ?? 2; k < nk && S.length; k++) {
+          const b = S[Math.floor(rnd() * Math.min(S.length, 4 * o.rows))], p = V3(rr(-0.2, 0.2), 0, rr(-0.1, 0.25)).applyMatrix4(b.m), t = rr(0.07, 0.16) * s, sw = rr(0.4, 0.9) * s;
+          slab(p.x, p.z, p.y + t * 0.5, sw, sw * rr(0.6, 0.9), t, rr(0.2, 0.45), rr(-1, 1), rr(-0.2, 0.2));
+        }
+        // 每块板的点在不在里面：变回这块板的本地坐标，看高度和平面上的凸多边形
+        const inside = (b, p) => {
+          const l = p.clone().applyMatrix4(b.inv); if (l.y > 0 || l.y < -b.D) return false;
+          const P = b.poly; for (let i = 0; i < P.length; i++) { const a = P[i], c = P[(i + 1) % P.length]; if ((c[0] - a[0]) * (l.z - a[1]) - (c[1] - a[1]) * (l.x - a[0]) < 0) return false; }
+          return true;
+        };
+        // 搭网格：顶面（分几圈，AO 才有地方落）、倒角、侧面（横竖都分几段）。平的法线，每个面一个
+        const pos = [], nor = [], col = [], tri = [], base = new THREE.Color(o.col ?? 0x777671), WARM = new THREE.Color(0x5e5348), COOL = new THREE.Color(0x4a5258);
+        S.forEach((b, bi) => {
+          const P = b.poly, n = P.length, bev = Math.min(0.045 * s, b.D * 0.3), cx = P.reduce((a, p) => a + p[0], 0) / n, cz = P.reduce((a, p) => a + p[1], 0) / n;
+          const T = P.map(([x, z]) => { const dx = x - cx, dz = z - cz, l = Math.hypot(dx, dz) || 1; return [x - dx / l * bev * 1.3, z - dz / l * bev * 1.3]; });
+          const L = (x, y, z) => V3(x, y, z).applyMatrix4(b.m), mid = L(cx, -b.D / 2, cz);
+          const quad = (a, c, d, e) => { tri.push([a, c, d, bi, mid], [a, d, e, bi, mid]); };
+          const ring = f => T.map(([x, z]) => L(cx + (x - cx) * f, 0, cz + (z - cz) * f)), r0 = L(cx, 0, cz), r1 = ring(0.45), r2 = ring(0.8), r3 = ring(1);
+          for (let i = 0; i < n; i++) { const j = (i + 1) % n; tri.push([r0, r1[i], r1[j], bi, mid]); quad(r1[i], r2[i], r2[j], r1[j]); quad(r2[i], r3[i], r3[j], r2[j]); }
+          const ys = [-bev, -bev - 0.12, -bev - 0.35, -bev - 0.8].filter((y, k) => k === 0 || y > -b.D + 0.03); ys.push(-b.D);
+          for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n, a = P[i], c = P[j], m2 = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+            quad(r3[i], L(a[0], -bev, a[1]), L(c[0], -bev, c[1]), r3[j]);                       // 倒角
+            for (let k = 0; k < ys.length - 1; k++) for (const [u, v] of [[a, m2], [m2, c]]) quad(L(u[0], ys[k], u[1]), L(u[0], ys[k + 1], u[1]), L(v[0], ys[k + 1], v[1]), L(v[0], ys[k], v[1]));
+          }
+        });
+        const e1 = V3(0, 0, 0), e2 = V3(0, 0, 0), fn = V3(0, 0, 0), tq = V3(0, 0, 0), bt = V3(0, 0, 0), sp = V3(0, 0, 0), cc2 = new THREE.Color(), aoCache = new Map();
+        const ao = (p, nv, own) => {                                    // 这一点四周有多少被别的板、地面挡住：沿半球上的方向走几步，看落在不在别的板里、地底下
+          const key = [p.x * 200, p.y * 200, p.z * 200, nv.x * 3, nv.y * 3, nv.z * 3].map(Math.round).join() + ',' + own; if (aoCache.has(key)) return aoCache.get(key);
+          tq.set(Math.abs(nv.y) < 0.9 ? 0 : 1, Math.abs(nv.y) < 0.9 ? 1 : 0, 0).cross(nv).normalize(); bt.copy(nv).cross(tq);
+          let hit = 0, tot = 0;
+          for (const [hx, hy, hz] of HEMI) for (const d of (LOW ? [0.15, 0.5] : [0.1, 0.28, 0.6])) {
+            sp.copy(p).addScaledVector(tq, hx * d).addScaledVector(nv, hy * d + 0.01).addScaledVector(bt, hz * d); tot++;
+            if (sp.y < gy(sp.x, sp.z) - 0.02) { hit++; continue; }
+            for (let k = 0; k < S.length; k++) { const b = S[k]; if (k === own || b.c.distanceToSquared(sp) > b.r * b.r) continue; if (inside(b, sp)) { hit++; break; } }
+          }
+          const v = 1 - hit / tot; aoCache.set(key, v); return v;
+        };
+        for (const [a, b, c, bi, mid] of tri) {
+          e1.subVectors(b, a); e2.subVectors(c, a); fn.crossVectors(e1, e2).normalize();
+          let A = [a, b, c]; if (fn.dot(e1.set((a.x + b.x + c.x) / 3 - mid.x, (a.y + b.y + c.y) / 3 - mid.y, (a.z + b.z + c.z) / 3 - mid.z)) < 0) { A = [a, c, b]; fn.negate(); }   // 法线朝外
+          const sb = S[bi];
+          for (const p of A) {
+            pos.push(p.x, p.y, p.z); nor.push(fn.x, fn.y, fn.z);
+            const occ = ao(p, fn, bi), soil = 0.55 + 0.45 * sstep(0, 0.4, p.y - gy(p.x, p.z));   // 贴地的地方被泥土和潮气染暗
+            cc2.copy(base).lerp(sb.warm ? WARM : COOL, 0.3).multiplyScalar(sb.tone * soil * (0.22 + 0.78 * Math.pow(occ, 1.25)));
+            col.push(cc2.r, cc2.g, cc2.b);
+          }
+        }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        const mesh = new THREE.Mesh(g, slabMat); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh); return mesh;
+      };
+      // 左边到头：一面层层的岩坡挡住路，往左一排排高上去（左边那堵空气墙就在它跟前）；只放在路上和路后面：放到镜头跟前会把人挡住
+      slabBank({ x: X - 12.2, z: PZ_(X - 12) - 1.6, ux: -1, uz: 0, w: 5.6, rows: 5, run: 0.65, rise: 0.45, h0: 0.2, s: 1.2, loose: 3, rubble: 7 }); yield;
+      // 路后面露出来的几片岩层：孩子走过时，灯光正好照到它们
+      slabBank({ x: X + 1, z: 0, zr: -1.7, ux: 0, uz: -1, w: 4.6, rows: 4, run: 0.75, rise: 0.42, h0: 0.1, s: 1.1 }); yield;
+      slabBank({ x: X + 17, z: 0, zr: -2.1, ux: 0, uz: -1, w: 6, rows: 5, run: 0.8, rise: 0.5, h0: 0.12, s: 1.3, loose: 3 }); yield;
+      slabBank({ x: X + 27, z: 0, zr: -1.5, ux: 0, uz: -1, w: 3.8, rows: 3, run: 0.7, rise: 0.38, h0: 0.08, s: 1 });
+      yield;
       // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
       {
         const pts = [];
