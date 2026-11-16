@@ -12859,7 +12859,8 @@ const CH14 = (() => {
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
-    dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.42, sunY: 0.28, sunC: 0xc2cad0, sunP: 0.4, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
+    dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.52, sunY: 0.2, sunC: 0xd2d8da, sunP: 0.85,   // 光源在画面左上边缘外：只透进来一团光晕，看不到圆盘
+    stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 20, NIGHT); env(X + 60, NIGHT);
   FAR[OLD + 14] = ['owl', 'twig', 'owl'];
@@ -12920,7 +12921,9 @@ const CH14 = (() => {
     diffuseColor.rgb *= 1. - 0.45 * st * side;
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x8a9078)}, smoothstep(0.72, 0.8, n3(q * 14. + 5.)) * side * 0.5);
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0xb0aca0)}, smoothstep(0.55, 0.8, n2(vec2(q.z * 3., q.y * 9.) + q.x)) * (1. - smoothstep(0.05, 0.4, q.y)) * side * 0.3);
-    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x3f5a26)}, side * (1. - smoothstep(0.05, 0.38, q.y)) * smoothstep(0.42, 0.7, n3(q * 5. + 7.)) * 0.65);   // 墙根长着青苔`,
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x3f5a26)}, side * (1. - smoothstep(0.05, 0.38, q.y)) * smoothstep(0.42, 0.7, n3(q * 5. + 7.)) * 0.65);   // 墙根长着青苔
+    diffuseColor.rgb *= 1. - 0.38 * smoothstep(0.5, 0.75, n2(vec2(q.z * 0.6, q.y * 1.4) + 3.)) * side;   // 大片的水渍：一块块发暗
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.35 + 0.02, smoothstep(0.7, 0.82, n2(vec2(q.z * 1.8, q.y * 3.) + 11.)) * side * 0.55);   // 砖面剥落：一片片露出里面浅一点的砖胎`,
     // 1 远处的整条墙：砖缝画在侧面上（按屏幕上多宽来抗锯齿，越远越糊成一片）
     `if (abs(vWN.x) > 0.5) {
       float r = q.y / ${PY.toFixed(4)}, row = floor(r), zz = q.z / ${PZ.toFixed(4)} - mod(row, 2.) * 0.5, col = floor(zz);
@@ -12942,12 +12945,12 @@ const CH14 = (() => {
     c *= 1. - 0.35 * strata * (0.3 + 0.7 * steep);
     c *= mix(1., 0.72 + 0.4 * fine + 0.25 * (fine2 - .5), fd);                                        // 石面的颗粒
     // 石缝：一格格裂开，近处看得清
-    vec2 cg = g * 1.7, ci = floor(cg), cf = fract(cg); float d1 = 9., d2 = 9.;
+    vec2 cg = g * vec2(1.3, 2.1) + 1.1 * vec2(n2(g * 0.7), n2(g * 0.7 + 5.)), ci = floor(cg), cf = fract(cg); float d1 = 9., d2 = 9.;   // 扭过的格子：裂缝长短不一、方向不齐
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
       vec2 o = vec2(float(i), float(j)), p = o + vec2(h21(ci + o), h21(ci + o + 7.3)) - cf; float d = dot(p, p);
       if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
     }
-    float crack = (1. - smoothstep(0., 0.025 + 0.03 * n2(g * 3.), sqrt(d2) - sqrt(d1))) * smoothstep(0.4, 0.65, n2(g * vec2(0.45, 0.6) + 9.));   // 只在一部分地方裂开，不像铺的石板
+    float crack = (1. - smoothstep(0., 0.012 + 0.035 * n2(g * 2.3), sqrt(d2) - sqrt(d1))) * smoothstep(0.4, 0.65, n2(g * vec2(0.45, 0.6) + 9.)) * smoothstep(0.3, 0.55, n2(g * 3.7 + 2.));   // 只在一部分地方裂开，一条条断断续续，不像铺的石板
     c *= 1. - 0.6 * crack * (0.4 + 0.6 * fd);
     c = mix(c, ${v3(0x8a8d80)}, smoothstep(0.88, 0.94, n3(vec3(g * 6., 2.))) * (1. - steep) * 0.2);   // 地衣：浅色的斑点，长在朝上的石面
     c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.6);                             // 凹处积着碎石，暗一些
@@ -12982,7 +12985,8 @@ const CH14 = (() => {
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           totalEmissiveRadiance += fogColor * wet14 * (0.2 + 0.8 * pow(1. - max(dot(normalize(cameraPosition - vWP), vec3(0., 1., 0.)), 0.), 4.)) * 0.22 * smoothstep(0.15, 0.7, wD);`)   // 水渍映出雾
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
-        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;');
+        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;')
+        .replace('#include <opaque_fragment>', '{ float gL = dot(outgoingLight, vec3(.299, .587, .114)); outgoingLight *= mix(vec3(0.9, 0.98, 1.1), vec3(1.07, 1.0, 0.9), smoothstep(0.015, 0.2, gL)); }   // 调色：暗处偏一点冷青，亮处偏一点暖\n#include <opaque_fragment>');
     };
     return mat;
   }
@@ -13047,7 +13051,7 @@ const CH14 = (() => {
           const spall = rnd() < 0.05, hx = header ? 0.085 : BD / 2, rec = spall ? rr(0.005, 0.012) : rr(0, 0.0035);
           const hy = BH / 2 - rr(0, 0.0025) - (spall ? 0.003 : 0), hz = len / 2 - rr(0.0005, 0.004) - (spall ? 0.004 : 0);
           const loose = notchU(zc) < 1.25 && t <= 2 ? 1 : 0;                                   // 豁口边上的砖有点松动
-          const y = r * PY + J + BH / 2 + rr(-0.0015, 0.0015), x = WX + f * (T / 2 - hx - rec) + rr(-0.002, 0.002);
+          const y = r * PY + J + BH / 2 + rr(-0.0015, 0.0015), bow = (y / TOP) * (0.008 * Math.sin(zc * 0.31 + 1) + 0.006 * Math.exp(-Math.pow((zc + 7) / 1.6, 2)) - 0.005 * Math.exp(-Math.pow((zc - 4.5) / 1.3, 2))), x = WX + f * (T / 2 - hx - rec) + bow + rr(-0.002, 0.002);   // bow：墙这里往一边歪一点、那里鼓出来一点
           pushBox(A, x, y, zc + rr(-0.003, 0.003), hx, hy, hz, !LOW && zc > -14 ? 0.0065 : 0,
             [rr(-0.006, 0.006) + loose * rr(-0.03, 0.03), rr(-0.012, 0.012) + loose * rr(-0.05, 0.05), rr(-0.006, 0.006) + loose * rr(-0.04, 0.04)], brickCol(y, spall ? 0.85 : 1));
           runs.push([zc - len / 2, zc + len / 2]);
@@ -13289,10 +13293,21 @@ const CH14 = (() => {
       v.puffs = Array.from({ length: 24 }, () => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW_SOFT, color: 0xa4aaae, transparent: true, opacity: 0, depthWrite: false, fog: true }));
         sp.material.userData.own = true; sp.visible = false; R.add(sp); return { sp, t: 9, life: 1, vx: 0, vy: 0, s0: 0.2, s1: 0.6, a: 0.2 }; });
       v.ph = 0; v.air = false;
+      // 光柱：从左上那团亮光斜着透下来几道，很淡，在雾里慢慢明灭
+      const [c, g] = mkCanvas(64, 256);
+      for (let y = 0; y < 256; y++) { const a = Math.pow(Math.sin(Math.PI * y / 256), 0.7) * (1 - y / 300); const gr = g.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, y, 64, 1); }
+      const st = canvasTex(c);
+      v.shafts = [[-9, -20, 4, 0.06], [-4, -26, 6, 0.05], [1, -34, 5, 0.045], [-14, -30, 7, 0.04]].map(([ox, dz, w, op], i) => {
+        const mat = new THREE.MeshBasicMaterial({ map: i ? st.clone() : st, color: 0xd6dcdc, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+        mat.userData.own = true; if (i) mat.map.needsUpdate = true;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 34), mat); m.rotation.z = -0.42; m.renderOrder = 36; m.frustumCulled = false; R.add(m);
+        return { m, ox, dz, op, ph: rr(0, 6.28) };
+      });
     }
     V = v;
   }
 
+  const rimL = pointLight({ p: [X, 1.6, -1], c: 0xdde6ee, i: 3.2, d: 2.6, dec: 2, on: 0 });   // 孩子背后一盏很小的冷光：把轮廓从雾里勾出来
   const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 36;
@@ -13300,7 +13315,11 @@ const CH14 = (() => {
     WU.uT.value = T; WU.uHX.value = P.x - WX;
     // 镜头不越过墙：离墙近的时候，镜头留在孩子这一边（不然墙伸到镜头跟前的那一段会挡住人）
     if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
+    // 孩子的上衣：暗红（全画面唯一一块有颜色的地方）。逃出工厂那几章的衣服逻辑在 escape/60-kit.js，它先跑、到了旧原型的章节会关掉；这里在它后面再打开
+    HERO_TOP.uTop.value.setHex(0x4e1a15); HERO_TOP.uTopK.value = 1;
+    { const hz0 = pathZ(P.x); rimL.p[0] = P.x - P.facing * 0.5; rimL.p[1] = P.y + 1.35; rimL.p[2] = hz0 - 0.9; rimL.on = 1; }
     const v = V; if (!v || !v.fogs) return;
+    for (const sh of v.shafts) { sh.m.position.set(cam.x + sh.ox, 9, cam.pz + sh.dz); sh.m.material.opacity = sh.op * (0.6 + 0.4 * Math.sin(T * 0.21 + sh.ph)) * (0.8 + 0.3 * (GUST.v ?? 0.6)); }
     const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
     // 雾片：跟着镜头，花纹钉在世界上、再慢慢地往右飘
     for (const f of v.fogs) { f.m.position.set(cam.x, f.h / 2 - 0.6 + Math.max(0, -f.dz) * 0.05, cam.pz + f.dz); f.t.offset.x = (cam.x + T * f.sp * (0.6 + g)) / 140 + f.ph; }
@@ -13336,7 +13355,7 @@ const CH14 = (() => {
       M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); L.mesh.setMatrixAt(o.i, M4); L.mesh.instanceMatrix.needsUpdate = true; }
 
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; } });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; rimL.on = 0; } });
 })();
 
 // ============================================================
