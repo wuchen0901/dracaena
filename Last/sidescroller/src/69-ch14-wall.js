@@ -346,11 +346,16 @@ const CH14 = (() => {
         const ridge = 1 - Math.abs(2 * vn(x * 0.6 + 3, z * 0.7) - 1);                                  // 山脊一样的尖棱
         return k * amp * (1.5 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.7 * (ridge - 0.5) + 0.35 * (vn(x * 2.2, z * 2.4 + 5) - 0.5));
       };
-      // 孩子身后（z < 0）：平缓起伏的林地（不是坑、不是越远越高）。远处看不清，靠的是一层层的树干、身后的灌木丛和光圈外很快暗下去的地面
+      // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
+      // 孩子身后：走的这条路是一道岩台的边。身后一两米地面就往下塌，掉进三四米深、雾气弥漫的低地 —— 远处的地面不在视线里（被岩台的边挡住、沉在雾下面），
+      //   能看见的只有脚下这一窄条，远处没有碎屑也就理所当然；很远的地方才慢慢升回来，藏在雾里。墙底下留一道窄窄的山脊，墙沿着它伸进雾里
       const hBack = (x, z) => {
         const dz = -z, s = sstep(0.7, 1.6, dz) * sstep(0.7, 2.6, Math.abs(x - WX));
-        const low = (0.25 + 0.012 * Math.min(dz, 60)) * (1.4 * (vn(x * 0.05, z * 0.04) - 0.5) + 0.5 * (vn(x * 0.2 + 3, z * 0.18) - 0.5));
-        return s * (low + Math.max(0, dz - 45) * 0.04);
+        const edge = 1.3 + 1.1 * vn(x * 0.21 + 4, 7);                                                      // 岩台的边离路多远：沿路各处不一样
+        const drop = sstep(edge, edge + 2.2, dz) * (3.2 + 1.8 * vn(x * 0.07, 5));
+        const low = (0.3 + 0.03 * Math.min(dz, 60)) * (1.4 * (vn(x * 0.05, z * 0.04) - 0.5) + 0.5 * (vn(x * 0.2 + 3, z * 0.18) - 0.5));
+        const lip = 0.25 * sstep(edge - 0.6, edge, dz) * (1 - sstep(edge, edge + 0.5, dz)) * vn(x * 0.9, 2);   // 边上微微翘起的一道石棱
+        return s * (-drop + low + lip + Math.max(0, dz - 40) * 0.06);
       };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
@@ -371,7 +376,7 @@ const CH14 = (() => {
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
       const clump = (x, z) => sstep(0.35, 0.72, vn(x * 0.35 + 40, z * 0.45)) * 0.85 + 0.15;
-      const ANCH = [];                                                 // 中景的锚点（岩石）试过，去掉了；身后的灌木丛在下面另外种
+      const ANCH = [];                                                 // 中景的锚点（岩石、近处的树）试过，去掉了：看不见远处靠的是岩台的边，不是挡
       const spot = (onPath, reach = 3.2) => {                          // 随便找一处：x 在这一章里，z 在那条弯路前后几米
         if (!onPath && ANCH.length && rnd() < 0.28) {                  // 有一部分堆在锚点脚下：岩石、树根周围一圈
           const a = ANCH[Math.floor(rnd() * ANCH.length)], ang = rr(0, 6.28), rad = a.r * rr(0.85, 1.7);
@@ -426,26 +431,6 @@ const CH14 = (() => {
         LV.sort((a, b) => a.x - b.x); v.leaves = { mesh, list: LV, live: [] };
       }
       v.gy = gy; v.leafMat = leafMat;
-      // ---- 灌木丛、蕨丛：路后面一丛丛低矮的植物（一片片叶子堆出来的，不是画在板上的草），盖住孩子身后的地面；路前面的暗处也有几丛 ----
-      {
-        const shrubs = [];
-        for (let x = X - 16; x < X + 36; x += rr(0.35, 0.9)) {
-          const back = rnd() < 0.82, zr = back ? -rr(1.3, 7.5) : rr(1.2, 3.2), z = PZ_(x) + zr;
-          if (Math.abs(x - WX) < 1.2 + (back ? 0 : 1)) continue;                       // 墙两边、翻墙的地方空着
-          if (rnd() > clump(x, z) + 0.45) continue;                                    // 也是成片的
-          shrubs.push([x, z, rr(0.45, 1.1) * (back ? 1 : 0.7), rr(0.35, 0.9)]);
-        }
-        const per = LOW ? 110 : 200, n = shrubs.length * per, mesh = new THREE.InstancedMesh(leafGeo(), shade(lam(0xffffff, { side: THREE.DoubleSide }), 3, 0.55), n);
-        const SC = [0x2f3a24, 0x3a4228, 0x2a3020, 0x34402a, 0x4a3a26, 0x3e3324];
-        let i = 0;
-        for (const [x, z, w, h] of shrubs) for (let k = 0; k < per; k++) {
-          const a = rr(0, 6.28), rr_ = w * Math.sqrt(rnd()), up = Math.pow(rnd(), 0.7) * h * (1 - (rr_ / w) * 0.6);
-          const px = x + Math.cos(a) * rr_, pz = z + Math.sin(a) * rr_ * 0.8, sz = rr(0.16, 0.32);
-          ee.set(rr(-0.9, 0.9), rr(0, 6.28), rr(-0.9, 0.9)); qq.setFromEuler(ee);
-          M4.compose(V3(px, gy(px, pz) + up, pz), qq, V3(sz, sz, sz * rr(0.5, 0.9))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i++, cc.set(pick(SC)).multiplyScalar(rr(0.7, 1.15)));
-        }
-        mesh.count = i; mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
-      }
       // ---- 墙基：墙脚两边垫着一溜山石，上面长青苔 —— 墙是坐在山上的，不是摆在一条平地上 ----
       {
         const pts = [];
@@ -478,23 +463,11 @@ const CH14 = (() => {
           }
         };
         const spire = (x, y, z, h) => { const w = h * rr(0.35, 0.6); put(rockS(Math.floor(rr(0, 9999)), { sd: 2, amp: 0.38, flat: 1, moss: 0 }), m4.compose(V3(x, y + h * 0.3, z), qq.setFromEuler(ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15))), V3(w, h * 0.55, w * rr(0.6, 1)))); };   // 一堆坑坑洼洼的岩石，矮而宽
-        // 一层层又直又高的树干：从孩子身后几米到很远，一直伸出画面顶上；越远越被雾抬浅。视线往远处走不了几米就被它们截住
-        const pole = (x, y, z, h, r) => {
-          const tg = new THREE.CylinderGeometry(r * 0.55, r, h, 9); tg.translate(0, h / 2, 0); put(tg, m4.makeRotationZ(rr(-0.035, 0.035)).setPosition(x, y, z));
-          for (let k = 0, nb = Math.floor(rr(0, 3)); k < nb; k++) { const by = y + h * rr(0.35, 0.8), a = rr(0, 6.28), L = rr(0.6, 1.8);   // 几根断掉的枯枝茬
-            put(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V3(x, by, z), V3(x + Math.cos(a) * L * 0.6, by + L * 0.15, z + Math.sin(a) * L * 0.4), V3(x + Math.cos(a) * L, by + L * rr(0.1, 0.4), z + Math.sin(a) * L * 0.6)]), 4, r * 0.12, 4), m4.identity()); }
-        };
-        for (const [z0, sp] of [[-4.5, 3.2], [-8, 3.4], [-13, 3.6], [-20, 4], [-30, 4.5], [-46, 5.5], [-70, 7]])
-          for (let x = X - 26 + rr(0, sp); x < X + 56; x += sp * rr(0.6, 1.4)) {
-            const z = PZ_(x) * 0.6 + z0 + rr(-1.5, 1.5);
-            if (Math.abs(x - WX) < 2 + (-z) * 0.1) continue;                // 墙两边让开，墙一路伸进雾里
-            const r = rr(0.22, 0.5) * (1 + (-z0) * 0.004);
-            pole(x, gy(x, z) - 0.3, z, rr(22, 30), r);
-          }
-        for (const [z0, n] of [[-24, 6], [-42, 8]]) for (let i = 0; i < n; i++) {   // 远处夹几棵带枝杈的枯树
+        for (const [z0, n] of [[-13, 9], [-24, 11], [-42, 13], [-70, 15]]) for (let i = 0; i < n; i++) {
           const z = z0 + rr(-4, 4), x = rr(X - 18 + z0 * 0.35, X + 40 - z0 * 0.35);
-          if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;
-          tree3(x, gy(x, z) - 0.3, z, rr(9, 16));
+          if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;             // 墙两边让开，墙一路伸进雾里
+          const y = gy(x, z) - 0.3;
+          tree3(x, y, z, rr(9, 16));   // 雾里只有从低地里长上来的枯树（岩堆去掉了）   // 岩堆只放在远的几层，近的那层太抢眼
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P_, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N_, 3));
         const m = new THREE.Mesh(g, shade(lam(0x24272a), 3, 0.3)); m.frustumCulled = false; R.add(m);
