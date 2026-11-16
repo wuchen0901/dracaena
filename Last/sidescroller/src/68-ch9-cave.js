@@ -38,6 +38,7 @@ const CH9 = (() => {
     .map(([a, b, bot]) => water({ x1: X + a, x2: X + b, y: -0.35, bot }));
   groundFront(X - 30, X + 360, null);                     // 共用的地面这一段不铺：山洞自己搭（前面是岩石的剖面）
   solid({ x1: X + 338, x2: X + 340, y1: -2, y2: 30, noclimb: true });   // 走出山洞以后先到这里为止
+  chapterExit(OLD + 9, () => P.x > X + 335);              // 走到这里：黑一下，接到下一章（吊绳与高台）
   solid({ x1: X - 7.5, x2: X - 6.5, y1: -2, y2: 30, noclimb: true });   // 身后是进来的洞口，不往回走
   ground(X - 30, 0x1c2224); ground(X + 360, 0x1c2224);
   for (const x of [3, 25.5, 41, 63.5, 81, 100, 119, 139.5, 151, 177.5, 193, 211, 233, 269.5, 281, 301.5, 320]) checkpoint(X + x);

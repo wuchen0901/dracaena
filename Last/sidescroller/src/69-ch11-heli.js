@@ -23,6 +23,7 @@ const CH11 = (() => {
   surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
   solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
   solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
+  chapterExit(OLD + 11, () => P.x > X + 148);              // 走进浓雾里：黑一下，接到下一章（作坊一角）
 
   // ---------------- 画面：雾里的剪影（照第二十一章的做法，见 design/visual-style.md）----------------
   // 地面的起伏：路面那一条（z 在 RB..RF）是平的，跟着物理地形走；路后面是野地，离路越远起伏越大、越远越高（丘陵在孩子身后，不挡人）；

@@ -34,6 +34,7 @@ function sim(dt) {
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { setMuted(!muted); soundNote(); }
   if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
+  if (state === 'end' && (pressed.has('E') || pressed.has('J') || rawKeys.has('Enter') || rawKeys.has('Space'))) continueFromEnd();   // 结局画面：接到下一章
 
   // 这些每一帧都清零，由走到的那一章重新填写
   HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null; camJit = null;
@@ -44,7 +45,7 @@ function sim(dt) {
   stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
-  stepPits(); stepFade(dt); stepChapterCard(dt);
+  stepPits(); stepExits(); stepFade(dt); stepChapterCard(dt);
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）

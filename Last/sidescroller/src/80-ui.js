@@ -18,7 +18,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二', '二十三'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二', '二十三', '二十四', '二十五', '二十六'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
@@ -56,6 +56,25 @@ function startChapter(n, o = {}) {
   if (!o.quiet) showChapter(c);
 }
 
+// ---- 二十四章接成一条路：这一章走完了，黑一下接到下一章的开头 ----
+// 世界里挨着的章节（第 1–8 章、第 9–16 章）一直往右走就过去了；不挨着的在章节文件里登记出口（20-world.js 的 chapterExit），
+// 演结局的三章（第 8 章结尾、第 16 章生态中枢、第 21 章机房）在结局画面上按回车 / 空格 / E（触屏点一下）接下去
+const chapLabel = c => c.label ?? `第${CN[c.n - 1]}章`;
+function nextChapter(n) {
+  if (n >= CHAPTERS.length) return false;
+  $('end').classList.add('hide');
+  fadeOut(() => { STORY.done = Math.max(STORY.done ?? 0, n); startChapter(n + 1); }, 1.2);   // 先记下这一章已经走完：startChapter 不再按“跳过去”替它补故事进度
+  return true;
+}
+function stepExits() {
+  if (state !== 'play' || !ctl) return;
+  const n = chapterAt(P.x).n;
+  for (const e of EXITS) if (e.n === n && e.cond()) { nextChapter(n); return; }
+}
+let endAt = -1e9;                                       // 结局画面是什么时候出来的：刚出来的一会儿不接受“继续”，免得手上正按着的键把它跳过去
+const endChapter = () => (endZone ?? chapterAt(P.x)).n;
+function continueFromEnd() { if (state === 'end' && T - endAt > 1.5) nextChapter(endChapter()); }
+
 // ---- 章节菜单（Esc）----
 // 二十章排成两列：左边《逃出工厂》（第 1–7 章），右边旧原型（第 8–20 章）。上下键按章节号顺着走，走到头接回第一章
 let menuOpen = false, menuSel = 0;
@@ -90,8 +109,10 @@ function begin() {
 // 结局画面上的大标题和最底下那一行：网页里写的是旧原型的；哪一章自己写了 end: { h1, go } 就换成它的（《逃出工厂》的结尾）
 const END_TXT = { h1: $('end').querySelector('h1').textContent, go: $('end').querySelector('.go').innerHTML };
 function endTexts() {
-  const t = chapterAt(P.x).end ?? END_TXT;
-  $('end').querySelector('h1').textContent = t.h1; KEY_TEXT.end = t.go; applyInputTexts();   // 键盘、触屏两套说法（82-touch.js）
+  const t = chapterAt(P.x).end ?? END_TXT; endAt = T;
+  const nx = CHAPTERS[endChapter()], go = nx ? ` 继续 · ${chapLabel(nx)} ${nx.name}` : '';   // 后面还有章节：最底下一行先写怎么接下去
+  $('end').querySelector('h1').textContent = t.h1;
+  KEY_TEXT.end = (go ? `按 回车${go}　·　` : '') + t.go; TOUCH_TEXT.end0 ??= TOUCH_TEXT.end; TOUCH_TEXT.end = (go ? `点一下${go}　·　` : '') + TOUCH_TEXT.end0; applyInputTexts();   // 键盘、触屏两套说法（82-touch.js）
 }
 function showEnd(sub, txt) {
   endTexts();
