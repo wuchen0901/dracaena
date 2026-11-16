@@ -34,7 +34,7 @@ const CHAP = num('chap', 1), X0 = num('x', 3);
 const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳', stop: '跑着松手', wstop: '走着松手' };
 
 // ---- 一次跳跃：站好（或者先走、跑起来），按一下跳，按固定的小步往前推；每到 want 里的一个时刻就交给 shoot 拍一格 ----
-// 时刻都相对按下跳的那一刻
+// 时刻都相对按下跳的那一刻（按下以后人先蹲一下蓄力，过零点零几秒才离地：见 Last/sidescroller/src/50-player.js 的 JUMP_PREP）
 const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'], stop: ['R'], wstop: ['R', 'S'] };
 const isStop = row => row.c === 'stop' || row.c === 'wstop';
 function setup(row) {
@@ -46,14 +46,19 @@ function setup(row) {
 }
 function run(row, want, shoot) {
   setup(row);
-  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0;
+  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0; row.offT = null; row.offX = 0;
   const P = G.P;
-  // 往前推到 to 秒。G.step 每叫一次都要画一遍游戏画面，所以一段只叫一次（中间按 1/120 秒一小步算）；高度、距离、腾空多久在每段末尾记一次
+  // 往前推到 to 秒。G.step 每叫一次都要画一遍游戏画面，所以拍图时一段只叫一次（中间按 1/120 秒一小步算），高度、距离在每段末尾记一次；
+  // 自检（row.fine）要量得准，一小步叫一次。offT 按下跳以后多久离地，air 腾空多久，far 离地以后往前多远（松手的两种：松手以后往前多远）
   const adv = to => {
     const n = Math.round((to - t) / DT); if (n <= 0) return;
-    const was = P.grounded; G.step(n * DT, DT); t += n * DT;
-    if (pressedAt) { if (!P.grounded || !was) row.air += n * DT; row.top = Math.max(row.top, P.y - row.y0); if (!P.grounded || isStop(row)) row.far = P.x - row.x0; }
-    if (pressedAt && isStop(row) && row.stopT === null && P.vx === 0) row.stopT = t;
+    for (let k = row.fine ? n : 1, m = n / k; k > 0; k--) {
+      G.step(m * DT, DT); t += m * DT;
+      if (!pressedAt) continue;
+      if (isStop(row)) { row.far = P.x - row.x0; if (row.stopT === null && P.vx === 0) row.stopT = t; continue; }
+      if (!P.grounded) { if (row.offT === null) { row.offT = t - m * DT; row.offX = P.x - P.vx * m * DT; } row.air += m * DT; row.far = P.x - row.offX; }
+      row.top = Math.max(row.top, P.y - row.y0);
+    }
   };
   for (const w of want.slice().sort((a, b) => a - b)) {
     if (!pressedAt && w > 0) {
@@ -88,7 +93,7 @@ function size(w, h) { sheet.width = w; sheet.height = h; frame.style.top = h + '
 const LAYOUTS = {
   // 每种情况一行：从按下跳之前，到落地站稳
   strip() {
-    const ts = (q.get('ts') || '-0.1,0.03,0.08,0.14,0.22,0.32,0.42,0.52,0.6,0.66,0.72,0.8,0.95').split(',').map(Number);
+    const ts = (q.get('ts') || (ROWS.every(isStop) ? '-0.05,0.03,0.07,0.12,0.18,0.25,0.33,0.42,0.55,0.75' : '-0.05,0.04,0.08,0.11,0.14,0.18,0.25,0.34,0.44,0.55,0.66,0.74,0.8,0.88,1.0')).split(',').map(Number);
     const cw = num('cw', 170), ch = num('ch', 300), LW = 150, HEAD = 112, TOP = 30;
     size(LW + ts.length * cw, HEAD + TOP + ROWS.length * ch);
     const stops = ROWS.every(isStop);
@@ -119,6 +124,7 @@ const LAYOUTS = {
   check() {
     size(600, 60); const say = s => console.log('检查 · ' + s), hero = G.hero(), tv = hero.B.traveler, V = G.THREE.Vector3;
     for (const row of ROWS) {
+      row.fine = true;
       const names = ['LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'], prev = names.map(() => null), worst = names.map(() => 0), at = names.map(() => 0), span = names.map(() => [Infinity, -Infinity]);
       const ts = Array.from({ length: 84 }, (_, i) => -0.2 + i / 60);
       run(row, ts, (i, t) => {
@@ -131,7 +137,7 @@ const LAYOUTS = {
         });
       });
       if (isStop(row)) say(`${NAME[row.c]}：松手时每秒 ${row.v0.toFixed(2)} 米，又往前滑了 ${row.far.toFixed(3)} 米，${row.stopT === null ? '1.2 秒还没停住' : row.stopT.toFixed(3) + ' 秒停住'}`);
-      else say(`${NAME[row.c]}：高 ${row.top.toFixed(3)} 米，远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
+      else say(`${NAME[row.c]}：按下跳 ${(row.offT ?? 0).toFixed(3)} 秒后离地，高 ${row.top.toFixed(3)} 米，离地以后远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
       if (tv?.model) say(`　手脚相对胯每帧最多挪（厘米）：${names.map((n, j) => `${n} ${(worst[j] * 100).toFixed(1)}（${at[j].toFixed(2)} 秒）`).join('，')}；上下摆的幅度（厘米）：${names.map((n, j) => `${n} ${((span[j][1] - span[j][0]) * 100).toFixed(0)}`).join('，')}`);
     }
     label('自检结果在控制台里', 20, 38, { size: 18, color: '#c3cfce' });

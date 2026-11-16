@@ -6,6 +6,12 @@ const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
 // 松开方向键以后怎么停下来：速度按比例往下掉（k，每秒掉掉几倍），再加一点固定的减速（a，米/秒²）让它停得干脆、不拖尾巴。
 // 跑着松手往前带半米、不到半秒停住，走着松手带十几厘米（以前是 0.07 秒就掉了六成多的速度，跑着也只带二十厘米，像被钉在地上）
 const STOP = { k: 5, a: 2 };
+// 起跳前先蹲一下蓄力：按下跳以后人不是立刻离地，先屈膝往下一沉（动作见 42-character-anim.js 的 JUMP.prep），过这么多秒才蹬起来。
+// [站着, 跑着]：站着跳蹲得久一点、看得清；跑着跳只是最后一步踩实了蹬出去，蹲得短，免得冲到边上才离地（跑着多冲出去 0.2 米）。
+// 蹲的这一小会儿照样能走能跑；已经离了地才按跳（刚走出边缘的那 0.1 秒）来不及蹲，直接跳；蹲的时候走出了边缘，到时候照样跳起来，不会吃掉这一跳。
+// 跳多高、腾空多久都不变
+const JUMP_PREP = [0.11, 0.06];
+function takeOff() { P.vy = JUMP_V; P.grounded = false; P.jumpBuf = 0; P.coyote = 0; P.prep = 0; fx('jump'); }
 let hero = makeCharacter('K'), state = 'title', T = 0, ctl = true, autoDir = 0;
 const sfx = {};                                   // 音效函数在后面的音频部分填进来
 const fx = (name, ...a) => { if (sfx[name]) sfx[name](...a); };
@@ -123,6 +129,7 @@ function stepPlayer(dt) {
   P.jumpBuf -= dt; P.coyote -= dt;
   P.ropeCD = Math.max(0, (P.ropeCD || 0) - dt);
   if (P.mode !== 'rope' && P.rope) { P.rope.held = false; P.rope = null; }      // 回到存档点、换章节时还抓着绳子：放开
+  if (P.mode !== 'normal') P.prep = 0;                                            // 正蹲着要跳的时候抓住了东西、掉进了水里：这一跳不算了
 
   if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
     const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
@@ -175,9 +182,12 @@ function stepPlayer(dt) {
   if (d && lc > 0.5) { P.facing = d; P.moved = true; }
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 
-  if (P.jumpBuf > 0 && (P.grounded || P.coyote > 0) && P.speedK > 0.5 && lh < 0.35 && lc > 0.5) {
-    P.vy = JUMP_V; P.grounded = false; P.jumpBuf = 0; P.coyote = 0; P.jumped = true; fx('jump');   // 每一跳都一样高：点一下和按住不放没有区别（以前松开跳跃键会把上升掐断）
+  if (P.jumpBuf > 0 && !(P.prep > 0) && (P.grounded || P.coyote > 0) && P.speedK > 0.5 && lh < 0.35 && lc > 0.5) {
+    P.jumpBuf = 0; P.jumped = true;                 // 每一跳都一样高：点一下和按住不放没有区别（以前松开跳跃键会把上升掐断）
+    if (P.grounded) P.prep = P.prepT = lerp(JUMP_PREP[0], JUMP_PREP[1], sstep(1.5, 3, Math.abs(P.vx)));   // 先蹲一下蓄力（见上面的 JUMP_PREP）
+    else takeOff();
   }
+  if (P.prep > 0 && (P.prep -= dt) <= 0) takeOff();
 
   // 水平移动，被方块侧面挡住
   let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
@@ -243,7 +253,7 @@ function stepFade(dt) {
 }
 function placePlayer(x, y) {
   if (P.holdObj) P.holdObj.on = false;
-  Object.assign(P, { x, vx: 0, vy: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
+  Object.assign(P, { x, vx: 0, vy: 0, prep: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
   P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
 }
 function respawn() {
