@@ -14,6 +14,7 @@ const CH16 = (() => {
   solid({ x1: X - 3, x2: X - 2, y1: -8, y2: 12, noclimb: true });
   solid({ x1: X + 39, x2: X + 40, y1: -8, y2: 12, noclimb: true });
   checkpoint(X + 2); checkpoint(X + 24);
+  chapterExit(OLD + 16, { a0: X + 32.5, a1: X + 38.5, tint: 0x0b1a1e, when: () => powered });   // 电源恢复以后，往实验室深处走：起一阵雾，接到工厂深处（第 25 章，69-h01-vat.js）
   camKeys([X - 20, 20, 1, 1, 0], [X + 8, 20, 0.5, 2, 0], [X + 24, 17, 1.2, 1, 0], [X + 42, 17, 1.2, 1, 0]);
   env(X - 20, { fog: 0x102b35, fogD: 0.025, hemiS: 0x83b5c0, hemiG: 0x102022, hemiI: 0.65, keyI: 0.4 }, true);
   let doorMesh, lamp, powered = false;
@@ -24,7 +25,7 @@ const CH16 = (() => {
   hint(() => P.x > X + 12 && P.x < X + 15 && P.y < -4.4 && !hatch.want, '按 <b>E</b> 转动阀门，打开水下入口');
   hint(() => P.x > X + 15 && P.x < X + 23, '沿通道向右游，从水井按 <b>空格</b> 上浮');
   hint(() => P.x > X + 24 && !powered, '已经进入实验室。到控制台按 <b>E</b> 恢复电源');
-  hint(() => P.x > X + 24 && powered, '实验室电源已恢复 · 水下实验室探索完成');
+  hint(() => P.x > X + 24 && P.x < X + 32 && powered, '实验室电源已恢复，往里面走');
   function* build(R) {
     const block = (x,y,w,h,d,color,z=-1) => { const m = new THREE.Mesh(bx(w,h,d), lam(color)); m.position.set(X+x,y,z); R.add(m); return m; };
     backdrop(X-5,X+41,-8,10,-9,25,g=>{
