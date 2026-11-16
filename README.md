@@ -34,6 +34,8 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 
 然后在浏览器打开 <http://127.0.0.1:8765/escape.html>。页面需要联网，three.js 从 cdn.jsdelivr.net 加载。
 
+画面最后统一过一遍后期（远处轻微模糊、统一调色、胶片颗粒，见 `design/visual-style.md` 第 8 条）：玩的时候按 G 开 / 关对比，地址后面加 `?post=0` 关掉。
+
 没有装 Python 的机器（比如 Windows）用 `node Last/tools/serve.mjs 8765` 代替上面那一行，`.claude/launch.json` 里对应的是 `last-prototype-node`（端口 8771）。
 
 地址后面加 `?ch=4` 可以直接从第四章开始，`?ch=7` 是新加的“雾”，`?ch=9` 是旧原型的开头（工厂），`?ch=17` 直接进山洞，`?ch=18` 直接到吊绳那一章，`?ch=19` 直接到直升机搜人的那一章，`?ch=20` 从凿记号开始玩《长夜》原型 C，`?ch=21` 直接进机房（灯泡已经在包里），`?ch=22` 是“墙”，`?ch=23` 是“高台”，`?ch=24` 是“水下实验室”，`?ch=25` 到 `?ch=36` 是“工厂深处”的十二章。按 Esc 选章节：左边一列是《逃出工厂》，中间一列是旧原型和两个试验关，右边一列是工厂深处。
