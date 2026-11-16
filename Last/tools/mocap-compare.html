@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>动捕对比</title>
+<style>
+  :root { --bg: #0b0f11; --fg: #d9d6cf; --dim: #8b8a85; --line: #2a2f33; --hot: #e3b45a; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p { margin: 4px 0; color: var(--dim); }
+  #view { display: block; width: 100%; height: auto; background: #000; border: 1px solid var(--line); margin: 12px 0 8px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0; }
+  .bar b { color: var(--dim); font-weight: 400; min-width: 3em; }
+  button { background: #161b1e; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  button.on { border-color: var(--hot); color: var(--hot); }
+  #status { color: var(--dim); font-variant-numeric: tabular-nums; }
+  /* 两个游戏装在看不见的地方：页面只拿它们的画面 */
+  iframe { position: fixed; left: -3000px; top: 0; width: 960px; height: 540px; border: 0; }
+  ul { color: var(--dim); padding-left: 20px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>程序化 vs 动作捕捉</h1>
+  <p>左边是游戏现在的走和跑（42-character-anim.js 里的公式每帧算出来的）；右边是同一个主角，地上走和跑换成 Mixamo 的动捕（three.js 示例 Xbot.glb 里的 walk / run，重定向到主角的骨架上，见 42-mocap.js）。两边按键、时间完全一样。</p>
+  <canvas id="view" width="1600" height="800"></canvas>
+  <div class="bar"><b>动作</b><span id="scen"></span></div>
+  <div class="bar"><b>速度</b><span id="speed"></span></div>
+  <div class="bar"><b>镜头</b><span id="zoom"></span></div>
+  <div class="bar"><b></b><button id="pause">暂停</button><button id="stepb">单步 →</button><span id="status">载入中…</span></div>
+  <ul>
+    <li>右边只有<strong>在地上走、跑</strong>换成了动捕；站着、起跳、腾空、落地、刹车都还是程序化的，动捕在这些时候淡出（看“跑跳跑”“跑停跑”里接得顺不顺）。</li>
+    <li>步子按走过的距离推进，脚不打滑。但 Xbot 的 run 原本换算到主角身上约 2 米/秒，游戏里跑是 3.3 米/秒，所以右边的跑比原动作快 1.6 倍左右播放，步频偏急；走路差不多是原速。</li>
+    <li>这只是拿来比“质感”的样品：动作是一个成年人体型录的，没有为这个孩子调过，也没有脚的 IK（上下坡时脚会悬空或插进地里）。</li>
+    <li>键盘：空格 暂停 / 继续，→ 单步。</li>
+  </ul>
+</main>
+<iframe id="a"></iframe>
+<iframe id="b"></iframe>
+<script>
+const q = new URLSearchParams(location.search), game = q.get('game') || '../escape.html';
+const cv = document.getElementById('view'), ctx = cv.getContext('2d'), PW = 800, PH = 800;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+// 场景：在旧原型第四章开头那段平地上（tools/tired-sheet.html 的 plain 也用这里）。keys(t) 这一刻按着哪些键；len 秒以后传送回起点重来
+const SCEN = {
+  run: { name: '跑', len: 6, keys: t => ['R'] },
+  walk: { name: '走', len: 9, keys: t => ['R', 'S'] },
+  runstop: { name: '跑停跑', len: 7, keys: t => t < 2.6 || t > 4.4 ? ['R'] : [] },
+  walkrun: { name: '走跑交替', len: 8, keys: t => (t % 4) < 2 ? ['R', 'S'] : ['R'] },
+  jump: { name: '跑跳跑', len: 6, keys: t => (t % 2) > 1.2 && (t % 2) < 1.35 ? ['R', 'J'] : ['R'] },
+};
+const SPEEDS = [[1, '1×'], [0.5, '½'], [0.25, '¼'], [0.1, '1/10']];
+const ZOOMS = [[4, '近'], [2.6, '中'], [1.6, '远']];
+const st = { scen: q.get('scen') || 'run', speed: 1, zoom: 4, paused: false, t: 0, step: false };
+const G = [null, null];
+function buttons(id, list, key, cb) {
+  const el = document.getElementById(id);
+  for (const [v, label] of list) {
+    const b = document.createElement('button'); b.textContent = label; b.dataset.v = v;
+    b.onclick = () => { st[key] = typeof v === 'number' ? v : v; for (const x of el.children) x.classList.toggle('on', x === b); cb && cb(); };
+    if (st[key] == v) b.classList.add('on'); el.appendChild(b);
+  }
+}
+buttons('scen', Object.entries(SCEN).map(([k, s]) => [k, s.name]), 'scen', () => restart());
+buttons('speed', SPEEDS, 'speed');
+buttons('zoom', ZOOMS, 'zoom');
+const pauseB = document.getElementById('pause');
+pauseB.onclick = () => { st.paused = !st.paused; pauseB.textContent = st.paused ? '继续' : '暂停'; };
+document.getElementById('stepb').onclick = () => { st.paused = true; pauseB.textContent = '继续'; st.step = true; };
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); pauseB.onclick(); } if (e.code === 'ArrowRight') { e.preventDefault(); document.getElementById('stepb').onclick(); } });
+
+function load(i, src) {
+  return new Promise(ok => {
+    const f = document.getElementById(i ? 'b' : 'a');
+    f.onload = function wait() {
+      const w = f.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+      if (!hero || !hero.B.traveler?.model || (i && !w.__g.MOCAP.data)) { setTimeout(wait, 100); return; }
+      const g = w.__g.old; g.begin(); g.paused = true; ok(g);
+    };
+    f.src = src;
+  });
+}
+let X0 = 0;
+function restart() {
+  st.t = 0;
+  for (const g of G) { g.ch(4); g.P.facing = 1; g.step(0.4); }
+  X0 = G[0].P.x;
+  for (const g of G) { g.tp(X0); g.P.facing = 1; g.P.vx = 0; g.step(0.2); }
+}
+// 游戏自己的镜头放大 z 倍（setViewOffset 只画主角周围一块，分辨率不降），画到第 i 格
+function grab(g, i) {
+  const cam = g.camera, c = g.renderer.domElement, FW = c.width, FH = c.height, z = st.zoom;
+  cam.clearViewOffset(); cam.updateMatrixWorld();
+  const p = new g.THREE.Vector3(g.P.x, g.P.y + 0.62, 0).project(cam);
+  const hx = (p.x * 0.5 + 0.5) * FW * z, hy = (0.5 - p.y * 0.5) * FH * z;
+  const ox = clamp(hx - FW / 2, 0, FW * z - FW), oy = clamp(hy - FH / 2, 0, FH * z - FH);
+  cam.setViewOffset(FW * z, FH * z, ox, oy, FW, FH);
+  g.renderer.render(g.scene, cam);
+  cam.clearViewOffset();
+  const sw = Math.min(FW, FH), sx = clamp(hx - ox - sw / 2, 0, FW - sw), sy = clamp(hy - oy - sw / 2, 0, FH - sw);
+  ctx.drawImage(c, sx, sy, sw, sw, i * PW, 0, PW, PH);
+}
+function label(i, text, sub) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(i * PW, 0, PW, 58);
+  ctx.fillStyle = '#e8e4da'; ctx.font = `600 24px ${FONT}`; ctx.fillText(text, i * PW + 18, 30);
+  ctx.fillStyle = '#a9a69e'; ctx.font = `16px ${FONT}`; ctx.fillText(sub, i * PW + 18, 51);
+}
+const status = document.getElementById('status');
+let last = performance.now();
+function frame(now) {
+  const real = Math.min(0.05, (now - last) / 1000); last = now;
+  if (G[0] && G[1]) {
+    if (!st.paused || st.step) {
+      const dt = st.step ? 1 / 60 * st.speed : real * st.speed, S = SCEN[st.scen];
+      const n = Math.max(1, Math.round(dt / (1 / 120))), h = dt / n;   // 两边用同样的小步长推进
+      for (let k = 0; k < n; k++) { const keys = S.keys(st.t); for (const g of G) g.hold(keys, h, h); st.t += h; }
+      if (st.t > S.len) restart();
+      st.step = false;
+    }
+    grab(G[0], 0); grab(G[1], 1);
+    ctx.fillStyle = '#000'; ctx.fillRect(PW - 1, 0, 2, PH);
+    const R = G[1].hero().B.traveler.mocap, w = R ? R.lastW : 0;
+    label(0, '现在：程序化', '42-character-anim.js 的公式');
+    label(1, 'Mixamo 动捕', `Xbot 的 walk / run · 这一刻动捕占 ${Math.round(w * 100)}%`);
+    status.textContent = `${SCEN[st.scen].name} · ${st.t.toFixed(2)} 秒 · 速度 ${Math.abs(G[0].P.vx).toFixed(2)} 米/秒`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+Promise.all([load(0, game + '?mocap=0'), load(1, game + '?mocap=1')]).then(gs => { G[0] = gs[0]; G[1] = gs[1]; restart(); window.__sheetDone = true; });
+</script>
+</body>
+</html>

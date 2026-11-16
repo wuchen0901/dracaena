@@ -616,6 +616,9 @@ function makeCharacter(kind, prev, o = {}) {
         G_.position.y -= lowestY(traveler.model) - root.position.y; G_.updateMatrixWorld(true);
       }
       if (A.rope > 0.01 && A.lastRope) ropeIK(traveler, A.lastRope, A.rope);         // 手抓在绳子上、脚夹在绳子上
+      // 动作捕捉的走和跑（?mocap=1 才有，见 42-mocap.js）：只在地上走、跑的时候混进来，其余时候都是 0
+      if (MOCAP.on) mocapApply(traveler, A, dt, fwd, A.mv * (1 - A.air) * (1 - A.grip) * (1 - A.swim) * (1 - A.rope) * (1 - A.tuck) * (1 - Math.min(1, A.lc + A.trip + A.ltuck)) *
+        (1 - A.bend) * (1 - A.brk) * (1 - A.cover) * (s.pose ? 0 : 1) * (push ? 0 : 1) * (brush ? 1 - brush.k : 1), bob);
     }
   }
   function dispose() { root.parent && root.parent.remove(root); root.traverse(o => { if (o.geometry && !o.userData.travelerShared) o.geometry.dispose(); if (o.userData.travelerOwned) { for (const material of (Array.isArray(o.material) ? o.material : [o.material])) material.dispose(); } if (o.isSkinnedMesh) o.skeleton.dispose(); }); }
