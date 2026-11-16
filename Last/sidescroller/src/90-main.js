@@ -49,7 +49,7 @@ function sim(dt) {
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
-  poseCarry(dt);                                                         // 《长夜》：从包里取灯泡、收回去时两只手放在哪（43-carry.js）
+  poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x), yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
@@ -58,7 +58,7 @@ function sim(dt) {
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null,
     rope: P.mode === 'rope' ? ropeAnim() : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
-  stepCarry(dt);                                                         // 斜挎包挂到胯上，灯泡放到手里；被强光照中时透出来
+  stepCarry(dt);                                                         // 灯泡放到手里；揣在怀里被强光照中时透出光
   stepCat(dt);
 
   updateCamera(dt);

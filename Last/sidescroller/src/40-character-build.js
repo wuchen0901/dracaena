@@ -38,54 +38,7 @@ function loadTravelerModel(done) {
   });
 }
 
-// Tune this playable instance while preserving the imported asset and its skin weights.
-function refineTravelerAppearance(model) {
-  model.traverse(mesh => {
-    if (!mesh.isMesh) return;
-    mesh.geometry = mesh.geometry.clone();
-    mesh.userData.travelerOwned = true;
-    const geometry = mesh.geometry, positions = geometry.attributes.position;
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox, height = box.max.y - box.min.y;
-    const footCenters = [-1, 1].map(side => {
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      for (let i = 0; i < positions.count; i++) {
-        const x = positions.getX(i), y = positions.getY(i);
-        if (x * side <= 0 || y > box.min.y + height * .055) continue;
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-        minZ = Math.min(minZ, positions.getZ(i)); maxZ = Math.max(maxZ, positions.getZ(i));
-      }
-      return Number.isFinite(minX) ? [(minX + maxX) / 2, (minZ + maxZ) / 2] : [0, 0];
-    });
-    const readability = new Float32Array(positions.count);
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i), y = positions.getY(i), z = positions.getZ(i), h = (y - box.min.y) / height;
-      const foot = 1 - sstep(.045, .085, h), center = footCenters[x < 0 ? 0 : 1];
-      positions.setXYZ(i, lerp(x, center[0] + (x - center[0]) * .85, foot),
-        box.min.y + (y - box.min.y) * (1 - .08 * foot), lerp(z, center[1] + (z - center[1]) * .82, foot));
-      const head = sstep(.80, .88, h);
-      const shoulders = sstep(.63, .72, h) * (1 - sstep(.80, .88, h));
-      readability[i] = Math.max(head, shoulders * (.5 + .3 * (1 - sstep(-.02, .06, z))));
-    }
-    positions.needsUpdate = true;
-    geometry.setAttribute('characterReadability', new THREE.BufferAttribute(readability, 1));
-    geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-    const tuneMaterial = original => {
-      const material = original.clone();
-      material.onBeforeCompile = shader => {
-        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK; shader.uniforms.uRim = HERO_RIM.uRim; shader.uniforms.uRimK = HERO_RIM.uRimK;
-        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nvarying float vCharacterReadability;')
-          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;');
-        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nuniform vec3 uTop;\nuniform float uTopK;\nuniform vec3 uRim;\nuniform float uRimK;')
-          .replace('#include <map_fragment>', '#include <map_fragment>\n{ float tMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), tMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));\nfloat tK = uTopK * smoothstep(0.13, 0.2, tMx) * (1.0 - smoothstep(0.25, 0.33, (tMx - tMn) / max(tMx, 1e-4)));\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTop * min(tMx / 0.55, 1.3), tK);\ntotalEmissiveRadiance += uTop * min(tMx / 0.55, 1.3) * tK * 0.3; }')   // 亮的、几乎没有颜色的那一块就是上衣；皮肤偏红、裤子和头发是深色，都不动。换上去的颜色带三成自发光：再暗的地方也认得出这一块颜色
-          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
-      };
-      material.customProgramCacheKey = () => 'traveler-readability-v4';
-      return material;
-    };
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tuneMaterial) : tuneMaterial(mesh.material);
-  });
-}
+// 载入以后的整形（磨平、换鞋、换手、换头）在 40-character-hero.js 的 refineTravelerAppearance
 
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
@@ -302,6 +255,7 @@ function buildRobot07(o = {}) {
     model.updateMatrixWorld(true);
     model.traverse(node => { if (node.isSkinnedMesh) { node.skeleton.update(); node.frustumCulled = false; } });
     const bounds = new THREE.Box3().setFromObject(model, true), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
+    if (model.userData.heroH) { size.y = model.userData.heroH; center.x = center.z = 0; }   // 整形以后包围盒变了（头、鞋、手都换过）：大小和左右前后的位置还按原模型的算
     const scale = u / Math.max(size.y, 1e-4);
     model.scale.multiplyScalar(scale);
     model.rotation.y = Math.PI / 2;                           // GLB faces +Z; the side-scroller faces +X

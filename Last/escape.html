@@ -350,7 +350,7 @@ const chapterAt = x => { let c = CHAPTERS[0]; for (const k of CHAPTERS) if (x >=
 // 故事进度：跨章节要记住的事（存进 localStorage，下次打开接着走）
 //   cat 救下了小猫 / fed 老人拿到了食物 / cleaner 1 = 电池给了清洁机器人，2 = 给了门 /
 //   pump 水泵通了电 / water 给幸存者和猫留了水 / wild 野地得到了水 / ending 1 = 修复，2 = 旁路
-//   《长夜》原型：bulb 灯泡在包里（旧第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
+//   《长夜》原型：bulb 灯泡揣在怀里（旧第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
 //   《逃出工厂》加的两样在 escape/60-kit.js
 const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false, water: false, wild: false, ending: 0, bulb: false, room: 0 };
 const STORY = { ...STORY0 };
@@ -1019,54 +1019,7 @@ function loadTravelerModel(done) {
   });
 }
 
-// Tune this playable instance while preserving the imported asset and its skin weights.
-function refineTravelerAppearance(model) {
-  model.traverse(mesh => {
-    if (!mesh.isMesh) return;
-    mesh.geometry = mesh.geometry.clone();
-    mesh.userData.travelerOwned = true;
-    const geometry = mesh.geometry, positions = geometry.attributes.position;
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox, height = box.max.y - box.min.y;
-    const footCenters = [-1, 1].map(side => {
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      for (let i = 0; i < positions.count; i++) {
-        const x = positions.getX(i), y = positions.getY(i);
-        if (x * side <= 0 || y > box.min.y + height * .055) continue;
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-        minZ = Math.min(minZ, positions.getZ(i)); maxZ = Math.max(maxZ, positions.getZ(i));
-      }
-      return Number.isFinite(minX) ? [(minX + maxX) / 2, (minZ + maxZ) / 2] : [0, 0];
-    });
-    const readability = new Float32Array(positions.count);
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i), y = positions.getY(i), z = positions.getZ(i), h = (y - box.min.y) / height;
-      const foot = 1 - sstep(.045, .085, h), center = footCenters[x < 0 ? 0 : 1];
-      positions.setXYZ(i, lerp(x, center[0] + (x - center[0]) * .85, foot),
-        box.min.y + (y - box.min.y) * (1 - .08 * foot), lerp(z, center[1] + (z - center[1]) * .82, foot));
-      const head = sstep(.80, .88, h);
-      const shoulders = sstep(.63, .72, h) * (1 - sstep(.80, .88, h));
-      readability[i] = Math.max(head, shoulders * (.5 + .3 * (1 - sstep(-.02, .06, z))));
-    }
-    positions.needsUpdate = true;
-    geometry.setAttribute('characterReadability', new THREE.BufferAttribute(readability, 1));
-    geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-    const tuneMaterial = original => {
-      const material = original.clone();
-      material.onBeforeCompile = shader => {
-        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK; shader.uniforms.uRim = HERO_RIM.uRim; shader.uniforms.uRimK = HERO_RIM.uRimK;
-        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nvarying float vCharacterReadability;')
-          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;');
-        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nuniform vec3 uTop;\nuniform float uTopK;\nuniform vec3 uRim;\nuniform float uRimK;')
-          .replace('#include <map_fragment>', '#include <map_fragment>\n{ float tMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), tMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));\nfloat tK = uTopK * smoothstep(0.13, 0.2, tMx) * (1.0 - smoothstep(0.25, 0.33, (tMx - tMn) / max(tMx, 1e-4)));\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTop * min(tMx / 0.55, 1.3), tK);\ntotalEmissiveRadiance += uTop * min(tMx / 0.55, 1.3) * tK * 0.3; }')   // 亮的、几乎没有颜色的那一块就是上衣；皮肤偏红、裤子和头发是深色，都不动。换上去的颜色带三成自发光：再暗的地方也认得出这一块颜色
-          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
-      };
-      material.customProgramCacheKey = () => 'traveler-readability-v4';
-      return material;
-    };
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(tuneMaterial) : tuneMaterial(mesh.material);
-  });
-}
+// 载入以后的整形（磨平、换鞋、换手、换头）在 40-character-hero.js 的 refineTravelerAppearance
 
 function buildBody(kind, o = {}) {
   if (kind === 'R') return buildRobot07(o);
@@ -1283,6 +1236,7 @@ function buildRobot07(o = {}) {
     model.updateMatrixWorld(true);
     model.traverse(node => { if (node.isSkinnedMesh) { node.skeleton.update(); node.frustumCulled = false; } });
     const bounds = new THREE.Box3().setFromObject(model, true), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
+    if (model.userData.heroH) { size.y = model.userData.heroH; center.x = center.z = 0; }   // 整形以后包围盒变了（头、鞋、手都换过）：大小和左右前后的位置还按原模型的算
     const scale = u / Math.max(size.y, 1e-4);
     model.scale.multiplyScalar(scale);
     model.rotation.y = Math.PI / 2;                           // GLB faces +Z; the side-scroller faces +X
@@ -1303,6 +1257,393 @@ function buildRobot07(o = {}) {
     if (hips) traveler.hipH = hips.node.getWorldPosition(new THREE.Vector3()).y - root.getWorldPosition(new THREE.Vector3()).y;
   });
   return { S, u, D, M, root, pelvis, spine, chest, head, tail: null, arms, legs, lamp, traveler };
+}
+
+// ============================================================
+//  主角（models/hero.glb）载入以后重新整形。模型文件本身不动，改的都在这里：
+//    1 身体磨平：原来三千来个三角面、一面一个朝向，一棱一棱的。按位置把顶点焊起来，做一遍 Loop 细分，法线算成连续的
+//    2 不用贴图：贴图只有五块平涂的颜色，接缝处还漏白道。每个面按贴图认出是哪一块（皮肤 / 头发 / 上衣 / 裤子 / 鞋），直接写成顶点色
+//    3 鞋、手、头是另做的（原来是一块砖、一个拳头大的方块、一大团盖住耳朵的头发）：
+//      鞋 —— 圆头的矮帮鞋，鞋底浅一号；手 —— 四指并着、拇指单独分开；头 —— 短发，耳朵露在外面，没有五官，只留鼻子和下巴的轮廓
+//  坐标都是模型自己的绑定姿势：身高 1.7，脚底 y = 0，面朝 +z，左手在 +x。骨头的权重直接写在顶点上，动画不用改
+//  前半截（到 heroMesh 为止）只算数组，不碰 THREE；后半截（“==== THREE ====”以下）把结果换到载入的模型上
+// ============================================================
+const HERO_COL = {                                   // sRGB，0–255
+  skin: [240, 217, 198], skinDark: [205, 172, 152], hair: [27, 24, 23], top: [194, 188, 174], pants: [22, 22, 23],
+  shoe: [66, 65, 66], sole: [128, 124, 116], sock: [104, 101, 96],
+};
+const HERO_HEAD_K = 1.12;                            // 头比原模型的脸大一圈：头发剪短以后头显小，放大了远看才像个孩子
+const HERO_CLS = ['skin', 'hair', 'top', 'pants', 'shoe'];     // 面的分类编号
+
+// ---- 一遍 Loop 细分。M = { n 顶点数, pos, wt 每个顶点对每根骨头的权重（nb 个一行）, nb, tri, cls 每个面的分类 } ----
+// 只有一个面的边（剪开以后的口子：裤脚、袖口、领口）和两边颜色不一样的边（衣摆和裤腰的分界）沿着自己那条线磨，不被旁边的面拉走
+function heroLoop(M) {
+  const { n, pos, wt, nb, tri, cls } = M, m = cls.length, key = (a, b) => a < b ? a * n + b : b * n + a;
+  const edges = new Map();
+  for (let t = 0; t < m; t++) for (let k = 0; k < 3; k++) {
+    const a = tri[3 * t + k], b = tri[3 * t + (k + 1) % 3], c = tri[3 * t + (k + 2) % 3], q = key(a, b);
+    let e = edges.get(q); if (!e) edges.set(q, e = { a, b, opp: [], id: 0, k: cls[t], hard: false }); e.opp.push(c); if (cls[t] !== e.k) e.hard = true;
+  }
+  const nbr = Array.from({ length: n }, () => []), crease = Array.from({ length: n }, () => []);
+  let ne = 0;
+  for (const e of edges.values()) {
+    e.id = n + ne++; nbr[e.a].push(e.b); nbr[e.b].push(e.a);
+    if (e.opp.length !== 2) e.hard = true;
+    if (e.hard) { crease[e.a].push(e.b); crease[e.b].push(e.a); }
+  }
+  const N = n + ne, pos2 = new Float64Array(3 * N), wt2 = new Float32Array(nb * N);
+  const acc = (dst, src, k) => { for (let i = 0; i < 3; i++) pos2[3 * dst + i] += pos[3 * src + i] * k; for (let i = 0; i < nb; i++) wt2[nb * dst + i] += wt[nb * src + i] * k; };
+  for (let v = 0; v < n; v++) {
+    const cr = crease[v], k = nbr[v].length;
+    if (cr.length === 2) { acc(v, v, 0.75); acc(v, cr[0], 0.125); acc(v, cr[1], 0.125); }
+    else if (cr.length > 2 || k < 3) acc(v, v, 1);
+    else { const beta = k === 3 ? 3 / 16 : 3 / (8 * k); acc(v, v, 1 - k * beta); for (const o of nbr[v]) acc(v, o, beta); }
+  }
+  for (const e of edges.values()) {
+    if (!e.hard) { acc(e.id, e.a, 0.375); acc(e.id, e.b, 0.375); acc(e.id, e.opp[0], 0.125); acc(e.id, e.opp[1], 0.125); }
+    else { acc(e.id, e.a, 0.5); acc(e.id, e.b, 0.5); }
+  }
+  const tri2 = new Int32Array(12 * m), cls2 = new Uint8Array(4 * m);
+  for (let t = 0; t < m; t++) {
+    const a = tri[3 * t], b = tri[3 * t + 1], c = tri[3 * t + 2], ab = edges.get(key(a, b)).id, bc = edges.get(key(b, c)).id, ca = edges.get(key(c, a)).id;
+    tri2.set([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca], 12 * t); cls2.fill(cls[t], 4 * t, 4 * t + 4);
+  }
+  return { n: N, pos: pos2, wt: wt2, nb, tri: tri2, cls: cls2 };
+}
+
+// ---- 攒一个零件：一圈一圈的点连成面。w 是这个点跟哪些骨头走 [[骨头编号, 权重], …]，c 是颜色 ----
+function heroPart() {
+  const pos = [], col = [], bw = [], tris = [];
+  const vert = (p, c, w) => { pos.push(p[0], p[1], p[2]); col.push(c); bw.push(w); return pos.length / 3 - 1; };
+  const ring = (pts, c, w) => pts.map((p, k) => vert(p, typeof c === 'function' ? c(k) : c, typeof w === 'function' ? w(p, k) : w));
+  const quad = (a, b, c, d) => { tris.push(a, b, c, a, c, d); };
+  const loft = rings => { for (let i = 0; i < rings.length - 1; i++) { const A = rings[i], B = rings[i + 1], n = A.length; for (let k = 0; k < n; k++) quad(A[k], A[(k + 1) % n], B[(k + 1) % n], B[k]); } };
+  const fan = (c, R) => { for (let k = 0; k < R.length; k++) tris.push(c, R[k], R[(k + 1) % R.length]); };
+  // 一块形状攒完了：去掉没有面积的面；要是里外翻了（按它自己的体积是正是负看）就整块翻回来
+  const out = []; let v0 = 0;
+  const close = () => {
+    const n = pos.length / 3 - v0, t0 = out.length; let vol = 0, cx = 0, cy = 0, cz = 0;
+    for (let i = v0; i < v0 + n; i++) { cx += pos[3 * i] / n; cy += pos[3 * i + 1] / n; cz += pos[3 * i + 2] / n; }
+    for (let t = 0; t < tris.length; t += 3) {
+      const [a, b, c] = [tris[t], tris[t + 1], tris[t + 2]].map(i => [pos[3 * i] - cx, pos[3 * i + 1] - cy, pos[3 * i + 2] - cz]);
+      const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (nx * nx + ny * ny + nz * nz < 1e-20) continue;
+      vol += a[0] * nx + a[1] * ny + a[2] * nz; out.push(tris[t], tris[t + 1], tris[t + 2]);
+    }
+    if (vol < 0) for (let t = t0; t < out.length; t += 3) { const s = out[t + 1]; out[t + 1] = out[t + 2]; out[t + 2] = s; }
+    tris.length = 0; v0 = pos.length / 3;
+  };
+  const done = () => { close(); return { pos, col, bw, tris: out }; };
+  return { vert, ring, loft, fan, close, done, at: i => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]] };
+}
+const heroPow = (v, e) => Math.sign(v) * Math.abs(v) ** e;
+function heroKeys(keys, s) {                           // keys 每行 [s, 值, …]：s 处各列的平滑插值（和 kidSpline 一个算法）
+  let i = 0; while (i < keys.length - 2 && s > keys[i + 1][0]) i++;
+  const k0 = keys[Math.max(i - 1, 0)], k1 = keys[i], k2 = keys[i + 1], k3 = keys[Math.min(i + 2, keys.length - 1)];
+  const h = k2[0] - k1[0], t = Math.min(1, Math.max(0, (s - k1[0]) / h)), t2 = t * t, t3 = t2 * t, out = [];
+  for (let j = 1; j < k1.length; j++) {
+    const m1 = (k2[j] - k0[j]) / (k2[0] - k0[0]) * h, m2 = (k3[j] - k1[j]) / (k3[0] - k1[0]) * h;
+    out.push((2 * t3 - 3 * t2 + 1) * k1[j] + (t3 - 2 * t2 + t) * m1 + (3 * t2 - 2 * t3) * k2[j] + (t3 - t2) * m2);
+  }
+  return out;
+}
+const heroStep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// ---- 鞋：圆头的矮帮鞋。side = 1 左脚（+x），-1 右脚；(cx, cz) 是裤脚口的中心；B 是骨头编号 ----
+// 一圈圈横截面从鞋跟排到鞋头：底是平的，鞋底一道浅色的边，鞋面是拱起来的；两头收成圆的。脚踝上套一截袜子，伸进裤腿里
+function heroShoePart(side, cx, cz, B) {
+  const P = heroPart(), C = HERO_COL, L = 0.228, z0 = cz - 0.07, N = 26, SOLE = 0.017, foot = [[B.foot, 1]];
+  //            t     里侧半宽  外侧半宽  鞋面高   中线往里偏
+  const K = [[0, 0.030, 0.031, 0.070, 0], [0.12, 0.034, 0.035, 0.086, 0], [0.30, 0.036, 0.038, 0.092, 0], [0.44, 0.037, 0.041, 0.086, 0.001],
+    [0.58, 0.040, 0.046, 0.066, 0.003], [0.72, 0.041, 0.048, 0.052, 0.005], [0.86, 0.039, 0.044, 0.046, 0.007], [1, 0.034, 0.037, 0.042, 0.008]];
+  const rings = [];
+  for (let i = 0; i < N; i++) {
+    const t = 0.5 - 0.5 * Math.cos(Math.PI * i / (N - 1)), [wi, wo, h, off] = heroKeys(K, t);
+    const eh = t < 0.16 ? Math.sqrt(Math.max(0, 1 - (1 - t / 0.16) ** 2)) : 1, et = t > 0.78 ? Math.sqrt(Math.max(0, 1 - ((t - 0.78) / 0.22) ** 2)) : 1, e = Math.min(eh, et);
+    const yc = t < 0.5 ? 0.034 : 0.022, ev = e ** 0.8, y0 = yc * (1 - ev), y1 = yc + (h - yc) * ev, sole = SOLE * ev, z = z0 + L * t, xc = cx - side * off;
+    const pts = [], cols = [], put = (dx, y, c) => { pts.push([xc + side * dx, y, z]); cols.push(c); };
+    const a = wi * e, b = wo * e;                      // 这一圈里侧、外侧各多宽（dx：外侧为正）
+    for (let k = 0; k <= 6; k++) { const q = -1 + 2 * k / 6; put(q < 0 ? q * a * 0.9 : q * b * 0.9, y0, C.sole); }          // 鞋底
+    put(b, y0 + sole * 0.35, C.sole); put(b, y0 + sole, C.sole); put(b - 0.0015 * e, y0 + sole, C.shoe);                            // 外侧的鞋底边
+    for (let k = 1; k < 14; k++) { const g = Math.PI * k / 14, c = Math.cos(g), s = Math.sin(g); put((c > 0 ? b : a) * heroPow(c, 0.8) * 0.985, y0 + sole + (y1 - y0 - sole) * heroPow(s, 0.9), C.shoe); }   // 鞋面
+    put(-a + 0.0015 * e, y0 + sole, C.shoe); put(-a, y0 + sole, C.sole); put(-a, y0 + sole * 0.35, C.sole);                         // 里侧的鞋底边
+    rings.push(P.ring(pts, k => cols[k], foot));
+  }
+  P.loft(rings); P.close();
+  // 鞋口和袜子：从鞋里伸出来，往上进裤腿。最下面一截是鞋口（和鞋面一个颜色，接缝看不出来），再往上是袜子。脚踝以下跟脚走，以上跟小腿走
+  const sock = [];
+  for (let i = 0; i <= 5; i++) {
+    const y = [0.06, 0.1, 0.1, 0.13, 0.17, 0.21][i], k = heroStep(0.075, 0.15, y), w = k <= 0 ? foot : k >= 1 ? [[B.leg, 1]] : [[B.foot, 1 - k], [B.leg, k]], pts = [];
+    for (let j = 0; j < 14; j++) { const g = 6.2832 * j / 14; pts.push([cx + (i < 2 ? 0.033 : 0.03) * Math.cos(g), y, cz - 0.004 + (i < 2 ? 0.039 : 0.036) * Math.sin(g)]); }
+    sock.push(P.ring(pts, i < 2 ? C.shoe : C.sock, w));
+  }
+  P.loft(sock);
+  return P.done();
+}
+
+// ---- 手：四指并着（指尖一长一短，指缝压暗一道），拇指单独分开。side = 1 左手；W 是袖口的中心 ----
+// 手自己的三个方向：d 顺着手指，f 朝身体前面（拇指那一侧），n 朝身体（手心）
+function heroHandPart(side, W, B) {
+  const P = heroPart(), C = HERO_COL, hand = [[B.hand, 1]];
+  const nrm = v => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const d = nrm([side * 0.07, -1, 0.03]);
+  let f = nrm(cross(cross(d, [-side * 0.42, 0, 1]), d)), n = nrm(cross(d, f)); if (n[0] * side > 0) n = n.map(v => -v);   // 手背略朝前：手心斜着对着大腿
+  const at = (o, s, q, r) => [o[0] + d[0] * s + f[0] * q + n[0] * r, o[1] + d[1] * s + f[1] * q + n[1] * r, o[2] + d[2] * s + f[2] * q + n[2] * r];
+  const O = at(W, -0.012, 0, 0), SK = 0.08, LEN = 0.148;
+  //            s      半宽    半厚   往拇指那边偏
+  const K = [[-0.03, 0.022, 0.018, 0], [0.0, 0.024, 0.0165, 0], [0.03, 0.035, 0.0165, 0.003], [0.058, 0.040, 0.0155, 0.003], [0.082, 0.040, 0.0135, 0.002],
+    [0.112, 0.0385, 0.012, 0.001], [0.136, 0.036, 0.0105, 0], [0.148, 0.033, 0.009, 0]];
+  const FL = [0.8, 0.95, 1, 0.92], M = 40, R = 18, rings = [];
+  for (let i = 0; i < R; i++) {
+    const s0 = -0.03 + (LEN + 0.03) * i / (R - 1), pts = [], cols = [];
+    for (let k = 0; k < M; k++) {
+      const g = 6.2832 * k / M, cq = heroPow(Math.cos(g), 0.62), sr = heroPow(Math.sin(g), 0.75);
+      // 过了指根：每根手指各有各的长短，指尖是圆的
+      const u = (cq + 1) * 2, j = Math.min(3, Math.floor(u)), fr = Math.abs(2 * (u - j) - 1), len = FL[j] - 0.075 * fr ** 2.6;
+      const s = s0 <= SK ? s0 : SK + (s0 - SK) * len, [a, b, off] = heroKeys(K, s0), tip = s0 > LEN - 0.022 ? Math.sqrt(Math.max(0, 1 - ((s0 - LEN + 0.022) / 0.022) ** 2)) : 1;
+      const curl = 0.42 * heroStep(0.05, 0.2, s) * (s - 0.05);                         // 手指往手心那边蜷一点
+      pts.push(at(O, s - 0.3 * curl, off + a * cq, b * sr * (0.4 + 0.6 * tip) + curl));
+      cols.push(s0 > SK + 0.006 && fr > 0.8 && u > 0.5 && u < 3.5 ? C.skinDark : C.skin);
+    }
+    rings.push(P.ring(pts, k => cols[k], hand));
+  }
+  P.loft(rings);
+  { const c = [0, 0, 0], E = rings[R - 1]; for (const i of E) for (let q = 0; q < 3; q++) c[q] += P.at(i)[q] / E.length; P.fan(P.vert(at(c, 0.003, 0, 0), C.skin, hand), E); }
+  P.close();
+  // 拇指：从掌根靠前的一侧斜着伸出去，和食指之间留一道缝
+  const t0 = at(O, 0.026, 0.026, 0.006), td = nrm([0, 1, 2].map(i => d[i] * 0.8 + f[i] * 0.55 + n[i] * 0.22)), tu = nrm(cross(td, n)), tv = nrm(cross(td, tu)), th = [];
+  for (let i = 0; i <= 8; i++) {
+    const s = 0.062 * i / 8, r = (0.0155 - 0.004 * i / 8) * (i > 5 ? Math.sqrt(Math.max(0.04, 1 - ((i - 5) / 3.15) ** 2)) : 1), pts = [];
+    for (let k = 0; k < 12; k++) { const g = 6.2832 * k / 12; pts.push([0, 1, 2].map(q => t0[q] + td[q] * s + (tu[q] * Math.cos(g) * 1.15 + tv[q] * Math.sin(g) * 0.9) * r)); }
+    th.push(P.ring(pts, C.skin, hand));
+  }
+  P.loft(th); P.fan(P.vert([0, 1, 2].map(q => t0[q] + td[q] * 0.065), C.skin, hand), th[8]); P.close();
+  return P.done();
+}
+
+// ---- 头：一层层水平的切片，从头顶排到下巴。每层 [高度, 中心前后, 朝前的半径, 朝后的半径, 左右半宽] ----
+const HERO_HEAD = (() => {
+  const K = [], Y0 = 1.562, TOP = 0.105;                                       // Y0：头最宽的那一层；再往上是半个椭球
+  for (const a of [0, 0.2, 0.42, 0.66, 0.92, 1.2, 1.5708]) { const s = Math.sin(a); K.push([Y0 + TOP * Math.cos(a), -0.012, 0.108 * s, 0.118 * s, 0.107 * s]); }
+  // 侧面的轮廓是孩子的：额头鼓，往下脸一路往后收，下巴小
+  K.push([1.525, -0.010, 0.1085, 0.117, 0.1055], [1.488, -0.008, 0.1065, 0.110, 0.1015], [1.455, -0.005, 0.1005, 0.094, 0.094], [1.428, 0.0, 0.093, 0.072, 0.082],
+    [1.406, 0.010, 0.078, 0.056, 0.066], [1.392, 0.022, 0.058, 0.045, 0.045], [1.385, 0.030, 0.036, 0.035, 0.026], [1.382, 0.034, 0, 0, 0]);
+  return K.map((k, i) => [i / (K.length - 1), ...k]);
+})();
+function heroSkull(s, phi) {                         // 头皮上的一点：s 从头顶 0 到下巴 1，phi 绕竖轴（0 正前，往左手那边转）
+  const [y, cz, f, b, w] = heroKeys(HERO_HEAD, s), c = Math.cos(phi), sn = Math.sin(phi); phi = phi > Math.PI ? phi - 6.2832 : phi;
+  let z = cz + (c > 0 ? f : b) * heroPow(c, c > 0 ? 0.86 : 0.94);
+  // 鼻子：只是正前方一个很浅的小鼓包 —— 不是为了近看好看，是远处的侧面剪影里看得出脸朝哪边，又不戳出来一个尖
+  z += 0.012 * Math.exp(-((phi / 0.26) ** 2)) * Math.exp(-(((y - 1.466) / (y > 1.466 ? 0.032 : 0.016)) ** 2));
+  return [w * heroPow(sn, 0.9) * (c < 0 ? 1 + 0.42 * c * heroStep(1.5, 1.41, y) : 1), y, z];     // 后脑勺往下收窄，接到脖子上
+}
+// 发际线：绕头一圈各处的头发长到多低。正面是齐的短刘海，鬓角在耳朵前面收住，耳朵上面绕过去（耳朵整个露在外面），脑后到后颈
+const HERO_HAIRLINE = [[0, 1.588], [0.5, 1.59], [0.95, 1.584], [1.09, 1.578], [1.17, 1.552], [1.24, 1.538], [1.36, 1.537], [1.45, 1.549], [1.56, 1.558], [1.82, 1.558], [2.0, 1.522], [2.2, 1.465], [2.5, 1.425], [3.1416, 1.41]];
+function heroSkullPart(B) {
+  const P = heroPart(), C = HERO_COL, head = [[B.head, 1]], N = 64, R = 40, TAU = 6.2832;
+  const PHI = k => { const q = k / N; return TAU * q + 0.4 * Math.sin(2 * TAU * q) / 2; };   // 绕头一圈的点两侧密、前后疏：发际线在耳朵周围拐的弯多
+  // 头皮和脸
+  const rings = [];
+  for (let i = 1; i < R; i++) { const s = i / R, pts = []; for (let k = 0; k < N; k++) pts.push(heroSkull(s, PHI(k))); rings.push(P.ring(pts, C.skin, head)); }
+  P.loft(rings); P.fan(P.vert(heroSkull(0, 0), C.skin, head), rings[0].slice().reverse()); P.fan(P.vert(heroSkull(1, 0), C.skin, head), rings[R - 2]); P.close();
+  // 头发：贴着头皮往外垫一层，头顶和刘海厚一点，发际线那里收一道边
+  const sAt = y => { let a = 0, b = 1; for (let i = 0; i < 30; i++) { const m = (a + b) / 2; if (heroKeys(HERO_HEAD, m)[0] > y) a = m; else b = m; } return (a + b) / 2; };
+  const HR = 15, hair = [];
+  for (let i = 1; i <= HR + 1; i++) {
+    const pts = [];
+    for (let k = 0; k < N; k++) {
+      const phi = PHI(k), ap = Math.abs(phi > Math.PI ? phi - TAU : phi), sw = phi > Math.PI ? -1 : 1;
+      const front = heroStep(1.0, 0.35, ap), yl = heroKeys(HERO_HAIRLINE, ap)[0] - 0.007 * front * (0.5 + 0.5 * sw * Math.sin(ap * 2.2));   // 刘海往一边偏一点
+      const sl = sAt(yl), u = Math.min(1, i / HR), s = sl * (1 - (1 - u) ** 1.25), p = heroSkull(s, phi), [y, cz] = heroKeys(HERO_HEAD, s);
+      const th = i > HR ? 0.0008 : 0.0075 + 0.0115 * heroStep(0, 0.4, 1 - u) + 0.007 * front * heroStep(0.0, 0.5, u) + 0.004 * heroStep(2.3, 3.1, ap) * u;
+      const nx = p[0] / 0.107 ** 2, ny = (p[1] - 1.5) / 0.16 ** 2 * heroStep(0.75, 0.2, u), nz = (p[2] - cz) / 0.112 ** 2, l = Math.hypot(nx, ny, nz) || 1;
+      pts.push([p[0] + nx / l * th, p[1] + ny / l * th + (i > HR ? 0.004 : -0.004 * front * heroStep(0.7, 1, u)), p[2] + nz / l * th]);   // 刘海的发梢比发际线再垂下来一点
+    }
+    hair.push(P.ring(pts, C.hair, head));
+  }
+  P.loft(hair);
+  { const p = heroSkull(0, 0); P.fan(P.vert([p[0], p[1] + 0.019, p[2]], C.hair, head), hair[0].slice().reverse()); }
+  P.close();
+  // 耳朵：一片压扁的小圆饼，后缘往外翘，中间凹进去一点、颜色深一号
+  for (const sd of [1, -1]) {
+    const E = [], ca = Math.cos(0.55), sa = Math.sin(0.55), ex = 0.0995, ey = 1.5, ez = -0.014;
+    for (let i = 1; i < 9; i++) {
+      const a = Math.PI * i / 9, pts = [], cols = [];
+      for (let k = 0; k < 14; k++) {
+        const g = TAU * k / 14, out = Math.cos(g);                               // out > 0：朝外的那一面
+        let x = 0.01 * Math.sin(a) * out, y = 0.035 * Math.cos(a) * (1 + 0.12 * Math.sin(g)), z = 0.022 * Math.sin(a) * Math.sin(g);
+        const dent = out > 0 ? Math.exp(-((y / 0.021) ** 2 + ((z + 0.002) / 0.011) ** 2)) : 0; x -= 0.009 * dent;
+        z -= 0.006 * (y / 0.035);                                                 // 上半截往后斜
+        pts.push([sd * (ex + x * ca - z * sa + 0.006), ey + y, ez + z * ca + x * sa]); cols.push(dent > 0.45 ? C.skinDark : C.skin);
+      }
+      E.push(P.ring(pts, k => cols[k], head));
+    }
+    P.loft(E);
+    P.fan(P.vert([sd * (ex + 0.006), ey + 0.035, ez - 0.006], C.skin, head), E[0].slice().reverse()); P.fan(P.vert([sd * (ex + 0.006), ey - 0.035, ez + 0.006], C.skin, head), E[7]); P.close();
+  }
+  const out = P.done(), K = HERO_HEAD_K, pv = [0, 1.39, -0.012];               // 整个头放大一圈（绕着脖子顶上那一点）
+  for (let i = 0; i < out.pos.length; i++) out.pos[i] = pv[i % 3] + (out.pos[i] - pv[i % 3]) * K;
+  return out;
+}
+// ---- 脖子：从领口里面一直伸进头里。下面跟着脖子和肩，上面跟着头 ----
+function heroNeckPart(c, B) {
+  const P = heroPart(), rings = [];
+  for (let i = 0; i <= 8; i++) {
+    const y = 1.262 + 0.024 * i, k = heroStep(1.3, 1.385, y), w = [[B.head, k], [B.neck, (1 - k) * 0.8], [B.spine, (1 - k) * 0.2]].filter(v => v[1] > 0.001), pts = [];
+    const r = 0.047 + 0.006 * heroStep(1.32, 1.262, y), zc = c[2] + 0.004 + 0.09 * (y - 1.3);
+    for (let j = 0; j < 18; j++) { const g = 6.2832 * j / 18; pts.push([c[0] + r * 0.96 * Math.cos(g), y, zc + r * 1.06 * Math.sin(g)]); }
+    rings.push(P.ring(pts, HERO_COL.skin, w));
+  }
+  P.loft(rings); return P.done();
+}
+
+// ---- 总装。src = { pos, index, uv, joints（每个顶点四个骨头编号）, weights, bones（骨头名字，按编号）, pixel(u, v) → [r, g, b] } ----
+// 返回 { pos, nor, col（线性空间的顶点色）, top（是不是上衣：换衣服颜色的着色器用）, joints, weights, index, H（原模型的身高）}
+function heroMesh(src) {
+  const nv = src.pos.length / 3, nb = src.bones.length, B = n => src.bones.indexOf(n);
+  let H = 0; for (let i = 0; i < nv; i++) H = Math.max(H, src.pos[3 * i + 1]);
+  // 1 按位置焊顶点（原模型在贴图接缝处把同一个点拆成了好几个）
+  const ids = new Map(), weld = new Int32Array(nv), wp = [], ww = [];
+  for (let i = 0; i < nv; i++) {
+    const q = `${Math.round(src.pos[3 * i] * 2e4)},${Math.round(src.pos[3 * i + 1] * 2e4)},${Math.round(src.pos[3 * i + 2] * 2e4)}`;
+    let id = ids.get(q);
+    if (id === undefined) {
+      id = wp.length / 3; ids.set(q, id); wp.push(src.pos[3 * i], src.pos[3 * i + 1], src.pos[3 * i + 2]);
+      const row = new Float32Array(nb); for (let k = 0; k < 4; k++) row[src.joints[4 * i + k]] += src.weights[4 * i + k]; ww.push(row);
+    }
+    weld[i] = id;
+  }
+  // 2 每个面是哪一块：在面里取七个点看贴图的颜色，取中间的那个
+  const tri = [], cls = [], SMP = [[0.34, 0.33, 0.33], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6], [0.45, 0.45, 0.1], [0.1, 0.45, 0.45], [0.45, 0.1, 0.45]];
+  const headW = v => ww[v][B('Head')] + ww[v][B('head_end')] + ww[v][B('headfront')];
+  for (let t = 0; t < src.index.length; t += 3) {
+    const [a, b, c] = [src.index[t], src.index[t + 1], src.index[t + 2]], w = [weld[a], weld[b], weld[c]];
+    if (w[0] === w[1] || w[1] === w[2] || w[0] === w[2]) continue;
+    const px = SMP.map(([i, j, k]) => src.pixel(i * src.uv[2 * a] + j * src.uv[2 * b] + k * src.uv[2 * c], i * src.uv[2 * a + 1] + j * src.uv[2 * b + 1] + k * src.uv[2 * c + 1]));
+    const med = ch => px.map(p => p[ch]).sort((x, y) => x - y)[3], r = med(0), g = med(1), bl = med(2), mx = Math.max(r, g, bl);
+    const y = (wp[3 * w[0] + 1] + wp[3 * w[1] + 1] + wp[3 * w[2] + 1]) / 3, x = (wp[3 * w[0]] + wp[3 * w[1]] + wp[3 * w[2]]) / 3;
+    const hw = (headW(w[0]) + headW(w[1]) + headW(w[2])) / 3;
+    let k = mx < 110 ? (y > 0.8 * H ? 1 : mx >= 50 && y < 0.06 * H ? 4 : 3) : r - bl > 25 ? 0 : 2;
+    if (y < 0.03 * H || (k === 2 && y < 0.06 * H)) k = 4;
+    if (k === 2 && y < 0.4 * H) k = 3;
+    if (k === 2 && hw > 0.5 && y > 0.82 * H) k = 1;                               // 头发上有几块发白的面
+    // 3 剪掉要另做的几块：头和脖子、两只手、两只鞋
+    if (k === 4 || k === 1 || (k === 0 && (y > 0.72 * H || Math.abs(x) > 0.12 * H))) continue;
+    if (k === 0) k = 3;                                                            // 剩下零星认成皮肤的（裤子上的反光）：当裤子
+    tri.push(w[0], w[1], w[2]); cls.push(k);
+  }
+  // 原模型有四片只靠一条边挂在表面上的碎面（另外两条边都悬空）：去掉
+  { const cnt = new Map(), ek = (a, b) => a < b ? a * 1e5 + b : b * 1e5 + a;
+    for (let t = 0; t < tri.length; t += 3) for (let k = 0; k < 3; k++) { const q = ek(tri[t + k], tri[t + (k + 1) % 3]); cnt.set(q, (cnt.get(q) || 0) + 1); }
+    for (let t = tri.length - 3; t >= 0; t -= 3) { let free = 0, over = 0; for (let k = 0; k < 3; k++) { const c = cnt.get(ek(tri[t + k], tri[t + (k + 1) % 3])); if (c === 1) free++; if (c > 2) over++; } if (free === 2 && over === 1) { tri.splice(t, 3); cls.splice(t / 3, 1); } } }
+  // 4 细分一遍
+  const flat = new Float32Array(nb * ww.length); ww.forEach((r, i) => flat.set(r, nb * i));
+  const body = heroLoop({ n: wp.length / 3, pos: Float64Array.from(wp), wt: flat, nb, tri: Int32Array.from(tri), cls: Uint8Array.from(cls) });
+  // 5 量一量剪开的口子：一圈只属于一个面的边。两个裤脚口、两个袖口、一个领口
+  const cnt = new Map(), ek = (a, b) => a < b ? a * body.n + b : b * body.n + a;
+  for (let t = 0; t < body.tri.length; t += 3) for (let k = 0; k < 3; k++) { const q = ek(body.tri[t + k], body.tri[t + (k + 1) % 3]); cnt.set(q, (cnt.get(q) || 0) + 1); }
+  const parent = new Map(), find = v => { while (parent.get(v) !== v) { parent.set(v, parent.get(parent.get(v))); v = parent.get(v); } return v; };
+  for (const [q, c] of cnt) if (c === 1) { const a = Math.floor(q / body.n), b = q % body.n; for (const v of [a, b]) if (!parent.has(v)) parent.set(v, v); parent.set(find(a), find(b)); }
+  const loops = new Map();
+  for (const v of parent.keys()) { const r = find(v); let L = loops.get(r); if (!L) loops.set(r, L = { n: 0, c: [0, 0, 0] }); L.n++; for (let i = 0; i < 3; i++) L.c[i] += body.pos[3 * v + i]; }
+  const open = [...loops.values()].filter(L => L.n >= 8).map(L => ({ n: L.n, c: L.c.map(v => v / L.n) }));
+  const pick = ok => open.filter(L => ok(L.c)).sort((a, b) => b.n - a.n)[0]?.c;
+  // 6 另做的零件
+  const parts = [];
+  for (const sd of [1, -1]) {
+    const S = sd > 0 ? 'Left' : 'Right';
+    const hem = pick(c => c[1] < 0.12 * H && c[0] * sd > 0) ?? [sd * 0.124, 0.08, -0.008];
+    parts.push(heroShoePart(sd, hem[0], hem[2], { foot: B(S + 'Foot'), leg: B(S + 'Leg') }));
+    const cuff = pick(c => c[1] > 0.38 * H && c[1] < 0.56 * H && c[0] * sd > 0.1) ?? [sd * 0.29, 0.79, -0.016];
+    parts.push(heroHandPart(sd, cuff, { hand: B(S + 'Hand') }));
+  }
+  const collar = pick(c => c[1] > 0.7 * H) ?? [0, 1.3, -0.02];
+  parts.push(heroNeckPart([0, collar[1], -0.019], { head: B('Head'), neck: B('neck'), spine: B('Spine') }), heroSkullPart({ head: B('Head') }));
+  // 7 拼成一个网格。身体：同一个位置上颜色不同的面各用各的顶点，法线共用（颜色的分界是硬的，表面是连续的）
+  const pos = [], nor = [], col = [], top = [], joints = [], weights = [], index = [];
+  const lin = c => c.map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  const PAL = HERO_CLS.map(n => lin(HERO_COL[n]));
+  const smooth = (p, t, n) => {                        // 连续的法线：每个面按面积摊给三个顶点
+    const out = new Float64Array(3 * n);
+    for (let i = 0; i < t.length; i += 3) {
+      const a = t[i], b = t[i + 1], c = t[i + 2], ux = p[3 * b] - p[3 * a], uy = p[3 * b + 1] - p[3 * a + 1], uz = p[3 * b + 2] - p[3 * a + 2], vx = p[3 * c] - p[3 * a], vy = p[3 * c + 1] - p[3 * a + 1], vz = p[3 * c + 2] - p[3 * a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      for (const v of [a, b, c]) { out[3 * v] += nx; out[3 * v + 1] += ny; out[3 * v + 2] += nz; }
+    }
+    for (let i = 0; i < n; i++) { const l = Math.hypot(out[3 * i], out[3 * i + 1], out[3 * i + 2]) || 1; out[3 * i] /= l; out[3 * i + 1] /= l; out[3 * i + 2] /= l; }
+    return out;
+  };
+  const push = (p, n, c, isTop, w) => {
+    pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(c[0], c[1], c[2]); top.push(isTop);
+    const s = w.slice().sort((a, b) => b[1] - a[1]).slice(0, 4), sum = s.reduce((a, v) => a + v[1], 0) || 1;
+    for (let k = 0; k < 4; k++) { joints.push(s[k] ? s[k][0] : 0); weights.push(s[k] ? s[k][1] / sum : 0); }
+    return pos.length / 3 - 1;
+  };
+  {
+    const bn = smooth(body.pos, body.tri, body.n), seen = new Map();
+    for (let t = 0; t < body.tri.length; t += 3) for (let k = 0; k < 3; k++) {
+      const v = body.tri[t + k], c = body.cls[t / 3], q = v * 8 + c;
+      let id = seen.get(q);
+      if (id === undefined) {
+        const w = []; for (let b = 0; b < nb; b++) if (body.wt[nb * v + b] > 0.004) w.push([b, body.wt[nb * v + b]]);
+        id = push([body.pos[3 * v], body.pos[3 * v + 1], body.pos[3 * v + 2]], [bn[3 * v], bn[3 * v + 1], bn[3 * v + 2]], PAL[c], c === 2 ? 1 : 0, w); seen.set(q, id);
+      }
+      index.push(id);
+    }
+  }
+  for (const part of parts) {
+    // 零件里同一个位置的点（颜色交界处是成对的）法线也共用
+    const n = part.pos.length / 3, ids2 = new Map(), w2 = new Int32Array(n), p2 = [];
+    for (let i = 0; i < n; i++) { const q = `${Math.round(part.pos[3 * i] * 1e5)},${Math.round(part.pos[3 * i + 1] * 1e5)},${Math.round(part.pos[3 * i + 2] * 1e5)}`; let id = ids2.get(q); if (id === undefined) { id = p2.length / 3; ids2.set(q, id); p2.push(part.pos[3 * i], part.pos[3 * i + 1], part.pos[3 * i + 2]); } w2[i] = id; }
+    const pn = smooth(p2, part.tris.map(i => w2[i]), p2.length / 3), base = [];
+    for (let i = 0; i < n; i++) base.push(push([part.pos[3 * i], part.pos[3 * i + 1], part.pos[3 * i + 2]], [pn[3 * w2[i]], pn[3 * w2[i] + 1], pn[3 * w2[i] + 2]], lin(part.col[i]), 0, part.bw[i]));
+    for (const i of part.tris) index.push(base[i]);
+  }
+  return { pos, nor, col, top, joints, weights, index, H };
+}
+
+// ==== THREE ====
+// 把整形后的网格换到载入的模型上。同一份模型只算一次（结果记在原来的几何体上），重搭主角时直接拿来用；
+// 几何体和材质是大家共用的，所以不标 travelerOwned —— 主角换掉、重搭时不会把它们释放掉
+let heroMaterial = null;
+function refineTravelerAppearance(model) {
+  model.traverse(mesh => {
+    if (!mesh.isSkinnedMesh) return;
+    const g0 = mesh.geometry;
+    if (!g0.userData.hero) {
+      const A = g0.attributes, n = A.position.count, img = mesh.material.map.image, [cv, cx] = mkCanvas(img.width, img.height); cx.drawImage(img, 0, 0);
+      const px = cx.getImageData(0, 0, img.width, img.height).data, W = img.width, Hh = img.height;
+      const flat = (a, k) => { const o = new Array(n * k), get = ['getX', 'getY', 'getZ', 'getW']; for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) o[i * k + j] = a[get[j]](i); return o; };
+      const M = heroMesh({ pos: flat(A.position, 3), uv: flat(A.uv, 2), index: Array.from(g0.index.array), joints: flat(A.skinIndex, 4), weights: flat(A.skinWeight, 4), bones: mesh.skeleton.bones.map(b => b.name),
+        pixel(u, v) { const x = clamp(Math.floor((u - Math.floor(u)) * W), 0, W - 1), y = clamp(Math.floor((v - Math.floor(v)) * Hh), 0, Hh - 1), o = 4 * (y * W + x); return [px[o], px[o + 1], px[o + 2]]; } });
+      const g = new THREE.BufferGeometry(), nv = M.pos.length / 3, read = new Float32Array(nv);
+      for (let i = 0; i < nv; i++) {                    // 头和肩略微提亮一点：暗处先认出这两处（和原来一样）
+        const h = M.pos[3 * i + 1] / M.H, head = sstep(.80, .88, h), shoulders = sstep(.63, .72, h) * (1 - head);
+        read[i] = Math.max(head, shoulders * (.5 + .3 * (1 - sstep(-.02, .06, M.pos[3 * i + 2]))));
+      }
+      g.setAttribute('position', new THREE.Float32BufferAttribute(M.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(M.nor, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(M.col, 3)); g.setAttribute('heroTop', new THREE.Float32BufferAttribute(M.top, 1));
+      g.setAttribute('characterReadability', new THREE.BufferAttribute(read, 1));
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(M.joints, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(M.weights, 4));
+      g.setIndex(M.index); g.computeBoundingBox(); g.computeBoundingSphere();
+      g0.userData.hero = { geo: g, H: M.H };
+    }
+    if (!heroMaterial) {
+      heroMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });   // 只有漫反射：磨平以后，带高光的材质会在轮廓边上（尤其是黑裤子）泛出一道亮线
+      heroMaterial.onBeforeCompile = shader => {
+        shader.uniforms.uTop = HERO_TOP.uTop; shader.uniforms.uTopK = HERO_TOP.uTopK; shader.uniforms.uRim = HERO_RIM.uRim; shader.uniforms.uRimK = HERO_RIM.uRimK;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float characterReadability;\nattribute float heroTop;\nvarying float vCharacterReadability;\nvarying float vHeroTop;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharacterReadability = characterReadability;\nvHeroTop = heroTop;');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCharacterReadability;\nvarying float vHeroTop;\nuniform vec3 uTop;\nuniform float uTopK;\nuniform vec3 uRim;\nuniform float uRimK;')
+          .replace('#include <color_fragment>', '#include <color_fragment>\n{ float tK = uTopK * step(0.5, vHeroTop);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTop * 0.95, tK);\ntotalEmissiveRadiance += uTop * 0.95 * tK * 0.3; }')   // 上衣那一块换成章节给的颜色；换上去的颜色带三成自发光：再暗的地方也认得出这一块颜色
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ndiffuseColor.rgb *= 1.0 + 0.12 * vCharacterReadability;\ntotalEmissiveRadiance += vec3(0.012, 0.013, 0.014) * vCharacterReadability;\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
+      };
+      heroMaterial.customProgramCacheKey = () => 'traveler-readability-v5';
+    }
+    mesh.geometry = g0.userData.hero.geo; mesh.material = heroMaterial;
+    model.userData.heroH = g0.userData.hero.H;           // 原模型的身高：头发剪短、头放大以后，整个人的大小还按原来的算
+  });
 }
 
 // ============================================================
@@ -2071,7 +2412,7 @@ function makeCharacter(kind, prev, o = {}) {
           const [fx, fy] = at('headfront'), [hx, hy] = at('Head'), [ex, ey] = at('head_end');
           k = wipe; bulge = 0.015; tx = fx + 0.6 * (ex - hx) + 0.065 - 0.045 * wipeX; ty = fy + 0.6 * (ey - hy) - 0.05 + 0.02 * wipeX;
         }
-        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从包里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
+        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从怀里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
         const hq = q.hands && q.hands[i];
         if (hq && (hq.k ?? 1) > 0.001) { k = hq.k ?? 1; tx = (hq.x - s.x) * dir; ty = hq.y - s.y; bulge = hq.bulge ?? 0; }
         if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) k *= 1 - brush.k * (1 - restK);   // 这只手正伸出去拨路边的叶子：先拨叶子（停下来撑膝盖的时候除外）
@@ -2136,16 +2477,17 @@ function makeCharacter(kind, prev, o = {}) {
 }
 
 // ============================================================
-//  《长夜》的灯泡和斜挎包（原型 C 先用：第十二章凿记号、第十三章机房）
+//  《长夜》的灯泡，和把它揣在怀里（原型 C 先用：第十二章凿记号、第十三章机房）
 //  灯泡：天上当星星用的蓄光灯泡，个头不小 —— 连灯头约 18 厘米高，灯头外面箍着一圈 8～9 厘米宽的金属套，记号凿穿在这圈套上（约 6 厘米）。
 //    灯泡总是灯头朝上（和挂在天上灯座里的方向一样，原点在灯头顶上）。灯亮着，光从镂空里漏出来，记号是一个亮的形状；灯暗着，镂空是一个黑的缺口。
 //    几种记号只在轮廓上不同（缺了一角的方框 / 圆 / 三角 / 尖角），不靠颜色分
 //    亮度 glow：0 报废（强光也激不亮）/ 0.12 离开灯座以后的余光 / 1 接上灯座的电 / 1.5 以上被强光激亮
-//  斜挎包：灰模占位 —— 样子还没定（design/long-night-story.md 第十节第 10 条），只求侧面剪影里看得出是一个包、包口能透出光。
-//    挎在主角右边胯上，带子从胸前斜到左肩、再从背后绕回来。平时灯泡用布包好装在里面，身上看不见光；
-//    被强光照中时，光透过布和包（CARRY.excite：主角这里的光有多强，章节每帧给）
-//  CARRY.state：none 身上没有灯泡 / bag 在包里 / out 拿在手上 / set 放在别处（工作台、灯座里：位置由章节给 CARRY.at）
-//  CARRY.act：正在做的一段动作（out 取出、in 收回），由章节开始（carryStart），这里每帧往前推、算出两只手放在哪
+//  揣在怀里：平时灯泡用布包好，塞在上衣里面、肚子前头，身上看不见它，也看不见光；
+//    被强光照中时，光透过布和衣服（CARRY.excite：主角这里的光有多强，章节每帧给）。
+//    原来这里是一只灰模占位的斜挎包（挎在胯上、带子斜过胸前），2026-11-16 去掉了：主角身上不挂东西，侧面的剪影才干净。
+//    代码里的名字还是原来的（state 'bag'、CARRY.B、bagLight …）：都指“揣在怀里”
+//  CARRY.state：none 身上没有灯泡 / bag 揣在怀里 / out 拿在手上 / set 放在别处（工作台、灯座里：位置由章节给 CARRY.at）
+//  CARRY.act：正在做的一段动作（out 从怀里取出、in 揣回去），由章节开始（carryStart），这里每帧往前推、算出两只手放在哪
 // ============================================================
 const CARRY = { bag: false, state: 'none', act: null, holdAt: null, at: null, excite: 0, power: 0, wrap: 1, spin: 0, bulb: null, B: null, light: null, bagLight: null, near: 1 };
 let _carrySeed = 4242;
@@ -2218,26 +2560,20 @@ function makeBulb(parent, mark, o = {}) {
   return api;
 }
 
-// ---- 斜挎包：主角的模型载入以后挂到他身上（换外形、重新搭一遍以后自己重挂）----
+// ---- 怀里透出来的光：主角的模型载入以后挂到他身上（换外形、重新搭一遍以后自己重挂）。身上没有别的东西 ----
 function buildBag(h) {
   const tv = h.B.traveler; if (!tv || !tv.group) return null;
   const g = new THREE.Group(); h.root.add(g);
-  const mat = new THREE.MeshLambertMaterial({ color: 0x5c5346, emissive: 0xffdcaa, emissiveIntensity: 0 }), dark = new THREE.MeshLambertMaterial({ color: 0x3e372e });
-  const bag = grp(g);                                                                  // 包的原点在包口（上沿的中间），往下挂
-  add(bag, bx(0.21, 0.155, 0.055), mat, 0, -0.085, 0);                                // 包身：前后 21 厘米、高 15 厘米、贴着胯，薄
-  const flap = add(bag, bx(0.215, 0.07, 0.062), dark, 0.002, -0.03, 0.004); flap.rotation.z = -0.04;   // 盖子
-  add(bag, bx(0.03, 0.03, 0.01), lam(0x8a7e66), 0.01, -0.06, 0.036, false);         // 扣子
-  const mouth = glow(bag, 0xffe8c0, 0.32, 0, 0.0, 0.0, 0.03); mouth.renderOrder = 62;   // 包口透出来的光
-  const strap = [0, 1, 2, 3].map(() => add(g, new THREE.CylinderGeometry(0.011, 0.011, 1, 6), dark, 0, 0, 0, false));
-  return { g, bag, mat, mouth, strap, h, swing: 0, sv: 0 };
+  const mouth = glow(g, 0xffe8c0, 0.32, 0, 0.0, 0.0, 0.03); mouth.renderOrder = 62;
+  return { g, mouth, h };
 }
-const _cv = [0, 1, 2, 3, 4, 5].map(() => new THREE.Vector3()), _up = new THREE.Vector3(0, 1, 0), _cq = new THREE.Quaternion();
-function placeSeg(m, a, b) {                                                           // 一段带子：从 a 到 b（角色坐标）
+const _cv = [0, 1, 2, 3, 4, 5].map(() => new THREE.Vector3()), _up = new THREE.Vector3(0, 1, 0);
+function placeSeg(m, a, b) {                                                           // 把一根细杆摆成从 a 到 b 的一段（机房里垂着的电线用）
   _cv[5].subVectors(b, a); const L = _cv[5].length(); m.scale.set(1, Math.max(L, 1e-3), 1);
   m.position.addVectors(a, b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(_up, _cv[5].normalize());
 }
 
-// 开始一段动作：kind 'out' 从包里取出（hold 最后举到哪，世界坐标 {x, y}；不给就拿在胸前）/ 'in' 收回包里
+// 开始一段动作：kind 'out' 从怀里取出（hold 最后举到哪，世界坐标 {x, y}；不给就拿在胸前）/ 'in' 揣回怀里
 function carryStart(kind, hold) { CARRY.act = { kind, t: 0, T: kind === 'out' ? 1.7 : 1.3, hold: hold ?? null }; if (kind === 'out') { CARRY.state = 'out'; CARRY.wrap = 1; } fx('cloth'); }
 const carryBusy = () => !!CARRY.act;
 
@@ -2245,7 +2581,7 @@ const carryBusy = () => !!CARRY.act;
 function poseCarry(dt) {
   const A = CARRY.act; if (!A && CARRY.state !== 'out') return;
   const dir = P.facing, near = dir > 0 ? 1 : 0, far = 1 - near; CARRY.near = near;
-  const bagPt = { x: P.x - dir * 0.03, y: P.y + 0.6 }, chest = { x: P.x + dir * 0.21, y: P.y + 0.7 };
+  const bagPt = { x: P.x + dir * 0.09, y: P.y + 0.6 }, chest = { x: P.x + dir * 0.21, y: P.y + 0.7 };
   const hold = (A ? A.hold : CARRY.holdAt) ?? chest;
   const L = (p, q, t) => ({ x: lerp(p.x, q.x, t), y: lerp(p.y, q.y, t) });
   const hands = [null, null]; let wrap = CARRY.wrap;
@@ -2273,33 +2609,25 @@ function poseCarry(dt) {
   HX.pose = { ...q, hands: hs, look: q.look ?? 0 };
 }
 
-// 在 hero.update 之后：把包摆到胯上、带子拉好；把灯泡放到手里（或者章节给的地方）；透光
+// 在 hero.update 之后：把灯泡放到手里（或者章节给的地方）；揣在怀里被强光照中时，从衣服里透出光
 function stepCarry(dt) {
-  const inLN = chapterAt(P.x).n >= OLD + 12 && chapterAt(P.x).grp !== 'deep';   // 工厂深处（第 25 章起）没有包 CARRY.bag = inLN;                       // 包和灯泡只在《长夜》的章节里有（旧原型的第十二、十三章）
+  const inLN = chapterAt(P.x).n >= OLD + 12 && chapterAt(P.x).grp !== 'deep';   // 灯泡只在《长夜》的章节里有（旧原型的第十二、十三章起）；工厂深处（第 25 章起）没有
   const showBag = inLN && state !== 'title';
   if (!CARRY.B || CARRY.B.h !== hero) { if (CARRY.B) { CARRY.B.g.parent?.remove(CARRY.B.g); } CARRY.B = hero.B.traveler?.group ? buildBag(hero) : null; }
   if (!CARRY.light) { CARRY.light = pointLight({ p: [0, 0, 0], c: 0xffe6c4, i: 5, d: 4, dec: 1.7, on: 0 }); CARRY.bagLight = pointLight({ p: [0, 0, 0], c: 0xffe2b6, i: 4, d: 3.2, dec: 1.7, on: 0 }); }
   const B = CARRY.B, has = CARRY.state !== 'none';
-  // 灯泡在包里、布包着：只有强光才透得出来
+  // 灯泡揣在怀里、布包着：只有强光才透得出来
   const ex = CARRY.excite, inBag = CARRY.state === 'bag' || (CARRY.act && !CARRY.visible);
   const bagGlow = has && inBag ? sstep(0.3, 1, ex) : 0;
   CARRY.bagLight.on = 0;
   if (B) {
-    B.g.visible = showBag;
-    if (showBag) {
-      const tv = hero.B.traveler, R = hero.root;
-      R.updateMatrixWorld(true);
-      const loc = (n, v) => R.worldToLocal(tv.bones.get(n).node.getWorldPosition(v));
-      const hip = loc('Hips', _cv[0]), sp = loc('Spine', _cv[1]), sh = loc('LeftShoulder', _cv[2]);
-      // 跑跳时包往后甩一点、晃回来（一个小弹簧）
-      const want = -Math.abs(P.vx) * 0.045 - (P.grounded ? 0 : 0.16);
-      B.sv += ((want - B.swing) * 60 - B.sv * 7) * dt; B.swing = clamp(B.swing + B.sv * dt, -0.5, 0.3);
-      B.bag.position.set(hip.x - 0.035, hip.y - 0.0, hip.z + 0.125); B.bag.rotation.set(0, 0, B.swing);
-      const top = _cv[3].set(B.bag.position.x + 0.06, B.bag.position.y - 0.01, B.bag.position.z - 0.01);
-      const chest = _cv[4].set(sp.x + 0.085, sp.y - 0.02, sp.z + 0.02), back = new THREE.Vector3(sp.x - 0.08, sp.y - 0.01, sp.z + 0.01), shoulder = sh.clone().add(new THREE.Vector3(0, 0.035, 0)), topB = top.clone().add(new THREE.Vector3(-0.12, 0, 0));
-      placeSeg(B.strap[0], top, chest); placeSeg(B.strap[1], chest, shoulder); placeSeg(B.strap[2], shoulder, back); placeSeg(B.strap[3], back, topB);
-      B.mat.emissiveIntensity = 0.55 * bagGlow; B.mouth.material.opacity = bagGlow; B.mouth.scale.setScalar(0.25 + 0.35 * bagGlow);
-      if (bagGlow > 0.01) { B.bag.getWorldPosition(_cv[5]); CARRY.bagLight.p = [_cv[5].x, _cv[5].y, _cv[5].z + 0.2]; CARRY.bagLight.on = bagGlow; }
+    B.g.visible = showBag && bagGlow > 0.01;
+    if (B.g.visible) {
+      const R = hero.root; R.updateMatrixWorld(true);
+      const hip = R.worldToLocal(hero.B.traveler.bones.get('Hips').node.getWorldPosition(_cv[0]));
+      B.g.position.set(hip.x + 0.12, hip.y + 0.07, hip.z + 0.04);                       // 肚子前头、衣服外面一点
+      B.mouth.material.opacity = bagGlow; B.mouth.scale.setScalar(0.25 + 0.35 * bagGlow);
+      B.g.getWorldPosition(_cv[5]); CARRY.bagLight.p = [_cv[5].x, _cv[5].y, _cv[5].z + 0.2]; CARRY.bagLight.on = bagGlow;
     }
   }
   // 灯泡
@@ -13009,9 +13337,9 @@ const CH11 = (() => {
 //    一 · 按 E 修灯：按下接点，把松开的部件归位，灯亮了
 //    二 · 按 E 凿记号：小錾子在灯头的金属套上凿出一个缺了一角的方框，光从凿穿的地方漏出来；镜头推近到灯跟前
 //    三 · 按 E 取下来：取下来以后只剩一团低低的余光；举到检验光底下，突然亮了一下，旁边筐里待修的坏灯一点反应也没有；
-//         用布包好，余光一点也透不出来，收进斜挎包
+//         用布包好，余光一点也透不出来，揣进怀里
 //  然后右边的门开了，走出去是黑的，接着往右走就到了第十三章机房的门口（中间九章还没做；出口见下面的 chapterExit）
-//  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它收进包里；这里为了接上机房，直接收进包里）
+//  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它揣进怀里；这里为了接上机房，直接收进包里）
 // ============================================================
 const X12 = 2200;
 const CH12 = (() => {
@@ -13038,7 +13366,7 @@ const CH12 = (() => {
   const inspL = spotLight({ p: [INSP, 1.62, -0.2], t: [INSP, 0.7, -0.3], c: 0xe8f4ff, i: 9, a: 0.4, pen: 0.5, d: 3 });   // 检验光：冷白、很亮、只照一小块
   pointLight({ p: [X + 1.0, 2.4, -1.4], c: 0xffb070, i: 1.6, d: 6 });
 
-  // 进度：step 0 等着修 / 1 灯亮了，等着凿 / 2 凿好了，等着取 / 3 收进包里了。t 这一步开始以后过了多久（做动作的时候用）
+  // 进度：step 0 等着修 / 1 灯亮了，等着凿 / 2 凿好了，等着取 / 3 揣进怀里了。t 这一步开始以后过了多久（做动作的时候用）
   const S = { step: 0, act: 0, t: 0, cut: 0, power: 0, insp: 0, look: 0, took: false };
   let V = null;
   const nearB = () => Math.abs(P.x - STAND) < 0.9 && P.y < 0.3;
@@ -13131,7 +13459,7 @@ const CH12 = (() => {
       if (V) { const hb = hero.B.traveler?.bones.get('RightHand')?.node; if (hb && k > 0.2) { hb.getWorldPosition(_cv[0]); V.chisel.position.set(_cv[0].x + 0.04, _cv[0].y + 0.02, _cv[0].z); V.chisel.rotation.set(0, 0, -1.25); } }
       S.look = sstep(2.4, 3.0, t) * (1 - sstep(5.4, 6.2, t));            // 推近：看清灯头上漏光的方框
       if (t > 6.4) { S.act = 0; S.step = 2; ctl = true; if (V) { V.chisel.position.set(BENCH + 0.6, 0.86, -0.4); V.chisel.rotation.set(0, 0, Math.PI / 2); } }
-    } else if (S.act === 3) {                                  // 取下来：只剩余光 → 举到检验光底下，骤亮；筐里的坏灯不亮 → 包好，收进包里
+    } else if (S.act === 3) {                                  // 取下来：只剩余光 → 举到检验光底下，骤亮；筐里的坏灯不亮 → 包好，揣进怀里
       if (t < 0.6) { P.facing = 1; pose = { hands: [null, null] }; pose.hands[1] = { x: FIX.x - 0.03, y: FIX.y - 0.15, k: sstep(0, 0.4, t) }; S.power = 1 - sstep(0.35, 0.5, t); }
       if (t > 0.5 && !S.took) { S.took = true; CARRY.state = 'out'; CARRY.holdAt = { x: FIX.x - 0.05, y: FIX.y - 0.2 }; CARRY.wrap = 0; S.power = 0; fx('contact'); }
       if (t > 0.6 && t < 1.5) { autoDir = P.x < INSP - 0.34 ? 1 : 0; CARRY.holdAt = { x: P.x + 0.24, y: 0.82 }; }
@@ -13168,7 +13496,7 @@ const CH12 = (() => {
 //  先单独放在最后，从章节菜单进（和第九到第十一章一样）；灰模，先验证信息的顺序，美术以后再说。
 //  一屏宽的小屋子，老人一直坐在里面，不站起来拦人。孩子从左往右走，三段线路把三层事实依次显出来，每一段只是一次很短的操作：
 //    一 · 合上第一道闸刀：观察窗的检修机构有了电。按住检修柄往下带 —— 屋里先断电，锁销退出，配重把小遮板拉开一道缝。
-//         白光挤进来，照出窗边的旧焦痕；包里的灯泡被照透，屋里备用的灯泡一齐亮起来，只有老人桌边那只旧灯没亮。
+//         白光挤进来，照出窗边的旧焦痕；怀里的灯泡被照透，屋里备用的灯泡一齐亮起来，只有老人桌边那只旧灯没亮。
 //         一松手，弹簧把手柄和遮板带回去，电又来了。老人一直望着那道光
 //    二 · 合上第二道闸刀：控制台醒过来，屏幕一块块亮出孩子认得的地方（侧窗、钟表街、断桥），巡逻图上来路封着、去机房的维护通道留空；
 //         旁边一排释放杆，有一根扳在释放的位置，连着停在检修位的那只空灯座（夹口朝下张着），旁边一块小屏画着落星的滑道。
@@ -13181,7 +13509,7 @@ const CH12 = (() => {
 //  后半程明显更慢、更重，有自己的声音和画面（夹口在合、锁销在退），拉闸的后半程老人撑起半个身子，举起挡光片。选择前没有倒计时。
 //    拧回去：夹口咬死，那根释放杆自己弹回去，灯座沿着缆索升上去补齐钩形星群。旁边又一处故障亮起来。淡出 ——
 //         椅子上坐着的是孩子，调整杆拉近了，椅背上搭着老人的外套。工作铃，城里的窗一扇扇亮起来；下一次宵禁，一个屋顶上的卷帘抬起了一条缝
-//    拉闸：锁销脱出，配重落下去，外壳的遮光板慢慢分开，白光从越来越宽的缝里涌进来。孩子和老人成了剪影，包里的灯泡雪亮，
+//    拉闸：锁销脱出，配重落下去，外壳的遮光板慢慢分开，白光从越来越宽的缝里涌进来。孩子和老人成了剪影，怀里的灯泡雪亮，
 //         刚断了电的星灯也一排排自己亮起来。画面全白，只剩风声
 //  结局后面不写结局名和说明；按 R 回到选择之前
 // ============================================================
@@ -13567,7 +13895,7 @@ const CH13 = (() => {
     // 控制：取放灯泡、对灯、结局的时候不能动
     const lock = busy() || END.c > 0;
     if (state === 'play') { if (lock) { ctl = false; S.locked = true; } else if (S.locked) { ctl = true; S.locked = false; } }
-    // 灯泡拿在手上，按方向键就先收回包里
+    // 灯泡拿在手上，按方向键就先揣回怀里
     if (CARRY.state === 'out' && !CARRY.act && P.mode !== 'hold' && !END.c && S.cmpT < 0 && (keys.has('L') || keys.has('R') || keys.has('J'))) carryStart('in');
 
     // ---- 一 · 小窗 ----
@@ -13766,7 +14094,7 @@ const CH13 = (() => {
   function stepDust(dt) { if (!V) return; for (const d of V.dust) { if (d.t > 1.4) { d.s.material.opacity = 0; continue; } d.t += dt; d.vy -= 1.6 * dt; d.s.position.x += d.vx * dt; d.s.position.y += d.vy * dt; d.s.material.opacity = 0.5 * (1 - d.t / 1.4); } }
 
   function resetEnd() {
-    if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到包里（只在演过结局以后：从菜单跳到第十二章时不要动它）
+    if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到怀里（只在演过结局以后：从菜单跳到第十二章时不要动它）
     Object.assign(END, { c: 0, t: 0, shown: false, step: 0 }); STORY.room = 0;
     screw.k = 0; screw.locked = false; screw.on = false; pull.k = 0; pull.locked = false; pull.on = false;
     envMod = null; { const w = $('white'); w.style.transition = 'none'; w.style.opacity = 0; void w.offsetWidth; w.style.transition = ''; } $('fade').style.opacity = 0; $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
@@ -17848,7 +18176,7 @@ function soundNote(first) {
 
 // ---- 从某一章的开头开始 ----
 // 跳过去的章节按“都帮了”来算；这一章和后面的章节回到初始状态
-// 下面是旧原型的几章（OLD + k）：旧第十二章（凿记号）跳过去，就算灯泡已经在包里；旧第十三章（机房）回到选择之前。《逃出工厂》的一条在 escape/85-fixups.js
+// 下面是旧原型的几章（OLD + k）：旧第十二章（凿记号）跳过去，就算灯泡已经揣在怀里；旧第十三章（机房）回到选择之前。《逃出工厂》的一条在 escape/85-fixups.js
 const SKIP = { [OLD + 3]: s => { s.cat = true; }, [OLD + 4]: s => { s.fed = true; }, [OLD + 5]: s => { s.cleaner = s.cleaner || 1; }, [OLD + 6]: s => { s.pump = true; s.water = true; }, [OLD + 7]: s => { s.wild = true; },
   [OLD + 12]: s => { s.bulb = true; } };
 const UNDO = { [OLD + 3]: s => { s.cat = false; }, [OLD + 4]: s => { s.fed = false; }, [OLD + 5]: s => { s.cleaner = 0; }, [OLD + 6]: s => { s.pump = false; s.water = false; }, [OLD + 7]: s => { s.wild = false; },
@@ -18271,7 +18599,7 @@ function sim(dt) {
   if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
-  poseCarry(dt);                                                         // 《长夜》：从包里取灯泡、收回去时两只手放在哪（43-carry.js）
+  poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
   hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x), yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? P.modeT / P.mantle.T : 0, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
@@ -18280,7 +18608,7 @@ function sim(dt) {
     swim: P.mode === 'swim' ? { ph: P.stroke, vx: P.vx, vy: P.vy, c: SWIM.c, top: sstep(0.12, 0.02, P.water.y - SWIM.top - (P.y + SWIM.c)), panic: sstep(0.55, 1, 1 - P.air / SWIM.breath) } : null,
     rope: P.mode === 'rope' ? ropeAnim() : null });
   const ph = hero.A.ph, stepNow = P.grounded && Math.abs(P.vx) > 0.4 && Math.floor(ph * 2) !== Math.floor(prevPh * 2); prevPh = ph;
-  stepCarry(dt);                                                         // 斜挎包挂到胯上，灯泡放到手里；被强光照中时透出来
+  stepCarry(dt);                                                         // 灯泡放到手里；揣在怀里被强光照中时透出光
   stepCat(dt);
 
   updateCamera(dt);

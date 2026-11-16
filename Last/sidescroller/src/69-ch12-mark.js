@@ -5,9 +5,9 @@
 //    一 · 按 E 修灯：按下接点，把松开的部件归位，灯亮了
 //    二 · 按 E 凿记号：小錾子在灯头的金属套上凿出一个缺了一角的方框，光从凿穿的地方漏出来；镜头推近到灯跟前
 //    三 · 按 E 取下来：取下来以后只剩一团低低的余光；举到检验光底下，突然亮了一下，旁边筐里待修的坏灯一点反应也没有；
-//         用布包好，余光一点也透不出来，收进斜挎包
+//         用布包好，余光一点也透不出来，揣进怀里
 //  然后右边的门开了，走出去是黑的，接着往右走就到了第十三章机房的门口（中间九章还没做；出口见下面的 chapterExit）
-//  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它收进包里；这里为了接上机房，直接收进包里）
+//  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它揣进怀里；这里为了接上机房，直接收进包里）
 // ============================================================
 const X12 = 2200;
 const CH12 = (() => {
@@ -34,7 +34,7 @@ const CH12 = (() => {
   const inspL = spotLight({ p: [INSP, 1.62, -0.2], t: [INSP, 0.7, -0.3], c: 0xe8f4ff, i: 9, a: 0.4, pen: 0.5, d: 3 });   // 检验光：冷白、很亮、只照一小块
   pointLight({ p: [X + 1.0, 2.4, -1.4], c: 0xffb070, i: 1.6, d: 6 });
 
-  // 进度：step 0 等着修 / 1 灯亮了，等着凿 / 2 凿好了，等着取 / 3 收进包里了。t 这一步开始以后过了多久（做动作的时候用）
+  // 进度：step 0 等着修 / 1 灯亮了，等着凿 / 2 凿好了，等着取 / 3 揣进怀里了。t 这一步开始以后过了多久（做动作的时候用）
   const S = { step: 0, act: 0, t: 0, cut: 0, power: 0, insp: 0, look: 0, took: false };
   let V = null;
   const nearB = () => Math.abs(P.x - STAND) < 0.9 && P.y < 0.3;
@@ -127,7 +127,7 @@ const CH12 = (() => {
       if (V) { const hb = hero.B.traveler?.bones.get('RightHand')?.node; if (hb && k > 0.2) { hb.getWorldPosition(_cv[0]); V.chisel.position.set(_cv[0].x + 0.04, _cv[0].y + 0.02, _cv[0].z); V.chisel.rotation.set(0, 0, -1.25); } }
       S.look = sstep(2.4, 3.0, t) * (1 - sstep(5.4, 6.2, t));            // 推近：看清灯头上漏光的方框
       if (t > 6.4) { S.act = 0; S.step = 2; ctl = true; if (V) { V.chisel.position.set(BENCH + 0.6, 0.86, -0.4); V.chisel.rotation.set(0, 0, Math.PI / 2); } }
-    } else if (S.act === 3) {                                  // 取下来：只剩余光 → 举到检验光底下，骤亮；筐里的坏灯不亮 → 包好，收进包里
+    } else if (S.act === 3) {                                  // 取下来：只剩余光 → 举到检验光底下，骤亮；筐里的坏灯不亮 → 包好，揣进怀里
       if (t < 0.6) { P.facing = 1; pose = { hands: [null, null] }; pose.hands[1] = { x: FIX.x - 0.03, y: FIX.y - 0.15, k: sstep(0, 0.4, t) }; S.power = 1 - sstep(0.35, 0.5, t); }
       if (t > 0.5 && !S.took) { S.took = true; CARRY.state = 'out'; CARRY.holdAt = { x: FIX.x - 0.05, y: FIX.y - 0.2 }; CARRY.wrap = 0; S.power = 0; fx('contact'); }
       if (t > 0.6 && t < 1.5) { autoDir = P.x < INSP - 0.34 ? 1 : 0; CARRY.holdAt = { x: P.x + 0.24, y: 0.82 }; }

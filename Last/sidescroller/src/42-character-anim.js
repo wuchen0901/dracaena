@@ -524,7 +524,7 @@ function makeCharacter(kind, prev, o = {}) {
           const [fx, fy] = at('headfront'), [hx, hy] = at('Head'), [ex, ey] = at('head_end');
           k = wipe; bulge = 0.015; tx = fx + 0.6 * (ex - hx) + 0.065 - 0.045 * wipeX; ty = fy + 0.6 * (ey - hy) - 0.05 + 0.02 * wipeX;
         }
-        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从包里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
+        // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从怀里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
         const hq = q.hands && q.hands[i];
         if (hq && (hq.k ?? 1) > 0.001) { k = hq.k ?? 1; tx = (hq.x - s.x) * dir; ty = hq.y - s.y; bulge = hq.bulge ?? 0; }
         if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) k *= 1 - brush.k * (1 - restK);   // 这只手正伸出去拨路边的叶子：先拨叶子（停下来撑膝盖的时候除外）

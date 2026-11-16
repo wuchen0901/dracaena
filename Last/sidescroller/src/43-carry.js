@@ -1,15 +1,16 @@
 
 // ============================================================
-//  《长夜》的灯泡和斜挎包（原型 C 先用：第十二章凿记号、第十三章机房）
+//  《长夜》的灯泡，和把它揣在怀里（原型 C 先用：第十二章凿记号、第十三章机房）
 //  灯泡：天上当星星用的蓄光灯泡，个头不小 —— 连灯头约 18 厘米高，灯头外面箍着一圈 8～9 厘米宽的金属套，记号凿穿在这圈套上（约 6 厘米）。
 //    灯泡总是灯头朝上（和挂在天上灯座里的方向一样，原点在灯头顶上）。灯亮着，光从镂空里漏出来，记号是一个亮的形状；灯暗着，镂空是一个黑的缺口。
 //    几种记号只在轮廓上不同（缺了一角的方框 / 圆 / 三角 / 尖角），不靠颜色分
 //    亮度 glow：0 报废（强光也激不亮）/ 0.12 离开灯座以后的余光 / 1 接上灯座的电 / 1.5 以上被强光激亮
-//  斜挎包：灰模占位 —— 样子还没定（design/long-night-story.md 第十节第 10 条），只求侧面剪影里看得出是一个包、包口能透出光。
-//    挎在主角右边胯上，带子从胸前斜到左肩、再从背后绕回来。平时灯泡用布包好装在里面，身上看不见光；
-//    被强光照中时，光透过布和包（CARRY.excite：主角这里的光有多强，章节每帧给）
-//  CARRY.state：none 身上没有灯泡 / bag 在包里 / out 拿在手上 / set 放在别处（工作台、灯座里：位置由章节给 CARRY.at）
-//  CARRY.act：正在做的一段动作（out 取出、in 收回），由章节开始（carryStart），这里每帧往前推、算出两只手放在哪
+//  揣在怀里：平时灯泡用布包好，塞在上衣里面、肚子前头，身上看不见它，也看不见光；
+//    被强光照中时，光透过布和衣服（CARRY.excite：主角这里的光有多强，章节每帧给）。
+//    原来这里是一只灰模占位的斜挎包（挎在胯上、带子斜过胸前），2026-11-16 去掉了：主角身上不挂东西，侧面的剪影才干净。
+//    代码里的名字还是原来的（state 'bag'、CARRY.B、bagLight …）：都指“揣在怀里”
+//  CARRY.state：none 身上没有灯泡 / bag 揣在怀里 / out 拿在手上 / set 放在别处（工作台、灯座里：位置由章节给 CARRY.at）
+//  CARRY.act：正在做的一段动作（out 从怀里取出、in 揣回去），由章节开始（carryStart），这里每帧往前推、算出两只手放在哪
 // ============================================================
 const CARRY = { bag: false, state: 'none', act: null, holdAt: null, at: null, excite: 0, power: 0, wrap: 1, spin: 0, bulb: null, B: null, light: null, bagLight: null, near: 1 };
 let _carrySeed = 4242;
@@ -82,26 +83,20 @@ function makeBulb(parent, mark, o = {}) {
   return api;
 }
 
-// ---- 斜挎包：主角的模型载入以后挂到他身上（换外形、重新搭一遍以后自己重挂）----
+// ---- 怀里透出来的光：主角的模型载入以后挂到他身上（换外形、重新搭一遍以后自己重挂）。身上没有别的东西 ----
 function buildBag(h) {
   const tv = h.B.traveler; if (!tv || !tv.group) return null;
   const g = new THREE.Group(); h.root.add(g);
-  const mat = new THREE.MeshLambertMaterial({ color: 0x5c5346, emissive: 0xffdcaa, emissiveIntensity: 0 }), dark = new THREE.MeshLambertMaterial({ color: 0x3e372e });
-  const bag = grp(g);                                                                  // 包的原点在包口（上沿的中间），往下挂
-  add(bag, bx(0.21, 0.155, 0.055), mat, 0, -0.085, 0);                                // 包身：前后 21 厘米、高 15 厘米、贴着胯，薄
-  const flap = add(bag, bx(0.215, 0.07, 0.062), dark, 0.002, -0.03, 0.004); flap.rotation.z = -0.04;   // 盖子
-  add(bag, bx(0.03, 0.03, 0.01), lam(0x8a7e66), 0.01, -0.06, 0.036, false);         // 扣子
-  const mouth = glow(bag, 0xffe8c0, 0.32, 0, 0.0, 0.0, 0.03); mouth.renderOrder = 62;   // 包口透出来的光
-  const strap = [0, 1, 2, 3].map(() => add(g, new THREE.CylinderGeometry(0.011, 0.011, 1, 6), dark, 0, 0, 0, false));
-  return { g, bag, mat, mouth, strap, h, swing: 0, sv: 0 };
+  const mouth = glow(g, 0xffe8c0, 0.32, 0, 0.0, 0.0, 0.03); mouth.renderOrder = 62;
+  return { g, mouth, h };
 }
-const _cv = [0, 1, 2, 3, 4, 5].map(() => new THREE.Vector3()), _up = new THREE.Vector3(0, 1, 0), _cq = new THREE.Quaternion();
-function placeSeg(m, a, b) {                                                           // 一段带子：从 a 到 b（角色坐标）
+const _cv = [0, 1, 2, 3, 4, 5].map(() => new THREE.Vector3()), _up = new THREE.Vector3(0, 1, 0);
+function placeSeg(m, a, b) {                                                           // 把一根细杆摆成从 a 到 b 的一段（机房里垂着的电线用）
   _cv[5].subVectors(b, a); const L = _cv[5].length(); m.scale.set(1, Math.max(L, 1e-3), 1);
   m.position.addVectors(a, b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(_up, _cv[5].normalize());
 }
 
-// 开始一段动作：kind 'out' 从包里取出（hold 最后举到哪，世界坐标 {x, y}；不给就拿在胸前）/ 'in' 收回包里
+// 开始一段动作：kind 'out' 从怀里取出（hold 最后举到哪，世界坐标 {x, y}；不给就拿在胸前）/ 'in' 揣回怀里
 function carryStart(kind, hold) { CARRY.act = { kind, t: 0, T: kind === 'out' ? 1.7 : 1.3, hold: hold ?? null }; if (kind === 'out') { CARRY.state = 'out'; CARRY.wrap = 1; } fx('cloth'); }
 const carryBusy = () => !!CARRY.act;
 
@@ -109,7 +104,7 @@ const carryBusy = () => !!CARRY.act;
 function poseCarry(dt) {
   const A = CARRY.act; if (!A && CARRY.state !== 'out') return;
   const dir = P.facing, near = dir > 0 ? 1 : 0, far = 1 - near; CARRY.near = near;
-  const bagPt = { x: P.x - dir * 0.03, y: P.y + 0.6 }, chest = { x: P.x + dir * 0.21, y: P.y + 0.7 };
+  const bagPt = { x: P.x + dir * 0.09, y: P.y + 0.6 }, chest = { x: P.x + dir * 0.21, y: P.y + 0.7 };
   const hold = (A ? A.hold : CARRY.holdAt) ?? chest;
   const L = (p, q, t) => ({ x: lerp(p.x, q.x, t), y: lerp(p.y, q.y, t) });
   const hands = [null, null]; let wrap = CARRY.wrap;
@@ -137,33 +132,25 @@ function poseCarry(dt) {
   HX.pose = { ...q, hands: hs, look: q.look ?? 0 };
 }
 
-// 在 hero.update 之后：把包摆到胯上、带子拉好；把灯泡放到手里（或者章节给的地方）；透光
+// 在 hero.update 之后：把灯泡放到手里（或者章节给的地方）；揣在怀里被强光照中时，从衣服里透出光
 function stepCarry(dt) {
-  const inLN = chapterAt(P.x).n >= OLD + 12 && chapterAt(P.x).grp !== 'deep';   // 工厂深处（第 25 章起）没有包 CARRY.bag = inLN;                       // 包和灯泡只在《长夜》的章节里有（旧原型的第十二、十三章）
+  const inLN = chapterAt(P.x).n >= OLD + 12 && chapterAt(P.x).grp !== 'deep';   // 灯泡只在《长夜》的章节里有（旧原型的第十二、十三章起）；工厂深处（第 25 章起）没有
   const showBag = inLN && state !== 'title';
   if (!CARRY.B || CARRY.B.h !== hero) { if (CARRY.B) { CARRY.B.g.parent?.remove(CARRY.B.g); } CARRY.B = hero.B.traveler?.group ? buildBag(hero) : null; }
   if (!CARRY.light) { CARRY.light = pointLight({ p: [0, 0, 0], c: 0xffe6c4, i: 5, d: 4, dec: 1.7, on: 0 }); CARRY.bagLight = pointLight({ p: [0, 0, 0], c: 0xffe2b6, i: 4, d: 3.2, dec: 1.7, on: 0 }); }
   const B = CARRY.B, has = CARRY.state !== 'none';
-  // 灯泡在包里、布包着：只有强光才透得出来
+  // 灯泡揣在怀里、布包着：只有强光才透得出来
   const ex = CARRY.excite, inBag = CARRY.state === 'bag' || (CARRY.act && !CARRY.visible);
   const bagGlow = has && inBag ? sstep(0.3, 1, ex) : 0;
   CARRY.bagLight.on = 0;
   if (B) {
-    B.g.visible = showBag;
-    if (showBag) {
-      const tv = hero.B.traveler, R = hero.root;
-      R.updateMatrixWorld(true);
-      const loc = (n, v) => R.worldToLocal(tv.bones.get(n).node.getWorldPosition(v));
-      const hip = loc('Hips', _cv[0]), sp = loc('Spine', _cv[1]), sh = loc('LeftShoulder', _cv[2]);
-      // 跑跳时包往后甩一点、晃回来（一个小弹簧）
-      const want = -Math.abs(P.vx) * 0.045 - (P.grounded ? 0 : 0.16);
-      B.sv += ((want - B.swing) * 60 - B.sv * 7) * dt; B.swing = clamp(B.swing + B.sv * dt, -0.5, 0.3);
-      B.bag.position.set(hip.x - 0.035, hip.y - 0.0, hip.z + 0.125); B.bag.rotation.set(0, 0, B.swing);
-      const top = _cv[3].set(B.bag.position.x + 0.06, B.bag.position.y - 0.01, B.bag.position.z - 0.01);
-      const chest = _cv[4].set(sp.x + 0.085, sp.y - 0.02, sp.z + 0.02), back = new THREE.Vector3(sp.x - 0.08, sp.y - 0.01, sp.z + 0.01), shoulder = sh.clone().add(new THREE.Vector3(0, 0.035, 0)), topB = top.clone().add(new THREE.Vector3(-0.12, 0, 0));
-      placeSeg(B.strap[0], top, chest); placeSeg(B.strap[1], chest, shoulder); placeSeg(B.strap[2], shoulder, back); placeSeg(B.strap[3], back, topB);
-      B.mat.emissiveIntensity = 0.55 * bagGlow; B.mouth.material.opacity = bagGlow; B.mouth.scale.setScalar(0.25 + 0.35 * bagGlow);
-      if (bagGlow > 0.01) { B.bag.getWorldPosition(_cv[5]); CARRY.bagLight.p = [_cv[5].x, _cv[5].y, _cv[5].z + 0.2]; CARRY.bagLight.on = bagGlow; }
+    B.g.visible = showBag && bagGlow > 0.01;
+    if (B.g.visible) {
+      const R = hero.root; R.updateMatrixWorld(true);
+      const hip = R.worldToLocal(hero.B.traveler.bones.get('Hips').node.getWorldPosition(_cv[0]));
+      B.g.position.set(hip.x + 0.12, hip.y + 0.07, hip.z + 0.04);                       // 肚子前头、衣服外面一点
+      B.mouth.material.opacity = bagGlow; B.mouth.scale.setScalar(0.25 + 0.35 * bagGlow);
+      B.g.getWorldPosition(_cv[5]); CARRY.bagLight.p = [_cv[5].x, _cv[5].y, _cv[5].z + 0.2]; CARRY.bagLight.on = bagGlow;
     }
   }
   // 灯泡

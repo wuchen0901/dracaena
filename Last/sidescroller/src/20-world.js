@@ -25,7 +25,7 @@ const chapterAt = x => { let c = CHAPTERS[0]; for (const k of CHAPTERS) if (x >=
 // 故事进度：跨章节要记住的事（存进 localStorage，下次打开接着走）
 //   cat 救下了小猫 / fed 老人拿到了食物 / cleaner 1 = 电池给了清洁机器人，2 = 给了门 /
 //   pump 水泵通了电 / water 给幸存者和猫留了水 / wild 野地得到了水 / ending 1 = 修复，2 = 旁路
-//   《长夜》原型：bulb 灯泡在包里（旧第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
+//   《长夜》原型：bulb 灯泡揣在怀里（旧第十二章凿好记号以后）/ room 机房的结局：1 拧回去，2 拉闸
 //   《逃出工厂》加的两样在 escape/60-kit.js
 const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false, water: false, wild: false, ending: 0, bulb: false, room: 0 };
 const STORY = { ...STORY0 };
