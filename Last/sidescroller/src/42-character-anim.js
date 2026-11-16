@@ -21,6 +21,16 @@ function lowestY(model, step = 6) {                                     // 模�
 
 const NOPOSE = {}, NOBR = { chest: 0.45, ex: 0, bend: 0 };
 
+// ---- 攀爬：手按住边缘撑上去 ----
+// 以前是摆好一个收着腿的姿势，整个人顺着侧面匀速滑上去、再平着滑到顶上；跳早了、腰撞在箱子角上（边缘只到腰那么高）的时候最明显，人像被平着提上去的。
+// 现在按人真的怎么上去来排：脚该站的地方（玩家的位置，见 50-player.js 的攀爬）升得快，身子升得慢 ——
+//   两只手按在顶面上不动；刚抓住的那一下身子还往下沉一点（掉得越快沉得越多），上身伏到顶面上；手臂把胯撑过边缘，两腿收起来；
+//   后腿（1 号）先绕过边角踩到顶上，踩住就不动了；身子从它上面翻过去，前腿（0 号）先顺着侧面垂着，最后才提上来迈到前面；一边站直。
+// 下面的数都是整段动作的几分之几（0 抓住 … 1 站好）：
+//   rise 脚该站的地方什么时候升到顶；over 什么时候开始往顶上挪；drop 中间蹲得最低时胯比站直低多少（× 身高，边缘低的时候蹲得浅）、[蹲下去, 开始站起来, 最低的时候]；
+//   fold 上身往前伏多少（弧度；胯还在边缘下面的时候伏不下去）；step 后腿从垂着到踩稳；lift / swing 前腿提起来、迈到前面；let 手什么时候松开；sink 刚抓住时往下沉多少（每 1 米/秒的下落速度沉多少米，最多多少米）
+const MANTLE = { rise: 0.6, over: 0.4, drop: 0.26, crouch: [0.05, 0.5, 0.6], fold: 0.55, step: [0.2, 0.44], lift: [0.55, 0.8], swing: [0.72, 1], let: 0.64, sink: [0.012, 0.07] };
+
 // ---- 从高处落地 ----
 // 原地跳一下，落差约 1.2 米，落地只是膝盖一软（下面的 A.sq 弹簧）；再高就做一个落地的动作，落差越大做得越重。
 // 做哪一种看情况（landStyle）：站着或慢慢走着掉下来 —— 不太高就 1 蹲下缓冲，很高（high 米以上）就 2 单手撑地；
@@ -152,7 +162,7 @@ function makeCharacter(kind, prev, o = {}) {
 
   function update(dt, s) {
     const dir = s.facing, sp = Math.abs(s.vx), fwd = s.vx * dir, t = s.t;
-    const push = s.mode === 'push', mant = s.mode === 'mantle';
+    const push = s.mode === 'push', mant = s.mode === 'mantle' && !!s.mant;
     // 额外的姿势（NPC 的表演，以及结局里的 07）：sit 坐下 / bow 弯腰 / limp 断电垂头 / arms 直接给手臂角度 / reach 伸手够某一点 / look 头转向
     const q = s.pose || NOPOSE, sit = q.sit || 0, limp = q.limp || 0, lie = q.lie || 0, lieA = lie * Math.PI / 2;   // lie：仰面躺着（1 = 放平）。上身从胯那里往后放倒，腿照 sit 摆在身前
     const brush = s.brush && s.mode !== 'swim' ? s.brush : null;             // 拨开路边的植物（48-brush.js 算好的）：手伸到身前 (hx, hy)，k 多大程度，hands 一只手还是两只，turn 手臂往外翻，bow 低头弯腰
@@ -160,8 +170,28 @@ function makeCharacter(kind, prev, o = {}) {
     A.run = damp(A.run, sstep(1.5, 3.0, sp), 8, dt);
     A.mv = damp(A.mv, sstep(0.04, 0.5, sp), 12, dt);
     A.air = damp(A.air, s.grounded || mant ? 0 : 1, s.grounded ? 24 : lerp(12, 40, Math.min(1, A.pk * 4) * (1 - A.run)), dt);   // 站着蹲下去蓄了力再跳的：一离地两条腿马上蹬直（脚尖还留在地面附近），不是弯着腿被提起来
-    A.grip = damp(A.grip, push || (mant && s.modeT < 0.72) ? 1 : 0, 14, dt);
-    A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
+    A.grip = damp(A.grip, push || (mant && s.modeT < MANTLE.let) ? 1 : 0, 14, dt);
+    // 攀爬（见上面的 MANTLE）：tuck 这段动作占几成；md 胯比站直低多少、mp 上身往前伏多少（和落地蹲下一样算进 landDrop / landPitch）；mf 两只脚踝该在哪 [往前, 离脚该站的地方多高, 脚尖翘多少]
+    A.md ??= 0; A.mp ??= 0; A.mf ??= [[0, 0, 0], [0, 0, 0]];
+    let mdT = 0, mpT = 0;
+    if (mant) {
+      const m = s.mant, k = s.modeT, h = Math.max(0, m.top - m.y0), cx = (m.ex - s.x) * dir, cy = m.top - s.y, top = Math.max(cy, 0);   // (cx, cy)：边角在角色坐标里的位置
+      mdT = Math.min(MANTLE.drop * u, 0.55 * h) * sstep(MANTLE.crouch[0], MANTLE.crouch[1], k) * (1 - sstep(MANTLE.crouch[2], 1, k));
+      mpT = MANTLE.fold * sstep(-0.3 * u, 0, D.hipY - cy - mdT) * sstep(0, 0.2, k) * (1 - sstep(0.5, 1, k));   // 胯到了边缘那么高，上身才伏得到顶面上
+      const side = Math.min(cx, 0.2 * u) - 0.13 * u;                          // 脚踝在这里，脚尖正好贴着侧面（从水里爬上岸、从绳子上翻过去的时候人离边缘还远：腿就垂在身子底下，不往前够）
+      // 后腿：先屈着膝贴在侧面，再绕过边角，踩到顶上（最后站的地方，踩住以后在世界里不动）
+      const wl = sstep(MANTLE.step[0], MANTLE.step[1], k), w1 = Math.min(1, wl * 2), w2 = Math.max(0, wl * 2 - 1), px = Math.min((m.x1 - s.x) * dir - 0.03 * u, 0.37 * u);
+      let lx = lerp(lerp(side, side + 0.06 * u, w1), px, w2), ly = lerp(lerp(D.ankle + 0.07 * u, top + D.ankle + 0.1 * u, w1), top + D.ankle, w2);
+      ly = Math.min(ly, D.hipY - mdT - 0.08 * u);                             // 脚抬不过胯：胯还没撑到够高，脚就先在边缘外面等着（不然大腿要翻到背后去）
+      lx = lerp(lx, Math.min(lx, side), sstep(0, 0.04 * u, top + D.ankle - ly));
+      // 前腿：顺着侧面垂着（蹲得多低就垂多长，腿差不多是直的），等身子过去了再提起来、迈到前面
+      const wa = sstep(MANTLE.lift[0], MANTLE.lift[1], k), wb = sstep(MANTLE.swing[0], MANTLE.swing[1], k);
+      const tx = lerp(side - 0.02 * u, 0.034 * u, wb), ty = lerp(lerp(D.ankle - Math.max(0, mdT - 0.05 * u), top + D.ankle + 0.06 * u, wa), D.ankle, wb) + 0.05 * u * Math.sin(Math.PI * wb);
+      const T = [[tx, ty, lerp(-0.75, 0, Math.max(wa * 0.5, wb))], [lx, ly, lerp(-0.5, 0, w2)]], r = A.tuck < 0.02 ? 1 : 1 - Math.exp(-26 * dt);
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) A.mf[i][j] = lerp(A.mf[i][j], T[i][j], r);
+    }
+    A.tuck = damp(A.tuck, mant ? 1 : 0, mant ? 16 : 12, dt);
+    A.md = damp(A.md, mdT, 22, dt); A.mp = damp(A.mp, mpT, 16, dt);
     A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
     A.brk = damp(A.brk, clamp(-A.acc / 12, 0, 1) * sstep(0.3, 1.6, sp) * (s.grounded && s.mode === 'normal' ? 1 : 0), 12, dt);   // 刹车：减速越猛越明显，快停住了就收回去（走着松手几乎没有）
@@ -179,7 +209,7 @@ function makeCharacter(kind, prev, o = {}) {
     const prepping = (s.prep ?? -1) >= 0 && s.mode === 'normal', pq = prepping ? s.prep / 0.6 : 0;
     const pkT = prepping ? (pq < 1 ? 1 - (1 - pq) ** 2 : lerp(1, 0.5, ((s.prep - 0.6) / 0.4) ** 2)) * lerp(1, JUMP.prep.run, A.run) : 0;
     A.pk = damp(A.pk, pkT, prepping ? 60 : JUMP.prep.up, dt);
-    const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck + JUMP.prep.drop * A.pk) * u, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck + JUMP.prep.pitch * A.pk;
+    const landDrop = (LP.drop * A.lc + 0.16 * A.ltuck + JUMP.prep.drop * A.pk) * u + A.md, landPitch = LP.pitch * A.lc + 0.4 * A.trip + 0.6 * A.ltuck + JUMP.prep.pitch * A.pk + A.mp;
     // 身子朝哪（见上面的 TURN）。摆好的姿势（坐下、弯腰、伸手够东西）都是照正侧面排的，这时候不转；q.turn 可以直接指定
     const posed = !!(q.sit || q.bow || q.reach || q.arms || q.hands || limp || lie), sw = s.swim || A.lastSwim;
     const rest = s.grounded && sp < 0.05 && s.mode === 'normal' && !posed && !o.npc;
@@ -246,7 +276,7 @@ function makeCharacter(kind, prev, o = {}) {
     // 累：身子压低，每只脚踩上去以后往下一沉；停下来喘气时膝盖弯得更深、屁股往后坐
     const sink = TL ? -(tk * (TL.low + TL.dip * A.mv * Math.pow(0.5 + 0.5 * Math.cos(4 * Math.PI * (A.ph - 0.07)), 2)) + 0.05 * restK + 0.035 * stb) * u : 0;
     const hipX = TL ? -(tk * TL.back + 0.065 * restK) * u : 0;
-    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY - landDrop + sink - 0.03 * u * A.brk;   // 刹车：膝盖弯一点，重心压低
+    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.03 * u * A.cover + breathY - landDrop + sink - 0.03 * u * A.brk;   // 刹车：膝盖弯一点，重心压低
     const hipStand = hipY;
     if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
     const sitDrop = hipY - hipStand;                                          // 坐下时重心降了多少（主角的模型不挂在骨盆上，要自己跟着降）
@@ -255,7 +285,7 @@ function makeCharacter(kind, prev, o = {}) {
     // 上身前倾：跑得越快、加速越猛就越前倾；推车时压低身体，拉车时后仰
     let leanT = (lerp(0.05, 0.2, A.run) * A.mv + clamp(A.acc * 0.011, -0.12, 0.16)) * (fwd < -0.05 ? -0.4 : 1);
     if (push) leanT = fwd > 0.1 ? 0.42 : fwd < -0.1 ? -0.2 : 0.16;
-    if (mant) leanT = 0.3;
+    if (mant) leanT = 0.1;                                                   // 攀爬：上身往前伏在 landPitch 里（从胯那里折），这里只带一点
     leanT = lerp(leanT, lerp(0.03, 0.13, A.jm) - 0.05 * jUp + 0.08 * jTop + 0.06 * jDn, A.air);   // 腾空：蹬地往上冲时挺着胸，最高点含一下，往下落时微微前倾看着落脚的地方
     if (B.S.robot && !push && !mant) leanT += 0.055 * (1 - A.air);
     if (B.S.slouch && !push && !mant) leanT += B.S.slouch * (1 - A.air) * (1 - A.run);
@@ -307,8 +337,7 @@ function makeCharacter(kind, prev, o = {}) {
       if (A.air < 0.03) { jL[0] = jx; jL[1] = jK[1]; jL[2] = jK[2]; } else { jL[0] = damp(jL[0], jx, 22, dt); jL[1] = damp(jL[1], jK[1], 22, dt); jL[2] = damp(jL[2], jK[2], 22, dt); }
       tx = lerp(tx, jL[0] * LL, A.air); ty = lerp(ty, hipY + jL[1] * LL, A.air); pitch = lerp(pitch, jL[2], s.grounded ? 0 : A.air);
       if (s.grounded) ty = Math.max(ty, tx * slope + D.ankle);   // 刚着地那几帧，伸长的腿不能插进地里（只拦在地面上：以前是直接抬到走路该在的高度，跑着落地时后脚一帧就弹起来二十几厘米）
-      // 攀爬：收腿
-      tx = lerp(tx, (i ? 0.03 : 0.12) * u, A.tuck); ty = lerp(ty, hipY + (i ? -0.4 : -0.27) * u, A.tuck);
+      if (A.tuck > 0.001) { const f = A.mf[i]; tx = lerp(tx, f[0], A.tuck); ty = lerp(ty, f[1], A.tuck); pitch = lerp(pitch, f[2], A.tuck); }   // 攀爬：两只脚各走各的（见上面的 MANTLE）
       if (A.lc > 0.001 && LP.feet) {                                         // 落地蹲下：两只脚一前一后踩稳，后脚跟抬起来
         tx = lerp(tx, LP.feet[i] * u, A.lc); ty = lerp(ty, D.ankle + (i ? LP.heel * u : 0), A.lc); pitch = lerp(pitch, i ? -0.5 : 0, A.lc);
       }
@@ -353,7 +382,7 @@ function makeCharacter(kind, prev, o = {}) {
       }
       a = lerp(a, A.ja[i], A.airA); b = lerp(b, A.jb[i], A.airA);
       if (A.grip > 0.01 && s.hand) {
-        const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir, s.hand.y - s.y + (i ? 0 : 0.012 * u), D.uarm, D.farm + 0.02 * u, false);
+        const [ua, fa] = ik2(shX, shY, (s.hand.x - s.x) * dir + (mant ? 0.04 * u : 0), s.hand.y - s.y + (i ? 0 : 0.012 * u) + (mant ? 0.02 * u : 0), D.uarm, D.farm + 0.02 * u, false);   // 攀爬：手掌按在顶面上、边缘里面一点
         a = lerp(a, ua + A.lean, A.grip); b = lerp(b, fa, A.grip);
       } else a += A.lean * 0.5;
       if (A.bend > 0.01) {                                                   // 两手撑在大腿上、膝盖上面一点（主角的模型手臂比骨架短，按模型的长度来算）
@@ -531,6 +560,7 @@ function makeCharacter(kind, prev, o = {}) {
         // 剧情里直接给手腕的位置（世界坐标）：q.hands[i] = { x, y, k }。从怀里取灯泡、举起来对照、拧进灯座、握住手柄（见 43-carry.js 和机房一章）
         const hq = q.hands && q.hands[i];
         if (hq && (hq.k ?? 1) > 0.001) { k = hq.k ?? 1; tx = (hq.x - s.x) * dir; ty = hq.y - s.y; bulge = hq.bulge ?? 0; }
+        if (mant && A.grip > 0.001 && s.hand) { k = A.grip; tx = (s.hand.x - s.x) * dir + (i ? 0.03 : 0.06) * u; ty = s.hand.y - s.y + 0.03 * u; bulge = 0; }   // 攀爬：手腕落在顶面上、边缘里面一点（模型的手臂比骨架短，要照模型自己的解）
         if (brush && brush.k > 0.002 && (brush.hands === 2 || i === near)) k *= 1 - brush.k * (1 - restK);   // 这只手正伸出去拨路边的叶子：先拨叶子（停下来撑膝盖的时候除外）
         if (k > 0.001) {
           // 手不是一下子跳过去的：从它现在的位置沿着身前移过去，每一刻都重新解 IK，手肘自然地弯着。
