@@ -17,7 +17,8 @@ const CH16 = (() => {
   camKeys([X - 20, 20, 1, 1, 0], [X + 8, 20, 0.5, 2, 0], [X + 24, 17, 1.2, 1, 0], [X + 42, 17, 1.2, 1, 0]);
   env(X - 20, { fog: 0x102b35, fogD: 0.025, hemiS: 0x83b5c0, hemiG: 0x102022, hemiI: 0.65, keyI: 0.4 }, true);
   let doorMesh, lamp, powered = false;
-  usable({ x: X + 13.9, r: 1.1, y0: -6, y1: -4.4, can: () => !hatch.want, on() { hatch.want = 1; fx('lever'); } });
+  // 阀门：贴着海底（按住 ↓ 时人会沉到 y ≈ -6.3）也够得着
+  usable({ x: X + 13.9, r: 1.1, y0: -7, y1: -4.4, can: () => !hatch.want, on() { hatch.want = 1; fx('lever'); } });
   usable({ x: X + 31, r: 1.3, y0: -3, y1: -2, can: () => !powered, on() { powered = true; fx('lever'); } });
   hint(() => P.x > X && P.x < X + 8, '入口在水底。<b>↓</b> 下潜，<b>空格</b> 上浮，注意换气');
   hint(() => P.x > X + 12 && P.x < X + 15 && P.y < -4.4 && !hatch.want, '按 <b>E</b> 转动阀门，打开水下入口');
