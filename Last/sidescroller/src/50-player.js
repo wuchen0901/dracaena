@@ -57,19 +57,21 @@ function findGrab() {                             // 身前或身后紧挨着的
 }
 
 // ============================================================
-//  累：爬坡爬久了、连续跑太久，人就累了 —— 慢下来、弓着腰走，时不时停下来撑着膝盖喘口气、抹一下汗、抬头望一眼坡顶、脚下绊一下
-//  F 疲劳 0..1：往上爬按爬高了多少涨（跑着爬比走着爬涨得快）；一直按着跑、跑上半分钟左右也开始涨（runT：这一口气跑了多久，停下来喘过气就重新算）；
-//    停下来喘气、站着缓得最快，平地上慢慢走缓得慢些，刚开始跑的那二十来秒也在缓；还在往上爬、或者跑太久了还硬撑着跑的时候缓不过来。回到存档点就缓过来了
+//  累：爬坡爬久了、连续跑太久，人就累了 —— 弓着腰、低着头、喘得凶，时不时抹一下汗、抬头望一眼坡顶、脚下绊一下；站住了就撑着膝盖喘
+//  累只是样子：走多快、跑多快、跳多高都不变，也不会自己停下来（以前累了会慢到一秒半米、走着走着自己停下来歇，玩起来太磨人）
+//  F 疲劳 0..1：往上爬按爬高了多少涨（跑着爬比走着爬涨得快），一口气爬上一米半左右开始显出来，爬上三四米累透；
+//    停下来、站着缓得最快，平地上、下坡走着跑着也在缓；还在往上爬的时候缓不过来。回到存档点就缓过来了
+//  一直按着跑、跑上一分钟左右（runT：这一口气跑了多久，停下来喘过气就重新算）也显出一点累，不会更累；放慢、停下来就退回去
 //  k 累的样子有多重：F 过了三成五开始有，过了八成五就是累透了；被追的时候（rushT > 0，章节里每帧给它续上）顾不上累
 //  三种走法（见 42-character-anim.js 的 TIRED_GAIT）组合着用：每回累起来随机挑“弓背低头”或者“拖着脚”为主，走一阵会换；
-//    坡陡的地方（多数时候）两手按到大腿上去
-//  四个小动作随机出现，一次只做一样：走着走着停下来撑着膝盖喘气（只在地面上，不在箱子、木梁上）、抹额头、抬头望坡顶（只在上坡）、
-//    脚尖绊一下（累透了才有）；站着不动的时候也是撑着膝盖喘，隔一会儿抬头往前看一眼
+//    坡陡的地方（多数时候）两手按到大腿上去（只在走的时候，跑起来腾不出手）。跑起来腿上的样子收掉大半，换成弓着腰、手臂垂低了沉沉地跑
+//  三个小动作随机出现，一次只做一样：抹额头、抬头望坡顶（只在上坡）、脚尖绊一下（累透了才有；只是样子，不顿住）；
+//    站着不动的时候撑着膝盖喘，隔一会儿抬头往前看一眼，一按方向键就起身
 // ============================================================
 const TIRED = { F: 0, k: 0, runT: 0, idleT: 0, ep: false, gait: 0, gaitT: 0, steep: true, mix: [1, 0, 0],
-  rest: 0, restT: -1, restD: 0, wipeT: -1, lookT: -1, stbT: -1, nRest: 0, nWipe: 0, nLook: 0, nStb: 0, half: 0, rushT: 0, seed: 20261113, fixF: -1 };
+  rest: 0, wipeT: -1, lookT: -1, stbT: -1, nWipe: 0, nLook: 0, nStb: 0, half: 0, rushT: 0, seed: 20261113, fixF: -1 };
 function trand() { TIRED.seed = TIRED.seed * 16807 % 2147483647; return TIRED.seed / 2147483647; }   // 自己的随机数：画面图设好种子，拍出来每次一样
-function resetTired() { Object.assign(TIRED, { F: 0, k: 0, runT: 0, idleT: 0, ep: false, rest: 0, restT: -1, wipeT: -1, lookT: -1, stbT: -1, rushT: 0 }); }
+function resetTired() { Object.assign(TIRED, { F: 0, k: 0, runT: 0, idleT: 0, ep: false, rest: 0, wipeT: -1, lookT: -1, stbT: -1, rushT: 0 }); }
 function stepTired(dt, d) {
   const T = TIRED, ground = P.grounded && P.mode === 'normal', sp = Math.abs(P.vx);
   const slope = ground ? groundSlope(P.x) : 0, up = slope * (d || P.facing), climb = Math.max(0, P.vx * slope);   // up：朝着走的方向坡往上多陡；climb：每秒爬高多少米
@@ -78,39 +80,35 @@ function stepTired(dt, d) {
   T.rushT = Math.max(0, T.rushT - dt);
   T.runT = T.rest ? 0 : pushing ? T.runT + dt : Math.max(0, T.runT - (sp < 0.1 || P.mode !== 'normal' ? 3 : 1) * dt);   // 推箱子、攀爬、游泳的时候不算在跑
   T.idleT = ground && sp < 0.1 && !d ? T.idleT + dt : 0;
-  const gain = climb * (fast ? 0.45 : 0.33) + 0.07 * sstep(25, 35, T.runT);
-  const rec = !ground ? 0 : T.rest || sp < 0.1 ? 0.12 : climb > 0.02 ? 0 : (fast ? 0.04 : 0.07) * (1 - sstep(23, 27, T.runT));   // 跑得太久还硬撑着跑：走着也缓不过来，得停下来
+  const gain = climb * (fast ? 0.25 : 0.19);
+  const rec = !ground ? 0 : T.rest || sp < 0.1 ? 0.12 : climb > 0.02 ? 0 : fast ? 0.05 : 0.07;
   T.F = T.fixF >= 0 ? T.fixF : clamp(T.F + (gain - rec) * dt, 0, 1);
-  const want = T.rushT > 0 ? 0 : sstep(0.35, 0.85, T.F);
+  const runF = sp > 2.2 && P.mode === 'normal' ? 0.55 * sstep(40, 60, T.runT) : 0;               // 跑得太久：只要还在跑，就有一点累的样子（不往上加）；放慢了、停下来就退回去
+  const want = T.rushT > 0 ? 0 : sstep(0.35, 0.85, T.fixF >= 0 ? T.F : Math.max(T.F, runF));
   T.k = damp(T.k, want, want > T.k ? 1.0 : T.rushT > 0 ? 5 : 0.8, dt);
   // 一回累：开始的时候随机挑主要的走法、各个小动作第一次出现的时间；走一阵换一种走法
   if (!T.ep && T.k > 0.06) {
     T.ep = true; T.gait = trand() < 0.6 ? 0 : 2; T.gaitT = 8 + 6 * trand(); T.steep = trand() < 0.75;
-    T.nRest = 4 + 4 * trand(); T.nWipe = 3 + 5 * trand(); T.nLook = 2 + 3 * trand(); T.nStb = 6 + 6 * trand();
+    T.nWipe = 3 + 5 * trand(); T.nLook = 2 + 3 * trand(); T.nStb = 6 + 6 * trand();
   }
   if (T.ep && T.k < 0.03 && !T.rest) T.ep = false;
   if (T.ep && (T.gaitT -= dt) < 0) { T.gait = 2 - T.gait; T.gaitT = 7 + 7 * trand(); }
-  const thigh = T.steep ? sstep(0.1, 0.18, up) * sstep(0.45, 0.85, T.k) : 0;
+  const thigh = T.steep ? sstep(0.1, 0.18, up) * sstep(0.45, 0.85, T.k) * (1 - sstep(1.6, 2.4, sp)) : 0;   // 跑起来两手要摆，不按大腿
   for (let i = 0; i < 3; i++) T.mix[i] = damp(T.mix[i], (i === T.gait ? 1 - thigh : 0) + (i === 1 ? thigh : 0), 1.6, dt);
   // 小动作：时间往前走，做完了清掉
   if (T.wipeT >= 0 && (T.wipeT += dt) > 1.5) T.wipeT = -1;
   if (T.lookT >= 0 && (T.lookT += dt) > 2.4) T.lookT = -1;
   if (T.stbT >= 0 && (T.stbT += dt) > 0.75) T.stbT = -1;
-  if (T.restT >= 0) {                                                  // 走着走着停下来喘气：到点了接着走，起身之前抬头看一眼前面
-    T.restT += dt;
-    if (T.restT > T.restD - 1.3 && T.lookT < 0) T.lookT = 0;
-    if (T.restT > T.restD || !ground) { T.restT = -1; T.rest = 0; }
-  } else if (T.rest && (d || !ground || T.k < 0.2)) T.rest = 0;        // 站着喘气：一动就起身
+  if (T.rest && (d || !ground || T.k < 0.2)) T.rest = 0;               // 站着喘气：一动就起身
   const busy = T.rest || T.wipeT >= 0 || T.lookT >= 0 || T.stbT >= 0;
   const half = Math.floor(hero.A.ph * 2), step = half !== T.half; T.half = half;   // step：刚好踩下一步
   if (T.ep && T.k > 0.45 && T.rushT <= 0) {
-    if (ground && sp > 0.25 && d) {
-      if ((T.nRest -= dt) < 0 && !busy && onTerrain && T.k > 0.6) { T.rest = 1; T.restT = 0; T.restD = 2.2 + 1.2 * trand(); T.nRest = 9 + 7 * trand(); }
-      else if ((T.nWipe -= dt) < 0 && !busy && T.mix[1] < 0.3) { T.wipeT = 0; T.nWipe = 8 + 6 * trand(); }   // 两手按着大腿的时候腾不出手
+    if (ground && sp > 0.25 && d) {                                      // 走着跑着：只做不耽误走路的小动作（不会自己停下来）
+      if ((T.nWipe -= dt) < 0 && !busy && T.mix[1] < 0.3) { T.wipeT = 0; T.nWipe = 8 + 6 * trand(); }   // 两手按着大腿的时候腾不出手
       else if ((T.nLook -= dt) < 0 && !busy && up > 0.04) { T.lookT = 0; T.nLook = 6 + 6 * trand(); }
       else if ((T.nStb -= dt) < 0 && !busy && step && onTerrain && T.k > 0.75) { T.stbT = 0; T.nStb = (T.mix[2] > 0.5 ? 6 : 10) + 8 * trand(); }
     } else if (ground && sp < 0.1 && !d && T.idleT > 0.35 && !busy) T.rest = 1;
-    if (T.rest && T.restT < 0 && T.lookT < 0 && (T.nLook -= dt) < 0) { T.lookT = 0; T.nLook = 3 + 3 * trand(); }
+    if (T.rest && T.lookT < 0 && (T.nLook -= dt) < 0) { T.lookT = 0; T.nLook = 3 + 3 * trand(); }
   }
 }
 
@@ -166,12 +164,8 @@ function stepPlayer(dt) {
   let lh = 0, lp = null, lc = 1;
   if (P.land) { const L = P.land; L.t += dt * (d && L.t > 0.15 && L.style < 3 ? 1.35 : 1); const l = landAt(L); if (l.done) P.land = null; else { lh = l.hold; lp = l.push; lc = l.ctl; } }   // 按着方向键就起身快一些
   let speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK * (1 - lh);
-  if (TIRED.k > 0.001) {                                                // 累：慢下来，一下一下地往前挪；上坡比平地慢，坡越陡越慢
-    const up = P.grounded ? groundSlope(P.x) * (d || P.facing) : 0, tv = (up > 0.03 ? lerp(0.78, 0.56, sstep(0.05, 0.2, up)) : 0.95) * hero.A.pace;
-    speed = lerp(speed, Math.min(speed, tv), TIRED.k);
-  }
-  if (TIRED.restT >= 0) speed *= 1 - sstep(0, 0.3, TIRED.restT) * (1 - sstep(TIRED.restD - 0.3, TIRED.restD, TIRED.restT));   // 走着停下来喘口气
-  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? 3.5 : lp !== null ? 9 : d ? lerp(9, 18, TIRED.k) : 14, dt);   // 累了步子一下快一下慢，速度要跟得紧
+  // 累了（TIRED）不改速度：累只是样子
+  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? 3.5 : lp !== null || d ? 9 : 14, dt);
   if (d && lc > 0.5) { P.facing = d; P.moved = true; }
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 

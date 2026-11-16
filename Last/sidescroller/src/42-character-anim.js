@@ -83,14 +83,16 @@ function armLengths(tv) {                                                    // 
 // 三种走法组合着用（s.tiredMix 是三者的比重）：
 //   0 弓背低头：上身往前弓、头垂着看脚下，手臂几乎不摆，步子小，每一步落下去都往下一沉，再慢慢撑起来
 //   1 双手撑大腿：腰弯得更深，迈上去的那条腿，同一边的手按在大腿上，借着手把自己往上推；两只手轮流（坡陡的地方用）
-//   2 拖着脚：脚抬不起来、蹭着地走，手臂松松地晚半拍才甩过来，一步快一步慢
-// 四个小动作：停下来两手撑着膝盖喘气（s.rest），抬手抹一下额头（s.wipeT），抬头望一眼坡顶、叹口气（s.lookT），脚尖绊一下（s.stbT）
+//   2 拖着脚：脚抬不起来、蹭着地走，手臂松松地晚半拍才甩过来
+// 这三种都是走路的样子；跑起来（A.run）腿上的样子收掉大半（不然步子又碎又密，腿像在空转），弓腰收一些，手臂还是要摆，只是垂低一些、摆小一些
+// 几个小动作：站住了两手撑着膝盖喘气（s.rest），抬手抹一下额头（s.wipeT），抬头望一眼坡顶、叹口气（s.lookT），脚尖绊一下（s.stbT）
+// 累只是样子，不改走路的快慢（50-player.js）：每步往下一沉、绊一下往前一扑，都只在身子上做
 // stoop 腰往前弓多少（弧度）；droop 头垂多少；swing / elbow 手臂摆幅和手肘弯度；stride / lift 步长和抬脚高度（乘在原来的上面）；
-// low / dip 身子压低多少、每步落地沉多少（身高的比例）；pace2 / pace1 每步、每两步一次的快慢起伏；back 屁股往后坐多少
+// low / dip 身子压低多少、每步落地沉多少（身高的比例）；back 屁股往后坐多少
 const TIRED_GAIT = [
-  { stoop: 0.4, droop: 0.3, swing: 0.1, elbow: 0.12, stride: 0.8, lift: 0.5, low: 0.02, dip: 0.035, pace2: 0.3, pace1: 0, back: 0.01 },
-  { stoop: 0.66, droop: 0.06, swing: 0.1, elbow: 0.15, stride: 0.76, lift: 0.6, low: 0.035, dip: 0.03, pace2: 0.45, pace1: 0, back: 0.035 },
-  { stoop: 0.32, droop: 0.26, swing: 0.26, elbow: 0.08, stride: 0.82, lift: 0.16, low: 0.02, dip: 0.03, pace2: 0.25, pace1: 0.3, back: 0.01 },
+  { stoop: 0.4, droop: 0.3, swing: 0.1, elbow: 0.12, stride: 0.8, lift: 0.5, low: 0.02, dip: 0.035, back: 0.01 },
+  { stoop: 0.66, droop: 0.06, swing: 0.1, elbow: 0.15, stride: 0.76, lift: 0.6, low: 0.035, dip: 0.03, back: 0.035 },
+  { stoop: 0.32, droop: 0.26, swing: 0.26, elbow: 0.08, stride: 0.82, lift: 0.16, low: 0.02, dip: 0.03, back: 0.01 },
 ];
 const TL_MIX = { ...TIRED_GAIT[0], thighs: 0, drag: 0 };                    // 按比重混出来的一套（每帧重算，不另外分配）
 function mixGait(w) {
@@ -108,8 +110,8 @@ function makeCharacter(kind, prev, o = {}) {
   A.swim ??= 0; A.pitch ??= 0;                                              // 游泳：在水里的程度、身子放平了多少（0 竖着，π/2 平躺）
   A.bend ??= 0;                                                             // 累坏了弯腰、两手撑着膝盖的程度
   A.turn ??= 0; A.twist ??= 0; A.tph ??= 0; A.pivot ??= 0; A.restT ??= 0; A.stN ??= 0; A.st ??= -1; A.stNext ??= 3;   // 身子朝镜头转了多少、上身又多拧了多少、挪步的相位和程度、站了多久、站法
-  // 累：tk 累的样子有多重，rk 停下来撑着膝盖的程度，stoop 腰弓了多少，pace 这一刻走路快慢的倍数（给 50-player.js 用）
-  A.tk ??= 0; A.rk ??= 0; A.stoop ??= 0; A.pace ??= 1;
+  // 累：tk 累的样子有多重，rk 停下来撑着膝盖的程度，stoop 腰弓了多少
+  A.tk ??= 0; A.rk ??= 0; A.stoop ??= 0;
   const npcTurn = o.npc ? 0.26 + 0.3 * hash1(root.id) : null;              // 路上的人：各有各的站法，不换
   (o.parent ?? scene).add(root);
 
@@ -169,6 +171,7 @@ function makeCharacter(kind, prev, o = {}) {
     A.tk = damp(A.tk, TL && !s.pose ? clamp(s.tired ?? 0, 0, 1) : 0, 2.5, dt);
     A.rk = damp(A.rk, TL && s.rest && !s.pose ? 1 : 0, s.rest ? 3.2 : 4.5, dt);     // 停下来：先弯腰、两手撑住膝盖；起身的时候快一点
     const tk = TL ? A.tk * calm : 0, restK = TL ? A.rk * calm : 0;
+    const tkL = tk * (1 - 0.9 * A.run), tkA = tk * (1 - 0.6 * A.run);       // 腿上、手臂上累的样子：跑起来收掉大半 / 收掉一些
     // 小动作（时间从 50-player.js 来，-1 是没在做）：抹额头 1.45 秒，抬头望坡顶 2.3 秒（最后叹一口气），绊一下 0.7 秒
     const wT = s.wipeT ?? -1, lT = s.lookT ?? -1, bT = s.stbT ?? -1;
     const wipe = wT < 0 ? 0 : sstep(0, 0.4, wT) * (1 - sstep(1.05, 1.45, wT)) * calm, wipeX = wT < 0 ? 0 : sstep(0.4, 1.0, wT);
@@ -177,11 +180,8 @@ function makeCharacter(kind, prev, o = {}) {
 
     // 步态：按“走过的距离”推进相位，所以脚踩在地上时不会打滑
     let duty = lerp(0.62, 0.37, A.run), stride = lerp(0.4, 0.5, A.run) * u * (1 - 0.35 * A.trip);   // 踉跄的时候步子又碎又急
-    if (tk > 0) { duty = lerp(duty, 0.68, tk); stride *= lerp(1, TL.stride, tk); }         // 累：步子小，两只脚同时着地的时间长
+    if (tkL > 0) { duty = lerp(duty, 0.68, tkL); stride *= lerp(1, TL.stride, tkL); }      // 累：步子小，两只脚同时着地的时间长（跑起来只小一点）
     A.ph = ((A.ph + fwd * dt * duty / stride) % 1 + 1) % 1;
-    // 累的时候身子是一下一下往前挪的：每步踩上去、把身子撑上去的那一下最慢，然后往前一倾进下一步；绊一下的时候顿住。
-    // 50-player.js 按 pace 调走路的快慢（腿还是按走过的距离迈），所以快慢起伏的时候脚也不打滑
-    A.pace = TL ? (1 + tk * (TL.pace2 * Math.cos(4 * Math.PI * (A.ph - 0.47)) + TL.pace1 * Math.cos(2 * Math.PI * (A.ph - 0.2)))) * (1 - 0.75 * stb) : 1;
     const bobPh = Math.cos(4 * Math.PI * (A.ph - duty / 2));
     const bob = lerp(0.012, -0.03, A.run) * u * bobPh * A.mv * (1 - A.air);
     if (s.impact > 0) A.sqv -= s.impact * 0.28 * (1 - 0.6 * landHard(s.impact));   // 落地：重心被压下去再弹回（从高处落下时主要靠下面的蹲下来缓，弹簧只带一点震）
@@ -208,7 +208,7 @@ function makeCharacter(kind, prev, o = {}) {
     leanT *= (1 - A.swim) * (1 - A.rope);
     A.lean = damp(A.lean, leanT, 9, dt);
     // 累：弓腰 —— 只弯上身，不带着腿（主角模型上分到胯和三节脊椎上，见最后）。坡越陡弓得越低；停下来撑膝盖时弓得最深，跟着喘气一起一伏
-    let stoopT = TL ? tk * (TL.stoop + 0.5 * Math.max(0, slope)) : 0;
+    let stoopT = TL ? tk * (TL.stoop * (1 - 0.4 * A.run) + 0.5 * Math.max(0, slope)) : 0;   // 跑起来本来就往前倾，弓得少一点
     stoopT = lerp(stoopT, 0.92, restK) - 0.08 * heave * restK + 0.24 * stb + 0.08 * sigh - lerp(0.08, 0.14, restK) * gUp;
     A.stoop = damp(A.stoop, stoopT, 8, dt);
     spine.rotation.z = -(A.lean + bl + landPitch + A.stoop) + hv + lieA;
@@ -229,16 +229,16 @@ function makeCharacter(kind, prev, o = {}) {
     }
 
     // 腿：先算出脚踝的目标位置，再用 IK 解出大腿和膝盖的角度
-    const rise = sstep(-2.5, 3.5, s.vy), lift = lerp(0.055, 0.2, A.run) * u * (TL ? lerp(1, TL.lift, tk) : 1);   // 累：脚抬得低
+    const rise = sstep(-2.5, 3.5, s.vy), lift = lerp(0.055, 0.2, A.run) * u * (TL ? lerp(1, TL.lift, tkL) * (1 - 0.25 * tk * A.run) : 1);   // 累：脚抬得低（跑起来膝盖也提得低一些）
     for (let i = 0; i < 2; i++) {
       const p = (A.ph + i * 0.5) % 1; let fx, fy, pitch;
       if (p < duty) {                                                        // 支撑期：脚相对身体匀速向后
-        const k = p / duty, toe = sstep(0.68, 1, k) * (0.35 + 0.65 * A.run) * (1 - 0.6 * tk);   // 累：脚掌平平地抬起来，不怎么踮脚尖
+        const k = p / duty, toe = sstep(0.68, 1, k) * (0.35 + 0.65 * A.run) * (1 - 0.6 * tkL);   // 累：脚掌平平地抬起来，不怎么踮脚尖
         fx = lerp(0.42, -0.58, k) * stride; fy = toe * 0.04 * u; pitch = -toe * 0.6;
       } else {                                                               // 摆动期：抬脚向前迈
         const k = (p - duty) / (1 - duty), e = k * k * (3 - 2 * k);
         fx = lerp(-0.58, 0.42, e) * stride; fy = lift * 4 * k * (1 - k) * (1.35 - 0.7 * k); pitch = lerp(-0.7, 0.28, k) * (0.3 + 0.7 * A.run);
-        if (TL?.drag) pitch = lerp(pitch, lerp(-0.3, 0.05, sstep(0.55, 1, k)), tk * TL.drag);   // 拖着脚：脚尖垂着往前蹭
+        if (TL?.drag) pitch = lerp(pitch, lerp(-0.3, 0.05, sstep(0.55, 1, k)), tkL * TL.drag);   // 拖着脚：脚尖垂着往前蹭
       }
       const idleX = (i ? -0.03 : 0.034) * u;
       fx = lerp(idleX, fx, A.mv); fy *= A.mv; pitch = pitch * A.mv + Math.atan(slope);
@@ -289,10 +289,10 @@ function makeCharacter(kind, prev, o = {}) {
         const [ua, fa] = ik2(shX, shY, lampX + (i ? 0.03 : 0.042) * u, lampY + (i ? -0.03 : 0.01) * u, D.uarm, D.farm + 0.02 * u, false);
         a = lerp(a, ua + A.lean, A.cover); b = lerp(b, fa, A.cover);
       }
-      if (tk > 0.001) {                                                      // 累：手臂顺着重力垂下来，摆得很小
-        const sw2 = lerp(sw, -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 1.5), TL.drag);   // 拖着脚：手臂松着，跟不上身子，晚半拍才甩过来
+      if (tk > 0.001) {                                                      // 累：手臂顺着重力垂下来，摆得很小（跑起来还摆着，只是垂低一些、摆小一些）
+        const sw2 = lerp(sw, -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 1.5), TL.drag * (1 - A.run));   // 拖着脚：手臂松着，跟不上身子，晚半拍才甩过来
         const fling = (i === (dir > 0 ? 1 : 0) ? 1.0 : 0.6) * stb;           // 绊一下：两只手往前一甩（靠镜头的那只甩得多）
-        a = lerp(a, tilt * 0.92 + TL.swing * sw2 * A.mv + fling, tk); b = lerp(b, TL.elbow + 0.08 * Math.max(0, sw2) * A.mv + 0.6 * fling, tk);
+        a = lerp(a, tilt * 0.92 + TL.swing * sw2 * A.mv, tkA) + fling * tk; b = lerp(b, TL.elbow + 0.08 * Math.max(0, sw2) * A.mv, tkA) + 0.6 * fling * tk;
       }
       if (limp) { a = lerp(a, A.lean, limp); b = lerp(b, 0.06, limp); }      // 断电：手臂直直垂着
       if (q.reach && (q.reach.i === undefined || q.reach.i === i)) {         // 伸手去够世界里的一点
@@ -437,7 +437,7 @@ function makeCharacter(kind, prev, o = {}) {
         poseBone(side + 'Arm', arms[i].sh.rotation.z, arms[i].turn || 0); poseBone(side + 'ForeArm', arms[i].el.rotation.z);
         let k = 0, tx = 0, ty = 0, bulge = 0;
         let kT = 0;                                                          // 撑大腿：这条腿迈上去的时候按住，腿往后走了就松开
-        if (TL && TL.thighs > 0.001) { const p = (A.ph + i * 0.5) % 1; kT = tk * TL.thighs * lerp(1, p > 0.5 ? sstep(0.84, 0.97, p) : 1 - sstep(0.24, 0.36, p), A.mv); }
+        if (TL && TL.thighs > 0.001) { const p = (A.ph + i * 0.5) % 1; kT = tk * (1 - A.run) * TL.thighs * lerp(1, p > 0.5 ? sstep(0.84, 0.97, p) : 1 - sstep(0.24, 0.36, p), A.mv); }
         if (kT > 0.001 || restK > 0.001) {                                   // 手掌按在大腿前面：走着的时候按在大腿中段，停下来撑在膝盖上面
           const [hx, hy] = at(side + 'UpLeg'), [kx, ky] = at(side + 'Leg'), lx = kx - hx, ly = ky - hy, n = Math.hypot(lx, ly) || 1, f = lerp(0.7, 0.86, restK / (restK + kT));
           tx = hx + lx * f - ly / n * 0.07; ty = hy + ly * f + lx / n * 0.07 + 0.035; k = Math.max(kT, restK);
