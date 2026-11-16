@@ -26,13 +26,13 @@ const CH14 = (() => {
   // 旧木箱：高度正好是两道墙的高差 —— 站在箱子上，墙头离脚下和第一道矮墙一样高。CR0 一开始放在哪；往左最多拉到 CRMIN，往右推到贴着墙（CRMAX）
   const CR_W = 1.1, CR_D = 0.9, CR_H = TOP2 - TOP, CR0 = X + 37.2, CRMIN = X + 35.6, CRMAX = W2X - HALF - CR_W / 2;
   const S14 = 0.62;                                            // 路面石块的大小（米）                                            // 灰缝比砖面缩进去多少
-  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel',   // 脚步声：山上的碎石
+  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel', enter: [X - 10.8, X - 1],   // 脚步声：山上的碎石
     intro() { CAT.state = 'none'; } });
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
   groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
   solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 14, () => P.x > X + 55);                  // 翻过第二道墙、走到头：黑一下，接到下一章（高台）
+  chapterExit(OLD + 14, { a0: X + 45, a1: X + 56, tint: 0x2f3439 });   // 翻过第二道墙，往雾里走：接到下一章（高台）
   solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
   solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：太高，也太薄，扒不上去
   checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);

@@ -10,7 +10,7 @@ const E9 = (() => {
   const X = E7_X + E8_L, TOP = X + 264, VZ = -118, FX = X + 214, FY = 2.6, SC = 0.5;   // VZ：远处那片谷地画在多深的地方（排在第七章那排远树前面）；FX、FY：工厂在哪；SC：工厂照这个比例缩小了画（画得近，看着远）
   const vx = x => FX + (x - FX) * SC, vy = y => FY + (y - FY) * SC;
   const C = chapter({ n: 8, x0: X + 196, start: X + 198, name: '结尾', sub: '天快亮了', ground: 'grass', label: '结尾', tag: '尾',   // 游戏里的第 8 章
-    end: { h1: '逃出工厂', go: '按 R 再看一遍结尾　·　Esc 选择章节' } });             // 结局画面上的字（80-ui.js 的 endTexts；旧原型的写在网页里）
+    end: { h1: '逃出工厂', go: '按 R 再看一遍结尾　·　Esc 选择章节' }, endTint: 0x10161a });             // 结局画面上的字（80-ui.js 的 endTexts；旧原型的写在网页里）
   terrain([X + 200, 1.3], [X + 206, 1.3], [X + 208.5, 0.55], [X + 212, 0.55], [X + 214.5, 1.4], [X + 228, 2.0], [X + 252, 7.6], [X + 264, 9.2], [X + 278, 9.6], [X + 360, 9.6]);   // 野地、水渠、一道长坡
   ground(X + 200, 0x2f3a2e); ground(X + 240, 0x4a5236); ground(X + 360, 0x4a5236);
   surface(X + 208.4, X + 212.1, 'wade');

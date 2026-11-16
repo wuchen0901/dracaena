@@ -96,6 +96,12 @@ function applyEnv(x) {
   for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(a.sky[s][j], b.sky[s][j], t);
   E.keyDir.lerpVectors(a.keyDir, b.keyDir, t).normalize();
   if (envMod) envMod(E);
+  if (MIST.k > 0) {                                      // 两章之间那段雾里的路（80-ui.js 的 stepMist）：雾越来越浓，天、远处的东西先没进雾里
+    const f = sstep(0, 0.75, MIST.k);
+    E.fog.lerp(MIST.tint, f); E.fogD = lerp(E.fogD, Math.max(E.fogD, 1.15 / MIST.d), f * f);   // 浓到主角自己也只剩一个影子（MIST.d：镜头离他多远）
+    for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(E.sky[s][j], MIST.sky[j], f);
+    E.sunP *= 1 - f; E.stars *= 1 - f; E.cloud *= 1 - f;
+  }
   scene.fog.color.copy(E.fog); scene.background.copy(E.fog); scene.fog.density = E.fogD;
   hemi.color.copy(E.hemiS); hemi.groundColor.copy(E.hemiG); hemi.intensity = E.hemiI;
   key.color.copy(E.keyC); key.intensity = E.keyI; keyDir.copy(E.keyDir);

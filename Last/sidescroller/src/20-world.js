@@ -109,10 +109,14 @@ function camKey(x) {
   const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
-// 出口：两章在世界里不挨着（中间隔着空气墙、几百米空地）的时候，走到这一章的尽头 cond() 成立，就黑一下接到下一章的开头（80-ui.js 的 nextChapter）。
-// 挨着的章节不用登记，一直往右走就进了下一章；演结局的章节（结局画面上按回车）也不用登记
+// 出口：两章在世界里不挨着（中间隔着空气墙、几百米空地）的时候，这一章的尽头接一段“雾里的路”，一直往右走就走进下一章，不停、不黑屏（80-ui.js 的 stepPass）。
+// chapterExit(n, { a0, a1, when, tint })：人从 a0 往右走，雾越来越浓，走到 a1 整个画面都是雾 —— 这时候把人挪到下一章的入口，接着往前走，雾又散开。
+//   when()：除了 x，还要满足什么才算走在出口上（比如得站在最高那一级台阶上、门得是开着的）；tint：这一段雾的颜色（夜里、屋里是暗的）
+// 下一章的入口写在它自己的章节对象上：enter: [b0, b1] —— 人出现在 b0（身后那道空气墙的右边），走到 b1 雾散尽。没写就从出生点往左退几米
+// 挨着的章节不用登记，一直往右走就进了下一章；演结局的章节也不用登记：结局画面上按一下，同样起一阵雾，接到下一章
 const EXITS = [];
-function chapterExit(n, cond) { EXITS.push({ n, cond }); }
+function chapterExit(n, o) { EXITS.push({ n, when: null, tint: 0x0a0d0f, ...o }); }
+const MIST = { k: 0, op: 0, d: 20, tint: new THREE.Color(0x0a0d0f), sky: [0.04, 0.05, 0.06], pre: null, arr: null, go: null };   // 雾里的路现在走到哪一步（80-ui.js 的 stepMist）
 // 脚下是什么（脚步声用，见 52-audio.js）：每一章一个默认的（章节对象上的 ground），这里登记例外的几段 [x1, x2, 种类]，种类也可以是 x => 种类。
 // 后登记的盖住先登记的。站在方块上时看方块自己的 snd（没写就是 wood）。种类：concrete 水泥 / metal 铁板 / wood 木头 / dirt 土路 / forest 林子里的地 /
 // leaves 干落叶 / grass 草地 / gravel 碎石 / sand 沙土 / mud 湿泥 / rock 湿岩石 / puddle 水洼 / wade 蹚水

@@ -11,7 +11,7 @@
 const X10 = 1500;
 const CH10 = (() => {
   const X = X10;
-  const C = chapter({ n: OLD + 10, x0: X + 0.5, start: X + 3, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
+  const C = chapter({ n: OLD + 10, x0: X - 6.9, start: X + 3, enter: [X - 6.2, X + 2], name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
     intro() { CAT.state = 'none'; } });
   const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5;
   terrain([X - 30, 0], [X + 29.9, 0], [X + 30.1, DITCH], [X + 32.85, DITCH], [X + 33.05, 0], [X + 150, 0]);
@@ -21,7 +21,7 @@ const CH10 = (() => {
   const S2 = solid({ id: 'step2', x1: X + 32.95, x2: X + 60, y1: DITCH, y2: H2, snd: 'concrete' });
   const S3 = solid({ id: 'step3', x1: X + 60, x2: END, y1: 0, y2: H3, snd: 'concrete' });
   solid({ x1: END - 1.35, x2: END - 0.9, y1: H3, y2: 40, noclimb: true });             // 最高一级的边上有一道矮墙和栏杆，走到这里为止
-  chapterExit(OLD + 10, () => P.x > END - 4 && P.y > H3 - 0.3);                     // 在最高一级上走到矮墙跟前：黑一下，接到下一章（夜搜）
+  chapterExit(OLD + 10, { a0: END - 15, a1: END - 3, when: () => P.y > H3 - 0.3, tint: 0x6f7b78 });   // 在最高一级上往矮墙那边走：雾越来越浓，雾里接到下一章（夜搜）
   // 三根能抓的绳子：挂在吊臂顶端的滑轮下面，离台阶的墙一米
   const R1 = rope({ x: X + 13.0, top: H1 + 1.95, bot: 1.95 });
   const R2 = rope({ x: X + 31.95, top: H2 + 1.95, bot: 3.35 });

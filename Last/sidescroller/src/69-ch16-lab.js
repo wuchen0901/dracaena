@@ -2,7 +2,7 @@
 // 接在第 23 章“高台”（69-ch15-drop.js，地形铺到 x = 2840）右边；?ch=24
 const CH16 = (() => {
   const X = 2900;
-  chapter({ n: OLD + 16, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', intro() { CAT.state = 'none'; } });
+  chapter({ n: OLD + 16, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', enter: [X - 1.6, X + 2.5], intro() { CAT.state = 'none'; } });
   terrain([X - 30, 0], [X + 5, 0], [X + 6, -6], [X + 22, -6], [X + 23, -2.6], [X + 42, -2.6]);
   ground(X - 30, 0x152c30); ground(X + 42, 0x243a40);
   const sea = water({ x1: X + 5.05, x2: X + 18, y: -0.4, bot: -6 });

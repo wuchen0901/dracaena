@@ -14,7 +14,7 @@
 const X11 = 1800;
 const CH11 = (() => {
   const X = X11;
-  const C = chapter({ n: OLD + 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯',
+  const C = chapter({ n: OLD + 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯', enter: [X - 6.8, X + 2],
     intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
@@ -23,7 +23,7 @@ const CH11 = (() => {
   surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
   solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
   solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
-  chapterExit(OLD + 11, () => P.x > X + 148);              // 走进浓雾里：黑一下，接到下一章（作坊一角）
+  chapterExit(OLD + 11, { a0: X + 137, a1: X + 149, tint: 0x3c4146 });   // 走进林子里的浓雾：一直往右走，接到下一章（作坊一角）
 
   // ---------------- 画面：雾里的剪影（照第二十一章的做法，见 design/visual-style.md）----------------
   // 地面的起伏：路面那一条（z 在 RB..RF）是平的，跟着物理地形走；路后面是野地，离路越远起伏越大、越远越高（丘陵在孩子身后，不挡人）；

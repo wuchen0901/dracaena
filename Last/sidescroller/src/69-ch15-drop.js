@@ -10,13 +10,13 @@
 const X15 = 2760;
 const CH15 = (() => {
   const X = X15;
-  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel',
+  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel', enter: [X - 10.8, X - 1],
     intro() { CAT.state = 'none'; } });
   terrain([X - 40, 0], [X + 80, 0]);
   ground(X - 40, 0x5b4d40); ground(X + 26, 0x5e5142); ground(X + 80, 0x655743);
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });            // 两头的空气墙
   solid({ x1: X + 44, x2: X + 45, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 15, () => P.x > X + 41);                                        // 翻过高墙、走到头：黑一下，接到下一章（水下实验室）
+  chapterExit(OLD + 15, { a0: X + 30, a1: X + 42, tint: 0x8c7869 });               // 翻过高墙，朝落下去的太阳走：一片暖色的雾，接到下一章（水下实验室）
   // 一垛枕木（踩上去的第一阶）→ 站台头上的水泥墩（第二阶；也把箱子挡在站台上，推不到左边去）→ 站台 → 高墙
   const STEP = solid({ id: 'sleepers', x1: X + 5.2, x2: X + 6.8, y1: 0, y2: 1.45, snd: 'wood' });
   const K = solid({ id: 'pier', x1: X + 6.8, x2: X + 7.6, y1: 0, y2: 3.25, snd: 'concrete' });
