@@ -188,14 +188,14 @@ airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
 
 // ---- 第十一章 · 夜搜 ----
 // 探照灯的光柱里一粒粒发亮的灰。直升机压低了的时候，旋翼的风从它正下方贴着地面往四周吹：一道道灰、草屑和叶子被刮得满地跑。
-// 路灯边绕着几只飞蛾，野地里飘着草籽的绒毛；电线杆上、候车亭顶上歇着几只乌鸦，直升机一来就全飞了。
+// 野地里飘着草籽的绒毛；电线杆上、候车亭顶上歇着几只乌鸦，直升机一来就全飞了（路灯拿掉了，原来绕着它的飞蛾也没了）。
 // （萤火虫在环境里：直升机一来就不见了，它飞走以后再出来）
 airZone(11, [X11 - 30, X11 + 170], [X11 - 60, X11 + 200], function* (R, sys) {
   const H = CH11.H, wash = () => 7 * H.near * clamp((camera.position.x - H.pos.x) / 7, -1, 1);       // 旋翼的风：背着直升机往两边吹
   sys.push(litDust(R, 260, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 0.65, shade: s => CH11.lit(s.x, s.y, s.z) }], { size: 0.4 })); yield;   // 细尘只托出光束，不像一串大雪花；顶下面的灰照不到
   const ax = V3(), d = V3();
   sys.push(airCloud(R, 240, { name: 'wash', order: 44,
-    init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x7f8c9a); },
+    init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x868a8d); },
     step(s, dt) {
       s.age += dt;
       if (s.age >= s.life) {                                 // 在直升机正下方的一圈里出生，朝外吹出去
@@ -210,9 +210,8 @@ airZone(11, [X11 - 30, X11 + 170], [X11 - 60, X11 + 200], function* (R, sys) {
       const t = d.dot(ax), inBeam = t > 0 ? 1 - sstep(0.5, 1.1, d.addScaledVector(ax, -t).length() / (t * Math.tan(0.16))) : 0;   // 吹进光柱里的那几道亮起来
       s.a = s.a0 * (0.35 + 1.1 * inBeam * H.on * CH11.lit(s.x, s.y, s.z)) * sstep(0, 0.15, s.age) * (1 - sstep(s.life - 0.6, s.life, s.age));
     } })); yield;
-  sys.push(airLeaves(R, { name: 'seeds', n: 14, drift: true, tiles: [8], cols: [0xb9c6d8, 0xa8b6cc], size: [0.07, 0.11], z: [-5, 5], lo: 0.3, hi: 2.6, lift: 0.25, wind: () => -0.5 + wash(), a: 0.5 }));
-  sys.push(airLeaves(R, { name: 'scraps', n: 16, drift: true, tiles: [2, 3, 4, 5], cols: [0x2e3a2a, 0x3a4630, 0x26301f], size: [0.06, 0.12], z: [-4, 4], lo: 0.05, hi: 1.8, lift: 0.3, wind: () => 1.4 * wash(), on: () => H.near > 0.25, a: 0.9 }));
-  sys.push(airMoths(R, [[X11 + 11.5, 4.75, -1.35, 5]], { c: 0xffd29a })); yield;
+  sys.push(airLeaves(R, { name: 'seeds', n: 14, drift: true, tiles: [8], cols: [0xbdc0c2, 0xaeb2b4], size: [0.07, 0.11], z: [-5, 5], lo: 0.3, hi: 2.6, lift: 0.25, wind: () => -0.5 + wash(), a: 0.5 }));
+  sys.push(airLeaves(R, { name: 'scraps', n: 16, drift: true, tiles: [2, 3, 4, 5], cols: [0x33352c, 0x3d3e33, 0x2a2b24], size: [0.06, 0.12], z: [-4, 4], lo: 0.05, hi: 1.8, lift: 0.3, wind: () => 1.4 * wash(), on: () => H.near > 0.25, a: 0.9 })); yield;
   const B = [];
   for (const [x, f] of [[33.25, 1], [33.9, -1], [34.5, 1]]) B.push(['crow', X11 + x, 6.36, -4.4, { face: f, flee: 0, s: 1.3, toZ: -5, back: 9999 }]);     // 第三根电线杆的横担上
   for (const [x, f] of [[38.9, -1], [40.6, 1]]) B.push(['crow', X11 + x, 2.66, -0.6, { face: f, flee: 2.6, dy: 5, toZ: -4, back: 9999 }]);                           // 候车亭顶上

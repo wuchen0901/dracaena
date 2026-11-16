@@ -32,6 +32,16 @@
 - 第二轮验证：拼接源码语法检查与 diff 检查通过；候车亭、离开掩体奔跑两张实际截图无 JavaScript/着色器编译错误。自动玩家延迟 0 / 1 / 2 秒均通过四处掩体、零次被发现、抵达终点并等到直升机离开，结果保存在 `helicopter-search-check-v2.json`。
 - 美术取舍：优先保证直升机轮廓、搜索光落点和掩体可读，再提高材质与空气感；概念图作为构图和气氛标尺。游戏截图与概念图保持明确区分。
 
+## 第三轮：雾里的剪影（2026-11-16）
+
+基线：main 上的 `533139c`。把第 21 章试出来的画面做法（`design/visual-style.md`）套到这一章：蓝灰月夜换成浅灰的雾，光只给孩子周围，近处沉进黑里，颜色几乎全去掉（孩子暗红上衣、落叶、航行灯留色），远处换成雾里一层层立体的枯树、谷仓、水塔、高压线塔；路灯、前景的草和近景枝条、画出来的林线都拿掉了。做法细节见 `visual-style.md` 最后一节。概念图那一版的蓝色调、林线和湿路面的大片反光不再作为目标。
+
+- 前后对比：`generated_images/heli-search-fog-before-after.jpg`（左：改之前；右：改之后。`tools/heli-route.html?layout=route` 同一个自动玩家、同一时刻的游戏实际画面）。
+- 自动玩家（`tools/heli-route.html?layout=check`）：延迟 0 / 1 / 2 秒都零次被发现、走到 x = 148.2、直升机照常飞走；每一处的到达时间、掉头和飞远的时刻和 `helicopter-search-check-v2.json` 完全一样 —— 玩法没动。
+- 浏览器里没有 JavaScript 或着色器报错；手机那一档（`?low=1`）也跑过一次。
+- 渲染规模（跑向集装箱那一刻，含两张影子贴图）：改之前 425 次绘制、约 11 万个三角形，改之后 445 次、约 26 万个三角形（手机档约 14 万）。帧率没有实测，手机上尤其没有。
+- 路的前后弯、高低起伏没有做（原因见 `visual-style.md`）。第 6 章《大门》里那段直升机搜索是旧代码的另一份拷贝（`escape/67-e7-gate.js`），这次没动。
+
 ## 参考图提示词（内置 imagegen）
 
 Use case: stylized-concept. Asset type: art direction target frame for an existing 3D side-scrolling stealth adventure game. Input image is a reference for gameplay geography, not an image to copy literally. Create a beautiful cinematic 16:9 night helicopter search scene, painterly environmental concept art with believable forms that can guide procedural Three.js implementation. Preserve a small lone teenage protagonist concealed inside the concrete roadside bus shelter in the lower left-middle, the horizontal abandoned road, field behind it, distant forest and mountains, and helicopter search formation. Art direction: deep desaturated ink blue and blue-gray, a little silver moonlight, tiny restrained red aviation lights; no bright saturated neon. One dominant helicopter above/right of the shelter in an oblique side view with a long recognizable tail, five smaller helicopters at staggered heights and distances searching separate strips of the valley. Avoid an evenly spaced row. Beams have soft translucent feathered edges and irregular wisps of illuminated low mist, brightest at the lamp, gently spreading onto ground; roof blocks the nearest beam, protagonist remains safe in shadow. Silhouettes of forest should have irregular elegant fine branch and conifer detail, not cartoon round lollipop trees. Damp cracked road with narrow broken silver reflections, sparse reeds and ragged foreground grass silhouettes frame the bottom. Layered distant hills fading into mist, dark foreground with readable shelter structure and small human silhouette, atmospheric depth, sophisticated low-key lighting. Strong hierarchy and negative space, no UI, no text, no watermark, no extra people. Produce a polished production concept painting, not a screenshot filter.
