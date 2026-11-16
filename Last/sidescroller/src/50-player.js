@@ -34,7 +34,8 @@ function rebuildHero() { const prev = hero; prev.dispose(); hero = makeCharacter
 
 function startMantle(s, side) {                   // 抓住方块 s 的边缘翻上去；side = 1 表示方块在右边
   const ex = side > 0 ? s.x1 : s.x2, h = s.y2 - P.y;
-  P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, s, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };
+  const sink = Math.min(clamp(-P.vy * MANTLE.sink[0], 0, MANTLE.sink[1]), Math.max(0, P.y - floorY(P.x, P.y)));   // 正往下掉的时候抓住：身子还往下沉一点才停住（不沉到地里去）
+  P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, s, sink, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };
   P.mode = 'mantle'; P.modeT = 0; P.vx = P.vy = 0; P.facing = side; P.land = null; fx('grab');
 }
 function startLand() {                            // 落地：落差够大，就按情况挑一种落地的动作（挑法、动作和拖住玩家多久，见 42-character-anim.js 的 landStyle / landAt）
@@ -139,10 +140,10 @@ function stepPlayer(dt) {
   if (P.mode !== 'rope' && P.rope) { P.rope.held = false; P.rope = null; }      // 回到存档点、换章节时还抓着绳子：放开
   if (P.mode !== 'normal') P.prep = 0;                                            // 正蹲着要跳的时候抓住了东西、掉进了水里：这一跳不算了
 
-  if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去
-    const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, 1, Math.min(1, k / 0.8));
+  if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去。P.x、P.y 是脚该站的地方；身子怎么撑上去、两只脚各在哪，见 42-character-anim.js 的 MANTLE
+    const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, MANTLE.rise, k);
     m.top = m.s.y2;                               // 边缘自己在动（漂着的木梁）：跟着它
-    P.y = lerp(m.y0, m.top, e); P.x = lerp(m.x0, m.x1, sstep(0.45, 1, k));
+    P.y = lerp(m.y0, m.top, e) - m.sink * Math.sin(Math.PI * clamp(k / 0.3, 0, 1)); P.x = lerp(m.x0, m.x1, sstep(MANTLE.over, 1, k));
     if (k >= 1) { P.mode = 'normal'; P.grounded = true; P.y = m.top; P.vy = 0; P.coyote = 0; }
     return;
   }
