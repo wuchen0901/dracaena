@@ -1,5 +1,5 @@
 #!/bin/bash
-# 把各段源码按顺序拼成一份可以直接打开的 HTML：../escape.html，一共二十四章，排成一条路（不挨着的几处怎么接起来，见 src/20-world.js 的 chapterExit、src/80-ui.js 的 nextChapter）
+# 把各段源码按顺序拼成一份可以直接打开的 HTML：../escape.html，一共二十四章，排成一条路（不挨着的几处用一段“雾里的路”接起来，见 src/20-world.js 的 chapterExit、src/80-ui.js 的 stepMist）
 #   第 1–8 章   《逃出工厂》的灰模（七章加结尾）：escape/6*.js（整段在世界的最左边，原点见 escape/60-kit.js 的 EX）
 #   第 9–22 章  旧原型《铁锈与微光》的十四章：src/6*-ch*.js（还在原来的位置；章节号是 OLD + 旧的编号，见 src/20-world.js）
 #   第 23 章    “高台”：src/69-ch15-drop.js（试验关，接在旧原型后面，章节号写成 OLD + 15）

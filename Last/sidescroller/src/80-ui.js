@@ -44,36 +44,71 @@ function startChapter(n, o = {}) {
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
   STORY.done = n - 1; STORY.ch = n; saveGame();
   for (const z of ZONES) { if (z.n < n) z.solve(); else z.reset(); }
-  placePlayer(c.start); P.cp = cpAt(c.start + 0.01); resetPant();
-  const first = localN(n) === 1;                        // 两个故事的第一章：操作提示从头教一遍
+  const at = o.at ?? c.start, walk = o.at !== undefined;   // walk：是从上一章一路走进来的（见下面的 walkInto），不是从菜单、存档进来的 —— 人放在这一章的入口，不放在出生点
+  placePlayer(at); P.cp = cpAt(c.start + 0.01); resetPant();
+  const first = localN(n) === 1 && !walk;               // 两个故事的第一章：操作提示从头教一遍（走进来的已经会了）
   Object.assign(P, { moved: !first, jumped: !first, pushed: !first, used: !first });
   // 小猫是旧原型里的：旧第三章救下以后跟着走；《逃出工厂》的章节里没有它
-  if (STORY.cat) catPlace(c.start - 0.9, floorY(c.start - 0.9, P.y + 0.1)); else if (n > OLD + 3 || n <= OLD) CAT.state = 'none';
+  if (STORY.cat) catPlace(at - 0.9, floorY(at - 0.9, P.y + 0.1)); else if (n > OLD + 3 || n <= OLD) CAT.state = 'none';
   ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null; endZone = null;
   $('end').classList.add('hide'); $('end').classList.remove('bare', 'white'); $('fade').style.opacity = 0; $('white').style.opacity = 0;
+  if (!walk) { MIST.k = 0; MIST.go = MIST.arr = MIST.pre = null; }
   if (c.intro) c.intro();
-  snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
+  if (walk) placePlayer(at);                            // 开场的摆法（比如工厂那一章从上层掉下来）是给“从这一章开始”用的；走进来的人就在地上
+  snapCamera(); applyEnv(camera.position.x); dropFarZones(cam.x); streamZones(cam.x, true);
   if (!o.quiet) showChapter(c);
 }
 
-// ---- 二十四章接成一条路：这一章走完了，黑一下接到下一章的开头 ----
-// 世界里挨着的章节（第 1–8 章、第 9–16 章）一直往右走就过去了；不挨着的在章节文件里登记出口（20-world.js 的 chapterExit），
-// 演结局的三章（第 8 章结尾、第 16 章生态中枢、第 21 章机房）在结局画面上按回车 / 空格 / E（触屏点一下）接下去
+// ---- 二十四章接成一条路：一直往右走，就从第 1 章走到第 24 章 ----
+// 世界里挨着的章节（第 1–8 章、第 9–16 章）本来就是一条路。不挨着的几处（中间隔着空气墙和几百米空地）用一段“雾里的路”接起来：
+// 人走到这一章的尽头，越往前雾越浓（暗处就是越走越黑），浓到什么都看不见的那一步，把人挪到下一章的入口，接着走，雾又散开。
+// 人一直在走、一直听玩家的，没有黑屏，也不停下来。出口登记在章节文件里（20-world.js 的 chapterExit），入口是章节对象上的 enter。
+// 演结局的三章（第 8 章结尾、第 16 章生态中枢、第 21 章机房）在结局画面上按一下 → / 回车 / 空格 / E（触屏点一下），同样起一阵雾，人出现在下一章的入口。
+// MIST（20-world.js）：k 雾有多浓（0..1）/ tint 颜色 / pre 快到了的下一章入口在哪（它的布景提前搭好，见 38-stream.js）/ arr 刚到下一章，雾还没散 / go 结局画面上按了继续
 const chapLabel = c => c.label ?? `第${CN[c.n - 1]}章`;
-function nextChapter(n) {
-  if (n >= CHAPTERS.length) return false;
-  $('end').classList.add('hide');
-  fadeOut(() => { STORY.done = Math.max(STORY.done ?? 0, n); startChapter(n + 1); }, 1.2);   // 先记下这一章已经走完：startChapter 不再按“跳过去”替它补故事进度
-  return true;
+const mistEl = $('mist');
+// 工具页（Last/tools/）把游戏装在 iframe 里、一章一章单独摆主角截图：在那里走到一章的尽头不接下一章，和接起来以前一样。地址后面加 ?link=1 / ?link=0 可以硬开、硬关
+const LINK = (new URLSearchParams(location.search).get('link') ?? (window.parent === window ? '1' : '0')) === '1';
+const enterOf = c => c.enter ?? [c.start - 5, c.start];
+function mistTint(hex) { MIST.tint.setHex(hex); MIST.sky = hex3(hex); mistEl.style.background = '#' + hex.toString(16).padStart(6, '0'); }
+function walkInto(n) {                                  // 从第 n - 1 章走进第 n 章
+  const c = CHAPTERS[n - 1], [b0, b1] = enterOf(c), vx = P.vx, face = P.facing;
+  STORY.done = Math.max(STORY.done ?? 0, n - 1);        // 先记下上一章已经走完：startChapter 不再按“跳过去”替它补故事进度
+  const keep = { ...STORY };
+  startChapter(n, { at: b0 });
+  // 前面几章的故事进度照实际玩的留着：startChapter 把走完的章节摆成“已经通过”的样子时，有的会顺手把自己的结局清掉（选了哪个结局）
+  Object.assign(STORY, keep, { ch: n, done: n - 1 }); for (let k = n; k <= CHAPTERS.length; k++) if (UNDO[k]) UNDO[k](STORY); saveGame();
+  P.vx = Math.max(0, vx); P.facing = face > 0 ? 1 : P.facing;   // 脚下不停：接着往右走
+  MIST.arr = { b0, b1, t: 0 }; MIST.pre = null; MIST.k = 1;
 }
-function stepExits() {
-  if (state !== 'play' || !ctl) return;
-  const n = chapterAt(P.x).n;
-  for (const e of EXITS) if (e.n === n && e.cond()) { nextChapter(n); return; }
+function stepMist(dt) {
+  let k = 0;
+  if (MIST.go) {                                        // 结局画面上按了继续：雾自己起来（人这时候不归玩家管）
+    const g = MIST.go; g.t += dt; k = sstep(0, 1.2, g.t);
+    if (g.t >= 1.35) { MIST.go = null; walkInto(g.n + 1); k = 1; }
+  } else if (MIST.arr) {                                // 刚到下一章：往前走雾就散；站着不动，过一会儿也散
+    const a = MIST.arr; a.t += dt;
+    k = Math.min(sstep(a.b1, a.b0, P.x), 1 - sstep(0.3, 2.8, a.t));
+    if (k <= 0) MIST.arr = null;
+  } else if (state === 'play' || state === 'fade') {
+    const n = chapterAt(P.x).n; MIST.pre = null;
+    if (LINK) for (const e of EXITS) if (e.n === n && n < CHAPTERS.length && P.x > e.a0 && (!e.when || e.when())) {
+      k = sstep(e.a0, e.a1, P.x); mistTint(e.tint); MIST.pre = enterOf(CHAPTERS[n])[0];
+      if (P.x >= e.a1 && state === 'play') { walkInto(n + 1); k = 1; }
+      break;
+    }
+  }
+  MIST.k = k; MIST.d = Math.max(8, cam.d);
+  const op = sstep(0.3, 1, k); if (Math.abs(op - MIST.op) > 0.002 || (op === 0) !== (MIST.op === 0)) mistEl.style.opacity = MIST.op = op;
 }
 let endAt = -1e9;                                       // 结局画面是什么时候出来的：刚出来的一会儿不接受“继续”，免得手上正按着的键把它跳过去
 const endChapter = () => (endZone ?? chapterAt(P.x)).n;
-function continueFromEnd() { if (state === 'end' && T - endAt > 1.5) nextChapter(endChapter()); }
+function continueFromEnd() {
+  const n = endChapter(); if (state !== 'end' || T - endAt < 1.5 || MIST.go || n >= CHAPTERS.length) return;
+  $('end').classList.add('hide');
+  mistTint($('end').classList.contains('white') ? 0xf3f1ea : CHAPTERS[n - 1].endTint ?? 0x0a0d0f);     // 拉闸的结局画面已经全白：雾也是白的
+  MIST.go = { n, t: 0 }; MIST.pre = enterOf(CHAPTERS[n])[0];
+}
 
 // ---- 章节菜单（Esc）----
 // 二十章排成两列：左边《逃出工厂》（第 1–7 章），右边旧原型（第 8–20 章）。上下键按章节号顺着走，走到头接回第一章
@@ -110,9 +145,9 @@ function begin() {
 const END_TXT = { h1: $('end').querySelector('h1').textContent, go: $('end').querySelector('.go').innerHTML };
 function endTexts() {
   const t = chapterAt(P.x).end ?? END_TXT; endAt = T;
-  const nx = CHAPTERS[endChapter()], go = nx ? ` 继续 · ${chapLabel(nx)} ${nx.name}` : '';   // 后面还有章节：最底下一行先写怎么接下去
+  const nx = CHAPTERS[endChapter()], go = nx ? ` 接着往前走 · ${chapLabel(nx)} ${nx.name}` : '';   // 后面还有章节：最底下一行先写怎么接下去
   $('end').querySelector('h1').textContent = t.h1;
-  KEY_TEXT.end = (go ? `按 回车${go}　·　` : '') + t.go; TOUCH_TEXT.end0 ??= TOUCH_TEXT.end; TOUCH_TEXT.end = (go ? `点一下${go}　·　` : '') + TOUCH_TEXT.end0; applyInputTexts();   // 键盘、触屏两套说法（82-touch.js）
+  KEY_TEXT.end = (go ? `按 →${go}　·　` : '') + t.go; TOUCH_TEXT.end0 ??= TOUCH_TEXT.end; TOUCH_TEXT.end = (go ? `点一下${go}　·　` : '') + TOUCH_TEXT.end0; applyInputTexts();   // 键盘、触屏两套说法（82-touch.js）
 }
 function showEnd(sub, txt) {
   endTexts();

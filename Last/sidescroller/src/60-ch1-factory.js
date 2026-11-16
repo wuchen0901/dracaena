@@ -6,7 +6,7 @@
 //  把空箱沿着拖痕推到断电杆下面，站上去拉下断电杆：输送带和压机停下，安全闸门升起
 // ============================================================
 const CH1 = (() => {
-  const C = chapter({ n: OLD + 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线' });
+  const C = chapter({ n: OLD + 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线', enter: [-6.5, 0.5] });   // enter：从《逃出工厂》的结尾一路走进来时，人出现在左墙里面（20-world.js 的 chapterExit）
   C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
   if (TERRAIN.length) groundFront(TERRAIN[TERRAIN.length - 1][0], -60, null);     // 左边接着《逃出工厂》那条路的尽头：中间空着的一千来米不铺地面
