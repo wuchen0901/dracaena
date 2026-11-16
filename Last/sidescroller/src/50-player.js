@@ -153,7 +153,9 @@ function stepPlayer(dt) {
     if (o.k >= 1 && !o.keep) { o.locked = true; o.on = false; P.mode = 'normal'; if (o.done) o.done(o); }
     return;
   }
-  if (P.mode === 'swim') { stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
+  if (P.mode === 'swim') {
+    if (ctl && pressed.has('E')) { const u = findUse(); if (u) { P.used = true; u.on(u); } }
+    stepSwim(dt, d); return; }   // 在水里：见下面的“游泳”
   if (P.mode === 'rope') { stepRope(dt, d); return; }   // 抓着绳子：见 51-rope.js
 
   // ---- 普通状态 ----
