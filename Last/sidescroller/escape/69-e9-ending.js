@@ -3,13 +3,16 @@
 //  结尾
 //  天快亮了。主角跑过田野、林子和水渠，爬上一处高坡，回头看。
 //  远处的工厂烟囱在冒烟。一串车灯正从另一个方向（左边远处，贴着围墙外面）开进大门。画面停在这里。
-//  （地形接在第七章后面：出了林子是一片野地，一道浅水渠，然后是一道长坡。天从夜里慢慢亮起来 —— 光是跟着路走的）
+//  （地形接在“雾”那一章后面：下了山是一片野地，一道浅水渠，然后是一道长坡。天从夜里慢慢亮起来 —— 光是跟着路走的）
+//  2026-11-16 在大门和这里中间加了“雾”（68-e8-fog.js），这一章整个往右挪了 E8_L 米；里面的位置还是照挪之前、从大门（E7_X）算的写法
 // ============================================================
-const E8 = (() => {
-  const X = E7_X, TOP = X + 264, VZ = -118, FX = X + 214, FY = 2.6, SC = 0.5;   // VZ：远处那片谷地画在多深的地方（排在第七章那排远树前面）；FX、FY：工厂在哪；SC：工厂照这个比例缩小了画（画得近，看着远）
+const E9 = (() => {
+  const X = E7_X + E8_L, TOP = X + 264, VZ = -118, FX = X + 214, FY = 2.6, SC = 0.5;   // VZ：远处那片谷地画在多深的地方（排在第七章那排远树前面）；FX、FY：工厂在哪；SC：工厂照这个比例缩小了画（画得近，看着远）
   const vx = x => FX + (x - FX) * SC, vy = y => FY + (y - FY) * SC;
-  const C = chapter({ n: 7, x0: X + 196, start: X + 198, name: '结尾', sub: '天快亮了', ground: 'grass', label: '结尾', tag: '尾',   // 游戏里的第 7 章（焚化炉删掉以后）
+  const C = chapter({ n: 8, x0: X + 196, start: X + 198, name: '结尾', sub: '天快亮了', ground: 'grass', label: '结尾', tag: '尾',   // 游戏里的第 8 章
     end: { h1: '逃出工厂', go: '按 R 再看一遍结尾　·　Esc 选择章节' } });             // 结局画面上的字（80-ui.js 的 endTexts；旧原型的写在网页里）
+  terrain([X + 200, 1.3], [X + 206, 1.3], [X + 208.5, 0.55], [X + 212, 0.55], [X + 214.5, 1.4], [X + 228, 2.0], [X + 252, 7.6], [X + 264, 9.2], [X + 278, 9.6], [X + 360, 9.6]);   // 野地、水渠、一道长坡
+  ground(X + 200, 0x2f3a2e); ground(X + 240, 0x4a5236); ground(X + 360, 0x4a5236);
   surface(X + 208.4, X + 212.1, 'wade');
   // st：0 还在路上 / 1 到了坡顶，回头看。t 回头以后过了多久
   const S = { st: 0, t: 0, shown: false };
@@ -85,7 +88,7 @@ const E8 = (() => {
   function retry() {                                     // 结局画面上按 R：从坡脚再走一遍
     reset(); placePlayer(X + 240); P.cp = cpAt(P.x); ctl = true; autoDir = 0; state = 'play'; camOvr = null; $('end').classList.add('hide'); snapCamera();
   }
-  const ZONE = defZone({ n: 7, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); }, retry, unbuild() { V = null; }, S });
+  const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); }, retry, unbuild() { V = null; }, S });
   return ZONE;
 })();
 // 《逃出工厂》到这里载完。关卡随机数拨回到这几章载入之前（见 60-kit.js 的 ESC_SEED），后面旧原型的章节和单独拼的时候拿到一样的随机数

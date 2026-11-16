@@ -2,9 +2,9 @@
 // ============================================================
 //  界面：提示 / 章节卡 / 章节菜单 / 存档 / 结局
 // ============================================================
-// 二十章用一份存档。2026-11-15 删掉《逃出工厂》的第一章（焚化炉）以后章节号都往前挪了一位，存档换成 v2：
+// 所有章节用一份存档。2026-11-15 删掉《逃出工厂》的第一章（焚化炉）以后章节号都往前挪了一位，存档换成 v2：
 // 原来那份（escape-factory-save-v1）和旧原型单独的那份（rust-glimmer-save-v1）章节号都对不上了，不再读
-const SAVE_KEY = 'escape-factory-save-v2';
+const SAVE_KEY = 'escape-factory-save-v3';   // v3：2026-11-16 加了“雾”一章，后面的章节号都挪了一位，v2 的存档对不上
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(STORY)); } catch (e) { /* 存不了也照常玩 */ } }
 function loadGame() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && s.ch >= 1 && s.ch <= CHAPTERS.length) Object.assign(STORY, STORY0, s); } catch (e) { /* 读不出来就从头开始 */ }
@@ -18,7 +18,7 @@ function updateHint() {
 }
 
 // ---- 章节卡 ----
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一'];
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '二十一', '二十二'];
 const chapEl = $('chap'); let chapT = 0;
 function showChapter(c) { chapEl.innerHTML = `<i>${c.label ?? `第${CN[c.n - 1]}章`}</i><b>${c.name}</b><span>${c.sub}</span>`; chapEl.classList.add('on'); chapT = 4.5; }
 function stepChapterCard(dt) { if (chapT > 0 && (chapT -= dt) <= 0) chapEl.classList.remove('on'); }
