@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>配角对比图</title>
+<style>
+  :root { --bg: #0b0f11; --fg: #d9d6cf; --dim: #8b8a85; --line: #2a2f33; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+  main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p { margin: 4px 0; color: var(--dim); }
+  #view { display: block; width: 100%; height: auto; background: #000; border: 1px solid var(--line); margin: 12px 0 8px; }
+  /* 两个游戏装在看不见的地方：页面只拿它们的画面 */
+  iframe { position: fixed; left: -4000px; top: 0; width: 1600px; height: 620px; border: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>配角：现成的模型 × 原来搭出来的人</h1>
+  <p>同一排人、同一组动作、同一盏灯。上半张是换上的模型（Last/models/cast/，谁用哪个见 src/45-cast.js 的 CAST_ROLE），下半张是地址里加 ?cast=0 时原来搭出来的人。每一行一种人：看守、劳动者、干不动的劳动者、刚被抓来的人、尸体，最后一行是旧原型里的五个路人。</p>
+  <canvas id="view" width="1600" height="1240"></canvas>
+  <p id="status">载入中…</p>
+</main>
+<iframe id="f0"></iframe>
+<iframe id="f1"></iframe>
+<script>
+// 用法（通过本地服务器打开）：http://127.0.0.1:8765/tools/cast-sheet.html
+// 参数：acts 逗号隔开的动作（见 escape/60-kit.js 的 FIG_ACT）；zoom 镜头远近（默认 1，大的近）；game 另一份拼好的页面
+// 导出成图片：node Last/tools/shot.mjs "<上面的网址>" generated_images/cast/xxx.png 1632 1500
+const q = new URLSearchParams(location.search), game = q.get('game') || '../escape.html';
+const ACTS = (q.get('acts') || 'stand,walk,run,sit,bend,point,lie,cower,handsup,work,reach,strike,shuffle,prone').split(',');
+const KINDS = [['guard', '看守'], ['gray', '劳动者'], ['worn', '干不动的劳动者'], ['civ', '刚被抓来的人'], ['body', '尸体']], NPCS = [['W', '登记劳工'], ['E', '拄杖的老人'], ['G', '照看机器人的老人'], ['S', '幸存者'], ['N', '居民']];
+const ZOOM = +(q.get('zoom') || 1), FW = 1600, FH = 620;
+const cv = document.getElementById('view'), ctx = cv.getContext('2d'), status = document.getElementById('status');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+
+// 在游戏世界里一块空地上（离所有章节都远）摆一排人，加一盏亮灯，长焦镜头从侧上方看
+function lineup(w) {
+  const g = w.__g, K = g.kit, T = g.THREE; g.begin(); g.paused = true; g.ch(1); g.step(0.3);
+  const X = g.P.x + 400, R = new T.Group(); g.scene.add(R);
+  const floor = new T.Mesh(new T.PlaneGeometry(300, 200), new T.MeshLambertMaterial({ color: 0x8a8f94 })); floor.rotation.x = -Math.PI / 2; floor.position.set(X + 8, -0.01, -5); floor.receiveShadow = true; R.add(floor);
+  const figs = [], C = K.mkCrowd(R, KINDS.length * ACTS.length + 2), DZ = 2.3;
+  KINDS.forEach(([kd], r) => ACTS.forEach((a, i) => { const f = K.fig(kd, X + i * 1.35, { z: 1.5 - r * DZ, act: a, face: 1 }); f.tx = f.x + 2; f.ty = 1.6; f.vx = a === 'walk' || a === 'run' || a === 'shuffle' ? 1 : 0; figs.push(f); }));
+  C.addAll(figs);
+  const npcs = NPCS.map(([k], i) => K.makeNPC(k, R, { x: X + 1.2 + i * 2.6, z: 1.5 - KINDS.length * DZ, facing: 1 }));
+  R.add(new T.AmbientLight(0xffffff, 2.0)); const d = new T.DirectionalLight(0xffffff, 2.4); d.position.set(X, 9, 12); d.target.position.set(X + 9, 0, -4); R.add(d, d.target);
+  if (g.scene.fog) g.scene.fog.density = 0;
+  const cx = X + (ACTS.length - 1) * 0.675, cam = g.camera; cam.fov = 5.6 / ZOOM; cam.aspect = FW / FH; cam.updateProjectionMatrix(); cam.position.set(cx, 26, 80); cam.lookAt(cx, 1.0, -5.2); cam.updateMatrixWorld();
+  return { g, K, C, figs, npcs, t: 0, draw(dt) {
+    this.t += dt; for (const f of figs) K.figStep(f, dt); C.draw(); for (const n of npcs) n.step(dt);
+    g.renderer.render(g.scene, cam);
+  } };
+}
+function load(i, cast) {
+  return new Promise(ok => {
+    const f = document.getElementById('f' + i);
+    f.onload = function wait() { const w = f.contentWindow; if (!(w.__ready && w.__g)) { setTimeout(wait, 100); return; } ok(lineup(w)); };
+    f.src = game + '?post=0&link=0&castmax=999&cast=' + cast;        // castmax：这一页所有人都用模型（游戏里只有镜头附近的几十个用）
+  });
+}
+const L = [null, null], T0 = performance.now();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (L[0] && L[1]) {
+    L.forEach((l, i) => { l.draw(dt); ctx.drawImage(l.g.renderer.domElement, 0, i * FH, FW, FH); });
+    ctx.fillStyle = '#000'; ctx.fillRect(0, FH - 1, FW, 2);
+    [['换上的模型', 'Last/models/cast/'], ['原来搭出来的人', '地址里加 ?cast=0']].forEach(([a, b], i) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, i * FH, 330, 54);
+      ctx.fillStyle = '#e8e4da'; ctx.font = `600 21px ${FONT}`; ctx.fillText(a, 16, i * FH + 27); ctx.fillStyle = '#a9a69e'; ctx.font = `14px ${FONT}`; ctx.fillText(b, 16, i * FH + 46);
+    });
+    // 模型都读到了、人也都摆过几帧了才算画完（最多等 25 秒：读不到的时候照样出图，上半张就是搭出来的人）
+    const K = L[0].K, all = [...K.CAST.values()], ready = all.length > 0 && all.every(e => e.state !== 1) && L[0].figs.every(f => f.m || !f.tpl);
+    status.textContent = `模型 ${all.filter(e => e.state === 2).length} / ${all.length} 个读到了，${L[0].figs.filter(f => f.m).length} / ${L[0].figs.length} 个小人换上了模型`;
+    if ((ready && L[0].t > 2.5) || now - T0 > 25000) window.__sheetDone = true;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+load(0, 1).then(l => { L[0] = l; }); load(1, 0).then(l => { L[1] = l; });
+</script>
+</body>
+</html>
