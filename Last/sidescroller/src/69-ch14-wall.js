@@ -42,9 +42,11 @@ const CH14 = (() => {
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
     dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.52, sunY: 0.2, sunC: 0xd2d8da, sunP: 0.85,   // 光源在画面左上边缘外：只透进来一团光晕，看不到圆盘
     stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
-    aWind: 0.22, aWhis: 0, aLeaf: 0.08, aBug: 0.55, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0.08, aFar: 0.5, rvOut: 1, rvHall: 0, rvCave: 0 };
-  env(X - 20, NIGHT); env(X + 60, NIGHT);
-  FAR[OLD + 14] = ['owl', 'twig', 'owl'];
+    aWind: 0.62, aWhis: 0.08, aLeaf: 0.22, leafDry: 1, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0, aFar: 0.7,   // 声音：山坡上的风、风刮过枯枝，偶尔一声乌鸦、几颗碎石滚下去
+    rvOut: 1, rvHall: 0, rvCave: 0 };
+  // 往右走到头：雾越来越浓，把路吞掉（右边那堵空气墙藏在浓雾里）
+  env(X - 20, NIGHT); env(X + 19, NIGHT); env(X + 30, { ...NIGHT, fogD: 0.085, hemiI: 1.2 }); env(X + 60, { ...NIGHT, fogD: 0.085, hemiI: 1.2 });
+  FAR[OLD + 14] = ['crow', 'twig', 'pebbles', 'crow', 'twig', 'pebbles'];
 
 
   // ---- 豁口：{ z 在哪, w 半宽, d 塌下去几层, p 形状（小于 1 圆，大于 1 尖）} ----
@@ -349,6 +351,12 @@ const CH14 = (() => {
           if (tries > 60 || rnd() < p) return [x, z];
         }
       };
+      // 左边到头：一面山岩挡住路（左边那堵空气墙就在它跟前）
+      for (let k = 0; k < 9; k++) {
+        const x = X - 13.2 + rr(-0.6, 0.5) - k * 0.05, z = PZ_(X - 12) + rr(-4, 0.7), sz = rr(0.7, 1.4) * (k < 3 ? 1.3 : 1);   // 只放在路上和路后面：放到镜头跟前会把人挡住
+        const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
+        m.scale.set(sz * rr(0.8, 1.2), sz * rr(1.1, 1.8), sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
+      }
       // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
       {
         const pts = [];
@@ -523,6 +531,7 @@ const CH14 = (() => {
     V = v;
   }
 
+  const VAULT = { on: false, t: 0, d: 1, x0: 0, y0: 0 };
   const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 36;
@@ -532,7 +541,24 @@ const CH14 = (() => {
     if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
     // 孩子的上衣：暗红（全画面唯一一块有颜色的地方）。逃出工厂那几章的衣服逻辑在 escape/60-kit.js，它先跑、到了旧原型的章节会关掉；这里在它后面再打开
     HERO_TOP.uTop.value.setHex(0x4e1a15); HERO_TOP.uTopK.value = 1;
-    HERO_RIM.uRimK.value = 0.1;                        // 孩子身上一圈淡淡的边缘亮光：把轮廓从雾里勾出来（只画在孩子身上，不照亮别的）
+    HERO_RIM.uRimK.value = 0.1;
+    camJit = { x: 0.045 * Math.sin(T * 0.37) + 0.025 * Math.sin(T * 0.91 + 2), y: 0.03 * Math.sin(T * 0.53 + 1) + 0.015 * Math.sin(T * 1.27) };   // 镜头轻轻地漂，像手持
+    // 翻墙：在墙跟前起跳，就换成一段翻越 —— 两手撑住墙头，身子从上面过去，另一边落地（落地交给平常的物理和落地动作）
+    {
+      const near = Math.abs(P.x - WX) < 1.05 && Math.abs(P.x - WX) > 0.25, dirW = Math.sign(WX - P.x);
+      if (!VAULT.on && near && dirW === P.facing && P.vy > 6 && !P.grounded && P.y - groundY(P.x) < 0.25 && state === 'play') {
+        Object.assign(VAULT, { on: true, t: 0, d: dirW, x0: P.x, y0: P.y }); ctl = false; fx('grab');
+      }
+      if (VAULT.on) {
+        const V_ = VAULT, d = V_.d; V_.t += dt; const t = V_.t, top = TOP;
+        const e1 = sstep(0, 0.28, t), e2 = sstep(0.24, 0.56, t);
+        const x = lerp(lerp(V_.x0, WX - d * 0.42, e1), WX + d * 0.5, e2), y = lerp(V_.y0, top + 0.04, e1) + Math.sin(Math.PI * e2) * 0.1 - e2 * 0.05;
+        P.x = x; P.y = y; P.vx = 0; P.vy = 0; P.grounded = false; P.facing = d;
+        const hk = sstep(0.1, 0.24, t) * (1 - sstep(0.5, 0.62, t));
+        HX.pose = { sit: 0.75 * sstep(0.12, 0.3, t) * (1 - sstep(0.48, 0.62, t)), hands: [{ x: WX - d * 0.06, y: top + 0.03, k: hk }, { x: WX + d * 0.04, y: top + 0.03, k: hk }] };   // 两只手撑在墙头上，腿收起来往前送，蹲着翻过去
+        if (t >= 0.56) { V_.on = false; ctl = true; P.vx = d * 2.4; P.vy = 0.6; }                                   // 放手：往前一送，自己落下去
+      }
+    }                       // 孩子身上一圈淡淡的边缘亮光：把轮廓从雾里勾出来（只画在孩子身上，不照亮别的）
     const v = V; if (!v || !v.fogs) return;
     for (const sh of v.shafts) { sh.m.position.set(sh.ox, 9, sh.dz); sh.m.material.opacity = sh.op * (0.65 + 0.35 * Math.sin(T * 0.13 + sh.ph)); }   // 位置固定；亮度只随时间慢慢地起伏，和人怎么动无关
     const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
@@ -570,5 +596,5 @@ const CH14 = (() => {
       M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); L.mesh.setMatrixAt(o.i, M4); L.mesh.instanceMatrix.needsUpdate = true; }
 
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; } });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; VAULT.on = false; } });
 })();

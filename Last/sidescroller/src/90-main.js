@@ -4,10 +4,11 @@
 // ============================================================
 const cam = { x: 2, y: 1.3, d: 14.5, look: 0.8, az: 0, lift: 0, pz: 0 };   // pz：镜头在前后方向上追到了哪（路往前后弯的时候，见 20-world.js 的 pathZ）     // lift：镜头比平常再抬高多少（往下看）
 let closeUp = false;                               // 按 V：把镜头拉到主角跟前，慢慢左右绕着看
+let camJit = null;                                 // 镜头轻微的漂移（像手持）：{ x, y } 米，章节每一帧自己给，不给就没有
 let camOvr = null;                                 // 过场时由章节临时接管镜头：{ d 距离, yo 高度偏移, xo 水平偏移, lift 抬高（不写就是 0）}
 function placeCamera() {
   const pz = cam.pz;                               // 路往前后弯：镜头追着主角在前后方向上走（慢一拍），人的大小基本不变
-  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d + pz); camera.lookAt(cam.x, cam.y, pz);
+  camera.position.set(cam.x + Math.sin(cam.az) * cam.d, cam.y + cam.d * 0.05 + cam.lift, Math.cos(cam.az) * cam.d + pz); if (camJit) { camera.position.x += camJit.x; camera.position.y += camJit.y; } camera.lookAt(cam.x, cam.y, pz);
   key.target.position.set(cam.x, P.y, pz); key.position.copy(key.target.position).addScaledVector(keyDir, 55);   // 影子跟着主角走
   rim.target.position.set(cam.x, P.y, pz); rim.position.set(cam.x - 6, P.y + 5, pz - 10);
 }
@@ -16,7 +17,7 @@ function updateCamera(dt) {
   cam.look = damp(cam.look, closeUp ? 0 : P.facing * 0.8 + clamp(P.vx * 0.3, -1, 1), 1.5, dt);   // 镜头略微领先于前进方向
   cam.az = damp(cam.az, closeUp ? 0.62 * Math.sin(T * 0.4) : 0, 2.5, dt);
   const ty = (P.mode === 'swim' ? P.y + SWIM.c - 0.45 : P.grounded || P.mode === 'mantle' || P.mode === 'rope' ? P.y : lerp(P.gy ?? P.y, P.y, 0.4)) + yo;   // 跳起来时镜头只跟一小半；游泳、爬绳子时整个跟着
-  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt); cam.lift = damp(cam.lift, lift, 1.6, dt); cam.pz = damp(cam.pz, pathZ(P.x), 1.3, dt);
+  cam.x = damp(cam.x, P.x + xo + cam.look, 3, dt); cam.y = damp(cam.y, ty, 2.6, dt); cam.d = damp(cam.d, d, closeUp ? 3.2 : 1.6, dt); cam.lift = damp(cam.lift, lift, 1.6, dt); cam.pz = damp(cam.pz, pathZ(P.x + cam.look * 1.6), 1.3, dt);   // 往前看一点：路要往哪边弯，镜头先往那边靠
   placeCamera();
 }
 function snapCamera() { const [d, yo, xo, lift] = camKey(P.x); closeUp = false; cam.az = 0; cam.x = P.x + xo + cam.look; cam.y = P.y + yo; cam.d = d; cam.lift = lift; cam.pz = pathZ(P.x); placeCamera(); }
@@ -35,7 +36,7 @@ function sim(dt) {
   if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
 
   // 这些每一帧都清零，由走到的那一章重新填写
-  HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null;
+  HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null; camJit = null;
   for (const k in AUD) AUD[k] = 0; AUD.humF = 52; beam.intensity = 0; beam.angle = 0.118; beam.penumbra = 0.4;   // 探照灯的张角：第一章用原样的，第十一章的直升机自己改宽
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
