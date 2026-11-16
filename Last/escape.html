@@ -13169,11 +13169,15 @@ const CH14 = (() => {
         return k * amp * (1.5 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.7 * (ridge - 0.5) + 0.35 * (vn(x * 2.2, z * 2.4 + 5) - 0.5));
       };
       // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
+      // 孩子身后：走的这条路是一道岩台的边。身后一两米地面就往下塌，掉进三四米深、雾气弥漫的低地 —— 远处的地面不在视线里（被岩台的边挡住、沉在雾下面），
+      //   能看见的只有脚下这一窄条，远处没有碎屑也就理所当然；很远的地方才慢慢升回来，藏在雾里。墙底下留一道窄窄的山脊，墙沿着它伸进雾里
       const hBack = (x, z) => {
-        const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, Math.abs(x - WX)), A = 0.35 + 0.07 * Math.min(dz, 90);
-        const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
-        const crag = A * 0.5 * Math.pow(1 - Math.abs(2 * vn(x * 0.09 + 11, z * 0.08) - 1), 3);          // 一道道突出来的岩脊
-        return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
+        const dz = -z, s = sstep(0.7, 1.6, dz) * sstep(0.7, 2.6, Math.abs(x - WX));
+        const edge = 1.3 + 1.1 * vn(x * 0.21 + 4, 7);                                                      // 岩台的边离路多远：沿路各处不一样
+        const drop = sstep(edge, edge + 2.2, dz) * (3.2 + 1.8 * vn(x * 0.07, 5));
+        const low = (0.3 + 0.03 * Math.min(dz, 60)) * (1.4 * (vn(x * 0.05, z * 0.04) - 0.5) + 0.5 * (vn(x * 0.2 + 3, z * 0.18) - 0.5));
+        const lip = 0.25 * sstep(edge - 0.6, edge, dz) * (1 - sstep(edge, edge + 0.5, dz)) * vn(x * 0.9, 2);   // 边上微微翘起的一道石棱
+        return s * (-drop + low + lip + Math.max(0, dz - 40) * 0.06);
       };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs) => {                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
@@ -13194,36 +13198,8 @@ const CH14 = (() => {
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
       const clump = (x, z) => sstep(0.35, 0.72, vn(x * 0.35 + 40, z * 0.45)) * 0.85 + 0.15;
-      // ---- 中景的锚点：孩子身后两三米到六七米，一团团大岩石，偶尔一棵枯树 ----
-      //   视线越过路面先落在它们身上，“近处一地碎屑、远处空”的分界就藏在它们后面；落叶、碎石也有理由堆在它们脚下
-      const ANCH = [];
-      {
-        const trunkMat = shade(lam(0x2b2722), 3, 0.45);
-        for (let x = X - 14, i = 0; x < X + 36; x += rr(2.6, 5.2), i++) {
-          if (Math.abs(x - WX) < 1.8) continue;                        // 墙两边让开
-          const zr = -rr(2.6, 6.8), z = PZ_(x) + zr;
-          if (i % 4 === 3) {                                            // 一棵枯树：比雾里的近得多，看得清树干和枝杈
-            const h = rr(6, 10), r = rr(0.13, 0.22), lean = rr(-0.07, 0.07), y0 = gy(x, z) - 0.15;
-            const t = add(R, cy(r * 0.4, r, h, 9), trunkMat, x, y0 + h / 2, z); t.rotation.z = lean;
-            for (let k = 0, nb = Math.floor(rr(4, 7)); k < nb; k++) {
-              const tt = rr(0.4, 0.9), bx = x - Math.sin(lean) * h * (tt - 0.5), by = y0 + h * tt, a = rr(0, 6.28), L = h * rr(0.14, 0.28) * (1.1 - tt * 0.5);
-              const p0 = V3(bx, by, z), p1 = V3(bx + Math.cos(a) * L * 0.5, by + L * rr(0.2, 0.5), z + Math.sin(a) * L * 0.3), p2 = V3(bx + Math.cos(a) * L, by + L * rr(0.5, 0.9), z + Math.sin(a) * L * 0.5);
-              tube(R, [p0, p1, p2].map(v => v.toArray()), r * rr(0.22, 0.35), trunkMat, 6);
-            }
-            for (let k = 0; k < 3; k++) { const a = rr(0, 6.28), L = rr(0.5, 1.1); tube(R, [[x, y0 + 0.2, z], [x + Math.cos(a) * L * 0.5, y0 + 0.08, z + Math.sin(a) * L * 0.5], [x + Math.cos(a) * L, y0 - 0.05, z + Math.sin(a) * L]], r * 0.3, trunkMat, 5); }   // 露出地面的树根
-            ANCH.push({ x, z, r: r + 0.6 });
-          } else {                                                      // 一团大岩石：两三块挤在一起，大的半埋着
-            const n = Math.floor(rr(2, 4.9));
-            for (let k = 0; k < n; k++) {
-              const sz = rr(0.45, 1.25) * (k ? rr(0.45, 0.8) : 1), xx = x + (k ? rr(-1.1, 1.1) : 0), zz = z + (k ? rr(-0.8, 0.8) : 0), flat = rr(0.6, 0.9);
-              const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 1 : 2, flat, amp: rr(0.25, 0.4), moss: rr(0.3, 0.9), mossCol: 0x45602a, col: pick([0x4a4945, 0x42413d, 0x504d48]) }), rockMat, xx, gy(xx, zz) + sz * flat * rr(0.1, 0.35), zz);
-              m.scale.set(sz * rr(1, 1.5), sz, sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
-              if (!k) ANCH.push({ x: xx, z: zz, r: sz * 1.2 });
-            }
-          }
-        }
-      }
-      const spot = (onPath, reach = 4.5) => {                          // 随便找一处：x 在这一章里，z 在那条弯路前后几米
+      const ANCH = [];                                                 // 中景的锚点（岩石、近处的树）试过，去掉了：看不见远处靠的是岩台的边，不是挡
+      const spot = (onPath, reach = 3.2) => {                          // 随便找一处：x 在这一章里，z 在那条弯路前后几米
         if (!onPath && ANCH.length && rnd() < 0.28) {                  // 有一部分堆在锚点脚下：岩石、树根周围一圈
           const a = ANCH[Math.floor(rnd() * ANCH.length)], ang = rr(0, 6.28), rad = a.r * rr(0.85, 1.7);
           return [a.x + Math.cos(ang) * rad, a.z + Math.sin(ang) * rad * 0.75];
@@ -13241,23 +13217,6 @@ const CH14 = (() => {
         const x = X - 13.2 + rr(-0.6, 0.5) - k * 0.05, z = PZ_(X - 12) + rr(-4, 0.7), sz = rr(0.7, 1.4) * (k < 3 ? 1.3 : 1);   // 只放在路上和路后面：放到镜头跟前会把人挡住
         const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 2 : 3, amp: 0.3, flat: 1, moss: 0.5, mossCol: 0x45602a, col: 0x46453f }), rockMat, x, gy(x, z) + sz * rr(0.3, 0.9), z);
         m.scale.set(sz * rr(0.8, 1.2), sz * rr(1.1, 1.8), sz * rr(0.8, 1.2)); m.rotation.y = rr(0, 6.28);
-      }
-      // 中景、远景的石头：一团一团的，越远越稀、越大（小的到那么远本来就看不清）；墙两边让开
-      {
-        const pts = [];
-        for (let k = 0, nk = LOW ? 22 : 34; k < nk; k++) {
-          const dz = 6 + Math.pow(rnd(), 1.3) * 55, cx = rr(X - 30 - dz * 0.3, X + 60 + dz * 0.3), cz = -dz;
-          if (Math.abs(cx - WX) < 2.5 + dz * 0.12) continue;
-          for (let j = 0, nj = Math.floor(rr(2, 7)); j < nj; j++) { const x = cx + rr(-1.5, 1.5) * (1 + dz * 0.03), z = cz + rr(-1.2, 1.2) * (1 + dz * 0.03);
-            pts.push([x, z, rr(0.18, 0.5) * (1 + dz * 0.03) * (j ? rr(0.4, 1) : 1)]); }
-        }
-        const geos = [7, 19, 31].map(sdd => rockS(sdd, { sd: 1, amp: 0.35, flat: 0.65, moss: 0.4, mossCol: 0x45602a, col: 0x46453f })), per = Math.ceil(pts.length / 3);
-        geos.forEach((geo, gi) => {
-          const part = pts.slice(gi * per, gi * per + per), mesh = new THREE.InstancedMesh(geo, rockMat, part.length);
-          part.forEach(([x, z, sz], i) => { ee.set(rr(-0.2, 0.2), rr(0, 6.28), rr(-0.2, 0.2)); qq.setFromEuler(ee);
-            M4.compose(V3(x, gy(x, z) + sz * 0.15, z), qq, V3(sz * rr(1, 1.5), sz * rr(0.6, 0.9), sz * rr(0.8, 1.2))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1))); });
-          mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
-        });
       }
       // 大一点的石块：一块块单独的，半埋在土里
       for (let i = 0, nb = LOW ? 90 : 150; i < nb; i++) {
@@ -13330,7 +13289,7 @@ const CH14 = (() => {
           const z = z0 + rr(-4, 4), x = rr(X - 18 + z0 * 0.35, X + 40 - z0 * 0.35);
           if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;             // 墙两边让开，墙一路伸进雾里
           const y = gy(x, z) - 0.3;
-          if (z0 > -20 || rnd() < 0.68) tree3(x, y, z, rr(8, 15)); else spire(x, y, z, rr(2.5, 6));   // 岩堆只放在远的几层，近的那层太抢眼
+          tree3(x, y, z, rr(9, 16));   // 雾里只有从低地里长上来的枯树（岩堆去掉了）   // 岩堆只放在远的几层，近的那层太抢眼
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P_, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N_, 3));
         const m = new THREE.Mesh(g, shade(lam(0x24272a), 3, 0.3)); m.frustumCulled = false; R.add(m);
