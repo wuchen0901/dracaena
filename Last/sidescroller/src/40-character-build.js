@@ -45,8 +45,9 @@ function loadTravelerModel(done) {
 // （程序化的，或者加 ?mocap=1 换成动捕），灯光、雾、后期都不变。拿来分清楚画面不好是模型、动作还是美工的问题。
 // 这几个模型都是 three.js 官方示例里的（Mixamo 的骨架），运行的时候直接从 GitHub 上 three.js 的 r170 版本读，仓库里不放这些文件。
 // 加 ?heroflat=1 去掉贴图，每块材质换成一个平涂的颜色、只有漫反射（和现在的主角一样）：看形状本身，不看贴图。
-// 不加 ?hero= 的时候这一段什么都不做。对比页：Last/tools/hero-compare.html
+// 不加 ?hero= 的时候用 HERO_DEFAULT。对比页：Last/tools/hero-compare.html
 const HERO_TEST_BASE = 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/';
+const HERO_DEFAULT = 'michelle';                         // 主角用哪个模型（见下面的 HERO_TEST）
 const HERO_TEST_LIB = {
   soldier: { file: 'Soldier.glb', name: 'Soldier（Mixamo 的 Vanguard，一万一千面，带贴图）' },
   michelle: { file: 'Michelle.glb', name: 'Michelle（Mixamo，两万八千面，便装，带贴图）' },
@@ -54,8 +55,9 @@ const HERO_TEST_LIB = {
   rpm: { file: 'readyplayer.me.glb', name: 'Ready Player Me 的样例人物（一万六千面，带贴图）' },
 };
 const HERO_TEST = (() => {
-  const q = new URLSearchParams(location.search), v = q.get('hero');
-  if (!v || v === '0' || v === 'hero') return null;
+  // 2026-11-16 起主角默认就是 Michelle；?hero=hero（或 ?hero=0）回到原来的主角（models/hero.glb）
+  const q = new URLSearchParams(location.search), v = q.get('hero') || HERO_DEFAULT;
+  if (v === '0' || v === 'hero') return null;
   const lib = HERO_TEST_LIB[v];
   return { key: v, url: lib ? HERO_TEST_BASE + lib.file : new URL(v, import.meta.url).href, name: lib ? lib.name : v, flat: q.get('heroflat') === '1' };
 })();
@@ -94,6 +96,19 @@ function prepHeroTest(model, ref) {
     const p = T.get(h.parent.name), off = h.getWorldPosition(V()).sub(h.parent.getWorldPosition(V())).multiplyScalar(k);
     const b = new THREE.Bone(); b.name = n; p.add(b); b.position.copy(p.worldToLocal(p.getWorldPosition(V()).add(off))); b.updateMatrixWorld(true); T.set(n, b);
   }
+  // 轮廓光（HERO_RIM）：各章节用它把主角从黑里勾出来，换来的模型也接上。换上衣颜色（HERO_TOP）接不上：它靠原来主角的“哪一块是上衣”的标记
+  const rim = m => {
+    if (!m || m.userData.heroRim) return m;
+    m.userData.heroRim = true; const prev = m.onBeforeCompile;
+    m.onBeforeCompile = (sh, r) => {
+      prev && prev.call(m, sh, r);
+      sh.uniforms.uRim = HERO_RIM.uRim; sh.uniforms.uRimK = HERO_RIM.uRimK;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRim;\nuniform float uRimK;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
+    };
+    const key = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => key() + '|hero-rim'; m.needsUpdate = true;
+    return m;
+  };
   if (HERO_TEST.flat) {                                                 // 去掉贴图：每块材质取贴图的平均颜色，换成只有漫反射的
     const avg = m => {
       const c = (m.color ? m.color.clone() : new THREE.Color(1, 1, 1)), img = m.map?.image;
@@ -102,6 +117,7 @@ function prepHeroTest(model, ref) {
     };
     model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(avg) : avg(o.material); });
   }
+  model.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(rim); });
 }
 
 function buildBody(kind, o = {}) {
