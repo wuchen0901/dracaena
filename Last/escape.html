@@ -1686,6 +1686,7 @@ function makeCharacter(kind, prev, o = {}) {
   A.tk ??= 0; A.rk ??= 0; A.stoop ??= 0;
   // 跳跃：jl 哪条腿提在前面，jk 是不是跳起来的（不是就是从边上掉下去），jm 横着有多快，airA 手臂上腾空姿势占几成（落地以后退得比腿慢），
   // jleg 两条腿这一刻的腾空姿势（平滑过的），ja / jav / jb / jbv 两只手臂的弹簧：肩、肘的角度和角速度
+  A.brk ??= 0;                                                              // 刹住脚步的程度（松开方向键、带着惯性停下来的那一小段）
   A.jl ??= 0; A.jk ??= 0; A.jm ??= 0; A.airA ??= 0; A.wasAir ??= false; A.jleg ??= [[0, 0, 0], [0, 0, 0]];
   A.ja ??= [0, 0]; A.jav ??= [0, 0]; A.jb ??= [0, 0]; A.jbv ??= [0, 0];
   const npcTurn = o.npc ? 0.26 + 0.3 * hash1(root.id) : null;              // 路上的人：各有各的站法，不换
@@ -1705,6 +1706,7 @@ function makeCharacter(kind, prev, o = {}) {
     A.tuck = damp(A.tuck, mant ? (s.modeT < 0.8 ? 1 : 0) : 0, 12, dt);
     A.cover = damp(A.cover, B.lamp ? clamp(s.hide || 0, 0, 1) * (1 - A.air) * (1 - A.grip) : 0, 6, dt);   // 躲藏：弓起身子，用手捂住胸口的灯
     A.acc = damp(A.acc, clamp((s.vx - A.pvx) / Math.max(dt, 1e-4) * dir, -30, 30), 10, dt); A.pvx = s.vx;
+    A.brk = damp(A.brk, clamp(-A.acc / 12, 0, 1) * sstep(0.3, 1.6, sp) * (s.grounded && s.mode === 'normal' ? 1 : 0), 12, dt);   // 刹车：减速越猛越明显，快停住了就收回去（走着松手几乎没有）
     A.swim = damp(A.swim, s.mode === 'swim' ? 1 : 0, s.mode === 'swim' ? 6 : 9, dt);
     if (s.mode !== 'swim') A.pitch = damp(A.pitch, 0, 9, dt);
     A.rope = damp(A.rope ?? 0, s.mode === 'rope' ? 1 : 0, s.mode === 'rope' ? 16 : 7, dt);   // 抓着绳子的程度
@@ -1778,7 +1780,7 @@ function makeCharacter(kind, prev, o = {}) {
     // 累：身子压低，每只脚踩上去以后往下一沉；停下来喘气时膝盖弯得更深、屁股往后坐
     const sink = TL ? -(tk * (TL.low + TL.dip * A.mv * Math.pow(0.5 + 0.5 * Math.cos(4 * Math.PI * (A.ph - 0.07)), 2)) + 0.05 * restK + 0.035 * stb) * u : 0;
     const hipX = TL ? -(tk * TL.back + 0.065 * restK) * u : 0;
-    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY - landDrop + sink;
+    let hipY = D.hipY - 0.006 * u - 0.026 * u * A.run * A.mv + bob + A.sq - (push ? 0.035 * u : 0) - 0.06 * u * A.tuck - 0.03 * u * A.cover + breathY - landDrop + sink - 0.03 * u * A.brk;   // 刹车：膝盖弯一点，重心压低
     const hipStand = hipY;
     if (sit) hipY = lerp(hipY, (q.sitH ?? 0.3) * u, sit);
     const sitDrop = hipY - hipStand;                                          // 坐下时重心降了多少（主角的模型不挂在骨盆上，要自己跟着降）
@@ -1806,7 +1808,7 @@ function makeCharacter(kind, prev, o = {}) {
     chest.rotation.y = A.twist + sway;
     if (B.traveler?.group) {
       // 主角的模型不挂在骨盆上：落地时重心往下压，要让整个模型跟着降下去，脚才踩得住地（不然腿一弯，脚就往上缩）；累了身子往下沉、屁股往后坐，也是整个模型跟着挪
-      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY + A.sq - landDrop + sink;
+      B.traveler.group.position.y = B.traveler.baseY + bob + sitDrop + breathY + A.sq - landDrop + sink - 0.03 * u * A.brk;
       B.traveler.group.position.x = hipX + 0.05 * u * Math.sin(0.65 * landPitch);     // 上身从胯那里往前折，两条腿的根会往后挪一点：整个模型往前补回来
       B.traveler.group.rotation.z = -A.lean;
       if (lieA) {                                                          // 躺下：整个模型绕着胯往后放平（胯留在原地），两条腿在下面按这个角度补回来
@@ -1866,6 +1868,7 @@ function makeCharacter(kind, prev, o = {}) {
       const sw = -Math.cos(2 * Math.PI * (A.ph + i * 0.5) - 0.35);            // 和同侧的腿反着摆
       let a = (lerp(0.32, 0.95, A.run) * sw + lerp(0, 0.1, A.run)) * A.mv + 0.03 * Math.sin(t * 1.3 + i * 2) * (1 - A.mv);
       let b = lerp(0.14, lerp(0.3, 1.5, A.run), A.mv) + 0.3 * Math.max(0, sw) * A.mv;
+      if (A.brk > 0.001) { a = lerp(a, 0.3 + (i ? 0.12 : -0.08), 0.65 * A.brk); b = lerp(b, 0.55, 0.65 * A.brk); }   // 刹车：手臂不再大幅摆，放低了微微张在身前稳住身子
       // 腾空：手臂像弹簧一样跟着 JUMP 里这一刻的姿势走；在地上时弹簧就贴着平时的摆臂，落地以后的一小会儿（airA 还没退完）弹簧带着手臂往下一荡再收回来
       if (A.airA < 0.002 && !inAir) { A.jav[i] = clamp((a - A.ja[i]) / Math.max(dt, 1e-3), -12, 12); A.ja[i] = a; A.jbv[i] = 0; A.jb[i] = b; }
       else {
@@ -4203,6 +4206,9 @@ function mkCans(parent, L, list, o = {}) {
 //  玩家控制：移动 / 跳跃 / 攀爬 / 推拉 / 操作机关 / 回到存档点
 // ============================================================
 const GRAV = 23, JUMP_V = 7.5, RUN = 3.3, WALK = 1.25, PUSH = 1.25;
+// 松开方向键以后怎么停下来：速度按比例往下掉（k，每秒掉掉几倍），再加一点固定的减速（a，米/秒²）让它停得干脆、不拖尾巴。
+// 跑着松手往前带半米、不到半秒停住，走着松手带十几厘米（以前是 0.07 秒就掉了六成多的速度，跑着也只带二十厘米，像被钉在地上）
+const STOP = { k: 5, a: 2 };
 let hero = makeCharacter('K'), state = 'title', T = 0, ctl = true, autoDir = 0;
 const sfx = {};                                   // 音效函数在后面的音频部分填进来
 const fx = (name, ...a) => { if (sfx[name]) sfx[name](...a); };
@@ -4366,7 +4372,9 @@ function stepPlayer(dt) {
   let speed = (keys.has('S') || !ctl ? WALK : RUN) * P.speedK * (1 - lh);
   // 累了（TIRED）不改速度：累只是样子
   // 腾空时不按方向键：横着的速度原样留着，顺着起跳时的那条抛物线落下去（以前一松手就在半空刹住、直直掉下来）；按着方向键还是能在空中带一点方向
-  P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? (d ? 3.5 : 0) : lp !== null || d ? 9 : 14, dt);
+  // 在地上松开方向键：不是一下子钉住，带着惯性刹一小段（见上面的 STOP）。过场里自己走的（!ctl）照旧很快站住，站的位置才对得上
+  if (P.grounded && !d && lp === null && ctl) { P.vx = damp(P.vx, 0, STOP.k, dt); P.vx -= Math.sign(P.vx) * Math.min(Math.abs(P.vx), STOP.a * dt); }
+  else P.vx = damp(P.vx, lp === null ? d * speed : lerp(lp, d * speed, lc), !P.grounded ? (d ? 3.5 : 0) : lp !== null || d ? 9 : 14, dt);
   if (d && lc > 0.5) { P.facing = d; P.moved = true; }
   if (Math.abs(P.vx) < 0.02 && !d && lp === null) P.vx = 0;
 
