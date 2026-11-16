@@ -192,7 +192,7 @@ airZone(10, [X10 - 10, X10 + 104], [X10 - 8, X10 + 150], function* (R, sys) {
 // （萤火虫在环境里：直升机一来就不见了，它飞走以后再出来）
 airZone(11, [X11 - 30, X11 + 170], [X11 - 60, X11 + 200], function* (R, sys) {
   const H = CH11.H, wash = () => 7 * H.near * clamp((camera.position.x - H.pos.x) / 7, -1, 1);       // 旋翼的风：背着直升机往两边吹
-  sys.push(litDust(R, 420, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 1.25, shade: s => CH11.lit(s.x, s.y, s.z) }])); yield;   // 顶下面的灰照不到，不亮
+  sys.push(litDust(R, 260, [{ k: 'cone', at: () => [H.lamp, H.tgt, H.on], ang: 0.16, c: 0xe8f3f5, a: 0.65, shade: s => CH11.lit(s.x, s.y, s.z) }], { size: 0.4 })); yield;   // 细尘只托出光束，不像一串大雪花；顶下面的灰照不到
   const ax = V3(), d = V3();
   sys.push(airCloud(R, 240, { name: 'wash', order: 44,
     init(s) { s.tile = 1; s.age = 1; s.life = 0; s.c = airCol(0x7f8c9a); },
