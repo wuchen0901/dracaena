@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>跳跃动作 · 对比图</title>
+<style>
+  html,body{margin:0;background:#0b0f11;overflow:hidden}
+  #sheet{display:block}
+  /* 横版原型装在这个窗口里，摆在图的下方看不见的地方：大小就是 1080p 的游戏画面 */
+  #game{position:fixed;left:0;top:1080px;width:1920px;height:1080px;border:0}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1920" height="1080"></canvas>
+<iframe id="game"></iframe>
+<script>
+// 跳跃的动作（见 Last/sidescroller/src/42-character-anim.js 的 JUMP / jumpAt），在游戏里拍下来排在一起看。画面全部来自游戏本身的渲染。
+// 要通过本地服务器打开（和原型同源才能读到它的画面）：http://127.0.0.1:8765/tools/jump-sheet.html
+// 导出：node Last/tools/shot.mjs "<网址>" generated_images/xxx.png <宽> <高>（宽、高见控制台里报的图的大小）
+// 网址参数：
+//   layout —— strip 每种情况一行，按时间排成一格一格（ts=-0.1,0,… 拍哪几个时刻：相对按下跳的那一刻，秒）/
+//             film 几种情况并排成一格，连续拍 n 格（dt 每格隔几秒，从 t0 秒开始），拿去切成动图（每格 cw × ch，cols 一行几格）/
+//             check 不画图，在控制台里报出自检的结果（跳多高、多远、多久，和手脚每一帧动了多少）
+//   rows=stand,walk,run 拍哪几种情况：stand 原地跳 / walk 走着跳 / run 跑着跳（一直按着 →）
+//        顺带也拍松开方向键以后怎么停下来（见 Last/sidescroller/src/50-player.js 的 STOP）：stop 跑着松手 / wstop 走着松手 —— 这两种 0 是松手的那一刻，不按跳
+//   d 镜头离多远，yo 对准离地多高，az 镜头绕到主角前面多少度（0 正侧面，90 正前面）；chap=1&x=3 在哪一章的哪里拍
+const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'strip';
+const num = (k, d) => q.get(k) === null ? d : +q.get(k);
+const sheet = document.getElementById('sheet'), ctx = sheet.getContext('2d'), frame = document.getElementById('game');
+const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+let G = null, NOMODEL = false;
+const ROWS = (q.get('rows') || 'stand,walk,run').split(',').map(c => ({ c }));
+const CHAP = num('chap', 1), X0 = num('x', 3);
+const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳', stop: '跑着松手', wstop: '走着松手' };
+
+// ---- 一次跳跃：站好（或者先走、跑起来），按一下跳，按固定的小步往前推；每到 want 里的一个时刻就交给 shoot 拍一格 ----
+// 时刻都相对按下跳的那一刻
+const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'], stop: ['R'], wstop: ['R', 'S'] };
+const isStop = row => row.c === 'stop' || row.c === 'wstop';
+function setup(row) {
+  for (const k of ['R', 'S', 'J']) G.keys.delete(k);
+  G.ch(CHAP); G.tp(X0); G.P.facing = 1; G.step(0.6);
+  for (const k of KEYS[row.c]) G.keys.add(k);
+  G.step(row.c === 'stand' ? 0.3 : 1.0, DT);
+  row.y0 = G.P.y; row.x0 = G.P.x;
+}
+function run(row, want, shoot) {
+  setup(row);
+  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0;
+  const P = G.P;
+  // 往前推到 to 秒。G.step 每叫一次都要画一遍游戏画面，所以一段只叫一次（中间按 1/120 秒一小步算）；高度、距离、腾空多久在每段末尾记一次
+  const adv = to => {
+    const n = Math.round((to - t) / DT); if (n <= 0) return;
+    const was = P.grounded; G.step(n * DT, DT); t += n * DT;
+    if (pressedAt) { if (!P.grounded || !was) row.air += n * DT; row.top = Math.max(row.top, P.y - row.y0); if (!P.grounded || isStop(row)) row.far = P.x - row.x0; }
+    if (pressedAt && isStop(row) && row.stopT === null && P.vx === 0) row.stopT = t;
+  };
+  for (const w of want.slice().sort((a, b) => a - b)) {
+    if (!pressedAt && w > 0) {
+      adv(0); pressedAt = true; row.x0 = P.x; row.y0 = P.y; row.v0 = P.vx;
+      if (isStop(row)) { G.keys.delete('R'); G.keys.delete('S'); } else { G.pressed.add('J'); G.keys.add('J'); }
+    }
+    adv(w); if (pressedAt && t > 0.1) G.keys.delete('J');
+    shoot(i++, t);
+  }
+  for (const k of ['R', 'S', 'J']) G.keys.delete(k);
+}
+
+// ---- 抄一格：镜头摆到主角正侧面，高度跟着地面（不跟着人），跳起来多高看得出来 ----
+function grab(dx, dy, dw, dh, row) {
+  const cam = G.camera, c = G.renderer.domElement, P = G.P;
+  const d = num('d', 6.4), yo = num('yo', 1.45), x = P.x + 0.1, gy = row.y0;
+  const az = num('az', 0) * Math.PI / 180;
+  cam.position.set(x + d * Math.sin(az), gy + yo + d * 0.03, d * Math.cos(az)); cam.lookAt(x, gy + yo, 0);
+  const sh = c.height, sw = sh * dw / dh, sx = (c.width - sw) / 2;
+  G.renderer.render(G.scene, cam);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c, sx, 0, sw, sh, dx, dy, dw, dh);
+}
+function label(text, x, y, o = {}) {
+  ctx.save();
+  ctx.font = `${o.weight ?? 500} ${o.size ?? 15}px ${FONT}`; ctx.fillStyle = o.color ?? '#c3cfce'; ctx.textAlign = o.align ?? 'left'; ctx.textBaseline = 'alphabetic';
+  if (o.shadow !== false) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 8; }
+  ctx.fillText(text, x, y); ctx.restore();
+}
+function size(w, h) { sheet.width = w; sheet.height = h; frame.style.top = h + 'px'; ctx.fillStyle = '#0b0f11'; ctx.fillRect(0, 0, w, h); console.log(`图的大小 ${w} × ${h}`); }
+
+const LAYOUTS = {
+  // 每种情况一行：从按下跳之前，到落地站稳
+  strip() {
+    const ts = (q.get('ts') || '-0.1,0.03,0.08,0.14,0.22,0.32,0.42,0.52,0.6,0.66,0.72,0.8,0.95').split(',').map(Number);
+    const cw = num('cw', 170), ch = num('ch', 300), LW = 150, HEAD = 112, TOP = 30;
+    size(LW + ts.length * cw, HEAD + TOP + ROWS.length * ch);
+    const stops = ROWS.every(isStop);
+    label(q.get('title') || (stops ? '松开方向键 · 怎么停下来' : '跳跃 · 从起跳到落地'), 40, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+    label(q.get('note') || `游戏里实拍：每一行是一种情况；从左往右是连续的时刻（秒，0 是${stops ? '松开方向键' : '按下跳'}的那一刻）。`, 40, 76, { size: 14, weight: 400, color: '#8fa0a0', shadow: false });
+    ts.forEach((t, j) => label(`${t > 0 ? '+' : ''}${t.toFixed(2)}`, LW + j * cw + cw / 2, HEAD + 20, { align: 'center', size: 14, color: '#9fb0b0', shadow: false }));
+    ROWS.forEach((row, r) => {
+      const y = HEAD + TOP + r * ch;
+      run(row, ts, j => grab(LW + j * cw + 1, y + 1, cw - 2, ch - 2, row));
+      label(NAME[row.c], 30, y + ch / 2, { size: 21, weight: 600, color: '#f1f5f4', shadow: false });
+      label(isStop(row) ? `滑了 ${row.far.toFixed(2)} 米` : `高 ${row.top.toFixed(2)} 米`, 30, y + ch / 2 + 26, { size: 13, weight: 400, color: '#8fa0a0', shadow: false });
+    });
+  },
+  // 几种情况并排成一格，连续拍下来，拿去切成动图
+  film() {
+    const n = num('n', 36), dt = num('dt', 1 / 30), t0 = num('t0', -0.15), cols = num('cols', 6), cw = num('cw', 200), ch = num('ch', 320);
+    const fw = cw * ROWS.length;
+    size(cols * fw, Math.ceil(n / cols) * ch);
+    const ts = Array.from({ length: n }, (_, i) => t0 + i * dt);
+    ROWS.forEach((row, k) => {
+      const cells = [];
+      run(row, ts, i => { const x = (i % cols) * fw + k * cw, y = Math.floor(i / cols) * ch; grab(x + 1, y, cw - 2, ch, row); cells.push([x, y]); });
+      for (const [x, y] of cells) label(NAME[row.c], x + 12, y + 22, { size: 14, weight: 600, color: '#eef3f1' });
+    });
+  },
+  // 自检：不画图，在控制台里报出每种跳法跳了多高、多远、多久（改动作不能改这几个数），
+  // 再报手、脚在身上每一帧（1/60 秒）最多挪了多少：一下子挪得太多就是动作有跳变
+  check() {
+    size(600, 60); const say = s => console.log('检查 · ' + s), hero = G.hero(), tv = hero.B.traveler, V = G.THREE.Vector3;
+    for (const row of ROWS) {
+      const names = ['LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'], prev = names.map(() => null), worst = names.map(() => 0), at = names.map(() => 0), span = names.map(() => [Infinity, -Infinity]);
+      const ts = Array.from({ length: 84 }, (_, i) => -0.2 + i / 60);
+      run(row, ts, (i, t) => {
+        if (!tv?.model) return;
+        const hip = tv.bones.get('Hips').node.getWorldPosition(new V());
+        names.forEach((n, j) => {
+          const p = tv.bones.get(n).node.getWorldPosition(new V()).sub(hip);
+          if (prev[j]) { const d = p.distanceTo(prev[j]); if (d > worst[j]) { worst[j] = d; at[j] = t; } }
+          prev[j] = p; span[j][0] = Math.min(span[j][0], p.y); span[j][1] = Math.max(span[j][1], p.y);
+        });
+      });
+      if (isStop(row)) say(`${NAME[row.c]}：松手时每秒 ${row.v0.toFixed(2)} 米，又往前滑了 ${row.far.toFixed(3)} 米，${row.stopT === null ? '1.2 秒还没停住' : row.stopT.toFixed(3) + ' 秒停住'}`);
+      else say(`${NAME[row.c]}：高 ${row.top.toFixed(3)} 米，远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
+      if (tv?.model) say(`　手脚相对胯每帧最多挪（厘米）：${names.map((n, j) => `${n} ${(worst[j] * 100).toFixed(1)}（${at[j].toFixed(2)} 秒）`).join('，')}；上下摆的幅度（厘米）：${names.map((n, j) => `${n} ${((span[j][1] - span[j][0]) * 100).toFixed(0)}`).join('，')}`);
+    }
+    label('自检结果在控制台里', 20, 38, { size: 18, color: '#c3cfce' });
+  },
+};
+
+// ---- 装游戏 ----
+function load() {
+  return new Promise(done => {
+    const t0 = performance.now();
+    frame.onload = function wait() {
+      const w = frame.contentWindow, hero = w.__ready && w.__g && w.__g.hero();
+      const modelIn = hero && (hero.kind !== 'R' || hero.B.traveler?.model), late = performance.now() - t0 > 90000;   // 主角的模型是另外加载的：等它到了再画，机器忙的时候要等好一会儿，最多等 90 秒
+      if (hero && !modelIn && late) { console.warn('主角模型没有加载出来，画面里是顶替的机器人'); NOMODEL = true; }
+      if (hero && (modelIn || late)) { G = w.__g.old; G.begin(); G.paused = true; G.step(0.3); done(); }
+      else setTimeout(wait, 100);
+    };
+    frame.src = '../' + (q.get('game') || 'escape.html') + '?sheet=' + Date.now();
+  });
+}
+
+(async () => {
+  try { await load(); (LAYOUTS[LAYOUT] || LAYOUTS.strip)(); if (NOMODEL) label('主角模型没有加载出来：画面里是顶替的机器人，这张不能用', 40, sheet.height - 20, { size: 22, weight: 600, color: '#ff5a4a' }); }
+  catch (e) { console.error('没画完：' + (e && e.stack || e)); }
+  window.__sheetDone = true;
+})();
+</script>
+</body>
+</html>
