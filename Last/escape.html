@@ -4252,7 +4252,9 @@ function stepPlayer(dt) {
     o.off = true; if (sideHit(P.x + dx, P.y)) dx = 0; o.off = false;         // 人被别的东西挡住，它也就拉不动了
     if (dx === 0) o.v = damp(o.v, 0, 20, dt);
     o.x += dx; syncBox(o);
-    P.x = damp(P.x + dx, want + dx, 14, dt); P.vx = dx / dt; P.facing = side;
+    const px = damp(P.x + dx, want + dx, 14, dt);                           // 人慢慢凑到离它一臂远的地方
+    o.off = true; P.x = sideHit(px, P.y) && !sideHit(P.x + dx, P.y) ? P.x + dx : px; o.off = false;   // 夹在它和墙之间、凑不到那么远：就站在原地推拉，不往墙里挤（挤进去以后它就推不动了）
+    P.vx = dx / dt; P.facing = side;
     if (Math.abs(dx) > 1e-5) P.pushed = true;
     return;
   }
@@ -13680,6 +13682,9 @@ const CH13 = (() => {
 //  光：只有月光（不靠路灯，哪一章都能这样打光）。月亮在画面深处偏左、压得很低（高度角约 11°，影子拖出去是高度的五倍多），带影子：
 //    朝着镜头的面全是背光面；前景里靠近孩子的那一排废料高、往镜头这边的矮，前排的影子往镜头这边拖，盖住后面 —— 画面下半部分留黑。
 //    wallD 只管往远处：天光、月光往后很快暗下去，云缝里漏下来的几块月光慢慢飘过去
+//  翻过矮墙再往右走一段，是第二道墙（2026-11-16 加的一个小关卡）：一样的旧砖墙，可是有两米高，跳起来够不着墙头。
+//    墙左边十来步远的地方有一只旧木箱：按住 E 把它推到墙脚，跳上箱子，再朝墙头跳 —— 箱子正好垫到“离墙头还差一道矮墙那么高”，
+//    所以从箱子上翻过去用的还是翻矮墙的那一段动作。这一段路是平的、直的（大起伏和路的弯到这里都收回了 0）：箱子只能在平地上推
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
 const X14 = 2600;
@@ -13689,15 +13694,20 @@ const CH14 = (() => {
   const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，跳一下就过去
   const Z1 = 18, ZN = -42, Z0 = -330;                          // 墙从镜头后面 Z1 一直到 Z0；ZN 以前一块块砖搭，以后是一整条
   const MI = 0.016;
+  // 第二道墙：W2X 中线在哪，NC2 砌了几层，TOP2 墙顶多高（1.94 米：原地跳起来脚离地 1.2 米，够不着）
+  const W2X = X + 43, NC2 = 24, TOP2 = NC2 * PY + J + CAPH, HALF = T / 2 + 0.015;
+  // 旧木箱：高度正好是两道墙的高差 —— 站在箱子上，墙头离脚下和第一道矮墙一样高。CR0 一开始放在哪；往左最多拉到 CRMIN，往右推到贴着墙（CRMAX）
+  const CR_W = 1.1, CR_D = 0.9, CR_H = TOP2 - TOP, CR0 = X + 37.2, CRMIN = X + 35.6, CRMAX = W2X - HALF - CR_W / 2;
   const S14 = 0.62;                                            // 路面石块的大小（米）                                            // 灰缝比砖面缩进去多少
   const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel',   // 脚步声：山上的碎石
     intro() { CAT.state = 'none'; } });
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
   groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
-  solid({ x1: X + 30, x2: X + 31, y1: -2, y2: 30, noclimb: true });
-  solid({ x1: WX - T / 2 - 0.015, x2: WX + T / 2 + 0.015, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
-  checkpoint(X + 2); checkpoint(WX + 1.4);
+  solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
+  solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
+  solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：太高，也太薄，扒不上去
+  checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);
   // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去（±3 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
   const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * 2.2 * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
   zpath(X - 14, X + 34, PZ_);
@@ -13763,14 +13773,19 @@ const CH14 = (() => {
   { const pts = []; for (let x = X - 60; x <= X + 60.001; x += nearStep(x) ? 0.02 : 0.15) { const z = PZ_(x); pts.push([x, BIG(x, z) + (STONE(x - 0.06, z, false) + STONE(x, z, false) + STONE(x + 0.06, z, false)) / 3]); } terrain(...pts); }
   // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
-  camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 30, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
+  // 旧木箱（要等上面的地形登记完：它记下自己脚下的地面有多高）
+  const crate = pushable({ id: 'crate21', x: CR0, w: CR_W, h: CR_H, min: CRMIN, max: CRMAX, snd: 'wood' });
+  hint(() => crate.x < CRMAX - 0.5 && P.x > W2X - 2.2 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '墙太高了，跳不上去 —— 地上的拖痕通向一只旧木箱');
+  hint(() => crate.x < CRMAX - 0.5 && P.x < W2X && Math.abs(P.x - crate.x) < 2.2 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 把箱子推到墙脚');
+  hint(() => crate.x >= CRMAX - 0.5 && P.x > W2X - 4 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '跳上箱子，再跳向墙头');
+  camKeys([X - 12, 10.5, 0.95, 0.5, -0.32], [X + 58, 10.5, 0.95, 0.5, -0.32]);   // 镜头压低到差不多孩子眼睛的高度：墙才看得出是墙，不是一条路
   const NIGHT = { fog: 0x2f3439, fogD: 0.034, hemiS: 0x8a949c, hemiG: 0x15171a, hemiI: 1.0, keyC: 0xc4ccd4, keyI: 1.5, keyDir: [-0.25, 0.9, -0.35], rimC: 0x8090b0, rimI: 0,
     dustC: 0xa0a8ae, dustO: 0.22, wind: 0.03, ext: 1, sky: [0x1f2327, 0x262a2f, 0x2c3136, 0x30353a, 0x2f3439, 0x2f3439], sunX: -0.52, sunY: 0.2, sunC: 0xd2d8da, sunP: 0.85,   // 光源在画面左上边缘外：只透进来一团光晕，看不到圆盘
     stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
     aWind: 0.62, aWhis: 0.08, aLeaf: 0.22, leafDry: 1, aBug: 0, aDrip: 0, aFlow: 0, aRoom: 0, aHum: 0, aCity: 0, aFar: 0.7,   // 声音：山坡上的风、风刮过枯枝，偶尔一声乌鸦、几颗碎石滚下去
     rvOut: 1, rvHall: 0, rvCave: 0 };
   // 往右走到头：雾越来越浓，把路吞掉（右边那堵空气墙藏在浓雾里）
-  env(X - 20, NIGHT); env(X + 19, NIGHT); env(X + 30, { ...NIGHT, fogD: 0.085, hemiI: 1.2 }); env(X + 60, { ...NIGHT, fogD: 0.085, hemiI: 1.2 });
+  env(X - 20, NIGHT); env(X + 47, NIGHT); env(X + 57, { ...NIGHT, fogD: 0.085, hemiI: 1.2 }); env(X + 70, { ...NIGHT, fogD: 0.085, hemiI: 1.2 });
   FAR[OLD + 14] = ['crow', 'twig', 'pebbles', 'crow', 'twig', 'pebbles'];
 
 
@@ -13779,16 +13794,23 @@ const CH14 = (() => {
   const NOTCH = [{ z: -3.9, w: 0.42, d: 2, p: 0.8 }, { z: -9.6, w: 1.35, d: 6, p: 1.1 }, { z: -15.8, w: 0.5, d: 3, p: 1.6 },
     { z: -21.5, w: 0.9, d: 2, p: 0.7 }, { z: -27, w: 1.7, d: 7, p: 1.2 }];
   withSeed(14141, () => { for (let z = -34; z > Z0; z -= rr(5, 15)) NOTCH.push({ z, w: rr(0.3, 1.7), d: Math.round(rr(1, 7)), p: rr(0.7, 1.6) }); });
+  // 第二道墙的豁口：都浅（塌掉几层，墙还是比人高），而且离孩子翻墙的地方远 —— 不然会让人想“怎么不从那儿过”
+  const NOTCH2 = [{ z: 5.4, w: 0.5, d: 2, p: 0.9 }, { z: -6.8, w: 0.55, d: 3, p: 0.8 }, { z: -13.5, w: 1.2, d: 5, p: 1.1 }, { z: -20.2, w: 0.45, d: 2, p: 1.5 }, { z: -27.5, w: 0.9, d: 4, p: 1.0 }];
+  withSeed(14142, () => { for (let z = -39; z > Z0; z -= rr(6, 16)) NOTCH2.push({ z, w: rr(0.3, 1.5), d: Math.round(rr(1, 6)), p: rr(0.7, 1.6) }); });
+  // 两道墙：x 中线，NC 几层砖，TOP 墙顶，Z1 … ZN 一块块砖搭的那一段（ZN 往后到 Z0 是一整条），bevZ 比它近的砖才倒角，
+  //   clear 塌下来的砖在路上让开多宽，foot 墙脚的山石在路上让开多宽 [左, 右]（第二道墙左边要留出箱子靠上来的地方）
+  const WALL1 = { x: WX, NC, TOP, Z1, ZN, Z0, NOTCH, bevZ: -14, clear: 0.5, foot: [0.7, 0.7] };
+  const WALL2 = { x: W2X, NC: NC2, TOP: TOP2, Z1: 12, ZN: -34, Z0, NOTCH: NOTCH2, bevZ: -5, bevZ1: 4.5, clear: 1.1, foot: [1.3, 0.7] };
   const hsh = (a, b, c = 0) => { const s = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453; return s - Math.floor(s); };
   // 从上往下数第 t 层（0 是压顶砖，1 是最上面一层砖）在 z 处还在不在。jit：每块砖自己的一点出入，豁口的边才是参差的
-  function gone(t, z, jit) {
-    for (const n of NOTCH) {
+  function gone(t, z, jit, N = NOTCH) {
+    for (const n of N) {
       const u = Math.abs(z - n.z) / n.w; if (u > 1.7) continue;
       if (t === 0 ? u < 1.12 + 0.18 * jit : t <= n.d * (1 - Math.pow(Math.min(u, 1), n.p)) + 0.45 * jit) return true;
     }
     return false;
   }
-  const notchU = z => { let m = 9; for (const n of NOTCH) m = Math.min(m, Math.abs(z - n.z) / n.w); return m; };
+  const notchU = (z, N = NOTCH) => { let m = 9; for (const n of N) m = Math.min(m, Math.abs(z - n.z) / n.w); return m; };
 
   // ---- 着色：这一章的墙、地面、灯杆都走这一套 ----
   // wallD：天光和月光（环境光、平行光）在这一点还剩多少。灯（聚光灯、点光源）不受它管，所以远处的灯照到的那一小块还是亮的
@@ -13848,9 +13870,9 @@ const CH14 = (() => {
       float gap = smoothstep(0.56, 0.7, cl) * smoothstep(14., 30., dz) * exp(-dz / 80.);
       return (base + 1.4 * gap) * (1. - smoothstep(80., 210., dz));
     }`;
-  const SURF = [
-    // 0 一块块的砖、灰缝、塌下来的砖：颗粒、小坑、朝上的面长青苔、墙面上的雨痕和地衣、墙脚泛白的盐霜
-    `float fd = 1. - smoothstep(5., 30., distance(vWP, cameraPosition));
+  // 砖墙的两种表面，按墙顶多高各出一份（雨痕是从墙顶往下流的）：两道墙一样的砖，只是高矮不同
+  // 0 一块块的砖、灰缝、塌下来的砖：颗粒、小坑、朝上的面长青苔、墙面上的雨痕和地衣、墙脚泛白的盐霜
+  const brickSurf = TOP => `float fd = 1. - smoothstep(5., 30., distance(vWP, cameraPosition));
     float g1 = n3(q * 46.), g2 = n3(q * 11. + 1.7), g3 = n3(q * 150. + 4.2);
     float gr = 0.8 + 0.3 * g2 + 0.22 * (g1 - .5) + 0.14 * (g3 - .5) - 0.32 * smoothstep(0.8, 0.93, n3(q * 70. + 9.));
     diffuseColor.rgb *= mix(1., gr, 0.15 + 0.85 * fd);
@@ -13863,9 +13885,9 @@ const CH14 = (() => {
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0xb0aca0)}, smoothstep(0.55, 0.8, n2(vec2(q.z * 3., q.y * 9.) + q.x)) * (1. - smoothstep(0.05, 0.4, q.y)) * side * 0.3);
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x3f5a26)}, side * (1. - smoothstep(0.05, 0.38, q.y)) * smoothstep(0.42, 0.7, n3(q * 5. + 7.)) * 0.65);   // 墙根长着青苔
     diffuseColor.rgb *= 1. - 0.38 * smoothstep(0.5, 0.75, n2(vec2(q.z * 0.6, q.y * 1.4) + 3.)) * side;   // 大片的水渍：一块块发暗
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.35 + 0.02, smoothstep(0.7, 0.82, n2(vec2(q.z * 1.8, q.y * 3.) + 11.)) * side * 0.55);   // 砖面剥落：一片片露出里面浅一点的砖胎`,
-    // 1 远处的整条墙：砖缝画在侧面上（按屏幕上多宽来抗锯齿，越远越糊成一片）
-    `if (abs(vWN.x) > 0.5) {
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.35 + 0.02, smoothstep(0.7, 0.82, n2(vec2(q.z * 1.8, q.y * 3.) + 11.)) * side * 0.55);   // 砖面剥落：一片片露出里面浅一点的砖胎`;
+  // 1 远处的整条墙：砖缝画在侧面上（按屏幕上多宽来抗锯齿，越远越糊成一片）
+  const farSurf = TOP => `if (abs(vWN.x) > 0.5) {
       float r = q.y / ${PY.toFixed(4)}, row = floor(r), zz = q.z / ${PZ.toFixed(4)} - mod(row, 2.) * 0.5, col = floor(zz);
       vec2 f = vec2(fract(zz), fract(r)), aa = fwidth(vec2(zz, r)) + 1e-4;
       vec2 jw = vec2(${(J / PZ / 2).toFixed(4)}, ${(J / PY).toFixed(4)});
@@ -13873,7 +13895,10 @@ const CH14 = (() => {
       diffuseColor.rgb *= mix(0.62, 0.8 + 0.4 * h21(vec2(row, col)), m);
       diffuseColor.rgb *= 1. - 0.4 * smoothstep(0.5, 0.85, n2(vec2(q.z * 7., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${TOP.toFixed(3)}, q.y);
     }
-    diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
+    diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`;
+  const SURF = [
+    brickSurf(TOP),   // 0 第一道墙近处的砖
+    farSurf(TOP),     // 1 第一道墙远处的整条墙体
     // 2 地面：一整片岩面，没有裂缝。深浅、偏暖偏冷都是大片慢慢变；近处有颗粒、小坑、地衣；低洼处积水
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
     vec2 g = q.xz;
@@ -13886,7 +13911,7 @@ const CH14 = (() => {
     c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.35);                                        // 低洼处暗一些
     float steep14 = 1. - smoothstep(0.35, 0.8, normalize(vWN).y);
     c *= 1. - 0.45 * steep14 * (0.8 + 0.4 * n3(vec3(g * 9., q.y * 20.)));                                         // 岩坎的立面：暗一些、粗一些
-    float wall = abs(q.x) - ${(T / 2).toFixed(3)};
+    float wall = min(abs(q.x), abs(q.x - ${(W2X - WX).toFixed(2)})) - ${(T / 2).toFixed(3)};
     c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
     wet14 = clamp(0.7 * smoothstep(-0.06, -0.16, vDet) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)), 0., 1.);   // 水只积在低洼的石窝里
     c = mix(c, c * 0.4, wet14);
@@ -13912,6 +13937,8 @@ const CH14 = (() => {
     diffuseColor.rgb *= mix(1., 0.93 + 0.1 * n3(q * 24. + 1.) + 0.05 * (n3(q * 75. + 6.) - .5), 0.3 + 0.7 * fd);
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x9a9c92)}, up5 * smoothstep(0.6, 0.78, n3(q * 2.2 + 5.) * 0.7 + n3(q * 9. + 2.) * 0.3) * 0.16);
     diffuseColor.rgb *= 1. - 0.3 * sd5 * smoothstep(0.55, 0.85, n2(vec2((q.x + q.z) * 3.5, q.y * 0.6) + 7.));`,
+    brickSurf(TOP2),  // 6 第二道墙近处的砖
+    farSurf(TOP2),    // 7 第二道墙远处的整条墙体
   ];
   function shade(mat, kind, sat = 0.35) {          // sat：保留多少颜色（0 全灰，1 原样）。大部分东西都很灰；落叶、树枝这些小东西留一点颜色
     mat.userData.own = true;
@@ -13993,6 +14020,83 @@ const CH14 = (() => {
   const CLINKER = new THREE.Color(0x3a2a2a), PATCH = new THREE.Color(0x6a5e4c);
   const brickCol = (y, k = 1) => { const u = rnd(), c = (u < 0.05 ? CLINKER.clone() : u < 0.065 ? PATCH.clone() : pick(BRICK).clone()).multiplyScalar(rr(0.82, 1.12) * k); return c.multiplyScalar(0.62 + 0.38 * sstep(0, 0.3, y)); };   // 偶尔一块过火的深色砖、一块后来补上的灰黄砖；墙脚返潮，暗下去
 
+  // ---- 一道砖墙的几何（W 见上面的 WALL1 / WALL2）：近处一块块砖进 A、灰缝进 M，远处的整条墙体进 F ----
+  function* wallGeo(W, LOW, A, M, F) {
+    const { x: wx, NC, TOP, Z1, ZN, Z0, NOTCH } = W, bev = zc => !LOW && zc > W.bevZ && zc < (W.bevZ1 ?? 1e9);   // 倒角只给看得清的那一段
+    // ---- 近处：一层一层地砌。每六层有一层丁砖（砖头朝外；第一道墙只有十一层，就是第 5 层），其余是顺砖，上下错开半块 ----
+    for (let r = 0; r < NC; r++) {
+      const t = NC - r, header = r % 6 === 5, pitch = header ? BD + J : PZ, len = header ? BD : BL, off = header ? 0 : (r % 2) * PZ / 2, runs = [];
+      for (const f of [-1, 1]) {
+        const k0 = Math.floor((ZN - off) / pitch), k1 = Math.ceil((Z1 - off) / pitch);
+        for (let k = k0; k <= k1; k++) {
+          const zc = off + (k + 0.5) * pitch; if (zc < ZN || zc > Z1) continue;
+          if (gone(t, zc, hsh(k, r, f) * 2 - 1, NOTCH)) continue;
+          const spall = rnd() < 0.05, hx = header ? 0.085 : BD / 2, rec = spall ? rr(0.005, 0.012) : rr(0, 0.0035);
+          const hy = BH / 2 - rr(0, 0.0025) - (spall ? 0.003 : 0), hz = len / 2 - rr(0.0005, 0.004) - (spall ? 0.004 : 0);
+          const loose = notchU(zc, NOTCH) < 1.25 && t <= 2 ? 1 : 0;                                   // 豁口边上的砖有点松动
+          const y = r * PY + J + BH / 2 + rr(-0.0015, 0.0015), bow = (y / TOP) * (0.008 * Math.sin(zc * 0.31 + 1) + 0.006 * Math.exp(-Math.pow((zc + 7) / 1.6, 2)) - 0.005 * Math.exp(-Math.pow((zc - 4.5) / 1.3, 2))), x = wx + f * (T / 2 - hx - rec) + bow + rr(-0.002, 0.002);   // bow：墙这里往一边歪一点、那里鼓出来一点
+          pushBox(A, x, y, zc + rr(-0.003, 0.003), hx, hy, hz, bev(zc) ? 0.0065 : 0,
+            [rr(-0.006, 0.006) + loose * rr(-0.03, 0.03), rr(-0.012, 0.012) + loose * rr(-0.05, 0.05), rr(-0.006, 0.006) + loose * rr(-0.04, 0.04)], brickCol(y, spall ? 0.85 : 1));
+          runs.push([zc - len / 2, zc + len / 2]);
+        }
+      }
+      // 灰缝：这一层还有砖的地方连成一段段，比砖面缩进去 MI
+      runs.sort((a, b) => a[0] - b[0]);
+      const merged = []; for (const s of runs) { const l = merged[merged.length - 1]; if (l && s[0] <= l[1] + J * 1.5) l[1] = Math.max(l[1], s[1]); else merged.push([...s]); }
+      for (const [z0, z1] of merged) pushBox(M, wx, r * PY + PY / 2, (z0 + z1) / 2, T / 2 - MI, PY / 2, (z1 - z0) / 2 + J / 2, 0, [0, 0, 0],
+        new THREE.Color(0x77736a).multiplyScalar(rr(0.6, 0.85) * (0.6 + 0.4 * sstep(0, 0.3, r * PY))));
+      if (r % 3 === 2) yield;
+    }
+    // ---- 压顶：一排立着砌的砖，横跨墙顶分成两块，比墙面挑出来一点。豁口边上的歪着、挪了位，零星缺一两块 ----
+    {
+      const pc = BH + J, hxc = (T + 0.03) / 4 - J / 2, runs = [];
+      for (let k = Math.floor(ZN / pc); k <= Math.ceil(Z1 / pc); k++) {
+        const zc = (k + 0.5) * pc; if (zc < ZN || zc > Z1) continue;
+        if (gone(0, zc, hsh(k, 77) * 2 - 1, NOTCH) || (hsh(k, 99) < 0.02 && Math.abs(zc) > 0.6)) continue;
+        const u = notchU(zc, NOTCH), loose = u < 1.5 ? sstep(1.5, 1.1, u) : 0;
+        for (const s of [-1, 1]) {
+          const hy = 0.05 + rr(-0.003, 0.003), y = NC * PY + J + hy + loose * rr(0, 0.02);
+          pushBox(A, wx + s * (hxc + J / 2) + loose * rr(-0.03, 0.03), y, zc + rr(-0.002, 0.002) + loose * rr(-0.015, 0.015), hxc + rr(-0.002, 0.002), hy, BH / 2 - rr(0.0005, 0.002), bev(zc) ? 0.006 : 0,
+            [rr(-0.01, 0.01) + loose * rr(-0.12, 0.12), rr(-0.015, 0.015) + loose * rr(-0.2, 0.2), rr(-0.01, 0.01) + loose * rr(-0.15, 0.15)], brickCol(1, 0.78).lerp(new THREE.Color(0x5a5650), 0.25));
+        }
+        runs.push([zc - BH / 2, zc + BH / 2]);
+      }
+      const merged = []; for (const s of runs) { const l = merged[merged.length - 1]; if (l && s[0] <= l[1] + J * 1.5) l[1] = Math.max(l[1], s[1]); else merged.push([...s]); }
+      for (const [z0, z1] of merged) pushBox(M, wx, NC * PY + (J + CAPH) / 2, (z0 + z1) / 2, (T + 0.03) / 2 - MI, (J + CAPH) / 2 - 0.004, (z1 - z0) / 2 + J / 2, 0, [0, 0, 0], new THREE.Color(0x6e6a62).multiplyScalar(0.7));
+    }
+    yield;
+    // ---- 塌下来的砖：散在豁口底下的墙脚两边，有整块的也有断成半截的，有的竖着插在土里 ----
+    for (const n of NOTCH) {
+      if (n.z < ZN + 2) continue;
+      const cnt = Math.round(n.w * n.d * 2.2 + 2);
+      for (let i = 0; i < cnt; i++) {
+        const s = rnd() < 0.5 ? -1 : 1, d = Math.pow(rnd(), 1.6) * 1.1, x = wx + s * (T / 2 + 0.06 + d), z = n.z + rr(-1.25, 1.25) * n.w;
+        if (Math.abs(z) < W.clear && Math.abs(x - wx) < 1.4) continue;                                // 不挡着脚下的路
+        const half = rnd() < 0.4, hz = half ? rr(0.04, 0.08) : BL / 2, edge = rnd() < 0.18;
+        const hy = edge ? BD / 2 : BH / 2, hx = edge ? BH / 2 : BD / 2;
+        pushBox(A, x, hy - rr(0.005, 0.02), z, hx, hy, hz, 0.006, [rr(-0.12, 0.12), rr(0, 6.28), rr(-0.1, 0.1)], brickCol(0.05, 0.9));
+        if (rnd() < 0.5) pushBox(A, x + rr(-0.25, 0.25), 0.012, z + rr(-0.25, 0.25), rr(0.015, 0.035), rr(0.01, 0.02), rr(0.015, 0.04), 0.004, [rr(-0.3, 0.3), rr(0, 6.28), rr(-0.3, 0.3)], brickCol(0.05, 0.8));   // 碎渣
+      }
+    }
+    yield;
+    // ---- 远处：一整条墙体，豁口的轮廓按一块砖的宽度一段段地算（不带每块砖自己的出入），合并成大块 ----
+    {
+      const cols = [];
+      for (let z = ZN; z > Z0; z -= PZ) {
+        const zc = z - PZ / 2; let lim = 0;
+        for (const n of NOTCH) { const u = Math.abs(zc - n.z) / n.w; if (u < 1) lim = Math.max(lim, n.d * (1 - Math.pow(u, n.p))); }
+        cols.push([z, NC - Math.floor(lim), !gone(0, zc, 0, NOTCH)]);
+      }
+      for (let i = 0; i < cols.length;) {
+        let j = i; while (j + 1 < cols.length && cols[j + 1][1] === cols[i][1] && cols[j + 1][2] === cols[i][2]) j++;
+        const za = cols[i][0], zb = cols[j][0] - PZ, cnt = cols[i][1], h = cnt * PY;
+        if (cnt > 0) pushBox(F, wx, h / 2, (za + zb) / 2, T / 2 - 0.004, h / 2, (za - zb) / 2, 0, [0, 0, 0], null);
+        if (cols[i][2] && cnt === NC) pushBox(F, wx, NC * PY + (J + CAPH) / 2, (za + zb) / 2, (T + 0.03) / 2, (J + CAPH) / 2, (za - zb) / 2, 0, [0, 0, 0], null);
+        i = j + 1;
+      }
+    }
+  }
+
   let V = null;
   function* build(R) {
     const v = {};
@@ -14035,78 +14139,7 @@ const CH14 = (() => {
       g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
     };
     const A = { p: [], n: [], c: [], mottle: true }, M = { p: [], n: [], c: [] }, F = { p: [], n: [], c: [] };
-    // ---- 近处：一层一层地砌。第 5 层是丁砖（砖头朝外），其余是顺砖，上下错开半块 ----
-    for (let r = 0; r < NC; r++) {
-      const t = NC - r, header = r === 5, pitch = header ? BD + J : PZ, len = header ? BD : BL, off = header ? 0 : (r % 2) * PZ / 2, runs = [];
-      for (const f of [-1, 1]) {
-        const k0 = Math.floor((ZN - off) / pitch), k1 = Math.ceil((Z1 - off) / pitch);
-        for (let k = k0; k <= k1; k++) {
-          const zc = off + (k + 0.5) * pitch; if (zc < ZN || zc > Z1) continue;
-          if (gone(t, zc, hsh(k, r, f) * 2 - 1)) continue;
-          const spall = rnd() < 0.05, hx = header ? 0.085 : BD / 2, rec = spall ? rr(0.005, 0.012) : rr(0, 0.0035);
-          const hy = BH / 2 - rr(0, 0.0025) - (spall ? 0.003 : 0), hz = len / 2 - rr(0.0005, 0.004) - (spall ? 0.004 : 0);
-          const loose = notchU(zc) < 1.25 && t <= 2 ? 1 : 0;                                   // 豁口边上的砖有点松动
-          const y = r * PY + J + BH / 2 + rr(-0.0015, 0.0015), bow = (y / TOP) * (0.008 * Math.sin(zc * 0.31 + 1) + 0.006 * Math.exp(-Math.pow((zc + 7) / 1.6, 2)) - 0.005 * Math.exp(-Math.pow((zc - 4.5) / 1.3, 2))), x = WX + f * (T / 2 - hx - rec) + bow + rr(-0.002, 0.002);   // bow：墙这里往一边歪一点、那里鼓出来一点
-          pushBox(A, x, y, zc + rr(-0.003, 0.003), hx, hy, hz, !LOW && zc > -14 ? 0.0065 : 0,
-            [rr(-0.006, 0.006) + loose * rr(-0.03, 0.03), rr(-0.012, 0.012) + loose * rr(-0.05, 0.05), rr(-0.006, 0.006) + loose * rr(-0.04, 0.04)], brickCol(y, spall ? 0.85 : 1));
-          runs.push([zc - len / 2, zc + len / 2]);
-        }
-      }
-      // 灰缝：这一层还有砖的地方连成一段段，比砖面缩进去 MI
-      runs.sort((a, b) => a[0] - b[0]);
-      const merged = []; for (const s of runs) { const l = merged[merged.length - 1]; if (l && s[0] <= l[1] + J * 1.5) l[1] = Math.max(l[1], s[1]); else merged.push([...s]); }
-      for (const [z0, z1] of merged) pushBox(M, WX, r * PY + PY / 2, (z0 + z1) / 2, T / 2 - MI, PY / 2, (z1 - z0) / 2 + J / 2, 0, [0, 0, 0],
-        new THREE.Color(0x77736a).multiplyScalar(rr(0.6, 0.85) * (0.6 + 0.4 * sstep(0, 0.3, r * PY))));
-      if (r % 3 === 2) yield;
-    }
-    // ---- 压顶：一排立着砌的砖，横跨墙顶分成两块，比墙面挑出来一点。豁口边上的歪着、挪了位，零星缺一两块 ----
-    {
-      const pc = BH + J, hxc = (T + 0.03) / 4 - J / 2, runs = [];
-      for (let k = Math.floor(ZN / pc); k <= Math.ceil(Z1 / pc); k++) {
-        const zc = (k + 0.5) * pc; if (zc < ZN || zc > Z1) continue;
-        if (gone(0, zc, hsh(k, 77) * 2 - 1) || (hsh(k, 99) < 0.02 && Math.abs(zc) > 0.6)) continue;
-        const u = notchU(zc), loose = u < 1.5 ? sstep(1.5, 1.1, u) : 0;
-        for (const s of [-1, 1]) {
-          const hy = 0.05 + rr(-0.003, 0.003), y = NC * PY + J + hy + loose * rr(0, 0.02);
-          pushBox(A, WX + s * (hxc + J / 2) + loose * rr(-0.03, 0.03), y, zc + rr(-0.002, 0.002) + loose * rr(-0.015, 0.015), hxc + rr(-0.002, 0.002), hy, BH / 2 - rr(0.0005, 0.002), !LOW && zc > -14 ? 0.006 : 0,
-            [rr(-0.01, 0.01) + loose * rr(-0.12, 0.12), rr(-0.015, 0.015) + loose * rr(-0.2, 0.2), rr(-0.01, 0.01) + loose * rr(-0.15, 0.15)], brickCol(1, 0.78).lerp(new THREE.Color(0x5a5650), 0.25));
-        }
-        runs.push([zc - BH / 2, zc + BH / 2]);
-      }
-      const merged = []; for (const s of runs) { const l = merged[merged.length - 1]; if (l && s[0] <= l[1] + J * 1.5) l[1] = Math.max(l[1], s[1]); else merged.push([...s]); }
-      for (const [z0, z1] of merged) pushBox(M, WX, NC * PY + (J + CAPH) / 2, (z0 + z1) / 2, (T + 0.03) / 2 - MI, (J + CAPH) / 2 - 0.004, (z1 - z0) / 2 + J / 2, 0, [0, 0, 0], new THREE.Color(0x6e6a62).multiplyScalar(0.7));
-    }
-    yield;
-    // ---- 塌下来的砖：散在豁口底下的墙脚两边，有整块的也有断成半截的，有的竖着插在土里 ----
-    for (const n of NOTCH) {
-      if (n.z < ZN + 2) continue;
-      const cnt = Math.round(n.w * n.d * 2.2 + 2);
-      for (let i = 0; i < cnt; i++) {
-        const s = rnd() < 0.5 ? -1 : 1, d = Math.pow(rnd(), 1.6) * 1.1, x = WX + s * (T / 2 + 0.06 + d), z = n.z + rr(-1.25, 1.25) * n.w;
-        if (Math.abs(z) < 0.5 && Math.abs(x - WX) < 1.4) continue;                                // 不挡着脚下的路
-        const half = rnd() < 0.4, hz = half ? rr(0.04, 0.08) : BL / 2, edge = rnd() < 0.18;
-        const hy = edge ? BD / 2 : BH / 2, hx = edge ? BH / 2 : BD / 2;
-        pushBox(A, x, hy - rr(0.005, 0.02), z, hx, hy, hz, 0.006, [rr(-0.12, 0.12), rr(0, 6.28), rr(-0.1, 0.1)], brickCol(0.05, 0.9));
-        if (rnd() < 0.5) pushBox(A, x + rr(-0.25, 0.25), 0.012, z + rr(-0.25, 0.25), rr(0.015, 0.035), rr(0.01, 0.02), rr(0.015, 0.04), 0.004, [rr(-0.3, 0.3), rr(0, 6.28), rr(-0.3, 0.3)], brickCol(0.05, 0.8));   // 碎渣
-      }
-    }
-    yield;
-    // ---- 远处：一整条墙体，豁口的轮廓按一块砖的宽度一段段地算（不带每块砖自己的出入），合并成大块 ----
-    {
-      const cols = [];
-      for (let z = ZN; z > Z0; z -= PZ) {
-        const zc = z - PZ / 2; let lim = 0;
-        for (const n of NOTCH) { const u = Math.abs(zc - n.z) / n.w; if (u < 1) lim = Math.max(lim, n.d * (1 - Math.pow(u, n.p))); }
-        cols.push([z, NC - Math.floor(lim), !gone(0, zc, 0)]);
-      }
-      for (let i = 0; i < cols.length;) {
-        let j = i; while (j + 1 < cols.length && cols[j + 1][1] === cols[i][1] && cols[j + 1][2] === cols[i][2]) j++;
-        const za = cols[i][0], zb = cols[j][0] - PZ, cnt = cols[i][1], h = cnt * PY;
-        if (cnt > 0) pushBox(F, WX, h / 2, (za + zb) / 2, T / 2 - 0.004, h / 2, (za - zb) / 2, 0, [0, 0, 0], null);
-        if (cols[i][2] && cnt === NC) pushBox(F, WX, NC * PY + (J + CAPH) / 2, (za + zb) / 2, (T + 0.03) / 2, (J + CAPH) / 2, (za - zb) / 2, 0, [0, 0, 0], null);
-        i = j + 1;
-      }
-    }
+    yield* wallGeo(WALL1, LOW, A, M, F);
     const brickMat = shade(lam(0xffffff, { vertexColors: true }), 0, 0.45);
     v.wall = meshOf(A, brickMat); R.add(v.wall);
     v.mortar = meshOf(M, brickMat); R.add(v.mortar);
@@ -14119,14 +14152,15 @@ const CH14 = (() => {
       const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
       // 孩子身前（z > 0）：土包、浅坑、一道道压出来的辙，越靠镜头起伏越大（不能高到挡住孩子的脚）。孩子走的那条路和墙脚保持平
+      const wallDist = x => Math.min(Math.abs(x - WX), Math.abs(x - W2X));                              // 离最近的一道墙多远：两道墙的墙脚都要平
       const hFront = (x, z) => {
-        const k = sstep(0.35, 1.4, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
+        const k = sstep(0.35, 1.4, z) * sstep(0.35, 1.3, wallDist(x)), amp = 0.4 + 0.25 * sstep(3, 9, z);
         const ridge = 1 - Math.abs(2 * vn(x * 0.6 + 3, z * 0.7) - 1);                                  // 山脊一样的尖棱
         return k * amp * (1.5 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.7 * (ridge - 0.5) + 0.35 * (vn(x * 2.2, z * 2.4 + 5) - 0.5));
       };
       // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
       const hBack = (x, z) => {
-        const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, Math.abs(x - WX)), A = 0.35 + 0.07 * Math.min(dz, 90);
+        const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, wallDist(x)), A = 0.35 + 0.07 * Math.min(dz, 90);
         const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
         const crag = A * 0.5 * Math.pow(1 - Math.abs(2 * vn(x * 0.09 + 11, z * 0.08) - 1), 3);          // 一道道突出来的岩脊
         return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
@@ -14140,7 +14174,7 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 32, X + 52, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 32, X + 78, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
@@ -14151,15 +14185,17 @@ const CH14 = (() => {
       const M4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler(0, 0, 0, 'YXZ'), cc = new THREE.Color();
       // 撒东西的密度：成片成堆的（大尺度的噪声决定哪里一片、哪里空着），凹处多一些；离路越远越稀，到哪为止各处不一样，没有一条边
       const clump = (x, z) => sstep(0.35, 0.72, vn(x * 0.35 + 40, z * 0.45)) * 0.85 + 0.15;
-      const spot = (onPath, reach = 4.5) => {                          // 随便找一处：x 在这一章里，z 在那条弯路前后几米
+      // 下面撒东西的几样都写成函数：先照原样撒第一段（矮墙前后，x 从 X - 15 到 X + 34），最后再撒第二段（高墙前后）—— 第一段用掉的随机数和原来一样，样子不变
+      const mkSpot = (xa, xb, wx) => (onPath, reach = 4.5) => {        // 随便找一处：x 在 xa 到 xb 之间，z 在那条弯路前后几米
         for (let tries = 0; ; tries++) {
-          const x = rr(X - 15, X + 34), zr = onPath ? rr(-0.45, 0.45) : (rnd() < 0.5 ? -1 : 1) * (0.45 + Math.pow(rnd(), 1.2) * reach * 1.4);
-          if (Math.abs(x - WX) < 0.3 && Math.abs(zr) < 1) continue;   // 翻墙的地方空着
+          const x = rr(xa, xb), zr = onPath ? rr(-0.45, 0.45) : (rnd() < 0.5 ? -1 : 1) * (0.45 + Math.pow(rnd(), 1.2) * reach * 1.4);
+          if (Math.abs(x - wx) < 0.3 && Math.abs(zr) < 1) continue;   // 翻墙的地方空着
           const z = PZ_(x) + zr, edge = reach * (0.7 + 0.6 * vn(x * 0.25 + 7, 3));   // 到哪为止：沿着路各处不一样
           const p = onPath ? 1 : clump(x, z) * sstep(edge, edge * 0.6, Math.abs(zr)) * (DET(x, z) < -0.04 ? 1.6 : 1);
           if (tries > 60 || rnd() < p) return [x, z];
         }
       };
+      const spot = mkSpot(X - 15, X + 34, WX);
       // ---- 岩板：一层层的基岩从坡里露出来，一块块平的、有直边的厚板，顺着同一个倾角一排排叠上去（像瓦片，后一排压着前一排） ----
       //   像不像真的，靠的是形状和光，不是纹理：大平面朝上接天光是浅灰，侧面背光是暗的；上沿一圈窄窄的倒角斜着接光，勾出每块板的边；
       //   板缝里、压在别的板底下的地方暗下去（环境遮蔽，按真的几何算好烘进顶点色）；整片岩层倾角一致，看起来是一整块地层裂开的，不是随手摆的石头
@@ -14262,9 +14298,10 @@ const CH14 = (() => {
       slabBank({ x: X + 27, z: 0, zr: -1.5, ux: 0, uz: -1, w: 3.8, rows: 3, run: 0.7, rise: 0.38, h0: 0.08, s: 1 });
       yield;
       // 碎石子：只在石块之间的缝里（散放在地上的大石块去掉了：路面本身就是石头）
-      const gspot = onPath => { for (let t = 0; t < 14; t++) { const r = spot(onPath); if (inGap(r[0], r[1])) return r; } return spot(onPath); };
-      {
-        const n = LOW ? 450 : 900, geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
+      const mkGspot = spot => onPath => { for (let t = 0; t < 14; t++) { const r = spot(onPath); if (inGap(r[0], r[1])) return r; } return spot(onPath); };
+      const gspot = mkGspot(spot);
+      const pebbles = (n, gspot) => {
+        const geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
         for (let i = 0; i < n; i++) {
           const [x, z] = gspot(rnd() < 0.25), sz = rr(0.01, 0.035);
           ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
@@ -14272,32 +14309,34 @@ const CH14 = (() => {
           mesh.setColorAt(i, cc.set(pick([0x4a4945, 0x3f3e3b, 0x55524b, 0x353431])).multiplyScalar(rr(0.8, 1.15)));
         }
         mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
-      }
-      // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
-      {
-        const n = LOW ? 700 : 1400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n), LV = [];   // 山上叶子不多，大都被风吹到路两边、石头脚下
+      };
+      pebbles(LOW ? 450 : 900, gspot);
+      // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀。返回这一批叶子的清单（跑过去会被踢起来，见 update）
+      const leaves = (n, xa, xb, wx, spot, gspot) => {
+        const mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n), LV = [];   // 山上叶子不多，大都被风吹到路两边、石头脚下
         for (let i = 0; i < n; i++) {
           let x, z;
-          if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
-          else if (rnd() < 0.6) { x = rr(X - 15, X + 34); z = PZ_(x) + (rnd() < 0.5 ? -1 : 1) * rr(0.3, 1.8); }   // 多半在路两边一两米之内（被照亮的那一带）
+          if (rnd() < 0.2) { x = wx + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
+          else if (rnd() < 0.6) { x = rr(xa, xb); z = PZ_(x) + (rnd() < 0.5 ? -1 : 1) * rr(0.3, 1.8); }   // 多半在路两边一两米之内（被照亮的那一带）
           else [x, z] = rnd() < 0.8 ? gspot(rnd() < 0.15) : spot(rnd() < 0.12);   // 落叶多半卡在缝里
           const sz = rr(0.08, 0.16), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
           ee.set(rr(-0.08, 0.08), rr(0, 6.28), up); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + 0.012 + Math.abs(Math.sin(up)) * sz * 0.4, z), qq, V3(sz, sz * 0.5, sz)); mesh.setMatrixAt(i, M4);
-          LV.push({ i, x, z, y: gy(x, z) + 0.012, s: sz, q: qq.clone(), k: null });
+          LV.push({ m: mesh, i, x, z, y: gy(x, z) + 0.012, s: sz, q: qq.clone(), k: null });
           mesh.setColorAt(i, cc.set(pick([0xc8962e, 0xd4a83a, 0xb87a2a, 0xa8642a, 0x8a5a30, 0xc0a040, 0x7a6a38])).multiplyScalar(rr(0.6, 1.05)));   // 黄的、橙黄的、褐的
         }
         mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
-        LV.sort((a, b) => a.x - b.x); v.leaves = { mesh, list: LV, live: [] };
-      }
+        return LV;
+      };
+      v.leaves = { list: leaves(LOW ? 700 : 1400, X - 15, X + 34, WX, spot, gspot).sort((a, b) => a.x - b.x), live: [] };   // 清单按 x 排好（第二段的叶子在最后加进来再排一次）
       v.gy = gy; v.leafMat = leafMat;
       // ---- 墙基：墙脚两边垫着一溜山石，上面长青苔 —— 墙是坐在山上的，不是摆在一条平地上 ----
-      {
-        const pts = [];
-        for (const sd of [-1, 1]) for (let z = ZN; z < Z1; z += rr(0.22, 0.4)) {
-          if (Math.abs(z - PZ_(WX)) < 0.7) continue;                     // 翻墙的地方空着，不然脚下有石头
-          pts.push([WX + sd * (T / 2 + rr(0.0, 0.1)), z, rr(0.13, 0.24), rr(0.06, 0.16)]);
-          if (rnd() < 0.18) pts.push([WX + sd * (T / 2 + rr(0.15, 0.45)), z + rr(-0.2, 0.2), rr(0.18, 0.4), rr(0.1, 0.25)]);   // 偶尔一块大的靠在墙脚
+      const footRocks = W => {
+        const pts = [], wx = W.x;
+        for (const sd of [-1, 1]) for (let z = W.ZN; z < W.Z1; z += rr(0.22, 0.4)) {
+          if (Math.abs(z - PZ_(wx)) < W.foot[sd < 0 ? 0 : 1]) continue;   // 翻墙的地方空着，不然脚下有石头
+          pts.push([wx + sd * (T / 2 + rr(0.0, 0.1)), z, rr(0.13, 0.24), rr(0.06, 0.16)]);
+          if (rnd() < 0.18) pts.push([wx + sd * (T / 2 + rr(0.15, 0.45)), z + rr(-0.2, 0.2), rr(0.18, 0.4), rr(0.1, 0.25)]);   // 偶尔一块大的靠在墙脚
         }
         const geo = rockS(23, { sd: LOW ? 1 : 2, amp: 0.22, flat: 0.75, moss: 0.9, mossCol: 0x45602a, col: 0x4c4b46 }), mesh = new THREE.InstancedMesh(geo, rockMat, pts.length);
         pts.forEach(([x, z, w, h], i) => {
@@ -14305,11 +14344,13 @@ const CH14 = (() => {
           M4.compose(V3(x, gy(x, z) + h * 0.35, z), qq, V3(w * rr(0.9, 1.3), h, w * rr(0.8, 1.1))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1)));
         });
         mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
-      }
+      };
+      footRocks(WALL1);
       // ---- 雾里的枯树和岩柱（立体的，代替原来画在布景板上的）：几层，越远越被雾抬浅 ----
-      {
-        const P_ = [], N_ = [], m4 = new THREE.Matrix4();
-        const put = (geo, m) => { geo.applyMatrix4(m); const g = geo.index ? geo.toNonIndexed() : geo; if (!g.attributes.normal) g.computeVertexNormals();
+      //   layers：每一层 [z0 多远, n 几棵, xa, xb 左右到哪]
+      const forest = layers => {
+        const P_ = [], N_ = [], m4 = new THREE.Matrix4(); let mute = false;   // mute：这一棵不要（正好长在第二道墙的线上）—— 随机数照样用掉，后面的树才不会跟着变样
+        const put = (geo, m) => { if (mute) { geo.dispose(); return; } geo.applyMatrix4(m); const g = geo.index ? geo.toNonIndexed() : geo; if (!g.attributes.normal) g.computeVertexNormals();
           const a = g.attributes.position.array, n = g.attributes.normal.array; for (let i = 0; i < a.length; i++) { P_.push(a[i]); N_.push(n[i]); } geo.dispose(); if (g !== geo) g.dispose(); };
         const tree3 = (x, y, z, h) => {
           const r = h * rr(0.022, 0.032), lean = rr(-0.08, 0.08);
@@ -14323,24 +14364,26 @@ const CH14 = (() => {
           }
         };
         const spire = (x, y, z, h) => { const w = h * rr(0.35, 0.6); put(rockS(Math.floor(rr(0, 9999)), { sd: 2, amp: 0.38, flat: 1, moss: 0 }), m4.compose(V3(x, y + h * 0.3, z), qq.setFromEuler(ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15))), V3(w, h * 0.55, w * rr(0.6, 1)))); };   // 一堆坑坑洼洼的岩石，矮而宽
-        for (const [z0, n] of [[-13, 9], [-24, 11], [-42, 13], [-70, 15]]) for (let i = 0; i < n; i++) {
-          const z = z0 + rr(-4, 4), x = rr(X - 18 + z0 * 0.35, X + 40 - z0 * 0.35);
+        for (const [z0, n, xa, xb] of layers) for (let i = 0; i < n; i++) {
+          const z = z0 + rr(-4, 4), x = rr(xa, xb);
           if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;             // 墙两边让开，墙一路伸进雾里
+          mute = Math.abs(x - W2X) < 2.5 + (-z) * 0.12;                   // 第二道墙两边也让开
           const y = gy(x, z) - 0.3;
           if (z0 > -20 || rnd() < 0.68) tree3(x, y, z, rr(8, 15)); else spire(x, y, z, rr(2.5, 6));   // 岩堆只放在远的几层，近的那层太抢眼
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P_, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N_, 3));
         const m = new THREE.Mesh(g, shade(lam(0x24272a), 3, 0.3)); m.frustumCulled = false; R.add(m);
-      }
-      // 枯树枝：细细的、弯的，有的带一两根分杈，散在路两边，墙脚多一点。全部合成一个网格
-      {
+      };
+      forest([[-13, 9], [-24, 11], [-42, 13], [-70, 15]].map(([z0, n]) => [z0, n, X - 18 + z0 * 0.35, X + 40 - z0 * 0.35]));
+      // 枯树枝：细细的、弯的，有的带一两根分杈，散在路两边，墙脚多一点。全部合成一个网格。ok(x, z)：这个地方能不能放（不写就都能）
+      const twigs = (n, wx, spot, ok) => {
         const P = [], N = [];
         const twig = (pts, r) => {
           const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, r, 5).toNonIndexed(), a = g.attributes.position.array, n = g.attributes.normal.array;
           for (let i = 0; i < a.length; i++) { P.push(a[i]); N.push(n[i]); } g.dispose();
         };
-        for (let i = 0; i < 50; i++) {
-          let x, z; if (rnd() < 0.25) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.25, 0.9); z = PZ_(x) + rr(-5, 4); } else [x, z] = spot(rnd() < 0.06);
+        for (let i = 0; i < n; i++) {
+          let x, z; do { if (rnd() < 0.25) { x = wx + (rnd() < 0.5 ? -1 : 1) * rr(0.25, 0.9); z = PZ_(x) + rr(-5, 4); } else [x, z] = spot(rnd() < 0.06); } while (ok && !ok(x, z));
           const L = rr(0.15, 0.75) * (rnd() < 0.1 ? 1.8 : 1), a = rr(0, 6.28), r = rr(0.005, 0.014) * (L > 0.8 ? 1.5 : 1), dx = Math.cos(a), dz = Math.sin(a), bend = rr(-0.12, 0.12);
           const pts = [0, 0.33, 0.66, 1].map(t => { const px = x + dx * L * (t - 0.5) - dz * bend * Math.sin(t * 3.14), pz = z + dz * L * (t - 0.5) + dx * bend * Math.sin(t * 3.14); return V3(px, gy(px, pz) + r + 0.004 + 0.02 * Math.sin(t * 3.14) * rnd(), pz); });
           twig(pts, r);
@@ -14352,7 +14395,9 @@ const CH14 = (() => {
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
         const m = new THREE.Mesh(g, shade(lam(0x5a3d26), 3, 0.85)); m.castShadow = m.receiveShadow = true; m.frustumCulled = false; R.add(m);
-      }
+      };
+      twigs(50, WX, spot);
+      v.more = { mkSpot, mkGspot, pebbles, leaves, footRocks, forest, twigs, slabBank };   // 第二段（高墙前后）在 build 的最后撒，用的是同一套
     }
     yield;
     // 很远的地方一排树的剪影，比天边那一点点亮光再黑一点：挡住视线，看不到头
@@ -14403,45 +14448,113 @@ const CH14 = (() => {
       for (let y = 0; y < 256; y++) { const a = Math.pow(Math.sin(Math.PI * y / 256), 0.7) * (1 - y / 300); const gr = g.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, y, 64, 1); }
       const st = canvasTex(c);
       // 钉在世界里固定的位置（沿着这一章一路排开），人走过去它们留在原地
-      v.shafts = [[X - 10, -20, 4, 0.06], [X - 2, -27, 6, 0.05], [X + 7, -22, 5, 0.055], [X + 14, -33, 7, 0.045], [X + 22, -24, 4, 0.05], [X + 31, -30, 6, 0.045], [X + 40, -26, 5, 0.05]].map(([ox, dz, w, op], i) => {
+      v.shafts = [[X - 10, -20, 4, 0.06], [X - 2, -27, 6, 0.05], [X + 7, -22, 5, 0.055], [X + 14, -33, 7, 0.045], [X + 22, -24, 4, 0.05], [X + 31, -30, 6, 0.045], [X + 40, -26, 5, 0.05], [X + 50, -31, 6, 0.045], [X + 59, -25, 5, 0.05]].map(([ox, dz, w, op], i) => {
         const mat = new THREE.MeshBasicMaterial({ map: i ? st.clone() : st, color: 0xd6dcdc, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
         mat.userData.own = true; if (i) mat.map.needsUpdate = true;
         const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 34), mat); m.rotation.z = -0.42; m.renderOrder = 36; m.frustumCulled = false; R.add(m);
         return { m, ox, dz, op, ph: rr(0, 6.28) };
       });
     }
+    yield;
+    // ============ 第二段：高墙和旧木箱。放在最后搭 —— 前面用掉的随机数和加这一段以前一样，第一段（矮墙前后）的样子一点不变 ============
+    _seed = 21000431;                                              // 这一段用自己的种子：前面的东西以后再改，这里也不跟着变
+    {
+      const A2 = { p: [], n: [], c: [], mottle: true }, M2 = { p: [], n: [], c: [] }, F2 = { p: [], n: [], c: [] };
+      yield* wallGeo(WALL2, LOW, A2, M2, F2);
+      const brickMat2 = shade(lam(0xffffff, { vertexColors: true }), 6, 0.45);
+      R.add(meshOf(A2, brickMat2)); R.add(meshOf(M2, brickMat2)); R.add(meshOf(F2, shade(lam(0x6a4436), 7)));
+      yield;
+      // 地上的东西：和第一段同一套，这一段只有一半长，数量也减半
+      const K = v.more, XA = X + 34, XB = X + 58.5, k2 = (XB - XA) / 49, spot2 = K.mkSpot(XA, XB, W2X), gspot2 = K.mkGspot(spot2);
+      K.pebbles(Math.round((LOW ? 450 : 900) * k2), gspot2);
+      v.leaves.list.push(...K.leaves(Math.round((LOW ? 700 : 1400) * k2), XA, XB, W2X, spot2, gspot2)); v.leaves.list.sort((a, b) => a.x - b.x);
+      K.footRocks(WALL2);
+      K.twigs(25, W2X, spot2, (x, z) => !(x > CRMIN - 1 && x < W2X && Math.abs(z) < 0.8));   // 箱子要走的那一道上不放树枝
+      yield;
+      K.forest([[-13, 5, X + 45, X + 80], [-24, 6, X + 49, X + 88], [-42, 7, X + 55, X + 100], [-70, 7, X + 65, X + 115]]);
+      yield;
+      // 路后面再露出来两片岩层：一片在箱子后面，一片在墙那边
+      K.slabBank({ x: X + 37.6, z: 0, zr: -2.0, ux: 0, uz: -1, w: 4.4, rows: 4, run: 0.75, rise: 0.42, h0: 0.1, s: 1.1 }); yield;
+      K.slabBank({ x: X + 51, z: 0, zr: -1.8, ux: 0, uz: -1, w: 5, rows: 4, run: 0.8, rise: 0.45, h0: 0.1, s: 1.2, loose: 3 }); yield;
+      // ---- 旧木箱：木板钉在一圈木框上，正面、背面各一道斜撑；木头晒得发灰，板缝里是黑的。所有的板都收在碰撞用的那个方块以内，顶面正好是站上去的高度 ----
+      {
+        const B = { p: [], n: [], c: [], mottle: true }, w = CR_W, h = CR_H, d = CR_D, e = LOW ? 0 : 0.005, t = 0.011;
+        const WOOD = [0x6b5a44, 0x5e4f3c, 0x76644c, 0x54483a, 0x665846].map(c => new THREE.Color(c)), INK = new THREE.Color(0x15110d);
+        const wood = (k = 1) => pick(WOOD).clone().multiplyScalar(rr(0.8, 1.1) * k);
+        pushBox(B, 0, h / 2, 0, w / 2 - 0.045, h / 2 - 0.03, d / 2 - 0.045, 0, [0, 0, 0], INK);                              // 里面：板缝里看进去是黑的
+        const np = 5, ph = (h - 0.02) / np;
+        for (const sz of [-1, 1]) {                                                                                     // 正面、背面
+          const z = sz * (d / 2 - 0.02 - t), zo = sz * (d / 2 - t);
+          for (let i = 0; i < np; i++) pushBox(B, rr(-0.004, 0.004), (i + 0.5) * ph, z, w / 2 - 0.02, ph / 2 - rr(0.003, 0.008), t, e, [0, 0, rr(-0.005, 0.005)], wood());
+          for (const sx of [-1, 1]) pushBox(B, sx * (w / 2 - 0.045), h / 2 - 0.01, zo, 0.045, h / 2 - 0.012, t, e, [0, 0, 0], wood(0.85));   // 两边的立框
+          for (const y of [0.045, h - 0.065]) pushBox(B, 0, y, zo, w / 2 - 0.09, 0.043, t, e, [0, 0, 0], wood(0.85));                         // 上下的横框
+          const bw = w - 0.2, bh = h - 0.2;
+          pushBox(B, 0, h / 2 - 0.01, zo, Math.hypot(bw, bh) / 2 - 0.02, 0.04, t, e, [0, 0, sz * Math.atan2(bh, bw)], wood(0.9));              // 斜撑
+        }
+        for (const sx of [-1, 1]) {                                                                                     // 左右两面
+          const x = sx * (w / 2 - 0.02 - t), xo = sx * (w / 2 - t);
+          for (let i = 0; i < np; i++) pushBox(B, x, (i + 0.5) * ph, rr(-0.004, 0.004), t, ph / 2 - rr(0.003, 0.008), d / 2 - 0.045, e, [rr(-0.005, 0.005), 0, 0], wood());
+          for (const sz of [-1, 1]) pushBox(B, xo, h / 2 - 0.01, sz * (d / 2 - 0.09), t, h / 2 - 0.012, 0.045, e, [0, 0, 0], wood(0.85));
+          for (const y of [0.045, h - 0.065]) pushBox(B, xo, y, 0, t, 0.043, d / 2 - 0.135, e, [0, 0, 0], wood(0.85));
+        }
+        const nt = 6, pw = (w - 0.01) / nt;
+        for (let i = 0; i < nt; i++) pushBox(B, -w / 2 + 0.005 + (i + 0.5) * pw, h - t, 0, pw / 2 - rr(0.003, 0.007), t, d / 2 - 0.004, e, [0, rr(-0.004, 0.004), 0], wood(1.05));   // 顶上的板
+        v.crate = meshOf(B, shade(lam(0xffffff, { vertexColors: true }), 3, 0.6)); v.crate.position.set(crate.x, crate.y1, pathZ(crate.x)); R.add(v.crate);
+        // 箱子在岩面上磨出来的两道浅痕：从它现在的地方一直拖到墙脚 —— 走到墙跟前过不去，回头顺着痕迹就看到箱子。
+        //   不用公共的 dragMarks（那是水泥地上两道笔直的线）：岩面上是一段一段的白印，深深浅浅，有的地方断开
+        const dm = decal(R, CR0 - CR_W / 2 - 0.1, CRMAX + CR_W / 2, -0.6, 0.6, crate.y1, 80, g => {
+          const xa = CR0 - CR_W / 2, xe = CRMAX + CR_W / 2 - 0.05;
+          // 每一道：底下一条宽而淡的磨痕，上面几根细而亮的划痕，各自一段一段地断开
+          for (const dz of [-0.35, 0.35]) for (const [wd, a0, a1, off, gap] of [[0.13, 0.05, 0.13, 0, 0.12], [0.035, 0.12, 0.34, 0.035, 0.35], [0.025, 0.1, 0.3, -0.03, 0.4], [0.02, 0.1, 0.3, 0.005, 0.5]])
+            for (let x = xa + rr(0, 0.25); x < xe;) {
+              const len = Math.min(rr(0.15, 0.9), xe - x), z = dz + off + rr(-0.012, 0.012);
+              g.strokeStyle = `rgba(176,180,176,${rr(a0, a1).toFixed(3)})`; g.lineWidth = wd * rr(0.7, 1.2);
+              g.beginPath(); g.moveTo(x, z); g.lineTo(x + len, z + rr(-0.01, 0.01)); g.stroke();
+              x += len + rr(-0.1, gap);
+            }
+        });
+        shade(dm.material, 3, 0.3);
+      }
+    }
     V = v;
   }
 
-  const VAULT = { on: false, t: 0, d: 1, x0: 0, y0: 0 };
+  const VAULT = { on: false, t: 0, d: 1, x0: 0, y0: 0, wx: WX, top: TOP };
+  // 哪里能翻：[墙的中线, 墙顶, 起跳的地方对不对]。矮墙两边都行，从地上起跳；高墙只能从左边、从箱子顶上起跳
+  const VAULTS = [[WX, TOP, () => P.y - groundY(P.x) < 0.25],
+    [W2X, TOP2, () => P.x < W2X && P.x > crate.x1 - 0.2 && P.x < crate.x2 + 0.3 && P.y - crate.y2 > -0.05 && P.y - crate.y2 < 0.25]];
   const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
-    const here = P.x > X - 16 && P.x < X + 36;
+    const here = P.x > X - 16 && P.x < X + 64;
     if (!here) return;
     WU.uT.value = T; WU.uHX.value = P.x - WX;
     // 镜头不越过墙：离墙近的时候，镜头留在孩子这一边（不然墙伸到镜头跟前的那一段会挡住人）
-    if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
+    for (const wx of [WX, W2X]) if (Math.abs(P.x - wx) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < wx ? Math.min(0.5, wx - 1.3 - P.x - L) : Math.max(0.5, wx + 1.3 - P.x - L) }; }
     // 孩子的上衣：暗红（全画面唯一一块有颜色的地方）。逃出工厂那几章的衣服逻辑在 escape/60-kit.js，它先跑、到了旧原型的章节会关掉；这里在它后面再打开
     HERO_TOP.uTop.value.setHex(0x4e1a15); HERO_TOP.uTopK.value = 1;
     HERO_RIM.uRimK.value = 0.1;
     camJit = { x: 0.045 * Math.sin(T * 0.37) + 0.025 * Math.sin(T * 0.91 + 2), y: 0.03 * Math.sin(T * 0.53 + 1) + 0.015 * Math.sin(T * 1.27) };   // 镜头轻轻地漂，像手持
     // 翻墙：在墙跟前起跳，就换成一段翻越 —— 两手撑住墙头，身子从上面过去，另一边落地（落地交给平常的物理和落地动作）
+    //   第二道墙是从箱子上起跳才翻得过去：站在箱子上，墙头离脚下正好是一道矮墙那么高，用的是同一段动作；落下去有两米，落地动作自己会蹲得深一些
     {
-      const near = Math.abs(P.x - WX) < 1.05 && Math.abs(P.x - WX) > 0.25, dirW = Math.sign(WX - P.x);
-      if (!VAULT.on && near && dirW === P.facing && P.vy > 6 && !P.grounded && P.y - groundY(P.x) < 0.25 && state === 'play') {
-        Object.assign(VAULT, { on: true, t: 0, d: dirW, x0: P.x, y0: P.y }); ctl = false; fx('grab');
+      for (const [wx, top, from] of VAULTS) {
+        const ax = Math.abs(P.x - wx), dirW = Math.sign(wx - P.x);
+        if (!VAULT.on && ax < 1.05 && ax > 0.25 && dirW === P.facing && P.vy > 6 && !P.grounded && from() && state === 'play') {
+          Object.assign(VAULT, { on: true, t: 0, d: dirW, x0: P.x, y0: P.y, wx, top }); ctl = false; fx('grab');
+        }
       }
       if (VAULT.on) {
-        const V_ = VAULT, d = V_.d; V_.t += dt; const t = V_.t, top = TOP;
+        const V_ = VAULT, d = V_.d, wx = V_.wx; V_.t += dt; const t = V_.t, top = V_.top;
         const e1 = sstep(0, 0.28, t), e2 = sstep(0.24, 0.56, t);
-        const x = lerp(lerp(V_.x0, WX - d * 0.42, e1), WX + d * 0.5, e2), y = lerp(V_.y0, top + 0.04, e1) + Math.sin(Math.PI * e2) * 0.1 - e2 * 0.05;
+        const x = lerp(lerp(V_.x0, wx - d * 0.42, e1), wx + d * 0.5, e2), y = lerp(V_.y0, top + 0.04, e1) + Math.sin(Math.PI * e2) * 0.1 - e2 * 0.05;
         P.x = x; P.y = y; P.vx = 0; P.vy = 0; P.grounded = false; P.facing = d;
         const hk = sstep(0.1, 0.24, t) * (1 - sstep(0.5, 0.62, t));
-        HX.pose = { sit: 0.75 * sstep(0.12, 0.3, t) * (1 - sstep(0.48, 0.62, t)), hands: [{ x: WX - d * 0.06, y: top + 0.03, k: hk }, { x: WX + d * 0.04, y: top + 0.03, k: hk }] };   // 两只手撑在墙头上，腿收起来往前送，蹲着翻过去
+        HX.pose = { sit: 0.75 * sstep(0.12, 0.3, t) * (1 - sstep(0.48, 0.62, t)), hands: [{ x: wx - d * 0.06, y: top + 0.03, k: hk }, { x: wx + d * 0.04, y: top + 0.03, k: hk }] };   // 两只手撑在墙头上，腿收起来往前送，蹲着翻过去
         if (t >= 0.56) { V_.on = false; ctl = true; P.vx = d * 2.4; P.vy = 0.6; }                                   // 放手：往前一送，自己落下去
       }
     }                       // 孩子身上一圈淡淡的边缘亮光：把轮廓从雾里勾出来（只画在孩子身上，不照亮别的）
     const v = V; if (!v || !v.fogs) return;
+    v.crate.position.set(crate.x, crate.y1, pathZ(crate.x));
     for (const sh of v.shafts) { sh.m.position.set(sh.ox, 9, sh.dz); sh.m.material.opacity = sh.op * (0.65 + 0.35 * Math.sin(T * 0.13 + sh.ph)); }   // 位置固定；亮度只随时间慢慢地起伏，和人怎么动无关
     const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
     // 雾片：跟着镜头，花纹钉在世界上、再慢慢地往右飘
@@ -14475,10 +14588,10 @@ const CH14 = (() => {
     for (let j = L.live.length - 1; j >= 0; j--) { const o = L.live[j], k = o.k; k.t += dt; k.vy -= 7 * dt; o.x += k.vx * dt; o.z += k.vz * dt; o.y += k.vy * dt; k.vx *= 1 - dt * 1.5;
       const gy = v.gy(o.x, o.z) + 0.012; if (o.y <= gy && k.vy < 0) { o.y = gy; o.k = null; L.live.splice(j, 1); }
       Q.copy(o.q); if (o.k) Q.multiply(_pq2.setFromEuler(_pe.set(k.t * k.sp, 0, k.t * k.sp * 0.7)));
-      M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); L.mesh.setMatrixAt(o.i, M4); L.mesh.instanceMatrix.needsUpdate = true; }
+      M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); o.m.setMatrixAt(o.i, M4); o.m.instanceMatrix.needsUpdate = true; }
 
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; VAULT.on = false; } });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 66], build, update, reset() { placeBox(crate, CR0); }, solve() { placeBox(crate, CRMAX); }, unbuild() { V = null; VAULT.on = false; }, crate });
 })();
 
 // ============================================================
