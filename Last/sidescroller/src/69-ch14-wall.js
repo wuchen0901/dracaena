@@ -78,6 +78,15 @@ const CH14 = (() => {
       return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),
                  mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
     float pzf(float u) { return smoothstep(-22., -16., u) * (1. - smoothstep(20., 26., u)) * 2.2 * (0.9 * sin(u * 0.21 + 0.6) + 0.5 * sin(u * 0.083 + 2.0)); }
+    float rockCrack(vec3 p) {                                               // 石头上的裂缝：三维的格子，越靠近两格交界越接近 0
+      vec3 i = floor(p), f = fract(p); float d1 = 9., d2 = 9.;
+      for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        vec3 o = vec3(float(x), float(y), float(z)), r = o + vec3(h31(i + o), h31(i + o + 3.1), h31(i + o + 7.7)) - f; float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+      }
+      return sqrt(d2) - sqrt(d1);
+    }
+    float rockH(vec3 q, float ck) { return 0.55 * n3(q * 7.) + 0.3 * n3(q * 19. + 2.) + 0.15 * n3(q * 48. + 5.) - 1.1 * ck; }   // 石头表面的高低：几层起伏，裂缝处陷下去
     float wallD(vec3 q, float hy) {                                          // hy：高出周围大起伏多少（地面传细起伏的高度，别的传 q.y）
       float qz = q.z - pzf(q.x);                                             // 离那条弯路多远（往镜头这边为正）
       float dz = max(0., -qz);
@@ -149,8 +158,11 @@ const CH14 = (() => {
     diffuseColor.rgb = c;`,
     // 3 其它（灯杆）：只跟着压暗
     ``,
-    // 4 石头：颗粒、小坑、地衣斑点、雨水流下来的暗痕（不是光溜溜的）
+    // 4 石头：颗粒、小坑、地衣斑点、雨水流下来的暗痕（不是光溜溜的）；表面的凹凸在 normal_fragment_maps 那一段里打
     `float fd = 1. - smoothstep(4., 24., distance(vWP, cameraPosition));
+    float ck14 = (1. - smoothstep(0., 0.03, rockCrack(q * vec3(1.1, 0.8, 1.1) + 11.))) * smoothstep(0.55, 0.75, n3(q * 0.9 + 4.)) * smoothstep(0.35, 0.6, n3(q * 3.5 + 1.));   // 裂缝：只在少数地方有几道，断断续续，不是满石头的网格
+    diffuseColor.rgb *= 1. - 0.55 * ck14 * (0.4 + 0.6 * fd);
+    diffuseColor.rgb *= 0.92 + 0.08 * sin(q.y * 16. + q.x * 3. + q.z * 2. + n3(q * 2.) * 5.);   // 很淡的岩层纹路
     float g1 = n3(q * 9.), g2 = n3(q * 31. + 2.), g3 = n3(q * 85. + 5.);
     diffuseColor.rgb *= mix(1., 0.74 + 0.34 * g1 + 0.2 * (g2 - .5) + 0.16 * (g3 - .5), 0.35 + 0.65 * fd);
     diffuseColor.rgb *= 1. - 0.38 * smoothstep(0.76, 0.9, n3(q * 46. + 1.)) * fd;
@@ -178,6 +190,10 @@ const CH14 = (() => {
           diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, ${sat.toFixed(2)});   // 去掉大部分颜色：只留一点点，小东西上的颜色看得出区别`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           totalEmissiveRadiance += fogColor * wet14 * (0.2 + 0.8 * pow(1. - max(dot(normalize(cameraPosition - vWP), vec3(0., 1., 0.)), 0.), 4.)) * 0.22 * smoothstep(0.15, 0.7, wD);`)   // 水渍映出雾
+        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>' + (kind === 4 ? `
+          { float bh = rockH(q, ck14) * 0.014 * (0.25 + 0.75 * fd);
+            vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), N = normal, R1 = cross(sY, N), R2 = cross(N, sX); float det = dot(sX, R1);
+            vec2 dH = vec2(dFdx(bh), dFdy(bh)); normal = normalize(abs(det) * N - sign(det) * (dH.x * R1 + dH.y * R2)); }   // 石头表面的凹凸：光照下每个小凸起一边亮一边暗，裂缝里暗` : ''))
         .replace('#include <lights_fragment_begin>', lb.replace(hook, hook + ' directLight.color *= wD;'))
         .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.indirectDiffuse *= wD;')
         .replace('#include <opaque_fragment>', '{ float gL = dot(outgoingLight, vec3(.299, .587, .114)); outgoingLight *= mix(vec3(0.9, 0.98, 1.1), vec3(1.07, 1.0, 0.9), smoothstep(0.015, 0.2, gL)); }   // 调色：暗处偏一点冷青，亮处偏一点暖\n#include <opaque_fragment>');
@@ -258,13 +274,14 @@ const CH14 = (() => {
         const fn = b.clone().sub(a).cross(c.clone().sub(a));
         for (let j = 0; j < 3; j++) { const kk = key(i + j); const v = acc.get(kk); if (v) v.add(fn); else acc.set(kk, fn.clone()); }
       }
+      const TINT = new THREE.Color(hh(seed, 2, 2) < 0.5 ? 0x5a4f44 : 0x434a50);   // 每块石头偏一点暖或偏一点冷
       const nrm = new Float32Array(p.count * 3), col = new Float32Array(p.count * 3), base = new THREE.Color(o.col ?? 0x4a4945), moss = new THREE.Color(o.mossCol ?? 0x45602a), cc = new THREE.Color();
       for (let i = 0; i < p.count; i++) {
         const tri = i - i % 3; a.fromBufferAttribute(p, tri); b.fromBufferAttribute(p, tri + 1); c.fromBufferAttribute(p, tri + 2);
         const fnn = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
         const v = acc.get(key(i)).clone().normalize().lerp(fnn, 0.7).normalize(); nrm.set([v.x, v.y, v.z], i * 3);   // 一半按面、一半平滑：棱看得出来，又不是硬邦邦的多边形
         const m = sstep(0.35, 0.8, v.y) * mk * sstep(0.45, 0.65, nv[i] + 0.15 * hh(i, 1, 2));
-        cc.copy(base).multiplyScalar(0.78 + 0.4 * nv[i]).lerp(moss, m); col.set([cc.r, cc.g, cc.b], i * 3);
+        cc.copy(base).lerp(TINT, 0.35).multiplyScalar((0.78 + 0.4 * nv[i]) * (0.5 + 0.5 * sstep(-0.32, 0.28, p.getY(i)))).lerp(moss, m); col.set([cc.r, cc.g, cc.b], i * 3);   // 贴地的地方暗：被泥土和潮气染过
       }
       g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
     };
