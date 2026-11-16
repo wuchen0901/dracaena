@@ -13192,7 +13192,9 @@ const CH14 = (() => {
     return [Math.min(B[0], m[0]), fr(m[1] + B[1] * 0.37), m[2], m[3], 0];
   };
   // grooves：要不要把缝陷下去（地面的几何要，物理地形不要 —— 不然走起来一颠一颠）
+  const STONES_ON = false;                                     // 路面石块：试过，去掉了 —— 山的感觉靠大形体（崖、沟、巨岩），不靠地表的裂缝
   const STONE = (x, z, grooves = true) => {
+    if (!STONES_ON) return 0;
     const ax = Math.abs(x - WX); if (ax < T / 2 + 0.03) return 0;                         // 墙底下
     const zr = z - PZ_(x), off = sstep(0.4, 2.4, Math.abs(zr)), [e, id, cx, cz, whole] = stoneCell(x - WX, z), lx = x - WX - cx, lz = z - cz;
     const a = fr(id * 7.13), b = fr(id * 13.7), c = fr(id * 3.31);
@@ -13324,30 +13326,18 @@ const CH14 = (() => {
       diffuseColor.rgb *= 1. - 0.4 * smoothstep(0.5, 0.85, n2(vec2(q.z * 7., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${TOP.toFixed(3)}, q.y);
     }
     diffuseColor.rgb *= 0.65 + 0.35 * smoothstep(0., 0.35, q.y);`,
-    // 2 地面：路面本身就是石头 —— 一块块嵌在地里的石块、露出来的岩床，彼此高低不平、互相咬合；缝里才是一点暗色的土、碎石和积下来的落叶、水
+    // 2 地面：一道平整、暗色、几乎没有纹理的岩台，顶面接一点光。山的感觉靠大形体（崖、沟、巨岩），不靠地表
     `float fd = 1. - smoothstep(4., 26., distance(vWP, cameraPosition));
-    vec2 g = q.xz; vec4 st = stone14(g); bool whole14 = st.y >= 10.; float sid = whole14 ? st.y - 10. : st.y;
-    float split = 0.;                                                                                          // 石块自己裂开的那一道
-    if (fract(sid * 17.7) < (whole14 ? 0.55 : 0.15)) { float ang = fract(sid * 3.9) * 6.2832; split = 1. - smoothstep(0.004, 0.02, abs(dot(g - st.zw, vec2(cos(ang), sin(ang))))); }
-    float top = smoothstep(0.012, 0.045, st.x) * (1. - 0.85 * split) * mix(1., 0.6, smoothstep(10., 30., distance(vWP, cameraPosition)));   // 1 在石面上，0 在缝里（远处缝糊成一片，不闪）
-    float big = n2(g * 0.16) * 0.6 + n2(g * 0.5 + 3.) * 0.4, fine = n3(vec3(g * 24., 0.5)), fine2 = n3(vec3(g * 70., 1.5));
-    // 石面：每块石头自己的深浅、偏暖偏冷，颗粒、小坑、地衣、边上磨亮一点
-    vec3 sc = mix(${v3(0x46464a)}, ${v3(0x5d5b56)}, sid) * (0.85 + 0.3 * big);
-    sc = mix(sc, sc * vec3(1.06, 1.0, 0.93), step(0.5, fract(sid * 7.3)));
-    sc *= mix(1., 0.74 + 0.4 * fine + 0.22 * (fine2 - .5), fd);
-    sc *= 1. - 0.3 * smoothstep(0.78, 0.9, n3(vec3(g * 38., 4.))) * fd;
-    sc = mix(sc, ${v3(0x8a8d80)}, smoothstep(0.6, 0.8, n3(vec3(g * 3.5 + sid * 9., 2.)) * 0.7 + n3(vec3(g * 13., 6.)) * 0.3) * 0.18);
-    sc *= 1. + 0.12 * (1. - smoothstep(0.03, 0.09, st.x));                                                      // 石头的边被踩磨得亮一点
-    // 缝：暗色的土和碎屑
-    vec3 gc = ${v3(0x26221d)} * (0.7 + 0.5 * n3(vec3(g * 30., 7.)));
-    vec3 c = mix(gc, sc, top);
-    c = mix(c, ${v3(0x2c2b29)}, smoothstep(-0.03, -0.12, vDet) * 0.35 * top);                                   // 低洼处的石面也暗一些
+    vec2 g = q.xz;
+    float big = n2(g * 0.12) * 0.6 + n2(g * 0.45 + 3.) * 0.4, fine = n3(vec3(g * 9., 0.5)), fine2 = n3(vec3(g * 30., 1.5));
+    vec3 c = mix(${v3(0x3e3e40)}, ${v3(0x4d4b47)}, smoothstep(0.3, 0.8, big));                          // 大片的深浅，很淡
+    c *= mix(1., 0.88 + 0.18 * fine + 0.08 * (fine2 - .5), fd);                                              // 近处一点颗粒
+    float steep = 1. - smoothstep(0.45, 0.85, vWN.y);
+    c *= 1. - 0.35 * steep;                                                                                   // 崖壁、陡坡更暗
+    c = mix(c, ${v3(0x4a5230)}, smoothstep(0.6, 0.8, n2(g * 0.9 + 7.)) * (1. - steep) * 0.25);              // 顶面上零星一点苔
     float wall = abs(q.x) - ${(T / 2).toFixed(3)};
-    c *= mix(0.5, 1., smoothstep(0., 0.42, wall));
-    // 水：积在缝里、低洼的石窝里；从低角度看映出一点雾的灰白（见下面 emissivemap 那一段）
-    wet14 = clamp((1. - top) * 0.8 * smoothstep(0.45, 0.7, n2(g * 0.9 + 4.)) + 0.7 * smoothstep(-0.06, -0.16, vDet) * smoothstep(0.55, 0.75, n2(g * vec2(1.1, 1.6) + 4.)), 0., 1.);
-    c = mix(c, c * 0.4, wet14);
-    gb14 = (top * 0.022 + (0.6 * fine + 0.4 * fine2) * 0.004 * top) * (0.3 + 0.7 * fd);                     // 凹凸：石面高、缝低，石面上还有细颗粒（在 normal_fragment_maps 里用）
+    c *= mix(0.55, 1., smoothstep(0., 0.42, wall));
+    gb14 = (0.6 * fine + 0.4 * fine2) * 0.004 * (0.3 + 0.7 * fd);
     diffuseColor.rgb = c;`,
     // 3 其它（灯杆）：只跟着压暗
     ``,
@@ -13465,7 +13455,7 @@ const CH14 = (() => {
         return L(L(L(c(0, 0, 0), c(1, 0, 0), u), L(c(0, 1, 0), c(1, 1, 0), u), v), L(L(c(0, 0, 1), c(1, 0, 1), u), L(c(0, 1, 1), c(1, 1, 1), u), v), w); };
       const nv = new Float32Array(p.count);
       // 几个劈开的平面：方向随机（偏向侧面和上面），切在离中心 0.55–0.85 的地方 —— 每块石头有两三个平的断面和清楚的棱
-      const CUTS = []; for (let j = 0, nc = 2 + Math.floor(hh(seed, 3, 1) * 3); j < nc; j++) { const a = hh(j, seed, 5) * 6.2832, e = (hh(seed, j, 9) - 0.25) * 1.6, cx = Math.cos(a) * Math.cos(e), cy = Math.sin(e), cz = Math.sin(a) * Math.cos(e); CUTS.push([cx, cy, cz, 0.55 + 0.3 * hh(j, 7, seed)]); }
+      const CUTS = []; for (let j = 0, nc = o.cuts ?? 2 + Math.floor(hh(seed, 3, 1) * 3); j < nc; j++) { const a = hh(j, seed, 5) * 6.2832, e = (hh(seed, j, 9) - 0.25) * 1.6, cx = Math.cos(a) * Math.cos(e), cy = Math.sin(e), cz = Math.sin(a) * Math.cos(e); CUTS.push([cx, cy, cz, 0.55 + 0.3 * hh(j, 7, seed)]); }
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
         const n = 0.48 * vn3(x * 1.4 + 3, y * 1.4, z * 1.4) + 0.26 * vn3(x * 3.2, y * 3.2 + 7, z * 3.2) + 0.16 * vn3(x * 7, y * 7, z * 7 + 2) + 0.1 * vn3(x * 15, y * 15 + 4, z * 15);
@@ -13576,17 +13566,19 @@ const CH14 = (() => {
       const vn = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
         return lerp(lerp(hsh(ix, iz, 3), hsh(ix + 1, iz, 3), u), lerp(hsh(ix, iz + 1, 3), hsh(ix + 1, iz + 1, 3), u), w); };
       // 孩子身前（z > 0）：土包、浅坑、一道道压出来的辙，越靠镜头起伏越大（不能高到挡住孩子的脚）。孩子走的那条路和墙脚保持平
+      // 孩子身前：岩台往镜头这边一两米就到了崖边，垂直的岩壁掉进暗处。墙底下留一道窄窄的岩脊（墙从镜头跟前一直伸进雾里）
       const hFront = (x, z) => {
-        const k = sstep(0.35, 1.4, z) * sstep(0.35, 1.3, Math.abs(x - WX)), amp = 0.4 + 0.25 * sstep(3, 9, z);
-        const ridge = 1 - Math.abs(2 * vn(x * 0.6 + 3, z * 0.7) - 1);                                  // 山脊一样的尖棱
-        return k * amp * (1.5 * (vn(x * 0.32, z * 0.4) - 0.5) + 0.7 * (ridge - 0.5) + 0.35 * (vn(x * 2.2, z * 2.4 + 5) - 0.5));
+        const spur = sstep(0.9, 1.9, Math.abs(x - WX)), edge = 1.5 + 0.9 * vn(x * 0.23 + 2, 4);
+        const drop = sstep(edge, edge + 0.45, z) * (7 + 3 * vn(x * 0.1, 8));
+        return (-drop + 0.05 * (vn(x * 1.3, z * 1.3) - 0.5) * sstep(0.5, 1.2, z)) * spur;
       };
       // 孩子身后（z < 0）：越远越高的丘陵（不会挡住人，可以高）。沿着墙留一条平地，越远越宽 —— 墙顺着一道谷地伸向远处
+      // 孩子身后：岩台后沿两三米外又是崖，下面是一道灌满雾的深沟；沟那边再升起来，是雾里一层层的山。墙底下的岩脊跨过深沟
       const hBack = (x, z) => {
-        const dz = -z, s = sstep(0.7, 3.5, dz) * sstep(0.8, 3.5 + dz * 0.15, Math.abs(x - WX)), A = 0.35 + 0.07 * Math.min(dz, 90);
-        const hills = A * (1.5 * (vn(x * 0.045, z * 0.035) - 0.45) + 0.5 * (vn(x * 0.16 + 3, z * 0.14) - 0.5) + 0.15 * (vn(x * 0.7, z * 0.7 + 2) - 0.5));
-        const crag = A * 0.5 * Math.pow(1 - Math.abs(2 * vn(x * 0.09 + 11, z * 0.08) - 1), 3);          // 一道道突出来的岩脊
-        return s * Math.max(-0.25, Math.min(dz * 0.06, 7) + hills + crag);
+        const dz = -z, s = sstep(0.7, 1.6, dz) * sstep(0.9, 1.9, Math.abs(x - WX)), edge = 2.6 + 1.2 * vn(x * 0.19 + 7, 3);
+        const gorge = sstep(edge, edge + 0.9, dz) * (8 + 4 * vn(x * 0.07, 5)) * (1 - sstep(16, 34, dz));
+        const far = Math.max(0, dz - 18) * 0.16 * (0.7 + 0.6 * vn(x * 0.04, 9)), low = 0.08 * (vn(x * 0.3, z * 0.3) - 0.5);
+        return s * (-gorge + far + low);
       };
       const DET = (x, z) => { const zr = z - PZ_(x); return zr >= 0 ? hFront(x, zr) : hBack(x, zr); };   // 细起伏：按离那条弯路多远来算，路上是 0
       const grid = (xs, zs, stones, mat = groundMat) => {                                   // stones：把路面的石块也做进几何里（近处那一块才做，远处网格太粗）                                       // 按给定的一列列 x、一排排 z 搭一块网格地面
@@ -13597,7 +13589,7 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.2 : 0.12; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.4 : 0.22; grid(span(X - 32, X + 52, gd), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色。路面已经是平的了，网格不用再那么细（崖边那一下够用就行）
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
       grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
@@ -13713,15 +13705,54 @@ const CH14 = (() => {
       };
       // 左边到头：一面层层的岩坡挡住路，往左一排排高上去（左边那堵空气墙就在它跟前）；只放在路上和路后面：放到镜头跟前会把人挡住
       slabBank({ x: X - 12.2, z: PZ_(X - 12) - 1.6, ux: -1, uz: 0, w: 5.6, rows: 5, run: 0.65, rise: 0.45, h0: 0.2, s: 1.2, loose: 3, rubble: 7 }); yield;
-      // 路后面露出来的几片岩层：孩子走过时，灯光正好照到它们
-      slabBank({ x: X + 1, z: 0, zr: -1.7, ux: 0, uz: -1, w: 4.6, rows: 4, run: 0.75, rise: 0.42, h0: 0.1, s: 1.1 }); yield;
-      slabBank({ x: X + 17, z: 0, zr: -2.1, ux: 0, uz: -1, w: 6, rows: 5, run: 0.8, rise: 0.5, h0: 0.12, s: 1.3, loose: 3 }); yield;
-      slabBank({ x: X + 27, z: 0, zr: -1.5, ux: 0, uz: -1, w: 3.8, rows: 3, run: 0.7, rise: 0.38, h0: 0.08, s: 1 });
+      yield;
+      // ---- 巨大的岩体：沿着深沟的边，隔一段立起一块，几米到十几米高、斜着、方方的，顶出画面；沟对面再远一排更大的，在雾里只剩剪影 ----
+      //   岩体之间留着缺口，透过缺口看到灌满雾的深沟和远处更淡的山 —— 光从那里来
+      {
+        const massMat = shade(lam(0xffffff, { vertexColors: true }), 4, 0.5);
+        // 一座岩体 = 一块块差不多方的石头摞起来（一层层的岩层，每层错开一点、往上收窄、歪一点），不是一块拉长的石头 —— 拉长了表面就成了光滑的竖条
+        const mass = (x, z, w, h, d, tilt) => {
+          const col = pick([0x3f3f40, 0x48463f, 0x3a3c3e]), yaw = rr(0, 6.28);
+          let y = gy(x, z) - 0.4, cx = x, cz = z, t = tilt, ww = w, dd = d;
+          for (let k = 0; k < 14 && y < gy(x, z) + h; k++) {                       // 最多十几块
+            const sh = Math.min(rr(0.6, 1.15) * ww, 4.5);
+            const m = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 1 : 2, amp: 0.2, flat: 1, moss: 0.3, cuts: Math.floor(rr(5, 9)), col }), massMat, cx, y + sh * 0.3, cz);
+            m.scale.set(ww * rr(0.55, 0.65), sh, dd * rr(0.55, 0.65)); m.rotation.set(rr(-0.08, 0.08), yaw + rr(-0.35, 0.35), t);
+            if (k > 0 && rnd() < 0.45) {                                                   // 旁边贴一块高矮不一的：轮廓不是一根柱子
+              const s2 = rr(-1, 1) < 0 ? -1 : 1, h2 = sh * rr(0.5, 0.9);
+              const m2 = add(R, rockS(Math.floor(rr(0, 9999)), { sd: LOW ? 1 : 2, amp: 0.22, flat: 1, moss: 0.3, cuts: Math.floor(rr(4, 8)), col }), massMat, cx + s2 * ww * rr(0.45, 0.65), y + h2 * 0.2, cz + rr(-0.3, 0.3) * dd);
+              m2.scale.set(ww * rr(0.35, 0.5), h2, dd * rr(0.4, 0.55)); m2.rotation.set(rr(-0.1, 0.1), yaw + rr(-0.5, 0.5), t + rr(-0.15, 0.15));
+            }
+            y += sh * rr(0.7, 0.95); cx += Math.sin(t) * -sh + rr(-0.22, 0.22) * ww; cz += rr(-0.15, 0.15) * dd;
+            ww = Math.max(w * 0.5, ww * rr(0.84, 0.98)); dd = Math.max(d * 0.5, dd * rr(0.85, 1)); t += rr(-0.08, 0.08);
+          }
+        };
+        for (let x = X - 14 + rr(0, 4); x < X + 38; x += rr(7, 12)) {
+          if (Math.abs(x - WX) < 3.2) continue;                                            // 墙和岩脊那里让开
+          const z = PZ_(x) - rr(3.2, 4.6);
+          mass(x, z, rr(2.6, 4.8), rr(6, 13), rr(2.4, 4), rr(-0.25, 0.25));
+          if (rnd() < 0.5) mass(x + rr(-2.5, 2.5), z - rr(0.8, 2), rr(1.6, 3), rr(3, 7), rr(1.6, 3), rr(-0.3, 0.3));   // 旁边靠着一块小一点的
+        }
+        for (let x = X - 30 + rr(0, 8); x < X + 60; x += rr(10, 18)) {                      // 沟对面更远的一排
+          if (Math.abs(x - WX) < 4) continue;
+          mass(x, PZ_(x) * 0.5 - rr(14, 24), rr(5, 9), rr(12, 22), rr(4, 7), rr(-0.2, 0.2));
+        }
+        // 崖边垂下去的树根：挂在深沟那边的崖沿上，衬着雾成了细细的黑线
+        const rootMat = shade(lam(0x241f1a), 3, 0.4);
+        for (let x = X - 12 + rr(0, 5); x < X + 36; x += rr(5, 9)) {
+          if (Math.abs(x - WX) < 2.5) continue;
+          const z0 = PZ_(x) - (2.6 + 1.2 * vn(x * 0.19 + 7, 3)), y0 = gy(x, z0 + 0.1);
+          for (let k = 0, n = Math.floor(rr(4, 9)); k < n; k++) {
+            const sx = x + rr(-0.8, 0.8), L = rr(1, 3.2), dx = rr(-0.4, 0.4);
+            tube(R, [[sx, y0 + 0.05, z0 + 0.15], [sx + dx * 0.3, y0 - L * 0.25, z0 - 0.25], [sx + dx * 0.7, y0 - L * 0.6, z0 - rr(0.3, 0.6)], [sx + dx, y0 - L, z0 - rr(0.3, 0.8)]], rr(0.008, 0.025), rootMat, 10);
+          }
+        }
+      }
       yield;
       // 碎石子：只在石块之间的缝里（散放在地上的大石块去掉了：路面本身就是石头）
       const gspot = onPath => { for (let t = 0; t < 14; t++) { const r = spot(onPath); if (inGap(r[0], r[1])) return r; } return spot(onPath); };
       {
-        const n = LOW ? 450 : 900, geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
+        const n = LOW ? 60 : 120, geo = rockS(11, { sd: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
         for (let i = 0; i < n; i++) {
           const [x, z] = gspot(rnd() < 0.25), sz = rr(0.01, 0.035);
           ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
@@ -13732,7 +13763,7 @@ const CH14 = (() => {
       }
       // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
       {
-        const n = LOW ? 700 : 1400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n), LV = [];   // 山上叶子不多，大都被风吹到路两边、石头脚下
+        const n = LOW ? 200 : 400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n), LV = [];   // 山上叶子不多，大都被风吹到路两边、石头脚下
         for (let i = 0; i < n; i++) {
           let x, z;
           if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
@@ -13796,7 +13827,7 @@ const CH14 = (() => {
           const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, r, 5).toNonIndexed(), a = g.attributes.position.array, n = g.attributes.normal.array;
           for (let i = 0; i < a.length; i++) { P.push(a[i]); N.push(n[i]); } g.dispose();
         };
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 25; i++) {
           let x, z; if (rnd() < 0.25) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.25, 0.9); z = PZ_(x) + rr(-5, 4); } else [x, z] = spot(rnd() < 0.06);
           const L = rr(0.15, 0.75) * (rnd() < 0.1 ? 1.8 : 1), a = rr(0, 6.28), r = rr(0.005, 0.014) * (L > 0.8 ? 1.5 : 1), dx = Math.cos(a), dz = Math.sin(a), bend = rr(-0.12, 0.12);
           const pts = [0, 0.33, 0.66, 1].map(t => { const px = x + dx * L * (t - 0.5) - dz * bend * Math.sin(t * 3.14), pz = z + dz * L * (t - 0.5) + dx * bend * Math.sin(t * 3.14); return V3(px, gy(px, pz) + r + 0.004 + 0.02 * Math.sin(t * 3.14) * rnd(), pz); });
