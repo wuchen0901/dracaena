@@ -216,8 +216,9 @@ function buildBody(kind, o = {}) {
   });
   if (S.headK) head.scale.setScalar(S.headK);
   if (S.band) for (const A of arms) add(A.sh, cy(0.035 * u, 0.035 * u, 0.032 * u, 10), lam(S.band, { emissive: S.band, emissiveIntensity: 0.35 }), 0, -0.085 * u, 0);
-  if (S.cane) add(root, cy(0.012 * u, 0.012 * u, 0.62 * u, 6), M.metal, 0.27 * u, 0.31 * u, 0.1 * u);              // 拐杖立在身前，手搭在上面（见 caneHand）
-  return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs };
+  if (S.cane) add(root, cy(0.012 * u, 0.012 * u, 0.62 * u, 6), M.metal, 0.27 * u, 0.31 * u, 0.1 * u).userData.castKeep = true;   // 拐杖立在身前，手搭在上面（见 caneHand）
+  // 换成现成的模型（45-cast.js）：这副搭出来的骨架照旧算角度，模型读到以后把身体藏起来、改转模型的骨头
+  return { S, u, D, root, pelvis, spine, chest, head, tail, arms, legs, traveler: castTraveler(root, u, kind, S) };
 }
 
 

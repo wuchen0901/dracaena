@@ -198,12 +198,29 @@ function mkCrowd(R, cap) {
       figJoint(C_, B_, 0, -FG.shin, 0, p.ft[s]); I.shoe.setMatrixAt(j, C_);
     }
   };
+  // 现成的模型（src/45-cast.js）：镜头附近的人换成带骨架的模型，远处的还是上面这几块零件（一章里可能有上百个人，全用模型太重）。
+  // 谁用模型每帧挑一遍：左右 CAST_NEAR 米以内的，最多 CAST_MAX 个，多了先紧着离得近、站得靠前的。模型走近了才克隆，一帧只花几毫秒克隆，多的下一帧接着来。
+  // 模型读不到、或者地址里写了 ?cast=0，就一直是搭出来的
+  const near = [];
+  const cast = f => { f.m = null; f.tpl = null; f.lod = false; f.role = figRole(f); if (f.role) castLoad(f.role.file, tpl => { f.tpl = tpl; }); };
+  R.addEventListener('removed', () => { for (const f of figs) { if (f.m) f.m.root.traverse(o => { if (o.isSkinnedMesh) o.skeleton.dispose(); }); f.m = null; f.lod = false; } });   // 这一章卸掉了：没挂在场景里的那些克隆也要释放
   const C = { I, figs, cap,
-    add(f) { if (figs.length >= cap) { console.warn('crowd full'); return f; } f.ci = figs.length; figs.push(f); paint(f); f.dirty = true; f.shown = false; return f; },
+    add(f) { if (figs.length >= cap) { console.warn('crowd full'); return f; } f.ci = figs.length; figs.push(f); paint(f); f.dirty = true; f.shown = false; cast(f); return f; },
     addAll(list) { for (const f of list) C.add(f); for (const k in I) if (I[k].instanceColor) I[k].instanceColor.needsUpdate = true; },
     draw() {
-      const cx = camera.position.x; let any = false;
+      const cx = camera.position.x; let any = false, t0 = 0;
+      near.length = 0;
+      for (const f of figs) { f.want = false; if (f.tpl && !f.hide) { const d = Math.abs(f.x - cx); if (d < CAST_NEAR + (f.lod ? 4 : 0)) { f.sc = d - 1.5 * f.z - (f.lod ? 3 : 0); near.push(f); } } }
+      if (near.length > CAST_MAX) { near.sort((a, b) => a.sc - b.sc); near.length = CAST_MAX; }
+      for (const f of near) f.want = true;
       for (const f of figs) {
+        if (f.want && !f.m) { if (!t0) t0 = performance.now(); else if (performance.now() - t0 > 4) f.want = false; if (f.want) f.m = castSpawn(f.tpl, f.role.look, { stick: f.stick }); }
+        if (f.want) {                                                    // 用模型的人
+          if (!f.lod) { f.lod = true; R.add(f.m.root); zero(f); any = true; f.shown = false; }
+          if (f.dirty || !f.shown) { castPose(f.m, f); f.dirty = false; f.shown = true; }
+          continue;
+        }
+        if (f.lod) { f.lod = false; R.remove(f.m.root); f.shown = false; }   // 走远了、藏起来了：模型从场景里拿下来，换回零件
         if (f.hide) { if (f.shown) { zero(f); f.shown = false; any = true; } continue; }
         if (!f.dirty && f.shown) continue;
         if (Math.abs(f.x - cx) > 60 && f.shown) continue;                // 离得远的先不管，走近了再摆

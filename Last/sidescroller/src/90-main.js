@@ -80,6 +80,7 @@ const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUS
   brush: { BRUSH, BRK, BRV, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
   zone: n => ZONES.find(z => z.n === n), MIST, walk(n) { walkInto(n); renderer.render(scene, camera); },   // walk(n)：像从上一章一路走过来那样进第 n 章（人在入口，雾还没散）
   touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
+  kit: { fig, figAct, figStep, figSnap, mkCrowd, makeNPC, FIG_ACT, SKINS, CAST, CAST_ROLE, CAST_LIB, castLoad, castSpawn },   // 配角：小人、路人、现成的模型（工具页 cast-sheet.html 用）
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
   sound(on = true) { if (muted === on) { setMuted(!on); soundNote(); } }, play: (name, o) => snd(name, o), breath: (dir, len, k, o) => breathSound(dir, len, k, o),
   audio: () => ({ AC, MX, master, loops, jobs: JOBS.length, banks: Object.keys(BANKS).length, surface: surfaceUnder() }),

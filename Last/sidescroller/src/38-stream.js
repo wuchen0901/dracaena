@@ -8,7 +8,8 @@
 // 好几章共用、只画一次的贴图（图标、图集）用 sharedTex() 标出来，卸载哪一章都不释放它
 function disposeTree(root) {
   root.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
+    if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();   // 配角模型的网格是所有克隆共用的（45-cast.js）：不跟着哪一章释放
+    if (o.isSkinnedMesh) o.skeleton.dispose();
     if (o.isInstancedMesh) o.dispose();                  // 实例的位置、颜色是另外几块缓冲区
     const m = o.material; if (m && m.userData && m.userData.own) { for (const t of texturesOf(m)) if (!t.userData.shared) t.dispose(); m.dispose(); }
   });
