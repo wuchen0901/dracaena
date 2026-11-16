@@ -22,6 +22,7 @@
 //             film 几种情况并排成一格，连续拍 n 格（dt 每格隔几秒，从 t0 秒开始），拿去切成动图（每格 cw × ch，cols 一行几格）/
 //             check 不画图，在控制台里报出自检的结果（跳多高、多远、多久，和手脚每一帧动了多少）
 //   rows=stand,walk,run 拍哪几种情况：stand 原地跳 / walk 走着跳 / run 跑着跳（一直按着 →）
+//        顺带也拍松开方向键以后怎么停下来（见 Last/sidescroller/src/50-player.js 的 STOP）：stop 跑着松手 / wstop 走着松手 —— 这两种 0 是松手的那一刻，不按跳
 //   d 镜头离多远，yo 对准离地多高，az 镜头绕到主角前面多少度（0 正侧面，90 正前面）；chap=1&x=3 在哪一章的哪里拍
 const q = new URLSearchParams(location.search), LAYOUT = q.get('layout') || 'strip';
 const num = (k, d) => q.get(k) === null ? d : +q.get(k);
@@ -30,11 +31,12 @@ const FONT = '-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",s
 let G = null, NOMODEL = false;
 const ROWS = (q.get('rows') || 'stand,walk,run').split(',').map(c => ({ c }));
 const CHAP = num('chap', 1), X0 = num('x', 3);
-const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳' };
+const NAME = { stand: '原地跳', walk: '走着跳', run: '跑着跳', stop: '跑着松手', wstop: '走着松手' };
 
 // ---- 一次跳跃：站好（或者先走、跑起来），按一下跳，按固定的小步往前推；每到 want 里的一个时刻就交给 shoot 拍一格 ----
 // 时刻都相对按下跳的那一刻
-const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'] };
+const DT = 1 / 120, KEYS = { stand: [], walk: ['R', 'S'], run: ['R'], stop: ['R'], wstop: ['R', 'S'] };
+const isStop = row => row.c === 'stop' || row.c === 'wstop';
 function setup(row) {
   for (const k of ['R', 'S', 'J']) G.keys.delete(k);
   G.ch(CHAP); G.tp(X0); G.P.facing = 1; G.step(0.6);
@@ -44,16 +46,20 @@ function setup(row) {
 }
 function run(row, want, shoot) {
   setup(row);
-  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0;
+  let t = -0.3, i = 0, pressedAt = false; row.top = 0; row.air = 0; row.far = 0; row.stopT = null; row.v0 = 0;
   const P = G.P;
   // 往前推到 to 秒。G.step 每叫一次都要画一遍游戏画面，所以一段只叫一次（中间按 1/120 秒一小步算）；高度、距离、腾空多久在每段末尾记一次
   const adv = to => {
     const n = Math.round((to - t) / DT); if (n <= 0) return;
     const was = P.grounded; G.step(n * DT, DT); t += n * DT;
-    if (pressedAt) { if (!P.grounded || !was) row.air += n * DT; row.top = Math.max(row.top, P.y - row.y0); if (!P.grounded) row.far = P.x - row.x0; }
+    if (pressedAt) { if (!P.grounded || !was) row.air += n * DT; row.top = Math.max(row.top, P.y - row.y0); if (!P.grounded || isStop(row)) row.far = P.x - row.x0; }
+    if (pressedAt && isStop(row) && row.stopT === null && P.vx === 0) row.stopT = t;
   };
   for (const w of want.slice().sort((a, b) => a - b)) {
-    if (!pressedAt && w > 0) { adv(0); pressedAt = true; G.pressed.add('J'); G.keys.add('J'); row.x0 = P.x; row.y0 = P.y; }
+    if (!pressedAt && w > 0) {
+      adv(0); pressedAt = true; row.x0 = P.x; row.y0 = P.y; row.v0 = P.vx;
+      if (isStop(row)) { G.keys.delete('R'); G.keys.delete('S'); } else { G.pressed.add('J'); G.keys.add('J'); }
+    }
     adv(w); if (pressedAt && t > 0.1) G.keys.delete('J');
     shoot(i++, t);
   }
@@ -85,14 +91,15 @@ const LAYOUTS = {
     const ts = (q.get('ts') || '-0.1,0.03,0.08,0.14,0.22,0.32,0.42,0.52,0.6,0.66,0.72,0.8,0.95').split(',').map(Number);
     const cw = num('cw', 170), ch = num('ch', 300), LW = 150, HEAD = 112, TOP = 30;
     size(LW + ts.length * cw, HEAD + TOP + ROWS.length * ch);
-    label(q.get('title') || '跳跃 · 从起跳到落地', 40, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
-    label(q.get('note') || '游戏里实拍：每一行是一种情况；从左往右是连续的时刻（秒，0 是按下跳的那一刻）。', 40, 76, { size: 14, weight: 400, color: '#8fa0a0', shadow: false });
+    const stops = ROWS.every(isStop);
+    label(q.get('title') || (stops ? '松开方向键 · 怎么停下来' : '跳跃 · 从起跳到落地'), 40, 46, { size: 27, weight: 600, color: '#eef3f1', shadow: false });
+    label(q.get('note') || `游戏里实拍：每一行是一种情况；从左往右是连续的时刻（秒，0 是${stops ? '松开方向键' : '按下跳'}的那一刻）。`, 40, 76, { size: 14, weight: 400, color: '#8fa0a0', shadow: false });
     ts.forEach((t, j) => label(`${t > 0 ? '+' : ''}${t.toFixed(2)}`, LW + j * cw + cw / 2, HEAD + 20, { align: 'center', size: 14, color: '#9fb0b0', shadow: false }));
     ROWS.forEach((row, r) => {
       const y = HEAD + TOP + r * ch;
       run(row, ts, j => grab(LW + j * cw + 1, y + 1, cw - 2, ch - 2, row));
       label(NAME[row.c], 30, y + ch / 2, { size: 21, weight: 600, color: '#f1f5f4', shadow: false });
-      label(`高 ${row.top.toFixed(2)} 米`, 30, y + ch / 2 + 26, { size: 13, weight: 400, color: '#8fa0a0', shadow: false });
+      label(isStop(row) ? `滑了 ${row.far.toFixed(2)} 米` : `高 ${row.top.toFixed(2)} 米`, 30, y + ch / 2 + 26, { size: 13, weight: 400, color: '#8fa0a0', shadow: false });
     });
   },
   // 几种情况并排成一格，连续拍下来，拿去切成动图
@@ -123,7 +130,8 @@ const LAYOUTS = {
           prev[j] = p; span[j][0] = Math.min(span[j][0], p.y); span[j][1] = Math.max(span[j][1], p.y);
         });
       });
-      say(`${NAME[row.c]}：高 ${row.top.toFixed(3)} 米，远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
+      if (isStop(row)) say(`${NAME[row.c]}：松手时每秒 ${row.v0.toFixed(2)} 米，又往前滑了 ${row.far.toFixed(3)} 米，${row.stopT === null ? '1.2 秒还没停住' : row.stopT.toFixed(3) + ' 秒停住'}`);
+      else say(`${NAME[row.c]}：高 ${row.top.toFixed(3)} 米，远 ${row.far.toFixed(2)} 米，腾空 ${row.air.toFixed(3)} 秒`);
       if (tv?.model) say(`　手脚相对胯每帧最多挪（厘米）：${names.map((n, j) => `${n} ${(worst[j] * 100).toFixed(1)}（${at[j].toFixed(2)} 秒）`).join('，')}；上下摆的幅度（厘米）：${names.map((n, j) => `${n} ${((span[j][1] - span[j][0]) * 100).toFixed(0)}`).join('，')}`);
     }
     label('自检结果在控制台里', 20, 38, { size: 18, color: '#c3cfce' });
