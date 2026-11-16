@@ -18,7 +18,7 @@ const CH14 = (() => {
   const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，跳一下就过去
   const Z1 = 18, ZN = -42, Z0 = -330;                          // 墙从镜头后面 Z1 一直到 Z0；ZN 以前一块块砖搭，以后是一整条
   const MI = 0.016;                                            // 灰缝比砖面缩进去多少
-  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'dirt',
+  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel',   // 脚步声：山上的碎石
     intro() { CAT.state = 'none'; } });
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
   groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
@@ -100,7 +100,8 @@ const CH14 = (() => {
     float st = smoothstep(0.5, 0.85, n2(vec2(q.z * 7. + q.x * 3., q.y * 0.8))) * smoothstep(${(TOP - 0.75).toFixed(3)}, ${(TOP - 0.05).toFixed(3)}, q.y);
     diffuseColor.rgb *= 1. - 0.45 * st * side;
     diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x8a9078)}, smoothstep(0.72, 0.8, n3(q * 14. + 5.)) * side * 0.5);
-    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0xb0aca0)}, smoothstep(0.55, 0.8, n2(vec2(q.z * 3., q.y * 9.) + q.x)) * (1. - smoothstep(0.05, 0.4, q.y)) * side * 0.3);`,
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0xb0aca0)}, smoothstep(0.55, 0.8, n2(vec2(q.z * 3., q.y * 9.) + q.x)) * (1. - smoothstep(0.05, 0.4, q.y)) * side * 0.3);
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(0x3f5a26)}, side * (1. - smoothstep(0.05, 0.38, q.y)) * smoothstep(0.42, 0.7, n3(q * 5. + 7.)) * 0.65);   // 墙根长着青苔`,
     // 1 远处的整条墙：砖缝画在侧面上（按屏幕上多宽来抗锯齿，越远越糊成一片）
     `if (abs(vWN.x) > 0.5) {
       float r = q.y / ${PY.toFixed(4)}, row = floor(r), zz = q.z / ${PZ.toFixed(4)} - mod(row, 2.) * 0.5, col = floor(zz);
@@ -213,6 +214,8 @@ const CH14 = (() => {
   let V = null;
   function* build(R) {
     const v = {};
+    // 手机（触屏）上降一档：地面网格放粗、砖不倒角、地上的东西减量、雾片少两层。地址后面加 ?low=1 在电脑上也能看这一档
+    const LOW = new URLSearchParams(location.search).get('low') === '1' || (typeof touchMode !== 'undefined' && touchMode);
     const A = { p: [], n: [], c: [], mottle: true }, M = { p: [], n: [], c: [] }, F = { p: [], n: [], c: [] };
     // ---- 近处：一层一层地砌。第 5 层是丁砖（砖头朝外），其余是顺砖，上下错开半块 ----
     for (let r = 0; r < NC; r++) {
@@ -226,7 +229,7 @@ const CH14 = (() => {
           const hy = BH / 2 - rr(0, 0.0025) - (spall ? 0.003 : 0), hz = len / 2 - rr(0.0005, 0.004) - (spall ? 0.004 : 0);
           const loose = notchU(zc) < 1.25 && t <= 2 ? 1 : 0;                                   // 豁口边上的砖有点松动
           const y = r * PY + J + BH / 2 + rr(-0.0015, 0.0015), x = WX + f * (T / 2 - hx - rec) + rr(-0.002, 0.002);
-          pushBox(A, x, y, zc + rr(-0.003, 0.003), hx, hy, hz, zc > -14 ? 0.0065 : 0,
+          pushBox(A, x, y, zc + rr(-0.003, 0.003), hx, hy, hz, !LOW && zc > -14 ? 0.0065 : 0,
             [rr(-0.006, 0.006) + loose * rr(-0.03, 0.03), rr(-0.012, 0.012) + loose * rr(-0.05, 0.05), rr(-0.006, 0.006) + loose * rr(-0.04, 0.04)], brickCol(y, spall ? 0.85 : 1));
           runs.push([zc - len / 2, zc + len / 2]);
         }
@@ -247,7 +250,7 @@ const CH14 = (() => {
         const u = notchU(zc), loose = u < 1.5 ? sstep(1.5, 1.1, u) : 0;
         for (const s of [-1, 1]) {
           const hy = 0.05 + rr(-0.003, 0.003), y = NC * PY + J + hy + loose * rr(0, 0.02);
-          pushBox(A, WX + s * (hxc + J / 2) + loose * rr(-0.03, 0.03), y, zc + rr(-0.002, 0.002) + loose * rr(-0.015, 0.015), hxc + rr(-0.002, 0.002), hy, BH / 2 - rr(0.0005, 0.002), zc > -14 ? 0.006 : 0,
+          pushBox(A, WX + s * (hxc + J / 2) + loose * rr(-0.03, 0.03), y, zc + rr(-0.002, 0.002) + loose * rr(-0.015, 0.015), hxc + rr(-0.002, 0.002), hy, BH / 2 - rr(0.0005, 0.002), !LOW && zc > -14 ? 0.006 : 0,
             [rr(-0.01, 0.01) + loose * rr(-0.12, 0.12), rr(-0.015, 0.015) + loose * rr(-0.2, 0.2), rr(-0.01, 0.01) + loose * rr(-0.15, 0.15)], brickCol(1, 0.78).lerp(new THREE.Color(0x5a5650), 0.25));
         }
         runs.push([zc - BH / 2, zc + BH / 2]);
@@ -319,9 +322,9 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, groundMat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      grid(span(X - 80, X + 120, 0.25), span(-6, 20, 0.25));                         // 近处
+      const gd = LOW ? 0.4 : 0.25; grid(span(X - 80, X + 120, gd), span(-6, 20, gd));   // 近处
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
-      grid(span(X - 160, X + 240, 1), zs.reverse());
+      grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
       const gy = (x, z) => BIGG(x, z) + DET(x, z);
@@ -335,14 +338,14 @@ const CH14 = (() => {
         }
       };
       // 大一点的石块：一块块单独的，半埋在土里
-      for (let i = 0; i < 150; i++) {
+      for (let i = 0, nb = LOW ? 90 : 150; i < nb; i++) {
         const [x, z] = spot(false), sz = rr(0.06, 0.26) * (rnd() < 0.15 ? 1.6 : 1), flat = rr(0.5, 0.85);
         const m = add(R, rockGeo(Math.floor(rr(0, 9999)), { detail: rnd() < 0.6 ? 0 : 1, flat, amp: rr(0.25, 0.42), moss: rr(0.1, 0.8), mossCol: 0x4f6a2e, col: pick([0x4a4945, 0x3f3e3b, 0x524f4a, 0x3a3936]) }), rockMat, x, gy(x, z) - sz * flat * 0.3, z);
         m.scale.set(sz * rr(0.9, 1.4), sz, sz * rr(0.7, 1.1)); m.rotation.y = rr(0, 6.28);
       }
       // 碎石子：一个带实例的网格，路上也有一些
       {
-        const n = 900, geo = rockGeo(11, { detail: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
+        const n = LOW ? 450 : 900, geo = rockGeo(11, { detail: 0, amp: 0.25, flat: 0.7, moss: 0, col: 0xffffff }), mesh = new THREE.InstancedMesh(geo, rockMat, n);
         for (let i = 0; i < n; i++) {
           const [x, z] = spot(rnd() < 0.18), sz = rr(0.012, 0.05);
           ee.set(rr(-0.4, 0.4), rr(0, 6.28), rr(-0.4, 0.4)); qq.setFromEuler(ee);
@@ -353,7 +356,7 @@ const CH14 = (() => {
       }
       // 落叶：平躺着，少数翘起来一点；成片地堆在土坑、墙脚，路上稀
       {
-        const n = 1400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n);   // 山上叶子不多，大都被风吹到路两边、石头脚下
+        const n = LOW ? 700 : 1400, mesh = new THREE.InstancedMesh(leafGeo(), leafMat, n), LV = [];   // 山上叶子不多，大都被风吹到路两边、石头脚下
         for (let i = 0; i < n; i++) {
           let x, z;
           if (rnd() < 0.2) { x = WX + (rnd() < 0.5 ? -1 : 1) * rr(0.2, 0.7); z = PZ_(x) + rr(-5, 4); }      // 墙脚积了一溜
@@ -362,9 +365,53 @@ const CH14 = (() => {
           const sz = rr(0.08, 0.16), up = rnd() < 0.2 ? rr(0.2, 0.7) : rr(-0.08, 0.08);
           ee.set(rr(-0.08, 0.08), rr(0, 6.28), up); qq.setFromEuler(ee);
           M4.compose(V3(x, gy(x, z) + 0.012 + Math.abs(Math.sin(up)) * sz * 0.4, z), qq, V3(sz, sz * 0.5, sz)); mesh.setMatrixAt(i, M4);
+          LV.push({ i, x, z, y: gy(x, z) + 0.012, s: sz, q: qq.clone(), k: null });
           mesh.setColorAt(i, cc.set(pick([0xc8962e, 0xd4a83a, 0xb87a2a, 0xa8642a, 0x8a5a30, 0xc0a040, 0x7a6a38])).multiplyScalar(rr(0.6, 1.05)));   // 黄的、橙黄的、褐的
         }
         mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+        LV.sort((a, b) => a.x - b.x); v.leaves = { mesh, list: LV, live: [] };
+      }
+      v.gy = gy; v.leafMat = leafMat;
+      // ---- 墙基：墙脚两边垫着一溜山石，上面长青苔 —— 墙是坐在山上的，不是摆在一条平地上 ----
+      {
+        const pts = [];
+        for (const sd of [-1, 1]) for (let z = ZN; z < Z1; z += rr(0.22, 0.4)) {
+          if (Math.abs(z - PZ_(WX)) < 0.7) continue;                     // 翻墙的地方空着，不然脚下有石头
+          pts.push([WX + sd * (T / 2 + rr(0.0, 0.1)), z, rr(0.13, 0.24), rr(0.06, 0.16)]);
+          if (rnd() < 0.18) pts.push([WX + sd * (T / 2 + rr(0.15, 0.45)), z + rr(-0.2, 0.2), rr(0.18, 0.4), rr(0.1, 0.25)]);   // 偶尔一块大的靠在墙脚
+        }
+        const geo = rockGeo(23, { detail: 0, amp: 0.22, flat: 0.75, moss: 0.9, mossCol: 0x45602a, col: 0x4c4b46 }), mesh = new THREE.InstancedMesh(geo, rockMat, pts.length);
+        pts.forEach(([x, z, w, h], i) => {
+          ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15)); qq.setFromEuler(ee);
+          M4.compose(V3(x, gy(x, z) + h * 0.35, z), qq, V3(w * rr(0.9, 1.3), h, w * rr(0.8, 1.1))); mesh.setMatrixAt(i, M4); mesh.setColorAt(i, cc.setScalar(rr(0.75, 1.1)));
+        });
+        mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; R.add(mesh);
+      }
+      // ---- 雾里的枯树和岩柱（立体的，代替原来画在布景板上的）：几层，越远越被雾抬浅 ----
+      {
+        const P_ = [], N_ = [], m4 = new THREE.Matrix4();
+        const put = (geo, m) => { geo.applyMatrix4(m); const g = geo.index ? geo.toNonIndexed() : geo; if (!g.attributes.normal) g.computeVertexNormals();
+          const a = g.attributes.position.array, n = g.attributes.normal.array; for (let i = 0; i < a.length; i++) { P_.push(a[i]); N_.push(n[i]); } geo.dispose(); if (g !== geo) g.dispose(); };
+        const tree3 = (x, y, z, h) => {
+          const r = h * rr(0.022, 0.032), lean = rr(-0.08, 0.08);
+          const tg = new THREE.CylinderGeometry(r * 0.35, r, h, 7); tg.translate(0, h / 2, 0);
+          put(tg, m4.makeRotationZ(lean).setPosition(x, y, z));
+          for (let k = 0, nb = Math.floor(rr(4, 8)); k < nb; k++) {
+            const t = rr(0.35, 0.92), bx = x - Math.sin(lean) * h * t, by = y + h * t, a = rr(0, 6.28), L = h * rr(0.15, 0.32) * (1.1 - t * 0.5);
+            const p0 = V3(bx, by, z), p1 = V3(bx + Math.cos(a) * L * 0.5, by + L * rr(0.2, 0.5), z + Math.sin(a) * L * 0.3), p2 = V3(bx + Math.cos(a) * L, by + L * rr(0.5, 0.9), z + Math.sin(a) * L * 0.5);
+            put(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([p0, p1, p2]), 5, r * rr(0.25, 0.4), 5), m4.identity());
+            if (rnd() < 0.6) { const q0 = p1.clone().lerp(p2, 0.5), b = a + rr(-1, 1); put(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([q0, V3(q0.x + Math.cos(b) * L * 0.3, q0.y + L * 0.3, q0.z), V3(q0.x + Math.cos(b) * L * 0.5, q0.y + L * 0.55, q0.z + rr(-0.3, 0.3))]), 4, r * 0.15, 4), m4.identity()); }
+          }
+        };
+        const spire = (x, y, z, h) => { const w = h * rr(0.35, 0.6); put(rockGeo(Math.floor(rr(0, 9999)), { detail: 1, amp: 0.38, flat: 1, moss: 0 }), m4.compose(V3(x, y + h * 0.3, z), qq.setFromEuler(ee.set(rr(-0.15, 0.15), rr(0, 6.28), rr(-0.15, 0.15))), V3(w, h * 0.55, w * rr(0.6, 1)))); };   // 一堆坑坑洼洼的岩石，矮而宽
+        for (const [z0, n] of [[-13, 9], [-24, 11], [-42, 13], [-70, 15]]) for (let i = 0; i < n; i++) {
+          const z = z0 + rr(-4, 4), x = rr(X - 18 + z0 * 0.35, X + 40 - z0 * 0.35);
+          if (Math.abs(x - WX) < 2.5 + (-z) * 0.12) continue;             // 墙两边让开，墙一路伸进雾里
+          const y = gy(x, z) - 0.3;
+          if (z0 > -20 || rnd() < 0.68) tree3(x, y, z, rr(8, 15)); else spire(x, y, z, rr(2.5, 6));   // 岩堆只放在远的几层，近的那层太抢眼
+        }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P_, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N_, 3));
+        const m = new THREE.Mesh(g, shade(lam(0x24272a), 3, 0.3)); m.frustumCulled = false; R.add(m);
       }
       // 枯树枝：细细的、弯的，有的带一两根分杈，散在路两边，墙脚多一点。全部合成一个网格
       {
@@ -396,27 +443,78 @@ const CH14 = (() => {
       for (let x = X - 120; x < X + 140; x += rr(0.8, 1.8)) { const h = 5 + 3.5 * Math.sin(x * 0.05) + 2.5 * Math.sin(x * 0.17 + 1) + rr(-1, 1.5); disc(g, x, h - rr(0.5, 1.5), rr(1.2, 2.6)); box(g, x - 1, -2, 2.2, h - 1); }
       for (let x = X - 115; x < X + 135; x += rr(9, 26)) tree(g, x, 0, rr(10, 14), 'pine');
     }, { fog: true, blur: 2.5, blurOnce: true });
-    // 中景：雾里一层层的枯树、断柱，越远越被雾抬浅（布景板受雾）。墙两边让开
-    for (const [z, n] of [[-16, 9], [-30, 11], [-55, 14], [-90, 16]]) {
-      const half = 12 + (-z) * 0.5;
-      backdrop(X - half, X + 26 + half, -1, 22, z, 18, g => {
-        setInk(g, '#0d0f11');
-        for (let i = 0; i < n; i++) {
-          const x = rr(X - half, X + 26 + half); if (Math.abs(x - WX) < 2.5 + (-z) * 0.02) continue;
-          if (rnd() < 0.7) tree(g, x, -1, rr(9, 17), 'dead');
-          else { const w = rr(0.4, 0.9), h = rr(3, 9); poly(g, [[x - w, -1], [x + w, -1], [x + w * 0.9, h - rr(0, 1.2)], [x, h], [x - w * 0.8, h - rr(0.4, 1.8)]]); }   // 断了的柱子，顶上是斜茬
-        }
-      }, { fog: true });
+    // ---- 雾片：几层半透明的雾，在孩子身后慢慢横着飘（跟着镜头，但花纹钉在世界上，所以走过去是一片片经过的） ----
+    {
+      const [c, gx] = mkCanvas(1024, 256);
+      for (let i = 0; i < 70; i++) {
+        const x = rr(0, 1024), y = rr(60, 250), w = rr(60, 220), a = rr(0.08, 0.26);
+        for (const ox of [-1024, 0, 1024]) { const gr = gx.createRadialGradient(x + ox, y, 0, x + ox, y, w); gr.addColorStop(0, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+          gx.save(); gx.translate(0, y); gx.scale(1, 0.35); gx.translate(0, -y); gx.fillStyle = gr; gx.fillRect(x + ox - w, y - w, 2 * w, 2 * w); gx.restore(); }
+      }
+      gx.globalCompositeOperation = 'destination-in'; const fade = gx.createLinearGradient(0, 0, 0, 256); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(0.55, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0.85)'); gx.fillStyle = fade; gx.fillRect(0, 0, 1024, 256);
+      const tex = canvasTex(c); tex.wrapS = THREE.RepeatWrapping;
+      const LAY = [[-2.5, 2.4, 0.1, 0.35], [-6, 4, 0.15, 0.25], [-12, 6.5, 0.18, 0.16], [-22, 10, 0.2, 0.1], [-38, 14, 0.2, 0.07]].slice(0, LOW ? 3 : 5);
+      v.fogs = LAY.map(([dz, h, op, sp], i) => {
+        const t = tex.clone(); t.needsUpdate = true; t.wrapS = THREE.RepeatWrapping;
+        const mat = new THREE.MeshBasicMaterial({ map: t, color: 0x9aa2a8, transparent: true, opacity: op, depthWrite: false, fog: true }); mat.userData.own = true;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(140, h), mat); m.renderOrder = 30 + i; m.frustumCulled = false; R.add(m);
+        return { m, t, dz, h, sp, ph: rr(0, 1) };
+      });
+    }
+    // ---- 风吹起来的几片叶子、脚下扬起的灰：先把物件备好，每一帧在 update 里动 ----
+    {
+      const n = 14, mesh = new THREE.InstancedMesh(leafGeo(), v.leafMat, n), cc = new THREE.Color();
+      for (let i = 0; i < n; i++) mesh.setColorAt(i, cc.set(pick([0xc8962e, 0xd4a83a, 0xb87a2a, 0xa8642a])).multiplyScalar(rr(0.7, 1)));
+      mesh.instanceColor.needsUpdate = true; mesh.frustumCulled = false; R.add(mesh);
+      v.blow = { mesh, list: Array.from({ length: n }, () => ({ on: false, t: 0 })), next: 1 };
+      v.puffs = Array.from({ length: 24 }, () => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW_SOFT, color: 0xa4aaae, transparent: true, opacity: 0, depthWrite: false, fog: true }));
+        sp.material.userData.own = true; sp.visible = false; R.add(sp); return { sp, t: 9, life: 1, vx: 0, vy: 0, s0: 0.2, s1: 0.6, a: 0.2 }; });
+      v.ph = 0; v.air = false;
     }
     V = v;
   }
 
+  const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 36;
     if (!here) return;
     WU.uT.value = T; WU.uHX.value = P.x - WX;
     // 镜头不越过墙：离墙近的时候，镜头留在孩子这一边（不然墙伸到镜头跟前的那一段会挡住人）
     if (Math.abs(P.x - WX) < 4) { const L = cam.look; camOvr = { d: 10.5, yo: 0.95, lift: -0.32, xo: P.x < WX ? Math.min(0.5, WX - 1.3 - P.x - L) : Math.max(0.5, WX + 1.3 - P.x - L) }; }
+    const v = V; if (!v || !v.fogs) return;
+    const g = GUST.v ?? 0.6, hz = pathZ(P.x), M4 = _pm4, Q = _pq, S = _ps;
+    // 雾片：跟着镜头，花纹钉在世界上、再慢慢地往右飘
+    for (const f of v.fogs) { f.m.position.set(cam.x, f.h / 2 - 0.6 + Math.max(0, -f.dz) * 0.05, cam.pz + f.dz); f.t.offset.x = (cam.x + T * f.sp * (0.6 + g)) / 140 + f.ph; }
+    // 风吹起来的叶子：从画面左边进来，一边翻一边往右飘，落到地上就收走
+    const B = v.blow; B.next -= dt * (0.4 + g);
+    if (B.next <= 0) { B.next = rr(0.4, 2.2); const b = B.list.find(o => !o.on); if (b) Object.assign(b, { on: true, t: 0, x: cam.x - 8, y: rr(0.6, 2.6), z: cam.pz + rr(-4, -0.5), vx: rr(1.6, 3.2), vy: rr(-0.2, 0.3), sp: rr(3, 9), ph: rr(0, 6.28) }); }
+    B.list.forEach((b, i) => {
+      if (!b.on) { M4.makeScale(0, 0, 0); B.mesh.setMatrixAt(i, M4); return; }
+      b.t += dt; b.vx = damp(b.vx, 1.2 + 2.4 * g, 1.5, dt); b.vy = damp(b.vy, -0.35 + 0.5 * Math.sin(b.t * 2.3 + b.ph), 2, dt);
+      b.x += b.vx * dt; b.y += b.vy * dt; b.z += 0.2 * Math.sin(b.t * 1.7 + b.ph) * dt;
+      if (b.x > cam.x + 9 || b.y < v.gy(b.x, b.z) + 0.02) b.on = false;
+      Q.setFromEuler(_pe.set(b.t * b.sp, b.t * b.sp * 0.6 + b.ph, b.t * b.sp * 0.8)); M4.compose(S.set(b.x, b.y, b.z), Q, _pv.setScalar(0.12)); B.mesh.setMatrixAt(i, M4);
+    });
+    B.mesh.instanceMatrix.needsUpdate = true;
+    // 脚下扬起的灰：跑起来每一步一小团，落地时一大团
+    const puff = (n, k) => { for (let j = 0; j < n; j++) { const p = v.puffs.find(o => o.t >= o.life); if (!p) return;
+      Object.assign(p, { t: 0, life: rr(0.6, 1.1) * (0.7 + k * 0.5), x: P.x - P.facing * rr(0, 0.15) + rr(-0.15, 0.15) * k, y: P.y + 0.05, z: hz + rr(-0.12, 0.12), vx: -P.vx * rr(0.05, 0.15) + rr(-0.4, 0.4) * k, vy: rr(0.1, 0.35) * (0.6 + k * 0.6), s0: 0.15 + 0.1 * k, s1: rr(0.45, 0.8) * (0.7 + k * 0.6), a: 0.12 + 0.1 * k }); p.sp.visible = true; } };
+    const ph = hero.A.ph, step = P.grounded && Math.abs(P.vx) > 2.2 && Math.floor(ph * 2) !== Math.floor(v.ph * 2); v.ph = ph;
+    if (step) puff(1, 0);
+    if (v.air && P.grounded && P.impact > 4) puff(5, clamp((P.impact - 4) / 5, 0.3, 1));
+    v.air = !P.grounded;
+    for (const p of v.puffs) { if (p.t >= p.life) { p.sp.visible = false; continue; }
+      p.t += dt; const k = p.t / p.life; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 1.5; p.vy *= 1 - dt * 1.2;
+      p.sp.position.set(p.x, p.y, p.z); p.sp.scale.setScalar(lerp(p.s0, p.s1, Math.sqrt(k))); p.sp.material.opacity = p.a * Math.sin(Math.PI * Math.min(1, k * 1.4)) * (1 - k); }
+    // 跑过落叶：脚边的几片被踢起来，翻两下落到前面去
+    const L = v.leaves, list = L.list; let lo = 0, hi = list.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (list[m].x < P.x - 0.4) lo = m + 1; else hi = m; }
+    if (P.grounded && Math.abs(P.vx) > 1.6) for (let i = lo; i < list.length && list[i].x < P.x + 0.4; i++) { const o = list[i];
+      if (!o.k && Math.abs(o.z - hz) < 0.4 && rnd() < 0.6) { o.k = { vx: P.vx * rr(0.25, 0.55), vy: rr(0.6, 1.5), vz: rr(-0.5, 0.5), sp: rr(6, 14), t: 0 }; L.live.push(o); } }
+    for (let j = L.live.length - 1; j >= 0; j--) { const o = L.live[j], k = o.k; k.t += dt; k.vy -= 7 * dt; o.x += k.vx * dt; o.z += k.vz * dt; o.y += k.vy * dt; k.vx *= 1 - dt * 1.5;
+      const gy = v.gy(o.x, o.z) + 0.012; if (o.y <= gy && k.vy < 0) { o.y = gy; o.k = null; L.live.splice(j, 1); }
+      Q.copy(o.q); if (o.k) Q.multiply(_pq2.setFromEuler(_pe.set(k.t * k.sp, 0, k.t * k.sp * 0.7)));
+      M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); L.mesh.setMatrixAt(o.i, M4); L.mesh.instanceMatrix.needsUpdate = true; }
 
   }
   return defZone({ n: OLD + 14, vis: [X - 20, X + 40], build, update, reset() {}, solve() {}, unbuild() { V = null; } });
