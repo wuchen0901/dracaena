@@ -138,7 +138,7 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory Last
 主角默认用 three.js 示例里的 Michelle（Mixamo 的模型，两万八千面，带贴图），地址后面加 `?hero=hero` 回到原来的主角（`models/hero.glb`）。在 `src/40-character-build.js` 的 `HERO_DEFAULT` 里改。动作、骨架的对法和下面“模型对比”一节一样（游戏自己的程序化动作照样用）。
 
 - 模型运行时从 GitHub 上 three.js 的 r170 版本读，要联网（和 three.js 本身一样）；原来的 `models/hero.glb` 还要载入，拿它的骨架当姿势的参照。
-- 章节里的轮廓光（`HERO_RIM`，夜里、停电时把人勾出来）接上了；换上衣颜色（`HERO_TOP`：《逃出工厂》的灰色工服、旧原型后面几章的深红上衣）接不上，Michelle 一直穿她自己的衣服。
+- 章节里的轮廓光（`HERO_RIM`，夜里、停电时把人勾出来）和换衣服颜色（`HERO_TOP`：《逃出工厂》的自己的衣服 / 灰色工服、旧原型后面几章的深红上衣）都接上了（`40-character-build.js` 的 `prepHeroTest` 里的 `garment` / `shade`）。哪儿是衣服两样一起看：顶点跟哪些骨头走（躯干 / 下身，写在顶点属性 `heroGarment` 上），加上这一点贴图的颜色（饱和度低的灰是上衣，黄的是裤子）。上衣换成章节给的颜色，那条黄裤子换成同一个颜色深一号，按贴图的明暗乘上去，褶子留着；皮肤、头发、鞋、耳机不动。效果图 `generated_images/hero-compare/michelle-clothes-colors.jpg`（第 1 章按 C 换的四种颜色）。
 - 她是成年人的比例，缩到了原来主角的身高（1.24 米）；手的反向运动学（拿灯泡、抓绳子）按原来主角的手臂长度算，可能够不准。
 - 别的工具页不加参数时看到的主角也都是 Michelle；`hero-compare.html` 的上一排明确用原来的主角。
 - Mixamo 的模型正式发布前要看授权。

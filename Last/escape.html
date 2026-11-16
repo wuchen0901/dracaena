@@ -1146,17 +1146,39 @@ function prepHeroTest(model, ref) {
     const p = T.get(h.parent.name), off = h.getWorldPosition(V()).sub(h.parent.getWorldPosition(V())).multiplyScalar(k);
     const b = new THREE.Bone(); b.name = n; p.add(b); b.position.copy(p.worldToLocal(p.getWorldPosition(V()).add(off))); b.updateMatrixWorld(true); T.set(n, b);
   }
-  // 轮廓光（HERO_RIM）：各章节用它把主角从黑里勾出来，换来的模型也接上。换上衣颜色（HERO_TOP）接不上：它靠原来主角的“哪一块是上衣”的标记
-  const rim = m => {
-    if (!m || m.userData.heroRim) return m;
-    m.userData.heroRim = true; const prev = m.onBeforeCompile;
+  // 轮廓光（HERO_RIM）和换衣服颜色（HERO_TOP）：各章节用它们把主角从黑里勾出来、换上工服 / 自己的衣服，换来的模型也接上。
+  // 哪儿是衣服：贴图是一张拼得很乱的图集，光看颜色分不清（上衣和头发都是深色的），所以两样一起看 ——
+  //   顶点跟哪些骨头走（heroGarment.x 跟三节脊椎和肩走的权重 = 躯干，.y 跟胯和腿走的权重 = 下身），写在顶点上；
+  //   这一点贴图的颜色（饱和度低的灰 = 上衣；黄 = 裤子；棕色的皮肤、黑头发、鞋都不动）。
+  // 上衣换成章节给的颜色，裤子换成同一个颜色深一号（一整套工服才认得出来）。按贴图的明暗乘上去，衣服的褶子留着
+  const garment = o => {
+    if (!o.isSkinnedMesh || o.geometry.attributes.heroGarment) return;
+    const g = o.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, names = o.skeleton.bones.map(b => b.name), n = si.count, a = new Float32Array(2 * n);
+    const TORSO = new Set(['Spine', 'Spine01', 'Spine02', 'LeftShoulder', 'RightShoulder']), LEGS = new Set(['Hips', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg']);
+    for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) { const b = names[si.getComponent(i, k)], w = sw.getComponent(i, k); if (TORSO.has(b)) a[2 * i] += w; else if (LEGS.has(b)) a[2 * i + 1] += w; }
+    g.setAttribute('heroGarment', new THREE.BufferAttribute(a, 2));
+  };
+  const shade = m => {
+    if (!m || m.userData.heroShade) return m;
+    m.userData.heroShade = true; const prev = m.onBeforeCompile;
     m.onBeforeCompile = (sh, r) => {
       prev && prev.call(m, sh, r);
-      sh.uniforms.uRim = HERO_RIM.uRim; sh.uniforms.uRimK = HERO_RIM.uRimK;
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRim;\nuniform float uRimK;')
+      sh.uniforms.uRim = HERO_RIM.uRim; sh.uniforms.uRimK = HERO_RIM.uRimK; sh.uniforms.uTop = HERO_TOP.uTop; sh.uniforms.uTopK = HERO_TOP.uTopK;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 heroGarment;\nvarying vec2 vHeroGarment;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHeroGarment = heroGarment;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRim;\nuniform float uRimK;\nuniform vec3 uTop;\nuniform float uTopK;\nvarying vec2 vHeroGarment;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+{ vec3 c = diffuseColor.rgb; float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)), sat = (mx - mn) / max(mx, 1e-4);
+  float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float yellow = step(0.12, c.r) * smoothstep(0.35, 0.55, c.g / max(c.r, 1e-4)) * (1.0 - smoothstep(0.2, 0.35, c.b / max(c.g, 1e-4)));
+  float topK = uTopK * smoothstep(0.45, 0.75, vHeroGarment.x) * (1.0 - smoothstep(0.3, 0.5, sat));
+  float legK = uTopK * smoothstep(0.45, 0.75, vHeroGarment.y) * yellow;
+  vec3 topC = uTop * 0.95 * clamp(lum / 0.18, 0.45, 1.6), legC = uTop * 0.5 * clamp(lum / 0.65, 0.45, 1.4);
+  diffuseColor.rgb = mix(mix(c, topC, topK), legC, legK);
+  totalEmissiveRadiance += uTop * 0.95 * 0.3 * topK + uTop * 0.5 * 0.3 * legK; }`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uRim * uRimK * pow(1.0 - abs(dot(normalize(normal), normalize(-vViewPosition))), 5.0);');
     };
-    const key = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => key() + '|hero-rim'; m.needsUpdate = true;
+    const key = m.customProgramCacheKey.bind(m); m.customProgramCacheKey = () => key() + '|hero-shade-v1'; m.needsUpdate = true;
     return m;
   };
   if (HERO_TEST.flat) {                                                 // 去掉贴图：每块材质取贴图的平均颜色，换成只有漫反射的
@@ -1167,7 +1189,7 @@ function prepHeroTest(model, ref) {
     };
     model.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(avg) : avg(o.material); });
   }
-  model.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(rim); });
+  model.traverse(o => { if (o.isMesh) { garment(o); (Array.isArray(o.material) ? o.material : [o.material]).forEach(shade); } });
 }
 
 function buildBody(kind, o = {}) {
