@@ -139,7 +139,9 @@ function stepPlayer(dt) {
     o.off = true; if (sideHit(P.x + dx, P.y)) dx = 0; o.off = false;         // 人被别的东西挡住，它也就拉不动了
     if (dx === 0) o.v = damp(o.v, 0, 20, dt);
     o.x += dx; syncBox(o);
-    P.x = damp(P.x + dx, want + dx, 14, dt); P.vx = dx / dt; P.facing = side;
+    const px = damp(P.x + dx, want + dx, 14, dt);                           // 人慢慢凑到离它一臂远的地方
+    o.off = true; P.x = sideHit(px, P.y) && !sideHit(P.x + dx, P.y) ? P.x + dx : px; o.off = false;   // 夹在它和墙之间、凑不到那么远：就站在原地推拉，不往墙里挤（挤进去以后它就推不动了）
+    P.vx = dx / dt; P.facing = side;
     if (Math.abs(dx) > 1e-5) P.pushed = true;
     return;
   }
