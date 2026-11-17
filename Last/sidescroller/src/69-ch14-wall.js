@@ -1,5 +1,5 @@
 // ============================================================
-//  第二十一章 · 墙（试验关：一堵从镜头跟前一直伸到看不见的地方去的旧砖墙，跳一下就翻过去）
+//  第二十一章 · 墙（试验关：一堵从镜头跟前一直伸到看不见的地方去的旧砖墙，爬过去）
 //  这一关只试一件事：近处做细，远处压暗，而且暗得有层次，不让人一眼望到头。
 //    近处（镜头后面到 z = -42）：一块一块的砖，有倒角、顺砖丁砖、灰缝缩进去一点、砖面的颗粒和小坑、
 //         墙顶一排立砌的压顶砖、豁口是一阶一阶塌下去的，塌下来的砖散在墙脚
@@ -10,15 +10,16 @@
 //    朝着镜头的面全是背光面；前景里靠近孩子的那一排废料高、往镜头这边的矮，前排的影子往镜头这边拖，盖住后面 —— 画面下半部分留黑。
 //    wallD 只管往远处：天光、月光往后很快暗下去，云缝里漏下来的几块月光慢慢飘过去
 //  翻过矮墙再往右走一段，是第二道墙（2026-11-16 加的一个小关卡）：一样的旧砖墙，可是有两米高，跳起来够不着墙头。
-//    墙左边十来步远的地方有一只旧木箱：按住 E 把它推到墙脚，跳上箱子，再朝墙头跳 —— 箱子正好垫到“离墙头还差一道矮墙那么高”，
-//    所以从箱子上翻过去用的还是翻矮墙的那一段动作。这一段路是平的、直的（大起伏和路的弯到这里都收回了 0）：箱子只能在平地上推
+//    墙左边十来步远的地方有一只旧木箱：按住 E 把它推到墙脚，跳上箱子，再朝墙跳 —— 箱子正好垫到“离墙头还差一道矮墙那么高”。
+//    这一段路是平的、直的（大起伏和路的弯到这里都收回了 0）：箱子只能在平地上推
+//  两道墙都是爬过去的（2026-11-17）：扒住墙头撑上去，站到墙顶上；高墙那一边转过身扒着墙头倒着爬下去，再松手（见 update 里的“攀墙”）
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
 const X14 = 2600;
 const CH14 = (() => {
   const X = X14, WX = X + 8;                                   // 墙的中线在哪个 x
   const T = 0.34, BL = 0.215, BH = 0.065, BD = 0.1025, J = 0.011, PZ = BL + J, PY = BH + J, NC = 11, CAPH = 0.1;
-  const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，跳一下就过去
+  const TOP = NC * PY + J + CAPH;                              // 墙顶（压顶砖的上沿）多高：0.95 米，齐胸高，跳起来扒住爬上去
   const Z1 = 18, ZN = -42, Z0 = -330;                          // 墙从镜头后面 Z1 一直到 Z0；ZN 以前一块块砖搭，以后是一整条
   const MI = 0.016;
   // 第二道墙：W2X 中线在哪，NC2 砌了几层，TOP2 墙顶多高（1.94 米：原地跳起来脚离地 1.2 米，够不着）
@@ -33,8 +34,8 @@ const CH14 = (() => {
   solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
   solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
   chapterExit(OLD + 14, { a0: X + 45, a1: X + 56, tint: 0x2f3439 });   // 翻过第二道墙，往雾里走：接到下一章（高台）
-  solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete' });   // 墙在玩法平面上的那一截
-  solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：太高，也太薄，扒不上去
+  solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete', noclimb: true });   // 墙在玩法平面上的那一截（攀墙在下面 update 里自己接）
+  solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：从地上跳够不着墙头；站在箱子上才扒得住（也在 update 里）
   checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);
   // 路在前后方向上慢慢地弯：有时往镜头这边靠，有时往远处去（±3 米）。这一章两头收回到 0，和别的章节接上。着色器里有一份一样的（pzf）
   const PZ_ = x => { const u = x - WX; return sstep(-22, -16, u) * (1 - sstep(20, 26, u)) * 2.2 * (0.9 * Math.sin(u * 0.21 + 0.6) + 0.5 * Math.sin(u * 0.083 + 2.0)); };
@@ -847,10 +848,11 @@ const CH14 = (() => {
     V = v;
   }
 
-  const VAULT = { on: false, t: 0, d: 1, x0: 0, y0: 0, wx: WX, top: TOP };
-  // 哪里能翻：[墙的中线, 墙顶, 起跳的地方对不对]。矮墙两边都行，从地上起跳；高墙只能从左边、从箱子顶上起跳
-  const VAULTS = [[WX, TOP, () => P.y - groundY(P.x) < 0.25],
-    [W2X, TOP2, () => P.x < W2X && P.x > crate.x1 - 0.2 && P.x < crate.x2 + 0.3 && P.y - crate.y2 > -0.05 && P.y - crate.y2 < 0.25]];
+  // 攀墙（2026-11-17：以前是跳起来整个人从墙头上飘过去，换成真的爬）。哪里能爬：[墙的中线, 墙顶, 起跳的地方对不对]。
+  //   矮墙两边都行，从地上起跳；高墙只能从左边、从箱子顶上起跳（从地上跳，手够不着墙头）
+  const WALLS = [[WX, TOP, () => P.gy - groundY(P.x) < 0.25],
+    [W2X, TOP2, () => P.x < W2X && Math.abs(P.gy - crate.y2) < 0.05 && P.x > crate.x1 - 0.6]];
+  const CLIMB = { down: -1 };                                  // down：从高墙顶上往下爬，转过身来以后过了多久（-1 = 没在爬）
   const _pm4 = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion(), _pe = new THREE.Euler(), _ps = new THREE.Vector3(), _pv = new THREE.Vector3();
   function update(dt) {
     const here = P.x > X - 16 && P.x < X + 64;
@@ -862,25 +864,31 @@ const CH14 = (() => {
     HERO_TOP.uTop.value.setHex(0x4e1a15); HERO_TOP.uTopK.value = 1;
     HERO_RIM.uRimK.value = 0.1;
     camJit = { x: 0.045 * Math.sin(T * 0.37) + 0.025 * Math.sin(T * 0.91 + 2), y: 0.03 * Math.sin(T * 0.53 + 1) + 0.015 * Math.sin(T * 1.27) };   // 镜头轻轻地漂，像手持
-    // 翻墙：在墙跟前起跳，就换成一段翻越 —— 两手撑住墙头，身子从上面过去，另一边落地（落地交给平常的物理和落地动作）
-    //   第二道墙是从箱子上起跳才翻得过去：站在箱子上，墙头离脚下正好是一道矮墙那么高，用的是同一段动作；落下去有两米，落地动作自己会蹲得深一些
-    {
-      for (const [wx, top, from] of VAULTS) {
-        const ax = Math.abs(P.x - wx), dirW = Math.sign(wx - P.x);
-        if (!VAULT.on && ax < 1.05 && ax > 0.25 && dirW === P.facing && P.vy > 6 && !P.grounded && from() && state === 'play') {
-          Object.assign(VAULT, { on: true, t: 0, d: dirW, x0: P.x, y0: P.y, wx, top }); ctl = false; fx('grab');
+    // 攀墙：在墙跟前起跳、朝着墙，手一够得着墙头就扒住，把身子撑上去（用的是到处都有的那段攀爬动作，见 50-player.js 的 startMantle），站到墙顶上。
+    //   墙只有一砖半厚，平常的攀爬嫌它太窄、不抓（noclimb / 宽度不到 0.6），所以在这里自己接。离墙还有一点距离就扒住的，身子先贴过去（mantle.xa）。
+    //   站在墙顶上照样能走：矮墙往前一走就跳下去了（不到一米）；高墙那一边有两米，往前走到边上就转过身来，扒着墙头倒着爬下去，吊直了再松手（mantle.rev）
+    if (state === 'play' && P.mode === 'normal' && ctl && CLIMB.down < 0) {
+      for (const [wx, top, from] of WALLS) {
+        const side = Math.sign(wx - P.x), face = wx - side * HALF, gap = (face - P.x) * side - P.hw, h = top - P.y;
+        if (!P.grounded && P.facing === side && gap < Math.max(0.45, Math.abs(P.vx) * 0.22) && gap > -0.05 && h > -0.25 && h < 1.2 * P.H && from()) {   // 跑着跳、已经高过墙头了也扒住（不然一跳就从墙上飞过去）
+          const xa = P.x; startMantle({ x1: wx - HALF, x2: wx + HALF, y2: top }, side);
+          P.mantle.x0 = face - side * (P.hw + 1e-3); P.mantle.xa = xa; break;
         }
       }
-      if (VAULT.on) {
-        const V_ = VAULT, d = V_.d, wx = V_.wx; V_.t += dt; const t = V_.t, top = V_.top;
-        const e1 = sstep(0, 0.28, t), e2 = sstep(0.24, 0.56, t);
-        const x = lerp(lerp(V_.x0, wx - d * 0.42, e1), wx + d * 0.5, e2), y = lerp(V_.y0, top + 0.04, e1) + Math.sin(Math.PI * e2) * 0.1 - e2 * 0.05;
-        P.x = x; P.y = y; P.vx = 0; P.vy = 0; P.grounded = false; P.facing = d;
-        const hk = sstep(0.1, 0.24, t) * (1 - sstep(0.5, 0.62, t));
-        HX.pose = { sit: 0.75 * sstep(0.12, 0.3, t) * (1 - sstep(0.48, 0.62, t)), hands: [{ x: wx - d * 0.06, y: top + 0.03, k: hk }, { x: wx + d * 0.04, y: top + 0.03, k: hk }] };   // 两只手撑在墙头上，腿收起来往前送，蹲着翻过去
-        if (t >= 0.56) { V_.on = false; ctl = true; P.vx = d * 2.4; P.vy = 0.6; }                                   // 放手：往前一送，自己落下去
-      }
-    }                       // 孩子身上一圈淡淡的边缘亮光：把轮廓从雾里勾出来（只画在孩子身上，不照亮别的）
+      // 高墙顶上往右走过了中线：停下来，转身朝着墙
+      const d = (keys.has('R') ? 1 : 0) - (keys.has('L') ? 1 : 0);
+      if (P.grounded && Math.abs(P.y - TOP2) < 0.03 && Math.abs(P.x - W2X) < HALF + 0.15 && P.x > W2X + 0.02 && d > 0) { CLIMB.down = 0; CLIMB.x = P.x; ctl = false; }
+    }
+    if (CLIMB.down >= 0) {
+      CLIMB.down += dt; P.vx = 0; P.facing = -1;
+      if (P.mode === 'normal' && P.grounded) {
+        P.x = damp(P.x, W2X + 0.06, 10, dt);
+        if (CLIMB.down > 0.3) {                                 // 转过来了：倒着放那段攀爬 —— 腿先从墙头上下去，两手扒着边缘，身子顺着墙放下去
+          startMantle({ x1: W2X - HALF, x2: W2X + HALF, y2: TOP2 }, -1);
+          Object.assign(P.mantle, { rev: true, x0: W2X + HALF + P.hw + 1e-3, y0: TOP2 - 1.0, x1: P.x, sink: 0, T: 0.85 });
+        }
+      } else if (P.mode !== 'mantle') { CLIMB.down = -1; ctl = true; }   // 松手了：落下去，交还给玩家
+    }
     const v = V; if (!v || !v.fogs) return;
     v.crate.position.set(crate.x, crate.y1, pathZ(crate.x));
     for (const sh of v.shafts) { sh.m.position.set(sh.ox, 9, sh.dz); sh.m.material.opacity = sh.op * (0.65 + 0.35 * Math.sin(T * 0.13 + sh.ph)); }   // 位置固定；亮度只随时间慢慢地起伏，和人怎么动无关
@@ -919,5 +927,5 @@ const CH14 = (() => {
       M4.compose(S.set(o.x, o.y, o.z), Q, _pv.set(o.s, o.s * 0.5, o.s)); o.m.setMatrixAt(o.i, M4); o.m.instanceMatrix.needsUpdate = true; }
 
   }
-  return defZone({ n: OLD + 14, vis: [X - 20, X + 66], build, update, reset() { placeBox(crate, CR0); }, solve() { placeBox(crate, CRMAX); }, unbuild() { V = null; VAULT.on = false; }, crate });
+  return defZone({ n: OLD + 14, vis: [X - 20, X + 66], build, update, reset() { placeBox(crate, CR0); }, solve() { placeBox(crate, CRMAX); }, unbuild() { V = null; if (CLIMB.down >= 0) { CLIMB.down = -1; ctl = true; } }, crate });
 })();
