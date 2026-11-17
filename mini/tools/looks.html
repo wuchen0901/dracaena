@@ -31,11 +31,15 @@ const LW = MAP[0].length, LH = MAP.length;
 const T = (c, r) => (c < 0 || r < 0 || c >= LW || r >= LH) ? '#' : ('#E1'.includes(MAP[r][c]) ? MAP[r][c] : '.');
 const air = (c, r) => T(c, r) !== '#';
 const LAMP = { c: 6, r: 1 };
-// 灯光是一个锥：从灯罩口往下张开，落到灯正下方的地板上正好是五格（左右各两格）。
-// 一格算不算照到，看它脚下那条线的中点在不在锥里：贴着地板的那一行是五格，再往上一行只有三格。
-const CONE = (() => { let fr = LAMP.r; while (air(LAMP.c, fr)) fr++; return { x: (LAMP.c + 0.5) * S, y0: (LAMP.r + 0.335) * S, y1: fr * S, w0: 0.23 * S, w1: 2.5 * S }; })();
-const coneHalf = y => CONE.w0 + (CONE.w1 - CONE.w0) * Math.max(0, Math.min(1, (y - CONE.y0) / (CONE.y1 - CONE.y0)));
-const litCell = (c, r) => air(c, r) && r >= LAMP.r && (r + 1) * S <= CONE.y1 + 0.01 && Math.abs(c - LAMP.c) * S <= coneHalf((r + 1) * S) + 0.01;
+// 规则里照到的格子：和游戏里一样，左右各两格、往下三格
+const litCell = (c, r) => air(c, r) && Math.abs(c - LAMP.c) <= 2 && r >= LAMP.r && r <= LAMP.r + 3;
+// 画出来的光没有形状：灯泡周围最亮，往外慢慢暗下去，到三格开外就没了。灯罩挡掉一部分往上的光。
+// 只要房间是两格高（现在五关都是），“离灯泡不到 2.4 格”挑出来的格子和上面的规则一模一样，所以光画到哪儿、规则就算到哪儿
+const BULB = { x: (LAMP.c + 0.5) * S, y: (LAMP.r + 0.365) * S }, LIGHT_R0 = 0.35 * S, LIGHT_R1 = 3.1 * S;
+function lightAt(x, y) {
+  const dx = x - BULB.x, dy = y - BULB.y, d = Math.hypot(dx, dy), t = Math.max(0, Math.min(1, (d - LIGHT_R0) / (LIGHT_R1 - LIGHT_R0))), up = d > 1 ? -dy / d : 0;
+  return (1 - Math.pow(t, 1.6)) * (1 - 0.45 * sm((up + 0.05) / 0.4));
+}
 const DECOR = [{ t: 'window', c: 1.5, r: 1.74 }, { t: 'picture', c: 3.45, r: 1.84, w: 0.42, h: 0.5, k: 'sea' }, { t: 'picture', c: 5.15, r: 1.82, w: 0.86, h: 0.54, k: 'hills' },
   { t: 'picture', c: 7.85, r: 1.8, w: 0.46, h: 0.58, k: 'vase' }, { t: 'picture', c: 9.75, r: 1.86, w: 0.62, h: 0.42, k: 'hills' }];
 const RUG = { c0: 3.25, c1: 9.3, r: 2 };
@@ -167,13 +171,20 @@ function noiseTex(cell, seed, lo, hi) {
 function buildTex() {
   if (TEX.fine) return;
   TEX.fine = noiseTex(1, 11, 98, 158);     // 纸的细颗粒
-  TEX.mott = noiseTex(3, 12, 96, 160);     // 再粗一点的颗粒，灯光的边按它打散
+  TEX.mott = noiseTex(3, 12, 96, 160);     // 再粗一点的颗粒
   TEX.blot = noiseTex(64, 13, 150, 255);   // 大块的深浅
   TEX.blot2 = noiseTex(17, 14, 185, 255);  // 小块的深浅
-  const [hc, hx] = mk(1); hx.fillStyle = '#fff'; hx.fillRect(0, 0, W, H); hx.pen = { w: 1, amp: 1, a: 1, double: 0, col: '#000000' };   // 一整张排线，灯光的边按它打散
-  hatch(hx, c => c.rect(0, 0, W, H), [0, 0, W, H], { ang: -0.95, gap: 3.8, a: 1, w: 0.95, len: 30, breaks: 6, seed: 31 });
-  hatch(hx, c => c.rect(0, 0, W, H), [0, 0, W, H], { ang: 0.5, gap: 8, a: 0.45, w: 0.85, len: 22, breaks: 14, seed: 32 });
-  TEX.hatch = hc;
+}
+// 一张“排线深浅图”：每个像素记着它在多暗的时候变黑。先是一个方向的排线，暗一点加交叉的，再暗再加一层，最后连缝也黑了。
+// 由亮到暗就按它来画：离灯越远，排线越密，不是一道光滑的渐变，也没有一条边
+function toneTex(dpr) {
+  const key = 'tone' + dpr; if (TEX[key]) return TEX[key];
+  const [c, x] = mk(dpr), gray = v => { const n = Math.round(v * 255); return `rgb(${n},${n},${n})`; }, all = k => k.rect(0, 0, W, H), bb = [0, 0, W, H];
+  x.fillStyle = gray(0.96); x.fillRect(0, 0, W, H); x.globalCompositeOperation = 'darken'; x.pen = { w: 1, amp: 1, a: 1, double: 0, col: '#000000' };
+  hatch(x, all, bb, { ang: -0.95, gap: 4.6, a: 1, w: 1.05, len: 34, breaks: 6, seed: 31, col: gray(0.22) });
+  hatch(x, all, bb, { ang: 0.55, gap: 5.6, a: 1, w: 0.95, len: 28, breaks: 9, seed: 32, col: gray(0.5) });
+  hatch(x, all, bb, { ang: -0.95, gap: 3.2, a: 1, w: 0.95, len: 40, breaks: 4, seed: 34, col: gray(0.76) });
+  return TEX[key] = c;
 }
 function texture(ctx, tex, a, op = 'multiply') { ctx.save(); ctx.setTransform(ctx.dpr, 0, 0, ctx.dpr, 0, 0); ctx.globalAlpha = a; ctx.globalCompositeOperation = op; ctx.drawImage(tex, 0, 0, W, H); ctx.restore(); }
 // 一块东西：先上色（不匀，边上积一点深的），再描一圈
@@ -550,17 +561,16 @@ function drawLamp(ctx, L, st) {
   ctx.fillStyle = on ? '#fff6dc' : '#5a6480'; ctx.beginPath(); ctx.arc(x, y + S * 0.365, S * 0.058, 0, 7); ctx.fill();
   ink(ctx, arcPts(x, y + S * 0.365, S * 0.058, S * 0.058, -0.2, Math.PI + 0.2, 8), { w: 0.7, a: on ? 0.5 : 0.9, single: 1 });
 }
-function drawLight(ctx, L, st) {   // 光本身：加在所有东西上面的一层暖色，灯泡周围最亮；灯泡底下几道短线，锥里几道顺着光的细线
+function drawLight(ctx, L, st) {   // 光本身：加在所有东西上面的一层暖色，灯泡周围最亮；灯泡周围几道短线
   if (!st.lamp) return;
   const x = (LAMP.c + 0.5) * S, y = (LAMP.r + 0.365) * S;
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  glow(ctx, x, y + S * 0.5, S * 2.6, '#ffd9a0', 0.05); glow(ctx, x, y, S * 0.75, '#ffd9a0', 0.2); glow(ctx, x, y, S * 0.15, '#fff4de', 0.9);
+  glow(ctx, x, y, S * 2.8, '#ffd9a0', 0.06); glow(ctx, x, y, S * 0.75, '#ffd9a0', 0.2); glow(ctx, x, y, S * 0.15, '#fff4de', 0.9);
   ctx.save(); ctx.beginPath(); ctx.rect((LAMP.c - 2) * S, 3 * S, S * 5, FLOORH); ctx.clip(); ctx.translate(x, 3 * S + FLOORH * 0.5); ctx.scale(1, 0.1); glow(ctx, 0, 0, S * 2, '#ffd9a0', 0.14); ctx.restore();
-  const r = rnd(83); ctx.fillStyle = '#ffd9a0';   // 光里的灰尘
-  for (let j = 0; j < 26; j++) { const yy = CONE.y0 + (0.08 + r() * 0.9) * (CONE.y1 - CONE.y0), xx = CONE.x + (r() * 2 - 1) * coneHalf(yy) * 0.9; ctx.globalAlpha = 0.12 + r() * 0.3; ctx.beginPath(); ctx.arc(xx, yy, 0.9 + r() * 0.5, 0, 7); ctx.fill(); }
+  const r = rnd(83); ctx.fillStyle = '#ffd9a0';   // 光里的灰尘：灯泡周围多，越远越淡
+  for (let j = 0; j < 34; j++) { const a = Math.PI * (0.04 + r() * 0.92), rad = S * (0.3 + Math.pow(r(), 1.3) * 2.3), xx = x + Math.cos(a) * rad, yy = y + Math.sin(a) * rad * 0.85; if (!air(Math.floor(xx / S), Math.floor(yy / S))) continue; ctx.globalAlpha = (0.15 + r() * 0.3) * lightAt(xx, yy); ctx.beginPath(); ctx.arc(xx, yy, 0.9 + r() * 0.5, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1; ctx.restore();
   ctx.pen = { ...L.pen, col: '#fff0cc' }; ctx.seedN = 8300;
-  for (const t of [-0.8, -0.42, 0.02, 0.45, 0.82]) ink(ctx, seg(CONE.x + t * CONE.w0, CONE.y0 + 5, CONE.x + t * CONE.w1 * 0.97, CONE.y1 - 4), { a: 0.07, w: 0.9, taper: 50, amp: 0.6, single: 1 });   // 几道顺着光往下的细线
   for (let i = 0; i < 7; i++) { const a = 0.35 + i * (Math.PI - 0.7) / 6, r0 = S * 0.12, r1 = S * (0.17 + (i % 2) * 0.035); ink(ctx, seg(x + Math.cos(a) * r0, y + Math.sin(a) * r0, x + Math.cos(a) * r1, y + Math.sin(a) * r1), { a: 0.55, w: 0.8, taper: 4, single: 1 }); }
 }
 // 影子：一团涂黑的乱线，一双眼睛。看见你的时候边和眼睛是红的
@@ -645,25 +655,34 @@ function drawPlayer(ctx, L, st) {
   if (!lit) ink(ctx, arcPts(hx, hy, R, R, f > 0 ? -1.2 : -2.6, f > 0 ? 0.5 : -1.1 - 1.7, 6), { col: L.dark.hi, a: 0.3, w: 0.8, single: 1 });
 }
 
-// ---------- 光的形状 ----------
-// 一个锥：两条边从灯罩口直着斜下去，落地正好是规则里的五格；灯罩上面没有光。地板不带软边，照到哪一格就亮到那一格的边。
-// 锥的两条边稍微有点晃，再按一张排线图打散：暗处的排线一道道伸进光里。
+// ---------- 光 ----------
+// 光没有形状：灯泡周围最亮，往外慢慢暗下去（lightAt）。由亮到暗按排线深浅图（toneTex）画：先出现一个方向的排线，再加交叉的，排线之间也一起慢慢暗下去，最后整片黑。
+// 墙挡光，光出不了屋子。地板不带软边：照到哪一格就亮到那一格的边，看地板就知道哪几格算数；只是离灯远的格子暗一些。
+const seen = (c, r) => { const x0 = BULB.x / S, y0 = BULB.y / S, x1 = c + 0.5, y1 = r + 0.5; for (let i = 1; i < 24; i++) { const t = i / 24, sx = Math.floor(x0 + (x1 - x0) * t), sy = Math.floor(y0 + (y1 - y0) * t); if ((sx !== c || sy !== r) && T(sx, sy) === '#') return false; } return true; };
 function buildMask(L, dpr, on) {
   const [cv, x] = mk(dpr); if (!on) return cv;
-  const q = 8, sc = document.createElement('canvas'); sc.width = Math.ceil(W / q); sc.height = Math.ceil(H / q);   // 先画在缩小八倍的小图上，放大以后边自然是软的
-  const sx = sc.getContext('2d'); sx.scale(1 / q, 1 / q); sx.translate(-L.cam.x, -L.cam.y);
-  sx.beginPath(); for (let r = 0; r < LH; r++) for (let c = 0; c < LW; c++) if (air(c, r)) sx.rect(c * S, r * S, S, S + (air(c, r + 1) ? 0 : FLOORH)); sx.clip();   // 光出不了屋子
-  const N = noise(4242), edge = side => { const pts = []; for (let i = 0; i <= 24; i++) { const y = CONE.y0 + (CONE.y1 + FLOORH - CONE.y0) * i / 24; pts.push([CONE.x + side * (coneHalf(y) + (N(i * 0.37 + side * 5) - 0.5) * 5), y]); } return pts; };
-  sx.beginPath(); [...edge(-1), ...edge(1).reverse()].forEach(([a, b], i) => i ? sx.lineTo(a, b) : sx.moveTo(a, b)); sx.closePath(); sx.fillStyle = '#fff'; sx.fill();
-  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(sc, 0, 0, sc.width * q, sc.height * q);
-  const [gc, gx] = mk(dpr); gx.drawImage(TEX.hatch, 0, 0, W, H);   // 软边按排线打散
-  const md = x.getImageData(0, 0, cv.width, cv.height), gd = gx.getImageData(0, 0, cv.width, cv.height).data, d = md.data, t = 0.5;
-  for (let k = 3; k < d.length; k += 4) { const v = d[k] / 255; if (v <= 0 || v >= 1) continue; const g = gd[k - 3] / 255; d[k] = clamp((v - t * (1 - g)) / (1 - t), 0, 1) * 255; }
+  x.save(); x.translate(-L.cam.x, -L.cam.y); x.fillStyle = '#fff';
+  for (let r = 0; r < LH; r++) for (let c = 0; c < LW; c++) if (air(c, r) && seen(c, r)) x.fillRect(c * S - 0.5, r * S - 0.5, S + 1, S + 1 + (air(c, r + 1) ? 0 : FLOORH));
+  x.restore();
+  const md = x.getImageData(0, 0, cv.width, cv.height), d = md.data, td = toneTex(dpr).getContext('2d').getImageData(0, 0, cv.width, cv.height).data, wv = 0.05;
+  for (let j = 0, k = 3; j < cv.height; j++) for (let i = 0; i < cv.width; i++, k += 4) {
+    if (!d[k]) continue;
+    const D = 1 - lightAt(i / dpr + L.cam.x, j / dpr + L.cam.y), lev = td[k - 3] / 255;
+    d[k] = d[k] * (1 - sm((D - 0.3) / 0.66)) * (0.42 + 0.58 * (1 - sm((D - lev + wv) / (2 * wv))));
+  }
   x.putImageData(md, 0, 0);
-  x.save(); x.translate(-L.cam.x, -L.cam.y);   // 地板：照到的格子整格亮，没照到的整格暗
-  for (const { r, c0: a0, c1 } of runs((c, r) => T(c, r) === '#' && air(c, r - 1))) for (let c = a0; c <= c1; c++) { x.clearRect(c * S, r * S, S, FLOORH + FRONTH + 1); if (litCell(c, r - 1)) { x.fillStyle = '#fff'; x.fillRect(c * S, r * S, S, FLOORH + FRONTH + 1); } }
+  x.save(); x.translate(-L.cam.x, -L.cam.y);   // 地板：照到的格子整格亮、没照到的整格暗（边是硬的），亮多少跟着离灯多远
+  for (const { r, c0: a0, c1 } of runs((c, r) => T(c, r) === '#' && air(c, r - 1))) for (let c = a0; c <= c1; c++) { x.clearRect(c * S, r * S, S, FLOORH + FRONTH + 1); if (litCell(c, r - 1)) { x.globalAlpha = 0.5 + 0.5 * lightAt((c + 0.5) * S, r * S); x.fillStyle = '#fff'; x.fillRect(c * S, r * S, S, FLOORH + FRONTH + 1); x.globalAlpha = 1; } }
   x.restore();
   return cv;
+}
+// 灯下的人和家具也跟着光暗下去：离灯越远越暗、越偏冷（和墙上是同一个快慢）
+function inLight(g, L, dpr, fn) {
+  const [c, x] = mk(dpr); x.translate(-L.cam.x, -L.cam.y); fn(x);
+  const gr = x.createRadialGradient(BULB.x, BULB.y, LIGHT_R0, BULB.x, BULB.y, LIGHT_R1);
+  for (let i = 0; i <= 8; i++) { const t = i / 8; gr.addColorStop(t, rgba(L.dark.wall, 0.72 * Math.pow(t, 1.6))); }
+  x.globalCompositeOperation = 'source-atop'; x.fillStyle = gr; x.fillRect(L.cam.x - 10, L.cam.y - 10, W + 20, H + 20);
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(c, 0, 0); g.restore();
 }
 
 // ---------- 一张画 ----------
@@ -678,8 +697,8 @@ function render(key, st, dpr = 1) {
   const [dk, d] = mk(dpr); world(d); d.pen = { ...L.pen, col: L.dark.ink }; paintShell(d, L); paintRoom(d, L, L.dark, false);
   const [lt, l] = mk(dpr); world(l); l.pen = { ...L.pen, col: L.lit.ink }; paintRoom(l, L, L.lit, true);
   // 亮的那一层：离灯越远越暗一点，整体偏一点暖
-  const lx = (LAMP.c + 0.5) * S, ly = (LAMP.r + 0.37) * S, sh = l.createRadialGradient(lx, ly, S * 0.4, lx, ly, S * 3);
-  sh.addColorStop(0, '#fff8ea'); sh.addColorStop(0.5, '#e9dcc4'); sh.addColorStop(1, '#a4927a');
+  const sh = l.createRadialGradient(BULB.x, BULB.y, LIGHT_R0, BULB.x, BULB.y, LIGHT_R1);
+  sh.addColorStop(0, '#fffaf0'); sh.addColorStop(0.5, '#e2d3b8'); sh.addColorStop(1, '#a8957a');
   const inside = new Path2D(); for (let r = 0; r < LH; r++) for (let c = 0; c < LW; c++) { if (air(c, r)) inside.rect(c * S - 0.5, r * S - 0.5, S + 1, S + 1); else if (air(c, r - 1)) inside.rect(c * S - 0.5, r * S, S + 1, FLOORH + FRONTH + 1); }
   l.save(); l.clip(inside); l.globalCompositeOperation = 'multiply'; l.fillStyle = sh; l.fillRect(0, 0, LW * S, LH * S); l.restore();
   const mask = buildMask(L, dpr, st.lamp), mx = mask.getContext('2d');
@@ -689,8 +708,9 @@ function render(key, st, dpr = 1) {
   g.save(); world(g);
   drawLever(g, L, st);
   const mon = { x: st.mx, y: 2, face: -1, sees: !st.lamp || !litCell(st.mx, 2) };
-  if (st.lamp && litCell(mon.x, mon.y)) drawWardrobe(g, L, mon); else drawLurker(g, L, mon);
-  drawPlayer(g, L, st); drawLamp(g, L, st); drawLight(g, L, st);
+  if (st.lamp && litCell(mon.x, mon.y)) inLight(g, L, dpr, x => drawWardrobe(x, L, mon)); else drawLurker(g, L, mon);
+  if (st.lamp && litCell(st.px, st.py)) inLight(g, L, dpr, x => drawPlayer(x, L, st)); else drawPlayer(g, L, st);
+  drawLamp(g, L, st); drawLight(g, L, st);
   g.save(); g.globalCompositeOperation = 'lighter'; glow(g, 11.5 * S, 2.55 * S, S * 1.25, L.dark.moon, 0.16); g.restore();   // 出口那一圈冷光
   g.restore();
   // 纸的颗粒，四周压暗
