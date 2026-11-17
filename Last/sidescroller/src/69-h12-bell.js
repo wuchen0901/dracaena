@@ -5,7 +5,8 @@
 //  后墙的高窗外面是劳动车间，铃一响，窗里的人影同时停下；再一响，同时转身。
 //  玩法：爬上机器旁边的架子，按 E 把一根铁杠别进锤臂的齿轮里。老人再拉，锤子不动了，铃不响了。
 //  他又拉了两下，回过头来看着你，然后坐下来。窗外的人影一个一个停在原地，不再转身。
-//  右边的门开了，外面是白的。走出去，就是这一组的结尾
+//  右边的门开了，外面是白的。走出去，就是这一组的结尾。
+//  2026-11-17：结尾画面上按 → 接着往前走（cont）：白光退下去，门外那一片白原来是雾，往右走进第 37 章“草地”（src/69-m01-meadow.js，中间的路在 69-zz-links.js）
 // ============================================================
 const H12 = (() => {
   const k = 11, X = hX(k), LEN = HLEN[k];
@@ -19,12 +20,13 @@ const H12 = (() => {
   const DOOR = gate({ x: DOOR_X, w: 0.5, h: 3.6, T: 2.2 });
   checkpoint(X + 2); checkpoint(X + 24);
   camKeys([X - 14, 15, 1.5, 1, 0.4], [X + 20, 16, 1.8, 2, 0.4], [X + 30, 19, 3.2, 2, 0.4], [X + 44, 18, 2.2, 1, 0.4], [X + LEN + 4, 15, 1.5, 1, 0]);
-  hEnv(k, { fog: 0x0c0e0f, fogD: 0.026, hemiS: 0x8a9298, hemiG: 0x101213, hemiI: 0.5, keyC: 0xe8e0d0, keyI: 0.35, keyDir: [-0.3, 0.8, 0.4], rimC: 0xc8d0d8, rimI: 0.3, dustC: 0xe0e4e8, dustO: 0.5, aRoom: 0.7, roomF: 110, aHum: 0, aDrip: 0.2, aFar: 0.3 }, LEN);
-  env(DOOR_X - 1, { fog: 0x0c0e0f }); env(DOOR_X + 8, { fog: 0xd8dcd8, fogD: 0.09, hemiS: 0xffffff, hemiI: 1.6, dustO: 0.1 }); env(X + LEN + 2, { fog: 0xf0f0ec, fogD: 0.12, hemiS: 0xffffff, hemiI: 2.0 });
+  hEnv(k, { fog: 0x0c0e0f, fogD: 0.026, hemiS: 0x8a9298, hemiG: 0x101213, hemiI: 0.5, keyC: 0xe8e0d0, keyI: 0.35, keyDir: [-0.3, 0.8, 0.4], rimC: 0xc8d0d8, rimI: 0.3, dustC: 0xe0e4e8, dustO: 0.5, aRoom: 0.7, roomF: 110, aHum: 0, aDrip: 0.2, aFar: 0.3 }, DOOR_X - X - 3);   // 厂房里的光登记到门口为止（以前登记到 X + LEN + 2，和门外那一片白重在一处：出了门先暗下去一截才变白）
+  const W6 = [0xd8dcd8, 0xd8dcd8, 0xd8dcd8, 0xd8dcd8, 0xd8dcd8, 0xd8dcd8], W6b = W6.map(() => 0xf0f0ec);   // 门外的天也是白的（以前是厂房里的黑天：门外没东西挡着的地方露出一块黑）
+  env(DOOR_X - 1, { fog: 0x0c0e0f }); env(DOOR_X + 8, { fog: 0xd8dcd8, fogD: 0.09, hemiS: 0xffffff, hemiI: 1.6, dustO: 0.1, sky: W6 }); env(X + LEN + 2, { fog: 0xf0f0ec, fogD: 0.12, hemiS: 0xffffff, hemiI: 2.0, sky: W6b });
   FAR[HN(k)] = ['creak', 'knock', 'creak'];
   const winL = spotLight({ p: [BX - 6, 9, -9], t: [BX, 0, 0], c: 0xd8e4f0, i: 3, a: 0.5, d: 22, pen: 0.8 });
-  // S.ph：0 铃照常响 / 1 别住了，老人还在拉 / 2 老人回头、坐下 / 3 门开了 / 4 走出去了（结尾画面）
-  const S = { ph: 0, t: 0, ring: 0, pull: 0, swing: 0, tries: 0, end: 0 };
+  // S.ph：0 铃照常响 / 1 别住了，老人还在拉 / 2 老人回头、坐下 / 3 门开了 / 4 走出去了（结尾画面）。cont：结尾画面上按了接着往前走（不再演结尾）
+  const S = { ph: 0, t: 0, ring: 0, pull: 0, swing: 0, tries: 0, end: 0, cont: 0 };
   const RING_T = 6;
   usable({ x: BX - 3.1, r: 0.9, y0: 1.2, y1: 1.5, can: () => S.ph === 0 && S.pull < 0.2, on() { S.ph = 1; S.t = 0; fx('clang', 1.2); fx('lever'); } });
   hint(() => S.ph === 0 && P.x > X + 20 && P.x < SHELF.x1, '爬上机器旁边的架子');
@@ -84,7 +86,7 @@ const H12 = (() => {
     if (S.ph === 1 && S.tries >= 2 && S.ring > 2) { S.ph = 2; S.t = 0; }
     if (S.ph === 2 && S.t > 6) { S.ph = 3; S.t = 0; DOOR.want = 1; fx('doorStop'); }
     if (S.ph >= 3 && play && P.x > DOOR_X + 6 && !S.end) { S.end = 1; S.ph = 4; ctl = false; autoDir = 1; fadeWhite(); }
-    if (S.end) { S.end += dt; if (S.end > 3.2 && state === 'play') { autoDir = 0; showEndBare(ZONE, true); } }
+    if (S.end && !S.cont) { S.end += dt; if (S.end > 3.2 && state === 'play') { autoDir = 0; showEndBare(ZONE, true); } }
     S.swing = Math.max(0, S.swing - dt * 0.35);
     const v = V; if (!v) return;
     v.bell.rotation.z = 0.12 * S.swing * Math.sin(S.t * 5);
@@ -107,11 +109,14 @@ const H12 = (() => {
     winL.on = 0.8;
   }
   function fadeWhite() { const w = $('white'); if (w) { w.style.transition = 'opacity 3s ease'; w.style.opacity = 1; } }
-  function reset() { Object.assign(S, { ph: 0, t: 0, ring: 0, pull: 0, swing: 0, tries: 0, end: 0 }); setGate(DOOR, 0); const w = $('white'); if (w) w.style.opacity = 0; }
+  function reset() { Object.assign(S, { ph: 0, t: 0, ring: 0, pull: 0, swing: 0, tries: 0, end: 0, cont: 0 }); setGate(DOOR, 0); const w = $('white'); if (w) w.style.opacity = 0; }
+  // 结尾画面上按了接着往前走（80-ui.js 的 continueFromEnd）：盖着的白慢慢退掉，人站在门外的白雾里，接着往右走
+  function cont() { S.cont = 1; P.facing = 1; const w = $('white'); if (w) { w.style.transition = 'opacity 3s ease'; w.style.opacity = 0; } }
   function retry() {                                     // 结局画面上按 R：回到别铁杠之前，再听一次铃
     reset(); placePlayer(X + 24); P.cp = cpAt(P.x); ctl = true; autoDir = 0; state = 'play'; camOvr = null;
     $('end').classList.add('hide'); $('end').classList.remove('bare', 'white'); $('fade').style.opacity = 0; snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
-  ZONE = defZone({ n: HN(k), vis: [X - 14, X + LEN + 4], build, update, reset, retry, solve() { S.ph = 3; setGate(DOOR, 1); }, unbuild() { V = null; }, S, DOOR, SHELF });
+  // solve：从后面的章节开始（或者往回走到这里）—— 铃已经别住、门开着，结尾也算演过了（不然一走近门口就又演一遍）
+  ZONE = defZone({ n: HN(k), vis: [X - 14, X + LEN + 4], build, update, reset, retry, cont, solve() { S.ph = 3; S.end = 4; S.cont = 1; setGate(DOOR, 1); }, unbuild() { V = null; }, S, DOOR, SHELF });
   return ZONE;
 })();
