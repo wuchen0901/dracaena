@@ -310,12 +310,12 @@ for (let k = 0; k < HLAST; k++) {
 // ============================================================
 {
   const A = MD_A, B = XM - 8;
-  link(HN(HLAST), { a: A, b: B, surf: x => x < A + 2 ? 'concrete' : 'grass',
+  link(HN(HLAST), { a: A, b: B, surf: x => x < A + 2 ? 'concrete' : mdOnGrass(x) ? 'grass' : 'dirt',
     // 中间几下把雾色和天边（远处的树、山站着的那一截天）写成一样的灰，雾散得差不多了天才黑下去 —— 不然雾里远处的树比天亮，像一个个白影子
     // （两个关键帧之间，雾色是按线性光插的、天是按屏幕上的颜色插的，中间雾会亮出一截，所以每一下都把两样一起写死）
     env: [[A + 18, 'A'],
       [A + 25, { fogD: 0.07, fog: 0xb4b8bc, sky: [0xa8acb2, 0xacb0b6, 0xb0b4ba, 0xb4b8bc, 0xb4b8bc, 0xb4b8bc] }],
       [A + 32, { fogD: 0.03, fog: 0x747e8a, stars: 0.05, sky: [0x5a6472, 0x626c7a, 0x6a7482, 0x747e8a, 0x747e8a, 0x747e8a] }],
       [A + 40, { fogD: 0.02, fog: 0x4e5865, stars: 0.3, sky: [0x2a3444, 0x343e4e, 0x404a5a, 0x4e5865, 0x4e5865, 0x4e5865] }]],
-    col: [[A + 2, 0x2a2e30], [A + 10, 0x1b2420]] });
+    col: [[A + 2, 0x2a2e30], [A + 10, 0x625b4f]] });
 }
