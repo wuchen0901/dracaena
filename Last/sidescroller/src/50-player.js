@@ -38,6 +38,8 @@ function startMantle(s, side) {                   // 抓住方块 s 的边缘翻
   P.mantle = { x0: P.x, y0: P.y, x1: ex + side * (P.hw + 0.12), top: s.y2, ex, s, sink, T: 0.5 + 0.3 * clamp(h / 1.5, 0, 1) };
   P.mode = 'mantle'; P.modeT = 0; P.vx = P.vy = 0; P.facing = side; P.land = null; fx('grab');
 }
+// 攀爬这段动作走到哪了（0..1）。m.rev：倒着放 —— 从顶上扒着边缘爬下去（站在顶上 → 腿先下去 → 两手扒着边缘吊在侧面），放完了松手自己落下去
+const mantleK = m => { const q = P.modeT / m.T; return m.rev ? 1 - q : q; };
 function startLand() {                            // 落地：落差够大，就按情况挑一种落地的动作（挑法、动作和拖住玩家多久，见 42-character-anim.js 的 landStyle / landAt）
   const k = landHard(P.impact);
   P.land = k > 0.02 ? { t: 0, k, v: P.vx, dir: Math.sign(P.vx) || P.facing, style: landStyle(P.impact, P.vx) } : null;
@@ -141,10 +143,15 @@ function stepPlayer(dt) {
   if (P.mode !== 'normal') P.prep = 0;                                            // 正蹲着要跳的时候抓住了东西、掉进了水里：这一跳不算了
 
   if (P.mode === 'mantle') {                      // 攀爬是一段固定的动作：先向上，再翻过去。P.x、P.y 是脚该站的地方；身子怎么撑上去、两只脚各在哪，见 42-character-anim.js 的 MANTLE
-    const m = P.mantle; P.modeT += dt; const k = P.modeT / m.T, e = sstep(0, MANTLE.rise, k);
+    const m = P.mantle; P.modeT += dt; const k = clamp(mantleK(m), 0, 1), e = sstep(0, MANTLE.rise, k);
     m.top = m.s.y2;                               // 边缘自己在动（漂着的木梁）：跟着它
-    P.y = lerp(m.y0, m.top, e) - m.sink * Math.sin(Math.PI * clamp(k / 0.3, 0, 1)); P.x = lerp(m.x0, m.x1, sstep(MANTLE.over, 1, k));
-    if (k >= 1) { P.mode = 'normal'; P.grounded = true; P.y = m.top; P.vy = 0; P.coyote = 0; }
+    // xa：抓住的时候人离侧面还有一点距离（跳起来手先够到了边缘）：开头这一小段身子贴过去
+    const x0 = m.xa === undefined ? m.x0 : lerp(m.xa, m.x0, sstep(0, 0.3, k));
+    P.y = lerp(m.y0, m.top, e) - m.sink * Math.sin(Math.PI * clamp(k / 0.3, 0, 1)); P.x = lerp(x0, m.x1, sstep(MANTLE.over, 1, k));
+    if (P.modeT >= m.T) {
+      if (m.rev) { P.mode = 'normal'; P.grounded = false; P.vx = P.vy = 0; P.gy = P.y; P.coyote = 0; }   // 爬下来了：松手
+      else { P.mode = 'normal'; P.grounded = true; P.y = m.top; P.vy = 0; P.coyote = 0; }
+    }
     return;
   }
 
