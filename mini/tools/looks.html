@@ -31,7 +31,11 @@ const LW = MAP[0].length, LH = MAP.length;
 const T = (c, r) => (c < 0 || r < 0 || c >= LW || r >= LH) ? '#' : ('#E1'.includes(MAP[r][c]) ? MAP[r][c] : '.');
 const air = (c, r) => T(c, r) !== '#';
 const LAMP = { c: 6, r: 1 };
-const litCell = (c, r) => air(c, r) && Math.abs(c - LAMP.c) <= 2 && r >= LAMP.r && r <= LAMP.r + 3;   // 灯照到的格子：左右各两格、往下三格
+// 灯光是一个锥：从灯罩口往下张开，落到灯正下方的地板上正好是五格（左右各两格）。
+// 一格算不算照到，看它脚下那条线的中点在不在锥里：贴着地板的那一行是五格，再往上一行只有三格。
+const CONE = (() => { let fr = LAMP.r; while (air(LAMP.c, fr)) fr++; return { x: (LAMP.c + 0.5) * S, y0: (LAMP.r + 0.335) * S, y1: fr * S, w0: 0.23 * S, w1: 2.5 * S }; })();
+const coneHalf = y => CONE.w0 + (CONE.w1 - CONE.w0) * Math.max(0, Math.min(1, (y - CONE.y0) / (CONE.y1 - CONE.y0)));
+const litCell = (c, r) => air(c, r) && r >= LAMP.r && (r + 1) * S <= CONE.y1 + 0.01 && Math.abs(c - LAMP.c) * S <= coneHalf((r + 1) * S) + 0.01;
 const DECOR = [{ t: 'window', c: 1.5, r: 1.74 }, { t: 'picture', c: 3.45, r: 1.84, w: 0.42, h: 0.5, k: 'sea' }, { t: 'picture', c: 5.15, r: 1.82, w: 0.86, h: 0.54, k: 'hills' },
   { t: 'picture', c: 7.85, r: 1.8, w: 0.46, h: 0.58, k: 'vase' }, { t: 'picture', c: 9.75, r: 1.86, w: 0.62, h: 0.42, k: 'hills' }];
 const RUG = { c0: 3.25, c1: 9.3, r: 2 };
@@ -546,16 +550,17 @@ function drawLamp(ctx, L, st) {
   ctx.fillStyle = on ? '#fff6dc' : '#5a6480'; ctx.beginPath(); ctx.arc(x, y + S * 0.365, S * 0.058, 0, 7); ctx.fill();
   ink(ctx, arcPts(x, y + S * 0.365, S * 0.058, S * 0.058, -0.2, Math.PI + 0.2, 8), { w: 0.7, a: on ? 0.5 : 0.9, single: 1 });
 }
-function drawLight(ctx, L, st) {   // 光本身：加在所有东西上面的一层暖色，灯泡周围最亮；灯泡底下几道短线
+function drawLight(ctx, L, st) {   // 光本身：加在所有东西上面的一层暖色，灯泡周围最亮；灯泡底下几道短线，锥里几道顺着光的细线
   if (!st.lamp) return;
   const x = (LAMP.c + 0.5) * S, y = (LAMP.r + 0.365) * S;
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   glow(ctx, x, y + S * 0.5, S * 2.6, '#ffd9a0', 0.05); glow(ctx, x, y, S * 0.75, '#ffd9a0', 0.2); glow(ctx, x, y, S * 0.15, '#fff4de', 0.9);
   ctx.save(); ctx.beginPath(); ctx.rect((LAMP.c - 2) * S, 3 * S, S * 5, FLOORH); ctx.clip(); ctx.translate(x, 3 * S + FLOORH * 0.5); ctx.scale(1, 0.1); glow(ctx, 0, 0, S * 2, '#ffd9a0', 0.14); ctx.restore();
   const r = rnd(83); ctx.fillStyle = '#ffd9a0';   // 光里的灰尘
-  for (let j = 0; j < 26; j++) { const dy = 0.15 + r() * 1.45, hw = Math.min(2.4, 0.5 + 2.8 * dy) * 0.92, cx = LAMP.c + 0.5 + (r() * 2 - 1) * hw, cy = LAMP.r + 0.34 + dy; if (!litCell(Math.floor(cx), Math.floor(cy))) continue; ctx.globalAlpha = 0.12 + r() * 0.3; ctx.beginPath(); ctx.arc(cx * S, cy * S, 0.9 + r() * 0.5, 0, 7); ctx.fill(); }
+  for (let j = 0; j < 26; j++) { const yy = CONE.y0 + (0.08 + r() * 0.9) * (CONE.y1 - CONE.y0), xx = CONE.x + (r() * 2 - 1) * coneHalf(yy) * 0.9; ctx.globalAlpha = 0.12 + r() * 0.3; ctx.beginPath(); ctx.arc(xx, yy, 0.9 + r() * 0.5, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1; ctx.restore();
   ctx.pen = { ...L.pen, col: '#fff0cc' }; ctx.seedN = 8300;
+  for (const t of [-0.8, -0.42, 0.02, 0.45, 0.82]) ink(ctx, seg(CONE.x + t * CONE.w0, CONE.y0 + 5, CONE.x + t * CONE.w1 * 0.97, CONE.y1 - 4), { a: 0.07, w: 0.9, taper: 50, amp: 0.6, single: 1 });   // 几道顺着光往下的细线
   for (let i = 0; i < 7; i++) { const a = 0.35 + i * (Math.PI - 0.7) / 6, r0 = S * 0.12, r1 = S * (0.17 + (i % 2) * 0.035); ink(ctx, seg(x + Math.cos(a) * r0, y + Math.sin(a) * r0, x + Math.cos(a) * r1, y + Math.sin(a) * r1), { a: 0.55, w: 0.8, taper: 4, single: 1 }); }
 }
 // 影子：一团涂黑的乱线，一双眼睛。看见你的时候边和眼睛是红的
@@ -641,29 +646,18 @@ function drawPlayer(ctx, L, st) {
 }
 
 // ---------- 光的形状 ----------
-// 和游戏里一样的“帐篷”：灯罩口很窄，往下很快张开，到地面正好是规则里的五格；地板不带软边，照到哪一格就亮到那一格的边。
-// 不一样的是墙上那道软边按一张排线图打散了：暗处的排线一道道伸进光里，越往里越稀，不是一道光滑的渐变。
+// 一个锥：两条边从灯罩口直着斜下去，落地正好是规则里的五格；灯罩上面没有光。地板不带软边，照到哪一格就亮到那一格的边。
+// 锥的两条边稍微有点晃，再按一张排线图打散：暗处的排线一道道伸进光里。
 function buildMask(L, dpr, on) {
   const [cv, x] = mk(dpr); if (!on) return cv;
-  const MR = 10, c0 = LAMP.c - 3, r0 = LAMP.r - 1, cw = 7, ch = 6, w = cw * MR, h = ch * MR, a = new Float32Array(w * h);
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-    const xx = c0 + (i + 0.5) / MR, yy = r0 + (j + 0.5) / MR, c = Math.floor(xx), r = Math.floor(yy);
-    let v = litCell(c, r) ? 1 : 0;
-    if (!v && T(c, r) === '#' && ((litCell(c, r - 1) && yy - r < 0.45) || (litCell(c - 1, r) && xx - c < 0.3) || (litCell(c + 1, r) && c + 1 - xx < 0.3))) v = 1;
-    const dy = yy - (LAMP.r + 0.34), dx = Math.abs(xx - (LAMP.c + 0.5));
-    a[j * w + i] = v * clamp((0.7 + 2.8 * Math.max(0, dy) - dx) / 0.5 + 0.5, 0, 1) * clamp(1 + dy / 0.12, 0, 1);
-  }
-  for (let n = 0; n < 2; n++) {
-    const t = new Float32Array(a.length);
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) t[j * w + i] = (a[j * w + Math.max(0, i - 1)] + 2 * a[j * w + i] + a[j * w + Math.min(w - 1, i + 1)]) / 4;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) a[j * w + i] = (t[Math.max(0, j - 1) * w + i] + 2 * t[j * w + i] + t[Math.min(h - 1, j + 1) * w + i]) / 4;
-  }
-  const sc = document.createElement('canvas'); sc.width = w; sc.height = h; const sx = sc.getContext('2d'), im = sx.createImageData(w, h);
-  for (let k = 0; k < w * h; k++) { im.data[k * 4] = im.data[k * 4 + 1] = im.data[k * 4 + 2] = 255; im.data[k * 4 + 3] = a[k] * 255; }
-  sx.putImageData(im, 0, 0);
-  x.save(); x.translate(-L.cam.x, -L.cam.y); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(sc, c0 * S, r0 * S, cw * S, ch * S); x.restore();
+  const q = 8, sc = document.createElement('canvas'); sc.width = Math.ceil(W / q); sc.height = Math.ceil(H / q);   // 先画在缩小八倍的小图上，放大以后边自然是软的
+  const sx = sc.getContext('2d'); sx.scale(1 / q, 1 / q); sx.translate(-L.cam.x, -L.cam.y);
+  sx.beginPath(); for (let r = 0; r < LH; r++) for (let c = 0; c < LW; c++) if (air(c, r)) sx.rect(c * S, r * S, S, S + (air(c, r + 1) ? 0 : FLOORH)); sx.clip();   // 光出不了屋子
+  const N = noise(4242), edge = side => { const pts = []; for (let i = 0; i <= 24; i++) { const y = CONE.y0 + (CONE.y1 + FLOORH - CONE.y0) * i / 24; pts.push([CONE.x + side * (coneHalf(y) + (N(i * 0.37 + side * 5) - 0.5) * 5), y]); } return pts; };
+  sx.beginPath(); [...edge(-1), ...edge(1).reverse()].forEach(([a, b], i) => i ? sx.lineTo(a, b) : sx.moveTo(a, b)); sx.closePath(); sx.fillStyle = '#fff'; sx.fill();
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(sc, 0, 0, sc.width * q, sc.height * q);
   const [gc, gx] = mk(dpr); gx.drawImage(TEX.hatch, 0, 0, W, H);   // 软边按排线打散
-  const md = x.getImageData(0, 0, cv.width, cv.height), gd = gx.getImageData(0, 0, cv.width, cv.height).data, d = md.data, t = 0.55;
+  const md = x.getImageData(0, 0, cv.width, cv.height), gd = gx.getImageData(0, 0, cv.width, cv.height).data, d = md.data, t = 0.5;
   for (let k = 3; k < d.length; k += 4) { const v = d[k] / 255; if (v <= 0 || v >= 1) continue; const g = gd[k - 3] / 255; d[k] = clamp((v - t * (1 - g)) / (1 - t), 0, 1) * 255; }
   x.putImageData(md, 0, 0);
   x.save(); x.translate(-L.cam.x, -L.cam.y);   // 地板：照到的格子整格亮，没照到的整格暗
