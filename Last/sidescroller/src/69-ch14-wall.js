@@ -103,7 +103,7 @@ const CH14 = (() => {
   // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   // 旧木箱（要等上面的地形登记完：它记下自己脚下的地面有多高）
-  const crate = pushable({ id: 'crate21', x: CR0, w: CR_W, h: CR_H, min: CRMIN, max: CRMAX, snd: 'wood' });
+  const crate = pushable({ id: 'crate21', x: CR0, w: CR_W, h: CR_H, min: CRMIN, max: CRMAX, snd: 'wood', zf: CR_D / 2 });
   hint(() => crate.x < CRMAX - 0.5 && P.x > W2X - 2.2 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '墙太高了，跳不上去 —— 地上的拖痕通向一只旧木箱');
   hint(() => crate.x < CRMAX - 0.5 && P.x < W2X && Math.abs(P.x - crate.x) < 2.2 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 把箱子推到墙脚');
   hint(() => crate.x >= CRMAX - 0.5 && P.x > W2X - 4 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '跳上箱子，再跳向墙头');
