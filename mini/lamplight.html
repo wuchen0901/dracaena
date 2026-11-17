@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>灯下</title>
 <style>
-html,body{margin:0;height:100%;background:#07060c;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#070a15;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
 </style>
 </head>
@@ -224,11 +224,80 @@ function solve(lv, from, limit = 300000, acts = 'LRUDEW') {
 const cv = document.getElementById('c'), g = cv.getContext('2d');
 const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","WenQuanYi Zen Hei",sans-serif';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const ease = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
 const hash = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
-const WARM = [255, 196, 120];
-const GRP = { 1: [255, 184, 77], 2: [95, 212, 196] };
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+
+// ---------- 色表 ----------
+// 画法只有一句话：暗处只有冷色的剪影，灯照到的地方才有颜色和细节。
+//   · 暖光（灯）才算数：画出来照到哪儿，规则里就照到哪儿。冷光（月光、出口）只是好看，不算“照到”。
+//   · 影子是整个画面里最黑的，主角是暗处最亮的。
+//   · 不描边，没有脸：东西靠深浅和形状分开。
+// 画面里所有的颜色都从下面这十几个调出来（mix 调深浅，css 加透明度），不在别处另写颜色。
+const C = {
+  // 冷的：夜里、屋外、没照到的地方
+  night: [7, 10, 21],      // 夜空顶上，最深的冷色
+  dusk: [27, 38, 70],      // 夜空靠地平线的地方，暗处东西的亮边
+  moon: [203, 218, 255],   // 月光、出口、界面上的字
+  mass: [6, 8, 14],        // 剖开的墙体和楼板
+  room: [17, 23, 41],      // 没照到的房间
+  ink: [2, 3, 8],          // 影子
+  // 暖的：灯下
+  lamp: [255, 196, 122],   // 灯光
+  hot: [255, 244, 222],    // 灯泡的芯
+  paper: [164, 92, 72],    // 墙纸
+  panel: [58, 84, 80],     // 护墙板
+  wood: [150, 100, 60],    // 地板、家具
+  cream: [234, 226, 206],  // 主角的卫衣、钟面
+  brass: [216, 170, 94],   // 黄铜、画框
+  skin: [236, 196, 166],   // 主角的脸和手
+  cloth: [62, 70, 94],     // 主角的裤子
+  rug: [140, 46, 44],      // 地毯
+  // 记号
+  amber: [240, 170, 72],   // 第一组的拉杆和灯罩
+  teal: [86, 196, 180],    // 第二组的拉杆和灯罩
+  danger: [255, 84, 78],   // 扑影看见你时的眼睛
+};
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const shade = (c, t) => mix(c, C.mass, t);   // 压暗
+const tint = (c, t) => mix(c, C.hot, t);     // 提亮
+const GRP = { 0: mix(C.dusk, C.moon, 0.3), 1: C.amber, 2: C.teal };
+
+// 一间屋子的两套颜色：没照到的（冷的，只有深浅）和照到的（暖的，有颜色）
+const DARK = {
+  wall: C.room, shaft: mix(C.room, C.mass, 0.6), stripe: mix(C.room, C.dusk, 0.14), motif: C.room,
+  panel: mix(C.room, C.mass, 0.3), rail: mix(C.room, C.dusk, 0.5), panelLine: mix(C.room, C.mass, 0.55), skirt: mix(C.room, C.mass, 0.6), cornice: mix(C.room, C.mass, 0.5),
+  floor: mix(C.room, C.dusk, 0.45), seam: mix(C.room, C.mass, 0.4), floorEdge: mix(C.dusk, C.moon, 0.18), front: mix(C.room, C.mass, 0.5),
+  frame: mix(C.room, C.dusk, 0.9), canvas: mix(C.room, C.dusk, 0.3), door: mix(C.dusk, C.moon, 0.1),
+  ladder: mix(C.dusk, C.moon, 0.1), rung: mix(C.room, C.dusk, 0.8), wire: mix(C.room, C.dusk, 0.6), box: mix(C.dusk, C.moon, 0.1),
+  rug: mix(C.room, C.mass, 0.35), rugLine: mix(C.room, C.dusk, 0.3),
+};
+const LIT = {
+  wall: C.paper, shaft: shade(C.paper, 0.6), stripe: shade(C.paper, 0.1), motif: tint(C.paper, 0.2),
+  panel: C.panel, rail: tint(C.panel, 0.25), panelLine: shade(C.panel, 0.3), skirt: shade(C.panel, 0.45), cornice: shade(C.paper, 0.4),
+  floor: C.wood, seam: shade(C.wood, 0.45), floorEdge: tint(C.wood, 0.4), front: shade(C.wood, 0.4),
+  frame: shade(C.brass, 0.12), canvas: tint(C.brass, 0.5), door: shade(C.wood, 0.3),
+  ladder: tint(C.wood, 0.1), rung: shade(C.wood, 0.2), wire: shade(C.wood, 0.65), box: shade(C.wood, 0.5),
+  rug: shade(C.rug, 0.08), rugLine: shade(C.cream, 0.42),
+};
+
+// ---------- 每一关墙上、地上摆的东西 ----------
+// 手摆的，只是好看：都贴在墙上或者铺在地上，不占路。c、r 是格子坐标（可以带小数），指的是东西的中心。
+const DECOR = [
+  // 1 · 门厅
+  [{ t: 'window', c: 1.5, r: 1.74 }, { t: 'picture', c: 3.45, r: 1.84, w: 0.42, h: 0.5, k: 'sea' }, { t: 'picture', c: 5.15, r: 1.82, w: 0.86, h: 0.54, k: 'hills' },
+    { t: 'picture', c: 7.85, r: 1.8, w: 0.46, h: 0.58, k: 'vase' }, { t: 'picture', c: 9.75, r: 1.86, w: 0.62, h: 0.42, k: 'hills' }, { t: 'rug', c0: 3.25, c1: 9.3, r: 2 }],
+  // 2
+  [{ t: 'window', c: 6.6, r: 1.74 }, { t: 'picture', c: 9.05, r: 1.82, w: 0.5, h: 0.6, k: 'vase' }, { t: 'picture', c: 11.95, r: 1.82, w: 0.8, h: 0.5, k: 'sea' }, { t: 'picture', c: 4.6, r: 1.84, w: 0.6, h: 0.42, k: 'hills' }],
+  // 3
+  [{ t: 'window', c: 3.5, r: 3.74 }, { t: 'window', c: 7.5, r: 3.74 }, { t: 'picture', c: 5.5, r: 3.84, w: 0.7, h: 0.46, k: 'hills' }, { t: 'picture', c: 11.9, r: 3.82, w: 0.44, h: 0.54, k: 'vase' }],
+  // 4
+  [{ t: 'picture', c: 1.95, r: 1.82, w: 0.46, h: 0.58, k: 'vase' }, { t: 'picture', c: 4.75, r: 1.82, w: 0.82, h: 0.52, k: 'sea' }, { t: 'window', c: 8.5, r: 1.74 },
+    { t: 'picture', c: 10.05, r: 1.82, w: 0.8, h: 0.5, k: 'hills' }, { t: 'picture', c: 12.5, r: 1.84, w: 0.42, h: 0.5, k: 'sea' }, { t: 'rug', c0: 1.3, c1: 6.2, r: 2 }],
+  // 5
+  [{ t: 'window', c: 7.3, r: 3.7 }, { t: 'picture', c: 12.45, r: 3.76, w: 0.5, h: 0.4, k: 'hills' }],
+];
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -283,10 +352,11 @@ const sfx = {
 // ---------- 游戏状态 ----------
 let li = 0, lv, cur, hist, status = 'play', statusT = 0, deadWhy = '';
 let pView, mView, gateView = 0, parts = [], shake = 0, tipShown = 0;
+let lampI = [], lampT0 = [], lampWas = [], pLit = 0;   // 每盏灯现在多亮、从什么时候开始变的、上一帧是开是关；主角身上有几成是照到的
 
 function load(i) {
   li = clamp(i, 0, LEVELS.length - 1);
-  lv = parseLevel(LEVELS[li]);
+  lv = parseLevel(LEVELS[li]); lv.decor = DECOR[li] || [];
   cur = { px: lv.start.px, py: lv.start.py, lamps: lv.start.lamps, mons: lv.start.mons.map(m => ({ ...m })) };
   hist = []; status = 'play'; parts = []; tipShown = performance.now() / 1000;
   const lit = litSet(lv, cur);
@@ -294,7 +364,12 @@ function load(i) {
   mView = cur.mons.map(m => ({ x: m.x, y: m.y, fx: m.x, fy: m.y, f: lit.has(K(m.x, m.y)) ? 1 : 0, face: m.d || -1 }));
   gateView = gatesOpen(lv, cur) ? 1 : 0;
   progress.at = li; store.set('lamplight.v1', progress);
-  layout(true);
+  layout(true); snapLamps();
+}
+// 灯和主角身上的光直接摆到位，不演过程（刚进一关、退一步、重来的时候）
+function snapLamps() {
+  lampWas = lv.lamps.map(l => lampOn(l, cur)); lampI = lampWas.map(on => (on ? 1 : 0)); lampT0 = lv.lamps.map(() => -10);
+  pLit = litSet(lv, cur).has(K(cur.px, cur.py)) ? 1 : 0; lightDirty = true;
 }
 
 function act(a) {
@@ -346,119 +421,341 @@ function snapViews() {
   const now = performance.now() / 1000;
   pView.fx = pView.x; pView.fy = pView.y; pView.t = 0; pView.t0 = now;
   mView.forEach(v => { v.fx = v.x; v.fy = v.y; });
+  snapLamps();
 }
 function nextLevel() { load(li < LEVELS.length - 1 ? li + 1 : 0); }
 
 // ---------- 版面 ----------
-let W = 0, H = 0, DPR = 1, S = 64, TOP = 90, BOT = 100, camX = 0, camY = 0, viewW = 0, viewH = 0, ui = [];
-let staticLayer = null;
+let W = 0, H = 0, DPR = 1, S = 64, BOT = 100, camX = 0, camY = 0, ui = [];
+let PADX = 0, PADT = 0, groundY = 0, FEET = 0, FLOORH = 0, FRONTH = 0, houseL = 0, houseR = 0;
+const HOUSE_TOP = 0.7, ROOF_H = 0.72, CHIMNEY = 0.47, BURY = 0.55;   // 单位都是格：墙体从地图顶下面 0.7 格开始，屋顶高 0.72，烟囱再高 0.47；地图最下面 0.55 格埋在地里
+let skyLayer = null, treeLayer = null, darkLayer = null, litLayer = null, lightC = null, lightDirty = true, lightAny = false;
+
+function mk(w, h) {
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w * DPR)); c.height = Math.max(1, Math.ceil(h * DPR));
+  const b = c.getContext('2d'); b.scale(DPR, DPR); return [c, b];
+}
 function layout(snap) {
   W = innerWidth; H = innerHeight; DPR = Math.min(devicePixelRatio || 1, 2);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   const small = W < 600 || H < 500;
-  TOP = small ? 64 : 96; BOT = TOUCH ? (H > W ? 190 : 120) : (small ? 76 : 96);
-  viewW = W - 24; viewH = H - TOP - BOT;
-  S = Math.floor(clamp(Math.min(viewW / lv.w, viewH / lv.h), TOUCH ? 34 : 30, 76));
+  BOT = TOUCH ? (H > W ? 190 : 120) : (small ? 76 : 96);
+  // 从烟囱顶到地面线一共多少格高。地图最上面一行和最下面一行要都是墙：上面那一行画屋顶，下面那一行埋在地里
+  const tall = lv.h - BURY + ROOF_H + CHIMNEY - HOUSE_TOP, fitH = (H - BOT - (small ? 22 : 40)) / tall;
+  S = Math.floor(clamp(Math.min((small ? W - 24 : W * 0.9) / lv.w, fitH), TOUCH ? 34 : 30, 110));
   // 手机竖着拿：放大一些，镜头跟着人左右走
-  if (TOUCH && H > W) S = Math.floor(clamp(Math.min(viewH / lv.h, W / 7.5), 40, 64));
-  buildStatic();
-  if (snap) { camX = targetCam().x; camY = targetCam().y; }
+  if (TOUCH && H > W) S = Math.floor(clamp(Math.min(fitH, W / 7.5), 40, 64));
+  PADX = S; PADT = Math.ceil(S * 0.6); groundY = (lv.h - BURY) * S;
+  // 外墙：这一边要是有门（出口开在最外面一列），墙就画到地图外面一点；没有就收进来，墙薄一些
+  const opening = c => { for (let r = 0; r < lv.h; r++) if (T(lv, c, r) !== '#') return true; return false; };
+  houseL = (opening(0) ? -0.15 : 0.6) * S; houseR = (lv.w + (opening(lv.w - 1) ? 0.15 : -0.6)) * S;
+  FEET = S * 0.07; FLOORH = S * 0.2; FRONTH = S * 0.06;
+  buildSky(); buildTree(); buildHouse(); buildLamps();
+  lightDirty = true;
+  if (snap) { const t = targetCam(); camX = t.x; camY = t.y; }
 }
 addEventListener('resize', () => layout(true));
 function targetCam() {
-  const mw = lv.w * S, mh = lv.h * S;
-  const x = mw <= viewW ? -(W - mw) / 2 : clamp((pView.x + 0.5) * S - W / 2, -12, mw - W + 12);
-  const y = mh <= viewH ? -(TOP + (viewH - mh) / 2) : clamp((pView.y + 0.5) * S - (TOP + viewH / 2), -TOP, mh - TOP - viewH);
+  const mw = lv.w * S, top = (HOUSE_TOP - ROOF_H - CHIMNEY) * S, room = H - BOT;
+  const x = mw <= W - 24 ? (houseL + houseR) / 2 - W / 2 : clamp((pView.x + 0.5) * S - W / 2, -12, mw - W + 12);
+  // 房子整个放得下：地面线贴着下面那一条。放不下：镜头跟着人上下走
+  const y = groundY - top <= room - 8 ? groundY - room : clamp((pView.y + 0.5) * S - room / 2, top - 8, groundY - room);
   return { x, y };
 }
 
-// 不会变的东西（墙、墙纸、梯子、出口的门框）画一次
-function buildStatic() {
-  staticLayer = document.createElement('canvas');
-  staticLayer.width = Math.ceil(lv.w * S * DPR); staticLayer.height = Math.ceil(lv.h * S * DPR);
-  const b = staticLayer.getContext('2d'); b.scale(DPR, DPR);
-  const air = (c, r) => T(lv, c, r) !== '#';
-  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
-    const x = c * S, y = r * S;
-    if (!air(c, r)) {
-      b.fillStyle = '#17141f'; b.fillRect(x, y, S + 0.5, S + 0.5);
-      b.strokeStyle = 'rgba(255,255,255,0.028)'; b.lineWidth = 1;
-      for (let i = 1; i < 3; i++) { b.beginPath(); b.moveTo(x, y + i * S / 3); b.lineTo(x + S, y + i * S / 3); b.stroke(); }
-      for (let i = 0; i < 3; i++) { const ox = (i % 2 ? S / 4 : S * 3 / 4); b.beginPath(); b.moveTo(x + ox, y + i * S / 3); b.lineTo(x + ox, y + (i + 1) * S / 3); b.stroke(); }
-      if (air(c, r - 1)) { // 地板
-        b.fillStyle = '#3b2c27'; b.fillRect(x, y, S + 0.5, S * 0.16);
-        b.fillStyle = '#5c4537'; b.fillRect(x, y, S + 0.5, Math.max(1, S * 0.025));
-        b.fillStyle = 'rgba(0,0,0,0.35)'; b.fillRect(x, y + S * 0.16, S + 0.5, S * 0.04);
-        b.strokeStyle = 'rgba(0,0,0,0.3)'; b.beginPath(); b.moveTo(x + S * (0.3 + hash(c, r) * 0.4), y); b.lineTo(x + S * (0.3 + hash(c, r) * 0.4), y + S * 0.16); b.stroke();
-      }
-      if (air(c, r + 1)) { b.fillStyle = '#0d0b12'; b.fillRect(x, y + S * 0.9, S + 0.5, S * 0.1); }
-      continue;
-    }
-    // 墙纸
-    b.fillStyle = '#1b1825'; b.fillRect(x, y, S + 0.5, S + 0.5);
-    b.fillStyle = 'rgba(255,255,255,0.018)';
-    for (let i = 0; i < 4; i++) b.fillRect(x + (i + 0.35) * S / 4, y, S / 16, S);
-    const floorBelow = !air(c, r + 1) || T(lv, c, r + 1) === 'g';
-    if (floorBelow) { // 护墙板
-      b.fillStyle = '#15121c'; b.fillRect(x, y + S * 0.62, S + 0.5, S * 0.38);
-      b.fillStyle = 'rgba(120,100,140,0.12)'; b.fillRect(x, y + S * 0.62, S + 0.5, Math.max(1, S * 0.03));
-    }
-    // 上半间墙上挂的画、窗
-    if (air(c, r + 1) && !floorBelow && T(lv, c, r) === '.' && !lv.lamps.some(l => l.c === c && l.r === r)) {
-      const hv = hash(c * 3 + li, r * 7);
-      if (hv < 0.13) { // 窗，外面是月光
-        const wx = x + S * 0.25, wy = y + S * 0.2, ww = S * 0.5, wh = S * 0.62;
-        const gr = b.createLinearGradient(0, wy, 0, wy + wh); gr.addColorStop(0, '#26345a'); gr.addColorStop(1, '#141c33');
-        b.fillStyle = gr; b.fillRect(wx, wy, ww, wh);
-        const mg = b.createRadialGradient(wx + ww * 0.5, wy + wh * 0.5, 0, wx + ww * 0.5, wy + wh * 0.5, S * 1.1);
-        mg.addColorStop(0, 'rgba(120,150,230,0.13)'); mg.addColorStop(1, 'rgba(120,150,230,0)');
-        b.fillStyle = mg; b.fillRect(x - S, y - S * 0.5, S * 3, S * 2);
-        b.strokeStyle = '#2d2433'; b.lineWidth = Math.max(1.5, S * 0.04); b.strokeRect(wx, wy, ww, wh);
-        b.beginPath(); b.moveTo(wx + ww / 2, wy); b.lineTo(wx + ww / 2, wy + wh); b.moveTo(wx, wy + wh * 0.45); b.lineTo(wx + ww, wy + wh * 0.45); b.stroke();
-      } else if (hv < 0.3) { // 画框
-        const fw = S * (0.34 + hash(c, r) * 0.18), fh = S * 0.3, fx = x + (S - fw) / 2, fy = y + S * 0.32;
-        b.fillStyle = '#211c2b'; b.fillRect(fx, fy, fw, fh);
-        b.strokeStyle = '#4a3a33'; b.lineWidth = Math.max(1, S * 0.03); b.strokeRect(fx, fy, fw, fh);
-        b.fillStyle = 'rgba(160,140,180,0.08)'; b.beginPath(); b.moveTo(fx + 2, fy + fh - 2); b.lineTo(fx + fw * 0.4, fy + fh * 0.4); b.lineTo(fx + fw * 0.7, fy + fh * 0.7); b.lineTo(fx + fw - 2, fy + fh * 0.3); b.lineTo(fx + fw - 2, fy + fh - 2); b.fill();
-      }
-    }
+// ---------- 不会变的东西，各画一次 ----------
+// 夜空：不跟着镜头动。月亮在左上，所以月光都是往右下落的
+function buildSky() {
+  let b; [skyLayer, b] = mk(W, H);
+  const hz = H - BOT, gr = b.createLinearGradient(0, 0, 0, hz);
+  gr.addColorStop(0, css(C.night)); gr.addColorStop(1, css(mix(C.dusk, C.moon, 0.06)));
+  b.fillStyle = gr; b.fillRect(0, 0, W, H);
+  for (let i = 0; i < 110; i++) {   // 星星
+    const x = hash(i, 1.3) * W, y = Math.pow(hash(i, 2.7), 1.5) * hz * 0.85;
+    b.fillStyle = css(C.moon, 0.12 + hash(i, 3.1) * 0.5); b.beginPath(); b.arc(x, y, hash(i, 4.9) < 0.12 ? 1.2 : 0.7, 0, 7); b.fill();
   }
-  // 梯子
-  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
-    const t = T(lv, c, r); if (t !== 'H' && t !== 'g') continue;
-    const x = c * S, y = r * S, top = T(lv, c, r - 1) === 'H' || T(lv, c, r - 1) === 'g' ? 0 : -S * 0.25;
-    b.strokeStyle = '#6b4f3a'; b.lineWidth = Math.max(2, S * 0.06); b.lineCap = 'round';
+  const mx = W * 0.2, my = clamp(H * 0.17, 60, 150), mr = clamp(Math.min(W, H) * 0.028, 11, 24);
+  for (const [rad, a] of [[mr * 9, 0.1], [mr * 3.2, 0.16]]) {
+    const h = b.createRadialGradient(mx, my, 0, mx, my, rad); h.addColorStop(0, css(C.moon, a)); h.addColorStop(1, css(C.moon, 0));
+    b.fillStyle = h; b.beginPath(); b.arc(mx, my, rad, 0, 7); b.fill();
+  }
+  b.fillStyle = css(mix(C.moon, C.hot, 0.3)); b.beginPath(); b.arc(mx, my, mr, 0, 7); b.fill();
+  b.fillStyle = css(C.dusk, 0.1); for (const [ox, oy, r] of [[-0.3, -0.25, 0.3], [0.25, 0.1, 0.36], [-0.2, 0.42, 0.2]]) { b.beginPath(); b.arc(mx + ox * mr, my + oy * mr, r * mr, 0, 7); b.fill(); }
+  for (let i = 0; i < 5; i++) {   // 几缕薄云
+    const cx = hash(i, 11) * W, cy = (0.08 + hash(i, 12) * 0.42) * hz, rx = (0.18 + hash(i, 13) * 0.22) * W, ry = 8 + hash(i, 14) * 14;
+    b.save(); b.translate(cx, cy); b.scale(rx / ry, 1);
+    const cg = b.createRadialGradient(0, 0, 0, 0, 0, ry); cg.addColorStop(0, css(C.moon, 0.055)); cg.addColorStop(1, css(C.moon, 0));
+    b.fillStyle = cg; b.beginPath(); b.arc(0, 0, ry, 0, 7); b.fill(); b.restore();
+  }
+}
+// 房子后面一棵光秃秃的树，只是一个比夜空深一点的剪影
+function buildTree() {
+  const tw = S * 5, th = S * 3.6; let b; [treeLayer, b] = mk(tw, th);
+  b.strokeStyle = css(mix(C.mass, C.night, 0.75)); b.lineCap = 'round';
+  let n = 0;
+  const branch = (x, y, a, len, wd, d) => {
+    const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+    b.lineWidth = wd; b.beginPath(); b.moveTo(x, y); b.lineTo(x2, y2); b.stroke();
+    if (d <= 0 || wd < 0.6) return;
+    const kids = hash(++n, 5.5) < 0.35 ? 3 : 2;
+    for (let i = 0; i < kids; i++) branch(x2, y2, a + (i - (kids - 1) / 2) * 0.62 + (hash(++n, 7.1) - 0.5) * 0.5, len * (0.66 + hash(++n, 8.3) * 0.16), wd * 0.66, d - 1);
+  };
+  branch(tw * 0.5, th, -Math.PI / 2 - 0.06, S * 0.95, S * 0.13, 6);
+}
+function buildHouse() {
+  const lw = lv.w * S + PADX * 2, lh = lv.h * S + PADT; let b;
+  [darkLayer, b] = mk(lw, lh); b.translate(PADX, PADT); paintShell(b); paintRooms(b, DARK, false);
+  [litLayer, b] = mk(lw, lh); b.translate(PADX, PADT); paintRooms(b, LIT, true);
+  [lightC] = mk(lw, lh);
+}
+// 房子的外壳：屋顶、烟囱、剖开的墙体
+function paintShell(b) {
+  const L = houseL, R = houseR, T0 = HOUSE_TOP * S, B = lv.h * S, ridge = T0 - ROOF_H * S, inset = Math.min(1.7 * S, (R - L) * 0.22), px = Math.max(1, S * 0.014);
+  const cx = L + (R - L) * 0.7, cw = 0.44 * S;
+  b.fillStyle = css(C.mass);
+  b.fillRect(cx - cw / 2, ridge - (CHIMNEY - 0.05) * S, cw, 0.9 * S); b.fillRect(cx - cw / 2 - 0.05 * S, ridge - CHIMNEY * S, cw + 0.1 * S, 0.09 * S);   // 烟囱
+  b.fillStyle = css(C.moon, 0.16); b.fillRect(cx - cw / 2, ridge - 0.38 * S, px, 0.4 * S);
+  b.beginPath(); b.moveTo(L - 0.42 * S, T0); b.lineTo(L + inset, ridge); b.lineTo(R - inset, ridge); b.lineTo(R + 0.42 * S, T0); b.closePath();
+  b.fillStyle = css(mix(C.mass, C.night, 0.5)); b.fill();
+  b.strokeStyle = css(C.moon, 0.035); b.lineWidth = px;   // 瓦
+  for (let i = 1; i < 5; i++) { const y = ridge + (T0 - ridge) * i / 5, e = (inset + 0.42 * S) * i / 5; b.beginPath(); b.moveTo(L + inset - e, y); b.lineTo(R - inset + e, y); b.stroke(); }
+  b.strokeStyle = css(C.moon, 0.2); b.lineWidth = px;     // 朝月亮那一边的亮边
+  b.beginPath(); b.moveTo(L - 0.42 * S, T0); b.lineTo(L + inset, ridge); b.lineTo(R - inset, ridge); b.stroke();
+  b.fillStyle = css(C.mass); b.fillRect(L - 0.46 * S, T0 - 0.02 * S, R - L + 0.92 * S, 0.1 * S);   // 屋檐
+  b.fillRect(L, T0, R - L, B - T0);                                                             // 墙体
+  b.fillStyle = css(C.moon, 0.1); b.fillRect(L, T0 + 0.08 * S, px, B - T0);
+}
+const floorUnder = (c, r) => { let rr = Math.floor(r); while (rr < lv.h && T(lv, Math.floor(c), rr) !== '#') rr++; return rr; };
+// 屋子里面：P 是 DARK 或者 LIT。两层画的是同一样东西，只是颜色不一样
+function paintRooms(b, P, lit) {
+  const air = (c, r) => T(lv, c, r) !== '#', px = Math.max(1, S * 0.016);
+  const cells = fn => { for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) fn(c, r, c * S, r * S, T(lv, c, r)); };
+  const fade = (x0, y0, x1, y1, a) => { const gr = b.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, css(C.mass, a)); gr.addColorStop(1, css(C.mass, 0)); return gr; };
+  const rooms = () => { b.beginPath(); cells((c, r, x, y, t) => { if (t !== '#') b.rect(x, y, S + 0.5, S + 0.5); }); b.clip(); };
+  cells((c, r, x, y, t) => {
+    if (t === '#') return;
+    if (t === 'g') { b.fillStyle = css(P.shaft); b.fillRect(x, y, S + 0.5, S + 0.5); return; }
+    b.fillStyle = css(P.wall); b.fillRect(x, y, S + 0.5, S + 0.5);                                   // 墙纸
+    b.fillStyle = css(P.stripe); for (let i = 0; i < 4; i++) b.fillRect(x + (i + 0.3) * S / 4, y, S / 10, S + 0.5);
+    if (lit) {   // 墙纸上的小菱形，照到了才看得见
+      b.fillStyle = css(P.motif);
+      for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+        const mx = x + ((i + 0.25 + (j % 2) * 0.5) / 4) * S, my = y + (j + 0.5) / 4 * S, m = S * 0.026;
+        b.beginPath(); b.moveTo(mx, my - m * 1.4); b.lineTo(mx + m, my); b.lineTo(mx, my + m * 1.4); b.lineTo(mx - m, my); b.fill();
+      }
+    }
+    if (!air(c, r + 1) || T(lv, c, r + 1) === 'g') {   // 护墙板
+      const wy = y + S * 0.6;
+      b.fillStyle = css(P.panel); b.fillRect(x, wy, S + 0.5, S * 0.4 + 0.5);
+      b.strokeStyle = css(P.panelLine); b.lineWidth = px;
+      for (let i = 0; i < 2; i++) b.strokeRect(x + (i + 0.12) * S / 2, wy + S * 0.1, S * 0.38, S * 0.2);
+      b.fillStyle = css(P.rail); b.fillRect(x, wy, S + 0.5, S * 0.035);
+      b.fillStyle = css(P.skirt); b.fillRect(x, y + S * 0.945, S + 0.5, S * 0.055 + 0.5);
+    }
+    if (!air(c, r - 1)) { b.fillStyle = css(P.cornice); b.fillRect(x, y, S + 0.5, S * 0.06); }       // 天花板线
+  });
+  cells((c, r, x, y, t) => {   // 墙角和天花板底下暗一点
+    if (t === '#') return;
+    const a = lit ? 0.2 : 0.34;
+    if (!air(c - 1, r)) { b.fillStyle = fade(x, 0, x + S * 0.35, 0, a); b.fillRect(x, y, S * 0.35, S + 0.5); }
+    if (!air(c + 1, r)) { b.fillStyle = fade(x + S, 0, x + S * 0.65, 0, a); b.fillRect(x + S * 0.65, y, S * 0.35 + 0.5, S + 0.5); }
+    if (!air(c, r - 1)) { b.fillStyle = fade(0, y, 0, y + S * 0.3, a); b.fillRect(x, y, S + 0.5, S * 0.3); }
+  });
+  b.save(); rooms();
+  for (const d of lv.decor) if (d.t !== 'rug') paintDecor(b, P, lit, d);
+  if (lit) paintWires(b, P);
+  b.restore();
+  if (!lit) paintWires(b, P);   // 暗的那一层上，电线穿过楼板的那一截也画出来
+  cells((c, r, x, y, t) => {    // 梯子
+    if (t !== 'H' && t !== 'g') return;
+    const up = T(lv, c, r - 1), top = up === 'H' || up === 'g' ? 0 : -S * 0.25;
+    b.strokeStyle = css(P.ladder); b.lineWidth = Math.max(2, S * 0.055); b.lineCap = 'round';
     b.beginPath(); b.moveTo(x + S * 0.28, y + top); b.lineTo(x + S * 0.28, y + S); b.moveTo(x + S * 0.72, y + top); b.lineTo(x + S * 0.72, y + S); b.stroke();
-    b.lineWidth = Math.max(1.5, S * 0.045); b.strokeStyle = '#59402f';
+    b.lineWidth = Math.max(1.5, S * 0.04); b.strokeStyle = css(P.rung);
     for (let i = 0; i < 4; i++) { const ry = y + (i + 0.5) * S / 4; b.beginPath(); b.moveTo(x + S * 0.28, ry); b.lineTo(x + S * 0.72, ry); b.stroke(); }
+  });
+  cells((c, r, x, y, t) => {    // 地板：一条看得见面的木板，人站在这条板的中间
+    if (t !== '#' || !air(c, r - 1)) return;
+    b.fillStyle = css(P.floor); b.fillRect(x, y, S + 0.5, FLOORH);
+    b.fillStyle = css(P.seam); b.fillRect(x + S * (0.15 + hash(c, r) * 0.7), y, px, FLOORH);
+    b.fillStyle = fade(0, y, 0, y + FLOORH * 0.8, lit ? 0.3 : 0.4); b.fillRect(x, y, S + 0.5, FLOORH * 0.8);
+    b.fillStyle = css(P.floorEdge); b.fillRect(x, y + FLOORH - px, S + 0.5, px);
+    b.fillStyle = css(P.front); b.fillRect(x, y + FLOORH, S + 0.5, FRONTH);
+  });
+  for (const d of lv.decor) {
+    if (d.t === 'rug') paintDecor(b, P, lit, d);
+    if (d.t === 'window') {     // 月光落在地板上的那一小块
+      const w = S * 0.56, fy = floorUnder(d.c, d.r) * S, dx = (fy - (d.r * S + S * 0.36)) * 0.55, x0 = d.c * S - w / 2 + dx;
+      if (T(lv, Math.floor(x0 / S), fy / S) !== '#') continue;
+      b.fillStyle = css(C.moon, lit ? 0.03 : 0.075); b.beginPath(); b.moveTo(x0, fy); b.lineTo(x0 + w, fy); b.lineTo(x0 + w + FLOORH * 0.55, fy + FLOORH); b.lineTo(x0 + FLOORH * 0.55, fy + FLOORH); b.fill();
+    }
   }
-  // 出口
+  cells((c, r, x, y, t) => { if (t === 'E') paintExit(b, P, lit, c, r); });
+}
+function paintDecor(b, P, lit, d) {
+  const x = d.c * S, y = d.r * S, px = Math.max(1, S * 0.016);
+  if (d.t === 'window') {
+    const w = S * 0.56, h = S * 0.72, x0 = x - w / 2, y0 = y - h / 2;
+    // 月光：窗子周围一圈冷光，再斜着往右下落。只是好看，不算“照到”
+    let gr = b.createRadialGradient(x, y, S * 0.2, x, y, S * 1.5);
+    gr.addColorStop(0, css(C.moon, lit ? 0.06 : 0.14)); gr.addColorStop(1, css(C.moon, 0));
+    b.fillStyle = gr; b.fillRect(x - S * 1.5, y - S * 1.5, S * 3, S * 3);
+    const fy = floorUnder(d.c, d.r) * S, dx = (fy - (y0 + h)) * 0.55;
+    gr = b.createLinearGradient(0, y0 + h, 0, fy);
+    gr.addColorStop(0, css(C.moon, lit ? 0.035 : 0.09)); gr.addColorStop(1, css(C.moon, lit ? 0.012 : 0.03));
+    b.fillStyle = gr; b.beginPath(); b.moveTo(x0, y0 + h); b.lineTo(x0 + w, y0 + h); b.lineTo(x0 + w + dx, fy); b.lineTo(x0 + dx, fy); b.fill();
+    gr = b.createLinearGradient(0, y0, 0, y0 + h);
+    gr.addColorStop(0, css(mix(C.dusk, C.moon, 0.36))); gr.addColorStop(1, css(mix(C.dusk, C.moon, 0.16)));
+    b.fillStyle = gr; b.fillRect(x0, y0, w, h);                                                      // 玻璃
+    b.strokeStyle = css(P.frame); b.lineWidth = Math.max(1.5, S * 0.045); b.strokeRect(x0, y0, w, h);  // 窗框
+    b.lineWidth = Math.max(1, S * 0.028); b.beginPath(); b.moveTo(x, y0); b.lineTo(x, y0 + h); b.moveTo(x0, y0 + h * 0.42); b.lineTo(x0 + w, y0 + h * 0.42); b.stroke();
+    b.fillStyle = css(P.frame); b.fillRect(x0 - S * 0.05, y0 + h, w + S * 0.1, S * 0.05);
+  } else if (d.t === 'picture') {
+    const w = d.w * S, h = d.h * S, x0 = x - w / 2, y0 = y - h / 2, m = S * 0.05, ix = x0 + m, iy = y0 + m, iw = w - m * 2, ih = h - m * 2;
+    b.fillStyle = css(C.mass, lit ? 0.25 : 0.3); b.fillRect(x0 + S * 0.03, y0 + S * 0.04, w, h);     // 画框落在墙上的影子
+    b.fillStyle = css(P.frame); b.fillRect(x0, y0, w, h);
+    b.fillStyle = css(P.canvas); b.fillRect(ix, iy, iw, ih);
+    if (!lit) return;           // 画的是什么，照到了才看得见
+    b.save(); b.beginPath(); b.rect(ix, iy, iw, ih); b.clip();
+    if (d.k === 'hills') {
+      b.fillStyle = css(shade(C.panel, 0.1)); b.beginPath(); b.moveTo(ix, iy + ih); b.lineTo(ix, iy + ih * 0.62); b.quadraticCurveTo(ix + iw * 0.3, iy + ih * 0.3, ix + iw * 0.62, iy + ih * 0.66); b.quadraticCurveTo(ix + iw * 0.8, iy + ih * 0.5, ix + iw, iy + ih * 0.58); b.lineTo(ix + iw, iy + ih); b.fill();
+      b.fillStyle = css(shade(C.panel, 0.4)); b.beginPath(); b.moveTo(ix, iy + ih); b.lineTo(ix, iy + ih * 0.82); b.quadraticCurveTo(ix + iw * 0.5, iy + ih * 0.6, ix + iw, iy + ih * 0.86); b.lineTo(ix + iw, iy + ih); b.fill();
+      b.fillStyle = css(C.cream); b.beginPath(); b.arc(ix + iw * 0.74, iy + ih * 0.28, ih * 0.1, 0, 7); b.fill();
+    } else if (d.k === 'sea') {
+      b.fillStyle = css(mix(C.panel, C.cloth, 0.5)); b.fillRect(ix, iy + ih * 0.6, iw, ih * 0.4);
+      b.fillStyle = css(C.cream); b.beginPath(); b.moveTo(ix + iw * 0.5, iy + ih * 0.2); b.lineTo(ix + iw * 0.74, iy + ih * 0.56); b.lineTo(ix + iw * 0.5, iy + ih * 0.56); b.fill();
+      b.fillStyle = css(shade(C.wood, 0.5)); b.fillRect(ix + iw * 0.3, iy + ih * 0.58, iw * 0.46, ih * 0.07);
+    } else {                    // 一瓶花
+      b.fillStyle = css(shade(C.wood, 0.35)); b.fillRect(ix, iy + ih * 0.8, iw, ih * 0.2);
+      b.fillStyle = css(mix(C.panel, C.cloth, 0.3)); b.beginPath(); b.ellipse(ix + iw * 0.5, iy + ih * 0.64, iw * 0.2, ih * 0.19, 0, 0, 7); b.fill(); b.fillRect(ix + iw * 0.43, iy + ih * 0.38, iw * 0.14, ih * 0.14);
+      b.fillStyle = css(C.rug); for (const [fx, fy] of [[0.4, 0.3], [0.56, 0.22], [0.63, 0.35]]) { b.beginPath(); b.arc(ix + iw * fx, iy + ih * fy, iw * 0.085, 0, 7); b.fill(); }
+    }
+    b.restore();
+  } else if (d.t === 'rug') {   // 长条地毯，铺在地板那条板上
+    const x0 = d.c0 * S, x1 = d.c1 * S, y0 = (d.r + 1) * S + FLOORH * 0.16, h = FLOORH * 0.62;
+    b.fillStyle = css(P.rug); b.fillRect(x0, y0, x1 - x0, h);
+    b.fillStyle = css(P.rugLine); b.fillRect(x0, y0 + h * 0.16, x1 - x0, px); b.fillRect(x0, y0 + h * 0.84 - px, x1 - x0, px);
+    if (lit) { b.fillStyle = css(shade(C.brass, 0.25)); for (let i = 0; x0 + (i + 0.5) * S * 0.5 < x1; i++) { const mx = x0 + (i + 0.5) * S * 0.5, my = y0 + h / 2, m = h * 0.17; b.beginPath(); b.moveTo(mx, my - m); b.lineTo(mx + m * 1.6, my); b.lineTo(mx, my + m); b.lineTo(mx - m * 1.6, my); b.fill(); } }
+    b.fillStyle = css(P.rugLine); for (let i = 0; i < 5; i++) { const fy = y0 + (i + 0.5) * h / 5; b.fillRect(x0 - S * 0.045, fy, S * 0.045, px); b.fillRect(x1, fy, S * 0.045, px); }
+  }
+}
+// 出口：后墙上一道拱门，门外是月光。它是冷的，不算“照到”
+function paintExit(b, P, lit, c, r) {
+  const x = c * S, y = r * S, dw = S * 0.6, dh = S * 0.9, dx = x + (S - dw) / 2, dy = y + S - dh;
+  const arch = () => { b.beginPath(); b.moveTo(dx, dy + dh); b.lineTo(dx, dy + dw / 2); b.arc(dx + dw / 2, dy + dw / 2, dw / 2, Math.PI, 0); b.lineTo(dx + dw, dy + dh); b.closePath(); };
+  arch(); const gr = b.createLinearGradient(0, dy, 0, dy + dh);
+  gr.addColorStop(0, css(mix(C.dusk, C.moon, 0.32))); gr.addColorStop(0.7, css(mix(C.dusk, C.moon, 0.74))); gr.addColorStop(1, css(mix(C.dusk, C.moon, 0.86)));
+  b.fillStyle = gr; b.fill();
+  b.save(); arch(); b.clip();   // 门外：远处一道矮树影，一条小路
+  b.fillStyle = css(mix(C.dusk, C.moon, 0.42));
+  b.beginPath(); b.moveTo(dx, dy + dh); b.lineTo(dx, dy + dh * 0.74); b.quadraticCurveTo(dx + dw * 0.3, dy + dh * 0.62, dx + dw * 0.55, dy + dh * 0.74); b.quadraticCurveTo(dx + dw * 0.8, dy + dh * 0.66, dx + dw, dy + dh * 0.76); b.lineTo(dx + dw, dy + dh); b.fill();
+  b.fillStyle = css(mix(C.dusk, C.moon, 0.95));
+  b.beginPath(); b.moveTo(dx + dw * 0.2, dy + dh); b.lineTo(dx + dw * 0.48, dy + dh * 0.8); b.lineTo(dx + dw * 0.56, dy + dh * 0.8); b.lineTo(dx + dw * 0.8, dy + dh); b.fill();
+  b.restore();
+  arch(); b.strokeStyle = css(P.door); b.lineWidth = Math.max(2, S * 0.065); b.stroke();
+  if (T(lv, c, r + 1) !== '#') return;
+  const fy = (r + 1) * S, g2 = b.createLinearGradient(0, fy, 0, fy + FLOORH);   // 门外的光落在门口的地板上
+  g2.addColorStop(0, css(C.moon, lit ? 0.22 : 0.34)); g2.addColorStop(1, css(C.moon, lit ? 0.08 : 0.12));
+  b.fillStyle = g2; b.beginPath(); b.moveTo(dx - S * 0.02, fy); b.lineTo(dx + dw + S * 0.02, fy); b.lineTo(dx + dw + S * 0.2, fy + FLOORH); b.lineTo(dx - S * 0.2, fy + FLOORH); b.fill();
+}
+const LEVER_Y = 0.2;   // 拉杆装在这一格靠上的地方，人站在它下面，伸手够得着
+// 电线：从拉杆沿着墙上去，贴着天花板走到它管的灯。不看颜色也知道哪根拉杆管哪盏灯
+function paintWires(b, P) {
+  const lw = Math.max(1, S * 0.02);
   for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
-    if (T(lv, c, r) !== 'E') continue;
-    const x = c * S, y = r * S, dw = S * 0.62, dh = S * 0.9, dx = x + (S - dw) / 2, dy = y + S - dh;
-    const gr = b.createLinearGradient(0, dy, 0, dy + dh); gr.addColorStop(0, '#ffe3a8'); gr.addColorStop(1, '#f2a65a');
-    b.fillStyle = gr;
-    b.beginPath(); b.moveTo(dx, dy + dh); b.lineTo(dx, dy + dw / 2); b.arc(dx + dw / 2, dy + dw / 2, dw / 2, Math.PI, 0); b.lineTo(dx + dw, dy + dh); b.closePath(); b.fill();
-    b.strokeStyle = '#4a3a33'; b.lineWidth = Math.max(2, S * 0.06); b.stroke();
+    const t = T(lv, c, r); if (t !== '1' && t !== '2') continue;
+    const bx = (c + 0.5) * S, by = (r + LEVER_Y) * S;
+    let top = r; while (top > 0 && T(lv, c, top - 1) !== '#') top--;
+    const cy = top * S + S * 0.06 + lw + (+t - 1) * lw * 2.5;   // 贴着天花板，两组上下错开一点
+    b.strokeStyle = css(P.wire); b.lineWidth = lw; b.lineJoin = 'round'; b.lineCap = 'butt';
+    for (const l of lv.lamps) {
+      if (l.grp !== +t) continue;
+      const lx = (l.c + 0.5) * S;
+      b.beginPath(); b.moveTo(bx, by - S * 0.09); b.lineTo(bx, cy); b.lineTo(lx, cy); b.lineTo(lx, l.r * S + S * 0.2); b.stroke();
+    }
+    b.fillStyle = css(P.box); rr(bx - S * 0.1, by - S * 0.09, S * 0.2, S * 0.18, S * 0.04, b); b.fill();   // 拉杆的底座
   }
 }
 
+// ---------- 光 ----------
+// 每盏灯的光是一个“帐篷”：灯罩口很窄，往下很快张开，到灯这一格的地面就照满规则里的五格，再直着落到地板。
+// 形状先在小图上算（一格 MR 个像素），画的时候放大，边自然就是软的。
+const MR = 10;
+function soften(a, w, h) {
+  const t = new Float32Array(a.length);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) t[j * w + i] = (a[j * w + Math.max(0, i - 1)] + 2 * a[j * w + i] + a[j * w + Math.min(w - 1, i + 1)]) / 4;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) a[j * w + i] = (t[Math.max(0, j - 1) * w + i] + 2 * t[j * w + i] + t[Math.min(h - 1, j + 1) * w + i]) / 4;
+}
+function buildLamps() {
+  for (const l of lv.lamps) {
+    const c0 = l.c - 3, r0 = l.r - 1, cw = 7, ch = 6, w = cw * MR, h = ch * MR, lit = new Set(l.cells), a = new Float32Array(w * h);
+    const on = (c, r) => lit.has(K(c, r));
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const x = c0 + (i + 0.5) / MR, y = r0 + (j + 0.5) / MR, c = Math.floor(x), r = Math.floor(y);
+      let v = on(c, r) ? 1 : 0;
+      // 光稍微吃进旁边的墙和脚下的楼板一点，软边就落在墙里，屋里不会留一道暗边
+      if (!v && T(lv, c, r) === '#' && ((on(c, r - 1) && y - r < 0.45) || (on(c - 1, r) && x - c < 0.3) || (on(c + 1, r) && c + 1 - x < 0.3))) v = 1;
+      const dy = y - (l.r + 0.34), dx = Math.abs(x - (l.c + 0.5));
+      a[j * w + i] = v * clamp((0.7 + 2.8 * Math.max(0, dy) - dx) / 0.5 + 0.5, 0, 1) * clamp(1 + dy / 0.12, 0, 1);
+    }
+    soften(a, w, h); soften(a, w, h);
+    const m = new ImageData(w, h), gl = new ImageData(w, h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const k = j * w + i, d = Math.hypot(c0 + (i + 0.5) / MR - (l.c + 0.5), r0 + (j + 0.5) / MR - (l.r + 0.37));
+      m.data.set([255, 255, 255, a[k] * 255], k * 4);
+      gl.data.set([C.lamp[0], C.lamp[1], C.lamp[2], a[k] * (0.1 + 0.4 * Math.exp(-d * 1.25)) * 255], k * 4);   // 灯泡周围最亮，往外淡下去
+    }
+    const put = img => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').putImageData(img, 0, 0); return c; };
+    l.mask = put(m); l.glow = put(gl);
+    l.mx = c0 * S; l.my = r0 * S; l.mw = cw * S; l.mh = ch * S;
+    let fr = l.r; while (fr < lv.h && T(lv, l.c, fr) !== '#') fr++;
+    l.floor = fr < lv.h && fr <= l.r + 4 ? fr : -1;   // 灯正下方的地板在第几行
+  }
+}
+// 把“照到的那一层”按光的形状抠出来，盖在暗的那一层上。只在灯有变化的时候重做
+function composeLight() {
+  const b = lightC.getContext('2d'), lw = lv.w * S + PADX * 2, lh = lv.h * S + PADT;
+  b.setTransform(1, 0, 0, 1, 0, 0); b.globalCompositeOperation = 'source-over'; b.globalAlpha = 1;
+  b.clearRect(0, 0, lightC.width, lightC.height);
+  lightAny = lampI.some(v => v > 0.004);
+  if (!lightAny) return;
+  b.setTransform(DPR, 0, 0, DPR, PADX * DPR, PADT * DPR);
+  b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'high';
+  lv.lamps.forEach((l, i) => { if (lampI[i] > 0.004) { b.globalAlpha = Math.min(1, lampI[i]); b.drawImage(l.mask, l.mx, l.my, l.mw, l.mh); } });
+  b.globalAlpha = 1; b.globalCompositeOperation = 'source-in';
+  b.drawImage(litLayer, -PADX, -PADT, lw, lh);
+  // 地板不要软边：照到哪一格，就亮到那一格的边。玩的时候看地板就知道哪几格算数
+  b.globalCompositeOperation = 'source-over';
+  const fh = FLOORH + FRONTH + 1;
+  const amount = (c, r) => { let v = 0; lv.lamps.forEach((l, i) => { if (lampI[i] > v && l.cells.includes(K(c, r))) v = lampI[i]; }); return Math.min(1, v); };
+  for (let r = 1; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
+    if (T(lv, c, r) !== '#' || T(lv, c, r - 1) === '#') continue;
+    const v = amount(c, r - 1); let e = c + 1;
+    while (e < lv.w && T(lv, e, r) === '#' && T(lv, e, r - 1) !== '#' && amount(e, r - 1) === v) e++;
+    const x = c * S, y = r * S, len = (e - c) * S;
+    b.clearRect(x, y, len, fh);
+    if (v > 0) { b.globalAlpha = v; b.drawImage(litLayer, (x + PADX) * DPR, (y + PADT) * DPR, len * DPR, fh * DPR, x, y, len, fh); b.globalAlpha = 1; }
+    c = e - 1;
+  }
+}
+const flick = e => e < 0.05 ? 0.6 * e / 0.05 : e < 0.09 ? 0.25 : e < 0.3 ? 0.25 + 0.75 * ease((e - 0.09) / 0.21) : 1;   // 开灯：闪一下再亮稳
+const lampOver = (c, r) => lv.lamps.find((l, i) => lampI[i] > 0.5 && l.cells.includes(K(c, r)));
+
 // ---------- 画 ----------
-function rr(x, y, w, h, rad) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, rad); else g.rect(x, y, w, h); }
+function rr(x, y, w, h, rad, b = g) { b.beginPath(); if (b.roundRect) b.roundRect(x, y, w, h, rad); else b.rect(x, y, w, h); }
 function glow(x, y, rad, col, a) {
   if (a <= 0.003 || rad <= 0) return;
   g.save(); g.globalCompositeOperation = 'lighter';
   const gr = g.createRadialGradient(x, y, 0, x, y, rad);
-  gr.addColorStop(0, rgba(col, a)); gr.addColorStop(0.4, rgba(col, a * 0.3)); gr.addColorStop(1, rgba(col, 0));
+  gr.addColorStop(0, css(col, a)); gr.addColorStop(0.4, css(col, a * 0.3)); gr.addColorStop(1, css(col, 0));
   g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill(); g.restore();
 }
-const ease = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
 
 let last = performance.now() / 1000;
 function frame() {
   const now = performance.now() / 1000, dt = Math.min(0.05, now - last); last = now;
   ui = [];
-  const lit = litSet(lv, cur), open = gatesOpen(lv, cur);
+  const lit = litSet(lv, cur), open = gatesOpen(lv, cur), k = S / 64;
 
   // 位置补间
   const pt = ease((now - (pView.t0 || 0)) / 0.14);
@@ -468,10 +765,19 @@ function frame() {
     const m = cur.mons[i];
     v.x = v.fx + (m.x - v.fx) * pt; v.y = v.fy + (m.y - v.fy) * pt;
     const target = lit.has(K(m.x, m.y)) ? 1 : 0;
-    if ((target === 1) !== (v.f > 0.5) && Math.abs(target - v.f) > 0.9) puff((m.x + 0.5) * S, (m.y + 0.6) * S, target ? WARM : [40, 30, 60]);
+    if ((target === 1) !== (v.f > 0.5) && Math.abs(target - v.f) > 0.9) puff((m.x + 0.5) * S, (m.y + 0.6) * S, target ? C.lamp : C.ink);
     if (pt > 0.6) v.f += (target - v.f) * (1 - Math.exp(-dt * 14));
   });
   gateView += ((open ? 1 : 0) - gateView) * (1 - Math.exp(-dt * 10));
+  pLit += ((lit.has(K(cur.px, cur.py)) ? 1 : 0) - pLit) * (1 - Math.exp(-dt * 12));
+  // 灯：开的时候闪一下再亮稳，关的时候很快暗下去
+  lv.lamps.forEach((l, i) => {
+    const on = lampOn(l, cur);
+    if (on !== lampWas[i]) { lampWas[i] = on; lampT0[i] = now; }
+    const e = now - lampT0[i], v = on ? flick(e) : 1 - ease(e / 0.16);
+    if (Math.abs(v - lampI[i]) > 0.001) { lampI[i] = v; lightDirty = true; }
+  });
+  if (lightDirty) { composeLight(); lightDirty = false; }
 
   const tc = targetCam();
   camX += (tc.x - camX) * (1 - Math.exp(-dt * 8)); camY += (tc.y - camY) * (1 - Math.exp(-dt * 8));
@@ -479,91 +785,74 @@ function frame() {
   const sx = shake > 0 ? (Math.random() - 0.5) * 8 * shake : 0;
 
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
-  g.fillStyle = '#07060c'; g.fillRect(0, 0, W, H);
+  g.drawImage(skyLayer, 0, 0, W, H);
   g.save(); g.translate(Math.round(-camX + sx), Math.round(-camY));
-  g.drawImage(staticLayer, 0, 0, lv.w * S, lv.h * S);
-
-  // 灯光
-  for (const l of lv.lamps) {
-    if (!lampOn(l, cur)) continue;
-    const lx = (l.c + 0.5) * S, ly = (l.r + 0.32) * S;
-    g.save();
-    g.beginPath(); for (const k of l.cells) { const [c, r] = k.split(',').map(Number); g.rect(c * S - 0.5, r * S - 0.5, S + 1, S + 1); }
-    g.clip();
-    g.globalCompositeOperation = 'lighter';
-    const gr = g.createRadialGradient(lx, ly, S * 0.1, lx, ly + S * 1.4, S * 3.2);
-    gr.addColorStop(0, rgba(WARM, 0.34)); gr.addColorStop(0.45, rgba(WARM, 0.13)); gr.addColorStop(1, rgba(WARM, 0));
-    g.fillStyle = gr; g.fillRect(lx - S * 3.5, ly - S, S * 7, S * 5);
-    // 光锥
-    const cone = g.createLinearGradient(0, ly, 0, ly + S * 3);
-    cone.addColorStop(0, rgba(WARM, 0.13)); cone.addColorStop(1, rgba(WARM, 0));
-    g.fillStyle = cone; g.beginPath(); g.moveTo(lx - S * 0.25, ly + S * 0.1); g.lineTo(lx + S * 0.25, ly + S * 0.1); g.lineTo(lx + S * 2.4, ly + S * 3.7); g.lineTo(lx - S * 2.4, ly + S * 3.7); g.closePath(); g.fill();
-    g.restore();
+  const lw = lv.w * S + PADX * 2, lh = lv.h * S + PADT;
+  g.drawImage(treeLayer, houseL + S * 0.55 - S * 2.5, (HOUSE_TOP + 0.3) * S - S * 3.6, S * 5, S * 3.6);
+  g.drawImage(darkLayer, -PADX, -PADT, lw, lh);
+  if (lightAny) g.drawImage(lightC, -PADX, -PADT, lw, lh);
+  // 地面：房子最下面那一截埋在土里
+  g.fillStyle = css(mix(C.mass, C.night, 0.35)); g.fillRect(camX - 20, groundY, W + 40, camY + H - groundY + 20);
+  g.fillStyle = css(C.moon, 0.07); g.fillRect(camX - 20, groundY, W + 40, 1);
+  g.fillStyle = css(mix(C.mass, C.night, 0.35));
+  for (let i = Math.floor((camX - 20) / (S * 0.3)); i * S * 0.3 < camX + W + 20; i++) {   // 草
+    const tx = (i + hash(i, 3)) * S * 0.3, th = (2 + hash(i, 5) * 6) * k;
+    g.beginPath(); g.moveTo(tx - 1.6 * k, groundY + 1); g.lineTo(tx + (hash(i, 7) - 0.5) * 3 * k, groundY - th); g.lineTo(tx + 1.6 * k, groundY + 1); g.fill();
   }
 
-  // 踏板、铁门、拉杆
-  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
-    const t = T(lv, c, r), x = c * S, y = r * S;
-    if (t === '_') {
-      const pressed = cur.mons.some(m => m.x === c && m.y === r) || (cur.px === c && cur.py === r);
-      const ph = S * (pressed ? 0.04 : 0.08);
-      rr(x + S * 0.14, y + S - ph, S * 0.72, ph + 1, 2); g.fillStyle = pressed ? '#b98b4a' : '#6e5a48'; g.fill();
-      if (pressed) glow(x + S / 2, y + S, S * 0.6, [255, 190, 110], 0.35);
-    } else if (t === '1' || t === '2') {
-      const on = ((cur.lamps >> (+t - 1)) & 1) === 1, col = GRP[t];
-      const bx = x + S * 0.5, by = y + S * 0.42;
-      rr(bx - S * 0.11, by - S * 0.16, S * 0.22, S * 0.32, 3); g.fillStyle = '#2b2533'; g.fill(); g.strokeStyle = '#463a4a'; g.lineWidth = 1; g.stroke();
-      const a = on ? 0.6 : -0.6;
-      g.strokeStyle = '#a89a8a'; g.lineWidth = Math.max(2, S * 0.05); g.lineCap = 'round';
-      g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + Math.sin(a) * S * 0.24, by - Math.cos(a) * S * 0.24); g.stroke();
-      g.beginPath(); g.arc(bx + Math.sin(a) * S * 0.24, by - Math.cos(a) * S * 0.24, S * 0.06, 0, 7); g.fillStyle = rgba(col, 1); g.fill();
-      if (on) glow(bx + Math.sin(a) * S * 0.24, by - Math.cos(a) * S * 0.24, S * 0.25, col, 0.5);
-      if (cur.px === c && cur.py === r && status === 'play') {
-        g.font = `${Math.max(11, S * 0.2)}px ${FONT}`; g.textAlign = 'center'; g.fillStyle = 'rgba(255,240,215,0.85)';
-        g.fillText(TOUCH ? '拉' : 'E 拉', bx, y - S * 0.08);
-      }
-    } else if (t === 'G' || t === 'g') {
-      const up = gateView;
-      g.strokeStyle = '#5b5560'; g.lineWidth = Math.max(2, S * 0.06); g.lineCap = 'butt';
-      if (t === 'G') {
-        const h = S * (1 - up * 0.82);
-        for (let i = 0; i < 4; i++) { const bx = x + S * (0.2 + i * 0.2); g.beginPath(); g.moveTo(bx, y); g.lineTo(bx, y + h); g.stroke(); }
-        g.beginPath(); g.moveTo(x + S * 0.1, y + h - S * 0.04); g.lineTo(x + S * 0.9, y + h - S * 0.04); g.stroke();
-      } else {
-        const w = S * (1 - up * 0.85);
-        for (let i = 0; i < 3; i++) { const by = y + S * (0.25 + i * 0.25); g.beginPath(); g.moveTo(x, by); g.lineTo(x + w, by); g.stroke(); }
-      }
-    }
-  }
-
-  // 影子 / 家具
+  drawHardware(lit);
   cur.mons.forEach((m, i) => drawMonster(m, mView[i], now, lurkerSees(lv, cur, m, lit) && status === 'play'));
   drawPlayer(now);
 
   // 灯（画在最上面）
-  for (const l of lv.lamps) {
-    const on = lampOn(l, cur), x = (l.c + 0.5) * S, y = l.r * S;
-    g.strokeStyle = '#2c2630'; g.lineWidth = Math.max(1, S * 0.025);
-    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + S * 0.18); g.stroke();
-    g.beginPath(); g.moveTo(x - S * 0.09, y + S * 0.18); g.lineTo(x + S * 0.09, y + S * 0.18); g.lineTo(x + S * 0.2, y + S * 0.33); g.lineTo(x - S * 0.2, y + S * 0.33); g.closePath();
-    g.fillStyle = on ? '#5a4636' : '#2e2733'; g.fill();
-    if (l.grp) { g.fillStyle = rgba(GRP[l.grp], on ? 0.95 : 0.5); g.fillRect(x - S * 0.15, y + S * 0.27, S * 0.3, S * 0.035); }
-    g.beginPath(); g.arc(x, y + S * 0.36, S * 0.065, 0, 7); g.fillStyle = on ? '#fff2c8' : '#3a3440'; g.fill();
-    if (on) { glow(x, y + S * 0.36, S * 0.9, WARM, 0.5); glow(x, y + S * 0.36, S * 0.2, [255, 250, 230], 0.9); }
-  }
-  // 出口的光
-  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) if (T(lv, c, r) === 'E') glow((c + 0.5) * S, (r + 0.6) * S, S * (1.2 + 0.08 * Math.sin(now * 2)), [255, 200, 130], 0.28);
+  lv.lamps.forEach((l, i) => {
+    const I = Math.min(1, lampI[i]), x = (l.c + 0.5) * S, y = l.r * S, col = GRP[l.grp];
+    g.strokeStyle = css(mix(C.room, C.dusk, 0.6)); g.lineWidth = Math.max(1, S * 0.02); g.beginPath(); g.moveTo(x, y + S * 0.06); g.lineTo(x, y + S * 0.2); g.stroke();
+    g.beginPath(); g.moveTo(x - S * 0.07, y + S * 0.2); g.lineTo(x + S * 0.07, y + S * 0.2); g.lineTo(x + S * 0.23, y + S * 0.335); g.lineTo(x - S * 0.23, y + S * 0.335); g.closePath();
+    g.fillStyle = css(mix(shade(col, 0.62), shade(col, 0.22), I)); g.fill();
+    g.beginPath(); g.arc(x, y + S * 0.365, S * 0.058, 0, 7); g.fillStyle = css(mix(mix(C.dusk, C.moon, 0.3), C.hot, I)); g.fill();
+    if (I > 0.02) { g.fillStyle = css(C.hot, 0.8 * I); g.fillRect(x - S * 0.23, y + S * 0.326, S * 0.46, Math.max(1, S * 0.014)); }
+  });
 
-  // 灰尘
+  // 光本身：加在所有东西上面的一层暖色
+  g.save(); g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  lv.lamps.forEach((l, i) => { if (lampI[i] > 0.01) { g.globalAlpha = Math.min(1, lampI[i]); g.drawImage(l.glow, l.mx, l.my, l.mw, l.mh); } });
+  g.restore();
+  lv.lamps.forEach((l, i) => {
+    const I = Math.min(1, lampI[i]); if (I < 0.01) return;
+    const x = (l.c + 0.5) * S, y = (l.r + 0.365) * S;
+    glow(x, y + S * 0.5, S * 3.2, C.lamp, 0.06 * I); glow(x, y, S * 0.95, C.lamp, 0.42 * I); glow(x, y, S * 0.2, C.hot, 0.9 * I);
+    if (l.floor >= 0) {   // 灯正下方的地板上最亮的一块
+      g.save(); g.beginPath(); g.rect((l.c - 2) * S, l.floor * S, S * 5, FLOORH); g.clip();
+      g.translate(x, l.floor * S + FLOORH * 0.5); g.scale(1, 0.1); glow(0, 0, S * 2, C.lamp, 0.26 * I); g.restore();
+    }
+    for (let j = 0; j < 2; j++) {    // 绕着灯泡飞的两只蛾子
+      const a = now * (2.3 + j * 0.9) + j * 2.4, rad = S * (0.2 + 0.07 * Math.sin(now * 1.1 + j * 3));
+      g.fillStyle = css(C.hot, I * (0.45 + 0.35 * Math.sin(now * 23 + j * 5)));
+      g.beginPath(); g.arc(x + Math.cos(a) * rad, y + S * 0.05 + Math.sin(a * 1.3) * rad * 0.55, Math.max(0.9, S * 0.014), 0, 7); g.fill();
+    }
+    for (let j = 0; j < 18; j++) {   // 光里飘着的灰尘
+      const depth = (l.floor >= 0 ? l.floor - l.r : 3.6) - 0.5, yy = (hash(j, l.c + 3.3) + now * (0.012 + hash(j, 9.1) * 0.02)) % 1;
+      const dy = 0.15 + yy * depth, hw = Math.min(2.4, 0.5 + 2.8 * dy) * 0.92;
+      const cx = l.c + 0.5 + (hash(j, l.r + 7.7) * 2 - 1) * hw + Math.sin(now * 0.35 + j * 1.9) * 0.07, cy = l.r + 0.34 + dy;
+      if (!l.cells.includes(K(Math.floor(cx), Math.floor(cy)))) continue;
+      g.fillStyle = css(C.lamp, I * (0.18 + hash(j, 2.2) * 0.3) * Math.sin(yy * Math.PI));
+      g.beginPath(); g.arc(cx * S, cy * S, Math.max(0.7, S * 0.011), 0, 7); g.fill();
+    }
+  });
+  // 出口：一圈冷光，慢慢地一明一暗
+  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) if (T(lv, c, r) === 'E') glow((c + 0.5) * S, (r + 0.55) * S, S * (1.25 + 0.06 * Math.sin(now * 1.6)), C.moon, 0.2);
+
+  // 变身时扬起来的灰
   g.save(); g.globalCompositeOperation = 'lighter';
   parts = parts.filter(p => (p.life -= dt) > 0);
-  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= 10 * dt; g.fillStyle = rgba(p.col, Math.min(0.6, p.life)); g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); }
+  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= 10 * dt; g.fillStyle = css(p.col, Math.min(0.6, p.life)); g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); }
   g.restore();
   g.restore();
 
   // 四周压暗
-  const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.78);
+  vg.addColorStop(0, css(C.ink, 0)); vg.addColorStop(1, css(C.ink, 0.5));
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
 
   drawUI(now);
@@ -577,122 +866,188 @@ function puff(x, y, col) {
   }
 }
 
+// 踏板、拉杆、铁门：规则用得着的东西，暗处也要看得清
+function drawHardware(lit) {
+  const iron = mix(C.dusk, C.moon, 0.32);
+  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
+    const t = T(lv, c, r), x = c * S, y = r * S, on = lit.has(K(c, r));
+    if (t === '_') {
+      const pressed = cur.mons.some(m => m.x === c && m.y === r) || (cur.px === c && cur.py === r);
+      const ph = S * (pressed ? 0.03 : 0.075), py = y + S + FEET;
+      rr(x + S * 0.14, py - ph, S * 0.72, ph + S * 0.02, 2);
+      g.fillStyle = css(on ? shade(C.brass, pressed ? 0.05 : 0.4) : mix(C.dusk, C.moon, pressed ? 0.5 : 0.2)); g.fill();
+      if (pressed) glow(x + S / 2, py, S * 0.5, C.moon, 0.2);
+    } else if (t === '1' || t === '2') {
+      const up = ((cur.lamps >> (+t - 1)) & 1) === 1, col = GRP[t], bx = x + S * 0.5, by = y + S * LEVER_Y, a = up ? 0.6 : -0.6;
+      const kx = bx + Math.sin(a) * S * 0.15, ky = by - Math.cos(a) * S * 0.15;
+      g.strokeStyle = css(mix(C.dusk, C.moon, 0.55)); g.lineWidth = Math.max(2, S * 0.05); g.lineCap = 'round';
+      g.beginPath(); g.moveTo(bx, by); g.lineTo(kx, ky); g.stroke();
+      g.beginPath(); g.arc(kx, ky, S * 0.055, 0, 7); g.fillStyle = css(up ? col : shade(col, 0.35)); g.fill();
+      if (up) glow(kx, ky, S * 0.22, col, 0.4);
+      if (cur.px === c && cur.py === r && status === 'play') {
+        g.font = `${Math.max(11, S * 0.2)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = css(C.moon, 0.9);
+        g.fillText(TOUCH ? '拉' : 'E 拉', bx, y - S * 0.07);
+      }
+    } else if (t === 'G') {   // 铁门：开的时候沉到地板里去
+      const top = y + (S + FEET) * gateView * 0.94, bot = y + S + FEET;
+      g.strokeStyle = css(iron); g.lineWidth = Math.max(2, S * 0.055); g.lineCap = 'butt';
+      for (let i = 0; i < 4; i++) { const bx = x + S * (0.2 + i * 0.2); g.beginPath(); g.moveTo(bx, top); g.lineTo(bx, bot); g.stroke(); }
+      g.beginPath(); g.moveTo(x + S * 0.1, top + S * 0.03); g.lineTo(x + S * 0.9, top + S * 0.03); g.stroke();
+    } else if (t === 'g') {   // 地板上的铁盖子：盖在洞口上的一块格栅，开的时候抽到一边去
+      const w = S * (1 - gateView * 0.85), h = FLOORH * 0.7;
+      g.fillStyle = css(iron); g.fillRect(x, y + FLOORH * 0.15, w, h);
+      g.fillStyle = css(C.mass, 0.75); for (let i = 0; i < 6; i++) { const sx = x + S * (0.07 + i * 0.155); if (sx + S * 0.08 < x + w) g.fillRect(sx, y + FLOORH * 0.3, S * 0.08, h * 0.55); }
+    }
+  }
+}
+
+// 主角：乱头发、米白卫衣、长裤、靴子。暗处是一个偏冷的浅色剪影，走到灯下才有颜色
 function drawPlayer(now) {
-  const x = (pView.x + 0.5) * S, base = (pView.y + 1) * S, f = pView.face;
+  const k = S / 64, f = pView.face, x = (pView.x + 0.5) * S, base = (pView.y + 1) * S + FEET;
   const moving = pView.fx !== cur.px || pView.fy !== cur.py;
-  const ph = moving ? (now - pView.t0) / 0.14 : 0, swing = moving ? Math.sin(ph * Math.PI) * 0.5 * (pView.walk % 2 ? 1 : -1) : 0;
-  const k = S / 64, onLadder = 'Hg'.includes(T(lv, cur.px, cur.py)) && !moving;
+  const ph = moving ? clamp((now - pView.t0) / 0.14, 0, 1) : 0, sw = moving ? Math.sin(ph * Math.PI) * (pView.walk % 2 ? 1 : -1) : 0;
+  const climbing = 'Hg'.includes(T(lv, cur.px, cur.py)) && !moving;
   let a = 1;
   if (status === 'dead') a = Math.max(0.15, 1 - (now - statusT) * 1.2);
   if (status === 'win') a = Math.max(0, 1 - (now - statusT - 0.2) * 1.5);
+  const col = (d, l) => css(mix(d, l, pLit));
+  const hood = col(mix(C.dusk, C.moon, 0.56), C.cream), hood2 = col(mix(C.dusk, C.moon, 0.4), shade(C.cream, 0.17));
+  const cloth = col(mix(C.room, C.dusk, 0.75), C.cloth), cloth2 = col(mix(C.room, C.dusk, 0.35), shade(C.cloth, 0.25));
+  const boot = col(mix(C.mass, C.room, 0.5), shade(C.wood, 0.72)), skin = col(mix(C.dusk, C.moon, 0.46), C.skin), hair = col(mix(C.mass, C.room, 0.4), shade(C.wood, 0.8));
+  const bob = moving ? Math.abs(Math.sin(ph * Math.PI)) * 1.5 * k : Math.sin(now * 2.2) * 0.4 * k;
+  const top = base - 32 * k - bob, hem = base - 15.5 * k - bob, hx = x + f * 1 * k, hy = top - 5.4 * k;
   g.save(); g.globalAlpha = a;
-  // 影子
-  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, base - 1, 11 * k, 3 * k, 0, 0, 7); g.fill();
-  // 腿
-  g.strokeStyle = '#2a2230'; g.lineWidth = 4 * k; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(x - 3 * k, base - 12 * k); g.lineTo(x - 3 * k + swing * 6 * k, base - 2 * k);
-  g.moveTo(x + 3 * k, base - 12 * k); g.lineTo(x + 3 * k - swing * 6 * k, base - 2 * k); g.stroke();
-  // 雨衣
-  const bob = moving ? Math.abs(Math.sin(ph * Math.PI)) * 1.5 * k : Math.sin(now * 2.2) * 0.5 * k;
-  const top = base - 34 * k - bob;
-  g.beginPath(); g.moveTo(x - 6 * k, top + 6 * k); g.lineTo(x + 6 * k, top + 6 * k); g.lineTo(x + 11 * k, base - 11 * k); g.lineTo(x - 11 * k, base - 11 * k); g.closePath();
-  const cg = g.createLinearGradient(x - 11 * k, 0, x + 11 * k, 0); cg.addColorStop(0, '#d9a93f'); cg.addColorStop(1, '#f2cf6b');
-  g.fillStyle = cg; g.fill();
-  // 头和帽兜
-  const hx = x + f * 1.5 * k, hy = top - 2 * k;
-  g.beginPath(); g.arc(hx, hy, 9.5 * k, 0, 7); g.fillStyle = '#e5b84f'; g.fill();
-  if (!onLadder) {
-    g.beginPath(); g.arc(hx + f * 2 * k, hy + 1 * k, 6.5 * k, 0, 7); g.fillStyle = '#f1d6b8'; g.fill();
-    g.fillStyle = '#2a2230'; g.beginPath(); g.arc(hx + f * 4.5 * k, hy, 1.2 * k, 0, 7); g.fill();
+  // 脚下的影子
+  const lp = lampOver(cur.px, cur.py), dir = lp ? Math.sign(lp.c - cur.px) : 0;
+  const perched = cur.mons.some(m => m.x === cur.px && m.y === cur.py + 1) && !moving;   // 站在家具顶上
+  g.fillStyle = css(C.mass, 0.3 + 0.2 * pLit); g.beginPath();
+  if (perched) g.ellipse(x, base + 0.3 * k, 8 * k, 1.6 * k, 0, 0, 7); else g.ellipse(x - dir * 5 * k * pLit, base + 0.5 * k, 10 * k + 3 * k * pLit, 3 * k, 0, 0, 7);
+  g.fill();
+  // 腿和靴子：先画远的那条
+  g.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    const hipX = x + s * 2.4 * k, footX = hipX + s * sw * 5.5 * k;
+    g.strokeStyle = s < 0 ? cloth2 : cloth; g.lineWidth = 4.6 * k;
+    g.beginPath(); g.moveTo(hipX, hem - 1.5 * k); g.lineTo(footX, base - 4 * k); g.stroke();
+    g.fillStyle = boot; rr(footX - 3 * k + f * 0.8 * k, base - 4.4 * k, 6.4 * k, 4.4 * k, 1.6 * k); g.fill();
   }
+  if (climbing) {   // 爬梯子：背对着我们，两只手抓着梯子
+    g.strokeStyle = hood2; g.lineWidth = 4.2 * k;
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(x + s * 5 * k, top + 4 * k); g.lineTo(x + s * 7.5 * k, top - 5 * k); g.stroke(); }
+  }
+  // 帽兜（放下来堆在脖子后面）、卫衣
+  g.fillStyle = hood2; g.beginPath(); g.ellipse(climbing ? x : x - f * 4.4 * k, top + 2.6 * k, climbing ? 6.6 * k : 3.6 * k, 2.8 * k, 0, 0, 7); g.fill();
+  g.fillStyle = hood; rr(x - 6.6 * k, top, 13.2 * k, hem - top, [5 * k, 5 * k, 2.4 * k, 2.4 * k]); g.fill();
+  g.fillStyle = hood2; g.fillRect(x - 6.6 * k, hem - 2.2 * k, 13.2 * k, 2.2 * k);
+  if (!climbing) {  // 近的那只手臂，和腿反着摆
+    const sx = x - f * 2.2 * k, sy = top + 3.6 * k, ax = sx - f * sw * 4 * k, ay = top + 14 * k;
+    g.strokeStyle = hood2; g.lineWidth = 4 * k; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ax, ay); g.stroke();
+    g.fillStyle = skin; g.beginPath(); g.arc(ax, ay + 1.6 * k, 1.9 * k, 0, 7); g.fill();
+  }
+  // 头
+  g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, 7.4 * k, 0, 7); g.fill();
+  g.fillStyle = hair; g.beginPath();
+  if (climbing) {
+    g.arc(x, hy, 7.9 * k, 0, 7);
+    for (const [ox, oy] of [[-7.5, -5], [-3, -10.2], [2, -9.6], [7, -6.2], [9, 0.5], [-9, 1.5]]) { g.moveTo(x + ox * 0.7 * k, hy + oy * 0.7 * k); g.lineTo(x + ox * k, hy + oy * k); g.lineTo(x + (ox * 0.7 + 2.6) * k, hy + (oy * 0.7 + 1) * k); }
+  } else {
+    const P = [[5.4, -4.4], [7.9, -2.2], [6.6, -6.4], [3.2, -9.9], [1.4, -7.9], [-1.8, -10.6], [-3.6, -8], [-7.4, -8.8], [-7, -4.6], [-9.6, -2.4], [-7.5, 0.6], [-8.6, 4.4], [-5.2, 3.9], [-3.8, 0.8], [-0.8, -2.6], [3, -3.5]];
+    P.forEach(([px, py], i) => g[i ? 'lineTo' : 'moveTo'](hx + f * px * k, hy + py * k));
+    g.closePath();
+  }
+  g.fill();
+  if (!climbing) { g.fillStyle = hair; g.beginPath(); g.arc(hx + f * 3.9 * k, hy + 0.5 * k, 1.05 * k, 0, 7); g.fill(); }
   g.restore();
-  glow(x, base - 20 * k, 26 * k, [255, 220, 150], 0.08 * a);
 }
 
+// 影子：全画面最黑的东西，只有一圈冷色的边和一双眼睛。被照到就是一件家具
 function drawMonster(m, v, now, sees) {
-  const x = (v.x + 0.5) * S, base = (v.y + 1) * S, k = S / 64, f = clamp(v.f, 0, 1);
+  const x = (v.x + 0.5) * S, base = (v.y + 1) * S + FEET, k = S / 64, f = clamp(v.f, 0, 1), fc = v.face || -1;
   if (f < 0.98) {
     g.save(); g.globalAlpha = 1 - f;
     g.translate(x, base); g.scale(1 + f * 0.3, 1 - f * 0.5); g.translate(-x, -base);
-    const t = now * 3 + m.x;
-    g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(x, base - 1, 18 * k, 3.5 * k, 0, 0, 7); g.fill();
-    g.beginPath();
-    if (m.t === 'x') { // 扑影：矮、宽，背上一排刺
-      const w = 21 * k, h = 30 * k;
-      g.moveTo(x - w, base);
-      for (let i = 0; i <= 8; i++) { const px = x - w + (2 * w * i) / 8, spike = i % 2 ? 7 * k : 0; const py = base - h * Math.sin((i / 8) * Math.PI) - spike - Math.sin(t + i) * 1.5 * k; g.lineTo(px, py); }
-      g.lineTo(x + w, base);
-    } else if (m.t === 'm') { // 学影：又高又瘦
-      const w = 9 * k, h = 52 * k;
-      g.moveTo(x - w, base); g.quadraticCurveTo(x - w - 2 * k + Math.sin(t) * k, base - h * 0.6, x - 6 * k, base - h);
-      g.arc(x, base - h, 6 * k, Math.PI, 0); g.quadraticCurveTo(x + w + 2 * k + Math.sin(t + 1) * k, base - h * 0.6, x + w, base);
-    } else { // 游影：圆滚滚
-      const r = 16 * k;
-      for (let i = 0; i <= 20; i++) { const a = Math.PI + (i / 20) * Math.PI; g.lineTo(x + Math.cos(a) * r * 1.1, base - 4 * k - r + Math.sin(a) * r + Math.sin(t * 1.5 + i) * 1.2 * k); }
-      g.lineTo(x + r * 1.1, base - 4 * k - r); g.quadraticCurveTo(x + r, base - 2 * k, x, base - 3 * k); g.quadraticCurveTo(x - r, base - 2 * k, x - r * 1.1, base - 4 * k - r);
+    const t = now * 3 + m.x * 1.7, shapes = [];
+    g.fillStyle = css(C.ink, 0.5); g.beginPath(); g.ellipse(x, base, 23 * k, 3.6 * k, 0, 0, 7); g.fill();
+    let ey = 0, ex = x + fc * 3 * k, eyes = [-4.4, 4.4], er = [2, 2.7];
+    if (m.t === 'x') {          // 扑影：一摊矮矮宽宽的黑，顶上几缕往上飘
+      const w = 21 * k, h = 28 * k, lean = fc * 2.5 * k, p = new Path2D();
+      p.moveTo(x - w - 4 * k, base); p.bezierCurveTo(x - w - k, base - h * 1.28, x + w + k, base - h * 1.28, x + w + 4 * k, base); p.closePath(); shapes.push(p);
+      for (const [ox, len, ww, o] of [[-9, 10, 8, 0], [0.5, 15, 9, 1.7], [9.5, 9, 7.5, 3.1]]) {
+        const bx = x + ox * k + lean * 0.4, by = base - h * 0.96 * (1 - Math.pow(ox * k / (w + 4 * k), 2)) + 5 * k;
+        const tx = bx + lean + Math.sin(t * 0.9 + o) * 2.2 * k, ty = by - (len + 5) * k - Math.sin(t * 1.3 + o) * 1.2 * k, q = new Path2D();
+        q.moveTo(bx - ww * k / 2, by); q.quadraticCurveTo(bx - ww * k * 0.2, by - len * k * 0.6, tx, ty); q.quadraticCurveTo(bx + ww * k * 0.35, by - len * k * 0.5, bx + ww * k / 2, by); q.closePath(); shapes.push(q);
+      }
+      ey = base - 12.5 * k; ex = x + fc * 4 * k;
+    } else if (m.t === 'm') {   // 学影：又高又瘦，胳膊垂到膝盖
+      const w = 9 * k, h = 52 * k, p = new Path2D(), sw = Math.sin(t) * 3 * k;
+      p.moveTo(x - w, base); p.quadraticCurveTo(x - w - 2 * k + Math.sin(t) * k, base - h * 0.6, x - 6 * k, base - h);
+      p.arc(x, base - h, 6 * k, Math.PI, 0); p.quadraticCurveTo(x + w + 2 * k + Math.sin(t + 1) * k, base - h * 0.6, x + w, base); p.closePath(); shapes.push(p);
+      for (const s of [-1, 1]) { const q = new Path2D(); q.moveTo(x + s * 7 * k, base - 38 * k); q.quadraticCurveTo(x + s * 15 * k, base - 24 * k, x + s * (13 * k - sw), base - 10 * k); q.lineTo(x + s * (10.4 * k - sw), base - 10.6 * k); q.quadraticCurveTo(x + s * 12 * k, base - 24 * k, x + s * 5 * k, base - 35 * k); q.closePath(); shapes.push(q); }
+      ey = base - 52 * k; eyes = [-3.4, 3.4]; er = [1.7, 2.3];
+    } else {                    // 游影：圆滚滚的一团，一只眼
+      const r = 16 * k, p = new Path2D();
+      for (let i = 0; i <= 20; i++) { const a = Math.PI + (i / 20) * Math.PI; p.lineTo(x + Math.cos(a) * r * 1.1, base - 4 * k - r + Math.sin(a) * r + Math.sin(t * 1.5 + i) * 1.2 * k); }
+      p.lineTo(x + r * 1.1, base - 4 * k - r); p.quadraticCurveTo(x + r, base - 2 * k, x, base - 3 * k); p.quadraticCurveTo(x - r, base - 2 * k, x - r * 1.1, base - 4 * k - r); p.closePath(); shapes.push(p);
+      ey = base - 22 * k; eyes = [0]; er = [3.2, 3.2];
     }
-    g.closePath();
-    g.fillStyle = '#050408'; g.fill();
-    g.strokeStyle = sees ? 'rgba(255,90,74,0.35)' : 'rgba(150,130,210,0.3)'; g.lineWidth = 1.5 * k; g.stroke();
-    if (m.t === 'm') { // 长胳膊
-      g.strokeStyle = '#050408'; g.lineWidth = 3 * k; g.lineCap = 'round';
-      const sw = Math.sin(t) * 3 * k;
-      g.beginPath(); g.moveTo(x - 7 * k, base - 38 * k); g.quadraticCurveTo(x - 15 * k, base - 24 * k, x - 13 * k + sw, base - 10 * k);
-      g.moveTo(x + 7 * k, base - 38 * k); g.quadraticCurveTo(x + 15 * k, base - 24 * k, x + 13 * k - sw, base - 10 * k); g.stroke();
-    }
-    // 眼睛
-    const ey = m.t === 'x' ? base - 18 * k : m.t === 'm' ? base - 52 * k : base - 22 * k;
-    const ex = x + v.face * 3 * k, ecol = sees ? [255, 90, 74] : [215, 222, 255];
-    const blink = Math.sin(now * 0.9 + m.x * 2) > 0.97 ? 0.15 : 1;
-    for (const d of m.t === 'w' ? [0] : [-4, 4]) {
-      g.fillStyle = rgba(ecol, 0.95); g.beginPath(); g.ellipse(ex + d * k, ey, (m.t === 'w' ? 3.2 : 2) * k, (m.t === 'w' ? 3.2 : 2.6) * k * blink, 0, 0, 7); g.fill();
-    }
+    // 先都描一圈冷色的亮边，再整个涂黑：只剩最外面那一圈
+    g.strokeStyle = css(sees ? C.danger : mix(C.dusk, C.moon, 0.5), sees ? 0.45 : 0.36); g.lineWidth = 2.6 * k; g.lineJoin = 'round';
+    for (const p of shapes) g.stroke(p);
+    g.fillStyle = css(C.ink); for (const p of shapes) g.fill(p);
+    const ecol = sees ? C.danger : mix(C.moon, C.hot, 0.3), blink = Math.sin(now * 0.9 + m.x * 2) > 0.97 ? 0.15 : 1;
+    g.fillStyle = css(ecol, 0.96);
+    for (const d of eyes) { g.beginPath(); g.ellipse(ex + d * k, ey, er[0] * k, er[1] * k * blink, 0, 0, 7); g.fill(); }
     g.restore();
-    glow(ex, ey, 10 * k, ecol, 0.35 * (1 - f));
+    glow(ex, ey, 11 * k, ecol, 0.3 * (1 - f));
   }
   if (f > 0.02) {
+    const lp = lampOver(m.x, m.y), dir = lp ? Math.sign(lp.c - m.x) : 0, dist = lp ? Math.abs(lp.c - m.x) : 0;
     g.save(); g.globalAlpha = f;
     g.translate(x, base); g.scale(1, 0.7 + 0.3 * f); g.translate(-x, -base);
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, base - 1, 20 * k, 3.5 * k, 0, 0, 7); g.fill();
-    const wood = (y0, y1) => { const gr = g.createLinearGradient(x - 20 * k, y0, x + 20 * k, y1); gr.addColorStop(0, '#8a5d3d'); gr.addColorStop(1, '#5e3c27'); return gr; };
-    g.strokeStyle = '#2d1d14'; g.lineWidth = 1.5 * k;
-    if (m.t === 'x') { // 衣柜
-      const w = 40 * k, h = 58 * k, x0 = x - w / 2, y0 = base - h;
-      rr(x0, y0 + 4 * k, w, h - 4 * k, 2 * k); g.fillStyle = wood(y0, base); g.fill(); g.stroke();
-      rr(x0 - 2 * k, y0, w + 4 * k, 6 * k, 2 * k); g.fillStyle = '#6e4a31'; g.fill(); g.stroke();
-      g.beginPath(); g.moveTo(x, y0 + 8 * k); g.lineTo(x, base - 4 * k); g.stroke();
-      g.fillStyle = '#d8b06a'; g.beginPath(); g.arc(x - 3 * k, y0 + 30 * k, 1.6 * k, 0, 7); g.arc(x + 3 * k, y0 + 30 * k, 1.6 * k, 0, 7); g.fill();
-      sleepEyes(x, y0 + 18 * k, k);
-    } else if (m.t === 'm') { // 高背椅
-      const y0 = base - 56 * k;
-      rr(x - 11 * k, y0, 22 * k, 30 * k, 4 * k); g.fillStyle = wood(y0, base); g.fill(); g.stroke();
-      rr(x - 15 * k, base - 26 * k, 30 * k, 6 * k, 2 * k); g.fillStyle = '#7a5134'; g.fill(); g.stroke();
-      g.lineWidth = 3 * k; g.strokeStyle = '#4e3221';
-      g.beginPath(); g.moveTo(x - 12 * k, base - 20 * k); g.lineTo(x - 13 * k, base); g.moveTo(x + 12 * k, base - 20 * k); g.lineTo(x + 13 * k, base); g.stroke();
-      sleepEyes(x, y0 + 12 * k, k);
-    } else { // 座钟
-      const w = 22 * k, h = 60 * k, y0 = base - h;
-      rr(x - w / 2, y0, w, h, 3 * k); g.fillStyle = wood(y0, base); g.fill(); g.stroke();
-      g.beginPath(); g.arc(x, y0 + 12 * k, 7 * k, 0, 7); g.fillStyle = '#e8dcc0'; g.fill(); g.stroke();
-      g.strokeStyle = '#2d1d14'; g.beginPath(); g.moveTo(x, y0 + 12 * k); g.lineTo(x + 3 * k, y0 + 9 * k); g.moveTo(x, y0 + 12 * k); g.lineTo(x - 2 * k, y0 + 15 * k); g.stroke();
-      rr(x - 6 * k, y0 + 26 * k, 12 * k, 26 * k, 2 * k); g.fillStyle = '#2b1c13'; g.fill();
-      const sw = Math.sin(now * 3) * 3 * k * 0; g.fillStyle = '#d8b06a'; g.beginPath(); g.arc(x + sw, y0 + 46 * k, 2.5 * k, 0, 7); g.fill();
-      sleepEyes(x, y0 + 21 * k, k, 0.6);
+    // 影子往背灯的那一边拖
+    g.fillStyle = css(C.mass, 0.42); g.beginPath(); g.ellipse(x - dir * (4 + dist * 5) * k, base + 0.5 * k, (m.t === 'x' ? 23 : 17) * k + dist * 3 * k, 4.2 * k, 0, 0, 7); g.fill();
+    const wd = shade(C.wood, 0.4), hi = tint(wd, 0.16), lo = shade(wd, 0.3), dk = shade(wd, 0.55);
+    const side = (x0, y0, w, h) => { if (!dir) return; g.fillStyle = css(hi); g.fillRect(dir > 0 ? x0 + w - 2.4 * k : x0, y0, 2.4 * k, h); g.fillStyle = css(lo); g.fillRect(dir > 0 ? x0 : x0 + w - 2.4 * k, y0, 2.4 * k, h); };
+    const cap = (x0, y0, w, h) => { g.fillStyle = css(tint(wd, 0.1)); rr(x0, y0, w, h, 1.2 * k); g.fill(); g.fillStyle = css(tint(wd, 0.4)); g.fillRect(x0 + k, y0, w - 2 * k, 1.2 * k); };   // 顶：平的，受光
+    if (m.t === 'x') {          // 衣柜
+      const w = 40 * k, h = 64 * k, x0 = x - w / 2, y0 = base - h;
+      g.fillStyle = css(wd); g.fillRect(x0, y0 + 4 * k, w, h - 7 * k); side(x0, y0 + 4 * k, w, h - 7 * k);
+      for (const px of [x0 + 3.6 * k, x + 1.8 * k]) { g.fillStyle = css(shade(wd, 0.16)); g.fillRect(px, y0 + 9 * k, 14.6 * k, 46 * k); g.fillStyle = css(hi); g.fillRect(px, y0 + 9 * k, 14.6 * k, 1.1 * k); }
+      g.fillStyle = css(dk); g.fillRect(x - 0.6 * k, y0 + 5 * k, 1.2 * k, h - 9 * k);
+      g.fillStyle = css(C.brass); for (const s of [-1, 1]) { g.beginPath(); g.arc(x + s * 3.2 * k, y0 + 34 * k, 1.5 * k, 0, 7); g.fill(); }
+      g.fillStyle = css(lo); g.fillRect(x0 - k, base - 4 * k, w + 2 * k, 4 * k);
+      cap(x0 - 2.5 * k, y0, w + 5 * k, 5 * k);
+    } else if (m.t === 'm') {   // 高背椅：靠背顶是平的，正好一格高
+      const y0 = base - 64 * k;
+      g.fillStyle = css(lo); g.fillRect(x - 11.5 * k, y0 + 3 * k, 3 * k, 61 * k); g.fillRect(x + 8.5 * k, y0 + 3 * k, 3 * k, 61 * k);
+      g.fillStyle = css(wd); g.fillRect(x - 8.5 * k, y0 + 6 * k, 17 * k, 27 * k); side(x - 8.5 * k, y0 + 6 * k, 17 * k, 27 * k);
+      g.fillStyle = css(shade(wd, 0.16)); rr(x - 5.5 * k, y0 + 10 * k, 11 * k, 19 * k, 1.5 * k); g.fill();
+      g.fillStyle = css(lo); g.fillRect(x - 13 * k, base - 23 * k, 3 * k, 23 * k); g.fillRect(x + 10 * k, base - 23 * k, 3 * k, 23 * k); g.fillRect(x - 11 * k, base - 10 * k, 22 * k, 2.2 * k);
+      g.fillStyle = css(wd); rr(x - 14.5 * k, base - 28 * k, 29 * k, 5.5 * k, 1.5 * k); g.fill(); g.fillStyle = css(hi); g.fillRect(x - 13.5 * k, base - 28 * k, 27 * k, 1.1 * k);
+      cap(x - 12.5 * k, y0, 25 * k, 4.6 * k);
+    } else {                    // 座钟
+      const y0 = base - 64 * k;
+      g.fillStyle = css(lo); g.fillRect(x - 13 * k, base - 7 * k, 26 * k, 7 * k);
+      g.fillStyle = css(wd); g.fillRect(x - 10 * k, y0 + 22 * k, 20 * k, 36 * k); side(x - 10 * k, y0 + 22 * k, 20 * k, 36 * k);
+      g.fillStyle = css(wd); g.fillRect(x - 12 * k, y0 + 3 * k, 24 * k, 20 * k); side(x - 12 * k, y0 + 3 * k, 24 * k, 20 * k);
+      g.fillStyle = css(C.cream); g.beginPath(); g.arc(x, y0 + 13 * k, 7.2 * k, 0, 7); g.fill();
+      g.strokeStyle = css(dk); g.lineWidth = 1.3 * k; g.lineCap = 'round'; g.beginPath(); g.moveTo(x, y0 + 13 * k); g.lineTo(x + 3.2 * k, y0 + 9.6 * k); g.moveTo(x, y0 + 13 * k); g.lineTo(x - 2 * k, y0 + 15.6 * k); g.stroke();
+      g.fillStyle = css(dk); rr(x - 5 * k, y0 + 27 * k, 10 * k, 26 * k, 1.5 * k); g.fill();
+      const sw = Math.sin(now * 2.6) * 2.4 * k;   // 钟摆慢慢地摆
+      g.strokeStyle = css(shade(C.brass, 0.3)); g.lineWidth = k; g.beginPath(); g.moveTo(x, y0 + 28 * k); g.lineTo(x + sw, y0 + 46 * k); g.stroke();
+      g.fillStyle = css(C.brass); g.beginPath(); g.arc(x + sw, y0 + 46 * k, 2.6 * k, 0, 7); g.fill();
+      cap(x - 13.5 * k, y0, 27 * k, 4.6 * k);
     }
     g.restore();
   }
-}
-function sleepEyes(x, y, k, s = 1) {
-  g.strokeStyle = 'rgba(30,18,10,0.55)'; g.lineWidth = 1.3 * k;
-  for (const d of [-5, 5]) { g.beginPath(); g.arc(x + d * k * s, y, 2.6 * k * s, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); }
 }
 
 // ---------- 界面 ----------
 function button(x, y, r, label, fn, opts = {}) {
   g.beginPath(); g.arc(x, y, r, 0, 7);
-  g.fillStyle = opts.hi ? 'rgba(255,220,160,0.16)' : 'rgba(200,190,230,0.08)'; g.fill();
-  g.strokeStyle = opts.hi ? 'rgba(255,220,160,0.6)' : 'rgba(220,210,240,0.25)'; g.lineWidth = 1.2; g.stroke();
-  g.save(); g.strokeStyle = g.fillStyle = 'rgba(240,232,250,0.88)'; g.lineWidth = 2; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.fillStyle = css(opts.hi ? C.lamp : C.moon, opts.hi ? 0.16 : 0.07); g.fill();
+  g.strokeStyle = css(opts.hi ? C.lamp : C.moon, opts.hi ? 0.6 : 0.26); g.lineWidth = 1.2; g.stroke();
+  g.save(); g.strokeStyle = g.fillStyle = css(C.moon, 0.9); g.lineWidth = 2; g.lineCap = 'round'; g.lineJoin = 'round';
   if (typeof label === 'function') label(x, y);
   else { g.font = `${opts.size || 16}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, x, y + 1); }
   g.restore();
@@ -706,9 +1061,9 @@ const arrow = d => (x, y) => {
 function drawUI(now) {
   const small = W < 600 || H < 500, L = 16, R = W - 16;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-  g.fillStyle = 'rgba(220,205,240,0.5)'; g.font = `${small ? 12 : 15}px ${FONT}`;
+  g.fillStyle = css(C.moon, 0.5); g.font = `${small ? 12 : 15}px ${FONT}`;
   g.fillText(`第 ${li + 1} 关`, L, small ? 24 : 40);
-  g.fillStyle = 'rgba(250,240,255,0.92)'; g.font = `${small ? 20 : 28}px ${FONT}`;
+  g.fillStyle = css(C.moon, 0.94); g.font = `${small ? 20 : 28}px ${FONT}`;
   g.fillText(lv.name, L, small ? 50 : 74);
 
   const by = small ? 32 : 50;
@@ -721,23 +1076,37 @@ function drawUI(now) {
   button(R - 112, by, 19, (x, y) => { g.beginPath(); g.arc(x + 1, y + 1, 8, Math.PI * 1.1, Math.PI * 2.4); g.stroke(); g.beginPath(); g.moveTo(x - 9, y - 6); g.lineTo(x - 7, y + 1); g.lineTo(x - 1, y - 2); g.stroke(); }, undo, { hi: status === 'dead' });
 
   // 关卡点
-  const dy = TOP - (small ? 10 : 14), mx = maxUnlocked(), dx0 = W / 2 - (LEVELS.length - 1) * 12;
+  const mx = maxUnlocked(), dx0 = W / 2 - (LEVELS.length - 1) * 12;
   if (!small || W > 420) for (let i = 0; i < LEVELS.length; i++) {
     const x = dx0 + i * 24, open = i <= mx, done = progress.cleared.includes(i), c = i === li;
-    g.beginPath(); g.arc(x, small ? 32 : 50, c ? 5.5 : 4, 0, 7);
-    g.fillStyle = c ? 'rgba(255,225,170,0.95)' : done ? 'rgba(220,205,240,0.6)' : open ? 'rgba(220,205,240,0.22)' : 'rgba(220,205,240,0.07)';
+    g.beginPath(); g.arc(x, by, c ? 5.5 : 4, 0, 7);
+    g.fillStyle = c ? css(C.lamp, 0.95) : css(C.moon, done ? 0.6 : open ? 0.24 : 0.08);
     g.fill();
-    if (open && !c) ui.push({ x, y: small ? 32 : 50, r: 12, fn: () => load(i) });
+    if (open && !c) ui.push({ x, y: by, r: 12, fn: () => load(i) });
   }
 
-  // 下面的提示
-  const tipY = H - BOT + (TOUCH ? 22 : 30);
+  // 下面那一条：平时是提示，被抓住 / 过关以后换成结果和按钮（不压在房子上）
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = `rgba(230,220,245,${Math.min(0.7, (now - tipShown) * 1.4)})`; g.font = `${small ? 13 : 15}px ${FONT}`;
-  wrapText(lv.tip, W / 2, tipY, Math.min(W - 40, 720), small ? 18 : 21);
-  if (!TOUCH && li < 2) {
-    g.fillStyle = 'rgba(220,205,240,0.38)'; g.font = `13px ${FONT}`;
-    g.fillText('← → 走　↑ ↓ 爬梯子　E 拉　空格 等一步　Z 退一步　R 重来', W / 2, H - 22);
+  if (status === 'play') {
+    const tipY = H - BOT + (TOUCH ? 22 : 30);
+    g.fillStyle = css(C.moon, Math.min(0.72, (now - tipShown) * 1.4)); g.font = `${small ? 13 : 15}px ${FONT}`;
+    const lines = wrapText(lv.tip, W / 2, tipY, Math.min(W - 40, 720), small ? 18 : 21);
+    if (!TOUCH && li < 2 && lines === 1 && W >= 520) {
+      g.fillStyle = css(C.moon, 0.38); g.font = `13px ${FONT}`;
+      g.fillText('← → 走　↑ ↓ 爬梯子　E 拉　空格 等一步　Z 退一步　R 重来', W / 2, H - 22);
+    }
+  } else {
+    const a = clamp((now - statusT - (status === 'win' ? 0.5 : 0.35)) * 2.5, 0, 1), dead = status === 'dead', lastLv = li === LEVELS.length - 1;
+    if (dead) { g.fillStyle = css(C.ink, 0.42 * a); g.fillRect(0, 0, W, H - BOT); }
+    const msg = dead ? '被抓住了' : lastLv ? '五关都走出来了' : '走出去了';
+    g.font = `${small ? 22 : 26}px ${FONT}`; g.fillStyle = css(dead ? mix(C.moon, C.danger, 0.4) : C.moon, a);
+    const tw = g.measureText(msg).width, pw = dead ? 272 : 170, stack = W < tw + pw + 80, cy = H - BOT / 2 - (TOUCH ? 10 : 0);
+    const tx = stack ? W / 2 : W / 2 - (pw + 28) / 2, px = stack ? W / 2 : W / 2 + (tw + 28) / 2, py = stack ? cy + 26 : cy;
+    g.fillText(msg, tx, stack ? cy - 30 : cy);
+    if (a >= 1) {
+      if (dead) { pill(px - 71, py, 130, '退一步', undo); pill(px + 71, py, 130, '重来', restart); }
+      else pill(px, py, 170, lastLv ? '从头再玩' : '下一关  →', nextLevel);
+    }
   }
 
   // 触屏按钮
@@ -751,29 +1120,11 @@ function drawUI(now) {
     button(W - r * 3.4 - 18, y2, r, '拉', () => act('E'), { hi: onLever, size: 17 });
     button(W - r * 3.4 - 18, y1, r * 0.85, '等', () => act('W'), { size: 15 });
   }
-
-  // 输了 / 过关
-  if (status !== 'play') {
-    const a = Math.min(1, (now - statusT - (status === 'win' ? 0.5 : 0.35)) * 2.5);
-    if (a > 0) {
-      g.fillStyle = status === 'dead' ? `rgba(10,0,6,${0.55 * a})` : `rgba(30,20,8,${0.35 * a})`; g.fillRect(0, 0, W, H);
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillStyle = status === 'dead' ? `rgba(255,200,200,${a})` : `rgba(255,236,200,${a})`; g.font = `${small ? 26 : 34}px ${FONT}`;
-      const last = li === LEVELS.length - 1;
-      g.fillText(status === 'dead' ? '被抓住了' : last ? '五关都走出来了' : '走出去了', W / 2, H / 2 - 30);
-      if (a >= 1) {
-        if (status === 'dead') {
-          pill(W / 2 - 80, H / 2 + 30, 140, '退一步', undo);
-          pill(W / 2 + 80, H / 2 + 30, 140, '重来', restart);
-        } else pill(W / 2, H / 2 + 30, 170, last ? '从头再玩' : '下一关  →', nextLevel);
-      }
-    }
-  }
 }
 function pill(x, y, w, label, fn) {
-  rr(x - w / 2, y - 22, w, 44, 22); g.fillStyle = 'rgba(255,236,200,0.1)'; g.fill();
-  g.strokeStyle = 'rgba(255,236,200,0.5)'; g.lineWidth = 1.3; g.stroke();
-  g.fillStyle = 'rgba(255,244,225,0.95)'; g.font = `16px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, x, y + 1);
+  rr(x - w / 2, y - 21, w, 42, 21); g.fillStyle = css(C.moon, 0.1); g.fill();
+  g.strokeStyle = css(C.moon, 0.5); g.lineWidth = 1.3; g.stroke();
+  g.fillStyle = css(C.moon, 0.96); g.font = `16px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, x, y + 1);
   ui.push({ x, y, r: w / 2, fn });
 }
 function wrapText(text, x, y, maxW, lh) {
@@ -781,6 +1132,7 @@ function wrapText(text, x, y, maxW, lh) {
   for (const ch of text) { if (g.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch; }
   lines.push(line);
   lines.forEach((l, i) => g.fillText(l, x, y + i * lh));
+  return lines.length;
 }
 
 // ---------- 输入 ----------
