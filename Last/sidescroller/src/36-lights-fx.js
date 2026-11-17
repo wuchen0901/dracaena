@@ -73,12 +73,24 @@ const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['
 const ENVKEYS = [];
 // 没写的项沿用上一个关键帧；fresh：从默认值（ENV0）重新算起 —— 一个故事的第一个关键帧用，不接着前一个故事的光
 function env(x, o = {}, fresh = false) {
-  const prev = fresh ? null : ENVKEYS[ENVKEYS.length - 1], raw = { ...(prev ? prev.raw : ENV0), ...o }, k = { x, raw };
+  const prev = fresh ? null : ENVKEYS[ENVKEYS.length - 1], k = envKey(x, { ...(prev ? prev.raw : ENV0), ...o });
+  k.c = regC(); ENVKEYS.push(k); return k;     // c：哪一章登记的（20-world.js 的 stitch 在两章接起来的地方按它剪）
+}
+function envKey(x, raw) {                                // 一个关键帧：raw 是写的时候的原样（颜色是十六进制数），其余是算好的
+  const k = { x, raw };
   for (const f of ENV_NUM) k[f] = raw[f];
   for (const f of ENV_COL) k[f] = new THREE.Color(raw[f]);
   for (const f of ENV_RAW) k[f] = hex3(raw[f]);
   k.sky = raw.sky.map(hex3); k.keyDir = V3(...raw.keyDir).normalize();
-  ENVKEYS.push(k); return k;
+  return k;
+}
+// 两个关键帧（原样）之间按 t 插一个：数取中间，颜色按通道插，主光方向插完不用归一（envKey 会归一）
+function envMixRaw(a, b, t) {
+  const c = (p, q) => new THREE.Color(p).lerp(new THREE.Color(q), t).getHex(), o = { ...a };
+  for (const f of ENV_NUM) o[f] = lerp(a[f], b[f], t);
+  for (const f of [...ENV_COL, ...ENV_RAW]) o[f] = c(a[f], b[f]);
+  o.sky = a.sky.map((h, i) => c(h, b.sky[i])); o.keyDir = a.keyDir.map((v, i) => lerp(v, b.keyDir[i], t));
+  return o;
 }
 const E = { sky: [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0]), sunC: [0, 0, 0], cloudC: [0, 0, 0], keyDir: V3(0, 1, 0), ext: 0 };
 for (const f of ENV_COL) E[f] = new THREE.Color();
@@ -96,18 +108,21 @@ function applyEnv(x) {
   for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(a.sky[s][j], b.sky[s][j], t);
   E.keyDir.lerpVectors(a.keyDir, b.keyDir, t).normalize();
   if (envMod) envMod(E);
-  if (MIST.k > 0) {                                      // 两章之间那段雾里的路（80-ui.js 的 stepMist）：雾越来越浓，天、远处的东西先没进雾里
-    const f = sstep(0, 0.75, MIST.k);
-    E.fog.lerp(MIST.tint, f); E.fogD = lerp(E.fogD, Math.max(E.fogD, 1.15 / MIST.d), f * f);   // 浓到主角自己也只剩一个影子（MIST.d：镜头离他多远）
-    for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(E.sky[s][j], MIST.sky[j], f);
-    E.sunP *= 1 - f; E.stars *= 1 - f; E.cloud *= 1 - f;
-  }
   scene.fog.color.copy(E.fog); scene.background.copy(E.fog); scene.fog.density = E.fogD;
   hemi.color.copy(E.hemiS); hemi.groundColor.copy(E.hemiG); hemi.intensity = E.hemiI;
   key.color.copy(E.keyC); key.intensity = E.keyI; keyDir.copy(E.keyDir);
   rim.color.copy(E.rimC); rim.intensity = E.rimI;
   dustMat.color.copy(E.dustC); dustMat.opacity = E.dustO;
   if (Math.abs(E.vig - vigNow) > 0.002) $('vig').style.opacity = vigNow = E.vig;
+}
+
+// 结局里镜头挪到别处（比如机房那一章的城里）时，用 envMod 把这一刻的环境往某个关键帧（envKey 算好的）推过去，f = 1 就整个换成它
+function envToward(e, k, f) {
+  for (const n of ENV_NUM) e[n] = lerp(e[n], k[n], f);
+  for (const n of ENV_COL) e[n].lerp(k[n], f);
+  for (const n of ENV_RAW) for (let j = 0; j < 3; j++) e[n][j] = lerp(e[n][j], k[n][j], f);
+  for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) e.sky[s][j] = lerp(e.sky[s][j], k.sky[s][j], f);
+  e.keyDir.lerp(k.keyDir, f).normalize();
 }
 
 // ---- 天空：一块永远铺满屏幕、画在最底下的面。颜色只跟视线的仰角有关，所以走多远都不会“走出”天空 ----

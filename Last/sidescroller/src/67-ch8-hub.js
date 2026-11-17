@@ -27,8 +27,9 @@ const CH8 = (() => {
   const d1 = gate({ id: 'd81', x: D1, w: 0.6, h: 3.4, T: 1.6 }), d2 = gate({ id: 'd82', x: D2, w: 0.6, h: 3.4, T: 3 }), d3 = gate({ id: 'd83', x: D3, w: 0.6, h: 3.4, T: 1.8 }), d4 = gate({ id: 'd84', x: EX, w: 0.9, h: 3.6 });
   // 三段各自的负载状态：eye 监控 / drop 水泵 / leaf 灌溉
   const S = { eye1: true, lv: 0, st: [{ eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 1 }], v2: 0, open2: false, k: [[1, 0, 0], [1, 0, 0], [1, 0, 1]] };
-  // 结局：choice 1 修复 / 2 旁路；t 选了以后过了多久；t2 走出中枢以后过了多久；night、deep 天色变到哪一步（见下面的 nightfall）
-  const END = { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, lights: 0 };
+  // 结局：choice 1 修复 / 2 旁路；t 选了以后过了多久；t2 走出中枢以后过了多久；night、deep 天色变到哪一步（见下面的 nightfall）；
+  // cont：结局画面上按了“接着往前走”（80-ui.js 的 continueFromEnd）—— 结局不再往下演，人站起来，沿着坡顶往右走到山洞（第 17 章）
+  const END = { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, lights: 0, cont: false };
   const near = (a, x) => Math.abs(a - x) < 0.3;
   const SUNX = X + 85.5, SUNR = 7.9;                     // 核心后墙上那盏圆灯：圆心正对着最后一块电池，左边是维修座，右边是配电盘
   const MASTS = [[X + 104, 14], [X + 172, 16], [X + 201, 11]];                              // 谷地里的三座中继塔：[x, 高]
@@ -390,10 +391,10 @@ const CH8 = (() => {
 
     // ---- 最后的选择 ----
     if (!END.choice && state === 'play') { if (batt.x <= SOCK_L + 0.02) choose(1); else if (batt.x >= SOCK_R - 0.02) choose(2); }
-    const E1 = END.choice === 1, E2 = END.choice === 2;
+    const E1 = END.choice === 1, E2 = END.choice === 2, go = !END.cont;
     if (END.choice) { END.t += dt; if (END.t > 0.9) batt.off = true; }                              // 电池滑进插座里，不再挡路
     const t = END.t;
-    if (E1) {
+    if (E1 && go) {
       // 修复：07 自己走进维修座，夹具合上，灯一点点亮回来；然后门开了，它带着小猫离开
       if (t < 8.4) { ctl = false; autoDir = t > 0.8 && P.x > DOCK - 0.3 ? -1 : 0; if (t > 1.2 && autoDir === 0) P.facing = 1; }
       else if (state === 'play' && !ctl && P.x < EX + 20) { ctl = true; autoDir = 0; d4.want = 1; fx('ok'); }
@@ -401,7 +402,7 @@ const CH8 = (() => {
       if (t > 3 && t < 7.8) { HX.pose = { arms: [{ a: 0.2, b: 0.1 }, { a: 0.2, b: 0.1 }], look: 0 }; if (Math.floor(t * 2) !== Math.floor((t - dt) * 2)) fx('servo'); }
       if (state === 'play' && ctl && P.x > X + 122) { ctl = false; autoDir = 1; }                    // 走上坡顶：最后一段自己走完
       if (P.x > X + 122) { END.t2 += dt; if (P.x > X + 133) autoDir = 0; if (END.t2 > 6 && !END.shown) { END.shown = true; state = 'end'; showEnd('结局 · 修复', '07 带着小猫离开了。<br>中枢照旧运转：水泵、镜头和修剪机，仍然只为算得清的生命工作。'); } }
-    } else if (E2) {
+    } else if (E2 && go) {
       // 旁路：三样负载里，水泵和灌溉亮起来，监控熄灭。07 走出门去，越走越慢，灯越来越暗
       if (t > 2.6 && d4.want === 0) { d4.want = 1; fx('powerDown'); }
       const far = sstep(EX - 4, X + 126, P.x);
@@ -416,7 +417,7 @@ const CH8 = (() => {
       envMod = nightfall;
     }
     if (END.choice && P.x > X + 60) HX.energy = END.energy;
-    if (END.choice && P.x > X + 112 && state !== 'title') { const k = E2 ? sstep(1.5, 9, END.t2) : 0; camOvr = { d: lerp(30, 19, k), yo: lerp(3.6, 1.6, k), xo: lerp(5.5, 3.2, k) }; }   // 坐下以后镜头慢慢靠近
+    if (END.choice && go && P.x > X + 112 && state !== 'title') { const k = E2 ? sstep(1.5, 9, END.t2) : 0; camOvr = { d: lerp(30, 19, k), yo: lerp(3.6, 1.6, k), xo: lerp(5.5, 3.2, k) }; }   // 坐下以后镜头慢慢靠近
     outL.on = E.ext > 0.5 ? 0 : d4.open;
     dockL.on = E1 ? 0.3 + 0.7 * sstep(1, 3, t) : 0.25; panL.on = E2 ? 1 : 0.25;
 
@@ -451,7 +452,7 @@ const CH8 = (() => {
     v.galaxy.material.opacity = sstep(0.3, 1, dk);
     v.sprout.visible = E2 && END.t2 > 12; if (v.sprout.visible) { v.sprout.position.set(P.x + 0.34, P.y, 0.3); v.sprout.scale.setScalar(sstep(12, 17, END.t2)); }
   }
-  function resetEnd() { placeBox(batt, X + 85.5); batt.locked = false; batt.off = false; setGate(d4, 0); Object.assign(END, { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false }); envMod = null; P.speedK = 1; STORY.ending = 0; }
+  function resetEnd() { placeBox(batt, X + 85.5); batt.locked = false; batt.off = false; setGate(d4, 0); Object.assign(END, { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, cont: false }); envMod = null; P.speedK = 1; STORY.ending = 0; }
   function reset() {
     { const r = ch7Root(); if (r) r.visible = true; }       // 从菜单跳到别的章节时，把上面藏起来的布景还回去
     S.eye1 = true; S.lv = 0; S.v2 = 0; S.open2 = false; placeBox(b2, P2[0]); placeBox(c1, P3[0]); placeBox(c2, P3[1]);
@@ -464,6 +465,9 @@ const CH8 = (() => {
     placePlayer(D3 + 3); P.cp = cpAt(P.x); if (STORY.cat) catPlace(P.x - 0.9, 0); ctl = true; autoDir = 0; state = 'play'; camOvr = null;
     $('end').classList.add('hide'); $('fade').style.opacity = 0; saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
-  return defZone({ n: OLD + 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
+  // 结局以后接着往前走：人站起来（旁路结局里是坐着的），天色回到傍晚，往右沿着坡顶走（小猫：修复结局里跟着走，旁路结局里留在原地）
+  function cont() { END.cont = true; END.sit = 0; P.speedK = 1; P.facing = 1; }
+  // choose：工具页、自动检查直接做最后的选择
+  return defZone({ n: OLD + 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, cont, choose, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
 function retryEnding() { (endZone ?? CH8).retry(); }

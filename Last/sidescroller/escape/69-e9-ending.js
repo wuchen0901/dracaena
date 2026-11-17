@@ -14,7 +14,7 @@ const E9 = (() => {
   terrain([X + 200, 1.3], [X + 206, 1.3], [X + 208.5, 0.55], [X + 212, 0.55], [X + 214.5, 1.4], [X + 228, 2.0], [X + 252, 7.6], [X + 264, 9.2], [X + 278, 9.6], [X + 360, 9.6]);   // 野地、水渠、一道长坡
   ground(X + 200, 0x2f3a2e); ground(X + 240, 0x4a5236); ground(X + 360, 0x4a5236);
   surface(X + 208.4, X + 212.1, 'wade');
-  // st：0 还在路上 / 1 到了坡顶，回头看。t 回头以后过了多久
+  // st：0 还在路上 / 1 到了坡顶，回头看 / 2 看完了（结局画面上按了接着往前走，或者是从后面的章节走回来的）：坡顶不再停下来。t 回头以后过了多久
   const S = { st: 0, t: 0, shown: false };
   for (const x of [198, 216, 232, 250]) checkpoint(X + x);
   camKeys([X + 200, 21, 2.2, 1], [X + 215, 22, 2.4, 1.5], [X + 232, 22, 2.6, 2], [X + 262, 21, 2.2, 1], [X + 300, 21, 2.2, 1]);
@@ -29,7 +29,7 @@ const E9 = (() => {
   function* build(R) {
     const v = {}, own = m => { m.userData.own = true; return m; };
     // 远处：一层层的丘陵；近一些是野地边上的树篱、几棵孤零零的树（朝工厂那一面是开阔的：不挡住回头看的那一眼）
-    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(ex(x) * 0.012 + 2) + 5 * Math.sin(ex(x) * 0.031), 4); }, { fog: false, fadeL: 30 });
+    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(ex(x) * 0.012 + 2) + 5 * Math.sin(ex(x) * 0.031), 4); }, { fog: false, fadeL: 30, fadeR: 90 });   // 右头也渐隐：往右是下山去工厂的路（src/69-zz-links.js），走得过去、看得见
     backdrop(X + 180, X + 340, -4, 24, -70, 6, g => { setInk(g, '#232b2c'); ridge(g, X + 180, X + 340, -4, x => groundY(x) + 0.6 + 0.5 * Math.sin(ex(x) * 0.2) + rr(0, 0.4), 1.2); for (let x = X + 186; x < X + 336; x += rr(9, 22)) if (x > X + 244 || x < X + 190) tree(g, x, groundY(x) + 0.2, rr(5, 10), pick(['round', 'round', 'pine', 'dead'])); }, { fadeL: 8 });
     backdrop(X + 196, X + 300, -2, 14, -9, 14, g => { setInk(g, '#151b1a'); for (const x of [X + 203, X + 243, X + 272, X + 281]) tree(g, x, groundY(x) - 0.1, rr(6, 10), x > X + 260 ? 'dead' : 'round'); grass(g, X + 196, X + 300, x => groundY(x) - 0.05, 0.3, 0.9, 360); }, { fadeL: 4 });
     for (const [a, b] of [[X + 190, X + 250], [X + 250, X + 310]]) foreTufts(a, b, 8.7, { cols: ['#0c1210', '#101814', '#0a0f0d'], h: 1.0, fern: 0.1 });
@@ -76,7 +76,7 @@ const E9 = (() => {
       if (t > 15 && !S.shown && (play || state === 'end')) { S.shown = true; showEndBare(ZONE, false); }
     }
     const v = V; if (!v) return;
-    const k = S.st === 1 ? sstep(1.8, 6.5, S.t) : 0;
+    const k = S.st === 1 ? sstep(1.8, 6.5, S.t) : S.st === 2 && S.shown ? sstep(TOP + 26, TOP + 6, P.x) : 0;   // 看完了往前走：回头看见的那片谷地慢慢淡掉
     v.valley.material.opacity = k; v.valley.visible = k > 0.001; v.glowF.material.opacity = 0.28 * k;
     v.smoke.forEach((s, i) => { const u = (T * 0.035 + i / 7) % 1; s.position.set(vx(FX - 6.9 + 26 * u * u + 2 * Math.sin(T * 0.2 + i)), vy(FY + 35 + 30 * u), VZ + 0.5); s.scale.setScalar((7 + 30 * u) * SC); s.material.opacity = 0.75 * k * Math.sin(Math.PI * u) ** 0.6; });
     v.cars.forEach((c, i) => {                                                  // 一串车灯：沿着那条路，从右边远处往大门开
@@ -85,10 +85,12 @@ const E9 = (() => {
     });
   }
   function reset() { Object.assign(S, { st: 0, t: 0, shown: false }); }
+  // 结局画面上按了接着往前走（80-ui.js 的 continueFromEnd）：人从坡顶转过身来，往右下山，走到旧原型工厂的门口（src/69-zz-links.js）
+  function cont() { S.st = 2; P.facing = 1; }
   function retry() {                                     // 结局画面上按 R：从坡脚再走一遍
     reset(); placePlayer(X + 240); P.cp = cpAt(P.x); ctl = true; autoDir = 0; state = 'play'; camOvr = null; $('end').classList.add('hide'); snapCamera();
   }
-  const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); }, retry, unbuild() { V = null; }, S });
+  const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); S.st = 2; }, retry, cont, unbuild() { V = null; }, S });
   return ZONE;
 })();
 // 《逃出工厂》到这里载完。关卡随机数拨回到这几章载入之前（见 60-kit.js 的 ESC_SEED），后面旧原型的章节和单独拼的时候拿到一样的随机数

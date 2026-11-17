@@ -1,30 +1,31 @@
 // ============================================================
 //  工厂深处（第 25–36 章，2026-11-16）：十二个试验场景共用的东西
 //  一组“恐怖工厂”的灰模：冒泡的绿色药水、暗红的沉淀池、熔渣、漏液、晾衣场、冷库、停电的车间、敲铃的地方……
-//  接在第 24 章“水下实验室”后面，从第 25 章起每章占 130 米（x = 3000 起），章与章之间用“雾里的路”接起来（20-world.js 的 chapterExit）。
+//  接在第 24 章“水下实验室”后面，一章挨着一章：每章 HLEN[k] 米，章与章之间是一道带门的隔墙（竖井出来是一段往下的斜坡），见 src/69-zz-links.js。
 //  这一组的文件名是 69-h01 … 69-h12（h 排在 ch 后面，拼页面时在旧原型和试验关后面），章节号是 HN(k) = OLD + 17 + k。
 //  讲法照《逃出工厂》的规矩（design/environmental-escape-story.md 第二节）：只讲看得见的东西，没有带字的招牌，远看靠剪影、颜色和光
 //  这个文件里：每章的骨架（hChapter）、一池会冒泡的液体（ooze）、拿手电扫的看守（hWatch）、几样声音
 // ============================================================
-const HX0 = 3000, HSTEP = 130;
-const hX = k => HX0 + HSTEP * k;                      // 第 25 + k 章的原点
+const HX0 = X16 + 70;                                 // 水下实验室右墙的门出去，一段往上的走廊（src/69-zz-links.js）
+const HLEN = [60, 64, 64, 60, 50, 60, 60, 64, 64, 60, 64, 60];   // 每章多长：右边的墙在 X + HLEN[k]
+const HGAP = k => k === 4 ? 59 : 24;                  // 这一章的墙到下一章原点隔多远：章尾 4 米 + 隔墙那一段 6 米 + 下一章章首 14 米；竖井（k = 4）出来要从 15 米高往下走一段长坡
+const hX = k => { let x = HX0; for (let i = 0; i < k; i++) x += HLEN[i] + HGAP(i); return x; };   // 第 25 + k 章的原点
 const HN = k => OLD + 17 + k;                         // 第 25 + k 章的章节号
 const HLAST = 11;                                     // 一共十二章：k = 0 … 11
 
-// ---- 每章的骨架：登记章节、两头的空气墙、出口的雾 ----
-// o：name / sub / ground 脚下默认的声音 / len 这一章多长（空气墙在 X + len）/ tint 出口那段雾的颜色 / start 出生点（相对 X）
+// ---- 每章的骨架：登记章节；最后一章的右边是整条路的尽头（空气墙）----
+// o：name / sub / ground 脚下默认的声音 / len 这一章多长（= HLEN[k]）/ start 出生点（相对 X）
 function hChapter(k, o) {
-  const X = hX(k), n = HN(k), len = o.len ?? 60;
-  const c = chapter({ n, x0: X - 10, start: X + (o.start ?? 2), name: o.name, sub: o.sub, ground: o.ground ?? 'concrete', enter: o.enter ?? [X - 6.5, X + 0.5], grp: 'deep',
-    intro() { CAT.state = 'none'; if (o.intro) o.intro(); } });
-  solid({ x1: X - 8.6, x2: X - 7.6, y1: -30, y2: 40, noclimb: true });
-  solid({ x1: X + len, x2: X + len + 1, y1: -30, y2: 40, noclimb: true });
-  if (k < HLAST) chapterExit(n, { a0: X + len - 13, a1: X + len - 1.2, tint: o.tint ?? 0x0a0d0f, when: o.when ?? null });
+  const X = hX(k), n = HN(k), len = HLEN[k];
+  if (o.len !== undefined && o.len !== len) console.error(`工厂深处第 ${k} 章：LEN ${o.len} 和 HLEN ${len} 对不上`);
+  const c = chapter({ n, x0: X - 10, start: X + (o.start ?? 2), name: o.name, sub: o.sub, ground: o.ground ?? 'concrete', grp: 'deep', nocat: true, intro: o.intro });
+  if (k === HLAST) solid({ x1: X + len, x2: X + len + 1, y1: -30, y2: 40, noclimb: true });   // 整条路的尽头
   BIRDS[n] = [['bird', 0]];                             // 厂房里没有鸟
   return c;
 }
 // 一章的环境：在章首和章尾各登记一次（fresh：不接着前一章的光）。base 是这一组共用的“厂房里”的底子
-const H_IN = { fogD: 0.03, hemiI: 0.45, keyI: 0.25, rimI: 0.35, dustO: 0.35, wind: 0.02, ext: 0, sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
+// sky：厂房里头顶是黑的（以前没写，沿用默认的黄昏天色，柱子、墙中间漏出来一块块米黄色；现在两章之间的门洞、走廊也看得见天，一起换成暗的）
+const H_IN = { sky: [0x050706, 0x060807, 0x070908, 0x080a09, 0x080a09, 0x050706], fogD: 0.03, hemiI: 0.45, keyI: 0.25, rimI: 0.35, dustO: 0.35, wind: 0.02, ext: 0, sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
   aWind: 0, aWhis: 0.1, aLeaf: 0, aBug: 0, aDrip: 0.3, aFlow: 0, aRoom: 0.8, roomF: 120, aHum: 0.3, aCity: 0, aFar: 0.7, rvOut: 0, rvHall: 1, rvCave: 0 };
 function hEnv(k, o, len = 60) { const X = hX(k), e = { ...H_IN, ...o }; env(X - 12, e, true); env(X + len + 2, e); return e; }
 

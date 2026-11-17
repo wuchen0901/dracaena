@@ -6,7 +6,7 @@
 //  一停下来就站住别动 —— 这时候走一步，他就听见了，手电一下子转过来。等它重新响起来再走
 // ============================================================
 const H10 = (() => {
-  const k = 9, X = hX(k), LEN = 60;
+  const k = 9, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '冷库', sub: '安静的时候别动', ground: 'concrete', len: LEN, tint: 0xc0ccd0 });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x3a4246); ground(X + LEN + 4, 0x384044);

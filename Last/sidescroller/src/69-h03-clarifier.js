@@ -8,7 +8,7 @@
 //   对齐前后各 1.7 秒桥一直伸到岸边；从池心往外跑，要在对齐前 4 到 1.5 秒之间起跑）
 // ============================================================
 const H3 = (() => {
-  const k = 2, X = hX(k), LEN = 64;
+  const k = 2, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '刮泥桥', sub: '等它转过来', ground: 'concrete', len: LEN, tint: 0x14130e });
   const CX = X + 19, RAD = 9.5, SURF = -0.55, BOT = -3, OM = 2 * Math.PI / 52, HALFW = 2.0, TOPY = 0.02;   // 桥面和岸一样高：走上去不用跳
   terrain([X - 14, 0], [CX - RAD - 0.3, 0], [CX - RAD - 0.28, BOT], [CX + RAD + 0.28, BOT], [CX + RAD + 0.3, 0], [X + LEN + 4, 0]);

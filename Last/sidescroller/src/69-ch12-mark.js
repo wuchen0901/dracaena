@@ -6,22 +6,18 @@
 //    二 · 按 E 凿记号：小錾子在灯头的金属套上凿出一个缺了一角的方框，光从凿穿的地方漏出来；镜头推近到灯跟前
 //    三 · 按 E 取下来：取下来以后只剩一团低低的余光；举到检验光底下，突然亮了一下，旁边筐里待修的坏灯一点反应也没有；
 //         用布包好，余光一点也透不出来，揣进怀里
-//  然后右边的门开了，走出去是黑的，接着往右走就到了第十三章机房的门口（中间九章还没做；出口见下面的 chapterExit）
+//  然后右边的门开了，走出去是一条夜里的窄巷，接着往右走就到了第十三章机房的门口（窄巷见 src/69-zz-links.js；从夜搜那一章走过来，是从左边山墙上的侧门进的屋）
 //  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它揣进怀里；这里为了接上机房，直接收进包里）
 // ============================================================
-const X12 = 2200;
+const X12 = X11 + 190;                                     // 夜搜那一章走进林子里的雾，林子边上就是作坊的侧门（src/69-zz-links.js）
 const CH12 = (() => {
   const X = X12, BENCH = X + 4.2, INSP = BENCH + 0.5, DOOR = X + 9.4, STAND = BENCH - 0.42;
   const FIX = { x: BENCH, y: 1.0, z: 0.02 };                                         // 工作台上的检测灯座：灯泡挂在它下面（灯头朝上）
-  const C = chapter({ n: OLD + 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood', enter: [X - 0.3, X + 1.2],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood', nocat: true });
   terrain([X - 60, 0], [X + 60, 0]);
   ground(X - 60, 0x3a2f25); ground(X + 60, 0x3a2f25);
-  solid({ x1: X - 1.6, x2: X - 0.6, y1: -2, y2: 30, noclimb: true });              // 身后是作坊里面
   const door = gate({ id: 'd121', x: DOOR, w: 0.5, h: 2.6, T: 1.4 });
-  solid({ x1: DOOR + 2.2, x2: DOOR + 3.2, y1: -2, y2: 30, noclimb: true });
   checkpoint(X + 1.2);
-  chapterExit(OLD + 12, { a0: DOOR - 0.8, a1: DOOR + 1.5, when: () => S.step === 3, tint: 0x090c12 });   // 灯泡收好、门开了：走出门，门外是黑的，接着走就到了机房门口
   camKeys([X - 3, 9.6, 1.25, 1.6], [X + 2, 9.6, 1.25, 1.2], [BENCH, 9.2, 1.2, 0.4], [DOOR - 1, 9.6, 1.25, -0.4], [DOOR + 3, 10, 1.3, -1.2]);
   // 作坊的暖光：头顶一盏吊灯，工作台上一盏冷白的检验灯。门外是夜里
   env(X - 6, { fog: 0x17110c, fogD: 0.03, hemiS: 0xb39876, hemiG: 0x1a130e, hemiI: 0.42, keyC: 0xffd8a8, keyI: 0.55, keyDir: [-0.3, 1, 0.45], rimC: 0xffc890, rimI: 0.35,

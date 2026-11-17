@@ -7,7 +7,7 @@
 //  走到一半，看守在后面那排衣服前站住了，用棍子捅了捅其中一件 —— 那是一个躲在里面的人。他掉下来，被拖走
 // ============================================================
 const H8 = (() => {
-  const k = 7, X = hX(k), LEN = 64;
+  const k = 7, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '晾衣场', sub: '挂进去', ground: 'concrete', len: LEN, tint: 0x12140f });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x262823); ground(X + LEN + 4, 0x232521);

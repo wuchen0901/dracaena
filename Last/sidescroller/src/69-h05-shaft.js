@@ -6,7 +6,7 @@
 //  被追上就回到存档点：井底，或者半路那一层（到过那一层以后，液面从那一层下面重新涨）
 // ============================================================
 const H5 = (() => {
-  const k = 4, X = hX(k), LEN = 50;
+  const k = 4, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '竖井', sub: '往上爬', ground: 'metal', len: LEN, tint: 0x0c180b, start: 1 });
   const S1 = X + 6, S2 = X + 18, FLOOR = -2, TOPF = 15;
   terrain([X - 14, FLOOR], [X + LEN + 4, FLOOR]);                                                  // 走廊和井底一样高：从井底走进去

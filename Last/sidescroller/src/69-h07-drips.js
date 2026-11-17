@@ -6,7 +6,7 @@
 //  被浇到、滴到就回到存档点。快到头的时候，身后一整段管子爆开，药水哗地浇下来 —— 别回头
 // ============================================================
 const H7 = (() => {
-  const k = 6, X = hX(k), LEN = 60, CEIL_Y = 4;
+  const k = 6, X = hX(k), LEN = HLEN[k], CEIL_Y = 4;
   hChapter(k, { name: '漏液', sub: '看准了再走', ground: 'concrete', len: LEN, tint: 0x0c140c });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x1e221d); ground(X + LEN + 4, 0x1c201b);
