@@ -6,7 +6,7 @@
 //  光扫到身上的时候别动（漂着的东西是不会动的），在光里走、跳就被盯上。快到格栅时跳上右边的岸
 // ============================================================
 const H2 = (() => {
-  const k = 1, X = hX(k), LEN = 64;
+  const k = 1, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '沉淀池', sub: '漂过去', ground: 'concrete', len: LEN, tint: 0x160606 });
   const V1 = X + 8, V2 = X + 30, SURF = -0.6, BOT = -3.5;
   terrain([X - 14, 0], [V1, 0], [V1 + 0.02, BOT], [V2 - 0.02, BOT], [V2, 0], [X + LEN + 4, 0]);

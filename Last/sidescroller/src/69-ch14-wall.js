@@ -15,7 +15,7 @@
 //  两道墙都是爬过去的（2026-11-17）：扒住墙头撑上去，站到墙顶上；高墙那一边转过身扒着墙头倒着爬下去，再松手（见 update 里的“攀墙”）
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
-const X14 = 2600;
+const X14 = X13 + 58;                                      // 机房右墙上的门出去，下一段坡就到墙这一章的碎石坡（src/69-zz-links.js）
 const CH14 = (() => {
   const X = X14, WX = X + 8;                                   // 墙的中线在哪个 x
   const T = 0.34, BL = 0.215, BH = 0.065, BD = 0.1025, J = 0.011, PZ = BL + J, PY = BH + J, NC = 11, CAPH = 0.1;
@@ -27,13 +27,9 @@ const CH14 = (() => {
   // 旧木箱：高度正好是两道墙的高差 —— 站在箱子上，墙头离脚下和第一道矮墙一样高。CR0 一开始放在哪；往左最多拉到 CRMIN，往右推到贴着墙（CRMAX）
   const CR_W = 1.1, CR_D = 0.9, CR_H = TOP2 - TOP, CR0 = X + 37.2, CRMIN = X + 35.6, CRMAX = W2X - HALF - CR_W / 2;
   const S14 = 0.62;                                            // 路面石块的大小（米）                                            // 灰缝比砖面缩进去多少
-  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel', enter: [X - 10.8, X - 1],   // 脚步声：山上的碎石
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel', nocat: true });   // 脚步声：山上的碎石
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
-  groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
-  solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
-  solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 14, { a0: X + 45, a1: X + 56, tint: 0x2f3439 });   // 翻过第二道墙，往雾里走：接到下一章（高台）
+  groundFront(X - 20, X + 62, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete', noclimb: true });   // 墙在玩法平面上的那一截（攀墙在下面 update 里自己接）
   solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：从地上跳够不着墙头；站在箱子上才扒得住（也在 update 里）
   checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);
@@ -503,9 +499,9 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 32, X + 78, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 20, X + 62, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
-      grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
+      grid(span(X - 20, X + 62, LOW ? 1.6 : 1), zs.reverse());   // 远处只铺这一章这一段：两头是连接的路，那里是共用的地面（src/69-zz-links.js）
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
       const gy = (x, z) => BIGG(x, z) + DET(x, z) + STONE(x, z);

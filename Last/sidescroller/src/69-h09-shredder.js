@@ -6,7 +6,7 @@
 //  过了检查口马上起来，在被卷进那张嘴以前跳上右上方的走道
 // ============================================================
 const H9 = (() => {
-  const k = 8, X = hX(k), LEN = 64;
+  const k = 8, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '进料带', sub: '躺下', ground: 'metal', len: LEN, tint: 0x100c0c });
   const B1 = X + 6, B2 = X + 40, BT = 0.6, SPD = 1.0, M1 = B2, M2 = B2 + 3.2;
   terrain([X - 14, 0], [M1, 0], [M1 + 0.02, -3], [M2 - 0.02, -3], [M2, 0], [X + LEN + 4, 0]);

@@ -68,7 +68,6 @@
   #end.bare .go{margin-top:62vh}
   #end.white .go{color:#6d6a5e}
   #white{background:#f3f1ea;opacity:0;transition:opacity 3s ease}
-  #mist{background:#0a0d0f;opacity:0}
   /* 手机触屏：不要滚动、缩放、长按弹菜单；黑边和右上角的图标改画在画布里 */
   html,body{touch-action:none;overscroll-behavior:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   body.touch #bars{display:none}
@@ -95,7 +94,6 @@
 <div id="grain" class="fx"></div>
 <div id="fade" class="fx"></div>
 <div id="white" class="fx"></div>
-<div id="mist" class="fx"></div>
 <div id="bars" class="fx"></div>
 <div id="hint"></div>
 <div id="chap"></div>
@@ -399,8 +397,8 @@ const POST = { on: new URLSearchParams(location.search).get('post') !== '0', blu
 //  往这里登记地形、方块、可推的东西、闸门、机关和存档点
 // ============================================================
 const X1 = 0, X2 = 104, X3 = 260, X4 = 392, X5 = 478, X6 = 542, X7 = 656, X8 = 772;      // 各章的原点（世界 x）
-// 一共二十三章，排成一条路：第 1–8 章是《逃出工厂》（escape/，整段在世界的最左边，见 escape/60-kit.js 的 EX），
-// 第 9–22 章是旧原型《铁锈与微光》的十四章（src/6*-ch*.js，还在原来的位置，从 x = -60 起）；第 23 章“高台”（src/69-ch15-drop.js）是 2026-11-16 加在最后的一关试验关；第 24 章“水下实验室”（src/69-ch16-lab.js）接在它右边。
+// 一共三十六章，在世界里接成一条连着的路（两章之间的路见下面的 link 和 src/69-zz-links.js）：第 1–8 章是《逃出工厂》（escape/，整段在世界的最左边，见 escape/60-kit.js 的 EX），
+// 第 9–22 章是旧原型《铁锈与微光》的十四章（src/6*-ch*.js，前八章还在原来的位置，从 x = -60 起；后面的原点 X9 … 照前一章算）；第 23 章“高台”（src/69-ch15-drop.js）是 2026-11-16 加在最后的一关试验关；第 24 章“水下实验室”（src/69-ch16-lab.js）接在它右边。
 // 旧原型的第 k 章现在是第 OLD + k 章；旧文件里写章节号的地方都写成 OLD + k，文件名、注释里的“第几章”还是旧的编号。
 // 《逃出工厂》原来有八章，第一章“焚化炉”2026-11-15 删掉了，后面七章往前挪了一位：escape/ 的文件名（62-e2 …）、变量名（E4X …）、
 // 注释里的“第几章”还是故事文档里原来的编号（文档里的第二章“分拣”是游戏的第 1 章）。2026-11-16 在大门和结尾中间加了一章“雾”（escape/68-e8-fog.js，游戏的第 7 章），
@@ -425,8 +423,10 @@ const STORY0 = { ch: 1, done: 0, cat: false, fed: false, cleaner: 0, pump: false
 const STORY = { ...STORY0 };
 
 // ---- 地形：一条折线，坡度都很缓；陡的台阶、坑壁用 SOLIDS 里的方块表示 ----
+// 登记的东西都记着是哪一章登记的（c：登记时 CHAPTERS 里已经有几章，也就是正在登记的那一章）—— 两章接起来的地方（下面的 link）按这个把各自伸出去的那一截剪掉
+const regC = () => CHAPTERS.length;
 const TERRAIN = [];
-function terrain(...pts) { for (const p of pts) TERRAIN.push(p); }
+function terrain(...pts) { for (const p of pts) { p.c ??= regC(); TERRAIN.push(p); } }
 let _gi = 1;
 function groundY(x) {
   const n = TERRAIN.length; let i = clamp(_gi, 1, n - 1);
@@ -438,14 +438,19 @@ function groundY(x) {
 const groundSlope = x => (groundY(x + 0.15) - groundY(x - 0.15)) / 0.3;
 // 地面往远处铺到哪里：平时一直铺到看不见的地方；登记过的一段 [x1, x2] 只铺到 z 为止 —— 后面是低下去的谷地，由布景板来画
 const GROUND_BACK = [];
-function groundBack(x1, x2, z) { GROUND_BACK.push([x1, x2, z]); }
+function groundBack(x1, x2, z) { const r = [x1, x2, z]; r.c = regC(); GROUND_BACK.push(r); }
 // 地面往镜头这边铺到哪里：登记过的一段 [x1, x2] 只铺到 z 为止；z 写 null 就整段不铺（山洞自己搭地面，前面是岩石的剖面）
 const GROUND_FRONT = [];
-function groundFront(x1, x2, z) { GROUND_FRONT.push([x1, x2, z]); }
+function groundFront(x1, x2, z) { const r = [x1, x2, z]; r.c = regC(); GROUND_FRONT.push(r); }
 // ---- 洞顶：折线（只在有顶的地方登记）。头顶碰到它就停；压下来挡在人身边的那一段就是一面墙 ----
-// 每调用一次 ceiling() 是单独的一段，两段之间没有顶（第六章卡车底下一段、旧原型山洞一段，中间隔着好几章）
-const CEIL = [];
-function ceiling(...pts) { if (CEIL.length && pts.length) pts[0].gap = true; for (const p of pts) CEIL.push(p); }
+// 每调用一次 ceiling() 是单独的一段，两段之间没有顶（第六章卡车底下一段、旧原型山洞一段，中间隔着好几章）。
+// 一段一段记在 CEILS 里（按左端排好），CEIL 是把它们首尾接成的一条折线：每段的第一个点标着 gap（和前一段之间没有顶）
+const CEILS = [], CEIL = [];
+function ceiling(...pts) { if (pts.length) { CEILS.push({ c: regC(), pts }); joinCeil(); } }
+function joinCeil() {
+  CEILS.sort((a, b) => a.pts[0][0] - b.pts[0][0]); CEIL.length = 0;
+  for (const s of CEILS) s.pts.forEach((p, i) => { if (i === 0) { if (CEIL.length) p.gap = true; else delete p.gap; } CEIL.push(p); });
+}
 let _ci = 1;
 function ceilY(x) {                                  // 头顶的岩石有多低；没有洞顶的地方是无穷高
   const n = CEIL.length; if (n < 2 || x < CEIL[0][0] || x > CEIL[n - 1][0]) return Infinity;
@@ -463,10 +468,10 @@ const waterAt = x => { for (const w of WATERS) if (x > w.x1 && x < w.x2) return 
 // ---- 路在前后（z）方向上的弯：各章登记 [x1, x2, f(x)]，f 给出这一段路往镜头这边（+）或往远处（-）偏多少米 ----
 // 玩法照旧只管 x、y（碰撞不变）；画面里主角、镜头、影子跟着路弯。没登记的地方是 0
 const ZPATH = [];
-function zpath(x1, x2, f) { ZPATH.push([x1, x2, f]); }
+function zpath(x1, x2, f) { const r = [x1, x2, f]; r.c = regC(); ZPATH.push(r); }
 const pathZ = x => { for (const p of ZPATH) if (x >= p[0] && x <= p[1]) return p[2](x); return 0; };
 const GROUND = [];                                   // 地面颜色的关键点 [x, 颜色]，中间线性过渡
-function ground(x, hex) { GROUND.push([x, new THREE.Color(hex)]); }
+function ground(x, hex) { const r = [x, new THREE.Color(hex)]; r.c = regC(); GROUND.push(r); }
 function groundColor(x, out) {
   for (let i = 1; i < GROUND.length; i++) if (x <= GROUND[i][0]) return out.lerpColors(GROUND[i - 1][1], GROUND[i][1], clamp((x - GROUND[i - 1][0]) / (GROUND[i][0] - GROUND[i - 1][0]), 0, 1));
   return out.copy(GROUND[GROUND.length - 1][1]);
@@ -499,7 +504,7 @@ function checkpoint(x, o = {}) { CPS.push({ x, ...o }); }
 function cpAt(x) { let k = 0; for (let i = 0; i < CPS.length; i++) if (x >= CPS[i].x - 0.01) k = i; return k; }
 // 镜头关键帧：[x, 距离, 目标高度偏移, 目标水平偏移, 抬高多少（不写就是 0）]
 // 抬高：镜头在原来的位置上再升高这么多米，对着的还是同一点，于是从平视变成往下看（要看清地面以下的东西时用，比如水渠里面）
-function camKeys(...k) { CAMKEYS.push(...k); }
+function camKeys(...k) { for (const e of k) { e.c ??= regC(); CAMKEYS.push(e); } }
 function camKey(x) {
   for (let i = 1; i < CAMKEYS.length; i++) {
     const a = CAMKEYS[i - 1], b = CAMKEYS[i];
@@ -508,19 +513,73 @@ function camKey(x) {
   const k = CAMKEYS[CAMKEYS.length - 1]; return [k[1], k[2], k[3], k[4] ?? 0];
 }
 function hint(cond, html) { HINTS.push([cond, html]); }
-// 出口：两章在世界里不挨着（中间隔着空气墙、几百米空地）的时候，这一章的尽头接一段“雾里的路”，一直往右走就走进下一章，不停、不黑屏（80-ui.js 的 stepPass）。
-// chapterExit(n, { a0, a1, when, tint })：人从 a0 往右走，雾越来越浓，走到 a1 整个画面都是雾 —— 这时候把人挪到下一章的入口，接着往前走，雾又散开。
-//   when()：除了 x，还要满足什么才算走在出口上（比如得站在最高那一级台阶上、门得是开着的）；tint：这一段雾的颜色（夜里、屋里是暗的）
-// 下一章的入口写在它自己的章节对象上：enter: [b0, b1] —— 人出现在 b0（身后那道空气墙的右边），走到 b1 雾散尽。没写就从出生点往左退几米
-// 挨着的章节不用登记，一直往右走就进了下一章；演结局的章节也不用登记：结局画面上按一下，同样起一阵雾，接到下一章
-const EXITS = [];
-function chapterExit(n, o) { EXITS.push({ n, when: null, tint: 0x0a0d0f, ...o }); }
-const MIST = { k: 0, op: 0, d: 20, tint: new THREE.Color(0x0a0d0f), sky: [0.04, 0.05, 0.06], pre: null, arr: null, go: null };   // 雾里的路现在走到哪一步（80-ui.js 的 stepMist）
+// ---- 两章接起来的地方 ----
+// 三十六章在世界里排成一条路，从第 1 章一直往右走就走到第 36 章，中间没有空气墙、不传送（2026-11-17 以前不挨着的几处是“雾里的路”：走到头把人挪到下一章）。
+// 本来就挨着的（第 1–8 章、第 9–16 章）照旧；其余每一处登记一段连接的路：link(n, { a, b, ... }) —— 第 n 章的路走到 x = a 为止，第 n + 1 章从 x = b 开始，
+// 中间 a..b 是这一段自己的：地形 pts（[x, y]，a、b 两头的高度照两章各自的地形自动接上）、洞顶 ceil（一段或几段折线）、地面颜色 col（[x, 色]）、
+// 镜头 cam（camKeys 的格式）、光 env（[x, 改哪几项]，没写的项是两头之间的插值；写 'A' / 'B' 就是左 / 右那一章在接口处的光）、脚下的声音 surf、
+// 地面往前后铺到哪 front / back（一个 z 管整段，或者几段 [x1, x2, z]）、搭布景的 build(R)（vis 是它占的范围，不写就是 a..b）。
+// 两章各自伸出去的那一截（地形、洞顶、地面颜色、镜头和光的关键帧、地面往前后铺到哪、路的弯、脚下的声音）在 a、b 剪掉（stitch，主循环开始以前做一次）。
+// 章节自己搭的布景不剪：两章挨得多近，要照着两边的布景（vis）来定
+const LINKS = [];
+function link(n, o) {
+  const L = { n, cam: [], env: [], pts: [], col: [], ...o }; LINKS.push(L);
+  if (L.build) L.zone = defZone({ n, link: true, vis: L.vis ?? [L.a, L.b], build: L.build, update: L.update ?? (() => {}), reset: L.reset ?? (() => {}), solve: L.solve ?? (() => {}), unbuild: L.unbuild });
+  return L;
+}
+// 剪接：每一处按章节号从左到右做。lt / rt：是不是这一处左边 / 右边那几章登记的；中间这一段自己的东西记成 n + 0.5（左右两处都不会再剪到它）
+function stitch() {
+  const byX = (p, q) => p[0] - q[0], at = (list, x, f) => { const l = list.slice().sort(byX); return f(l, x); };
+  const lin = (l, x, g) => { if (!l.length) return null; let i = 1; while (i < l.length - 1 && x > l[i][0]) i++; if (l.length === 1) return g(l[0], l[0], 0); const p = l[i - 1], q = l[i]; return g(p, q, clamp((x - p[0]) / ((q[0] - p[0]) || 1), 0, 1)); };
+  const cutPts = (list, n, a, b) => { for (let i = list.length - 1; i >= 0; i--) { const e = list[i], x = e.x ?? e[0]; if ((e.c <= n && x > a) || (e.c > n && x < b)) list.splice(i, 1); } };
+  const cutRange = (list, n, a, b) => { for (let i = list.length - 1; i >= 0; i--) { const e = list[i];
+    if (e.c <= n) { if (e[0] >= a) list.splice(i, 1); else e[1] = Math.min(e[1], a); } else if (e[1] <= b) list.splice(i, 1); else e[0] = Math.max(e[0], b); } };
+  for (const L of LINKS.slice().sort((p, q) => p.n - q.n)) {
+    const { n, a, b } = L, mid = n + 0.5, lt = e => e.c <= n, rt = e => e.c > n, tag = e => { e.c = mid; return e; };
+    // 地形：两头的高度照两章各自的地形
+    const gy = (l, x) => lin(l, x, (p, q, t) => p[1] + (q[1] - p[1]) * t);
+    const yA = at(TERRAIN.filter(lt), a, gy), yB = at(TERRAIN.filter(rt), b, gy);
+    cutPts(TERRAIN, n, a, b); TERRAIN.push(...[[a, yA], ...L.pts, [b, yB]].map(tag)); TERRAIN.sort(byX);
+    // 地面颜色
+    const gc = (l, x) => lin(l, x, (p, q, t) => new THREE.Color().lerpColors(p[1], q[1], t));
+    const cA = at(GROUND.filter(lt), a, gc), cB = at(GROUND.filter(rt), b, gc);
+    cutPts(GROUND, n, a, b); GROUND.push(...[[a, cA], ...L.col.map(([x, h]) => [x, new THREE.Color(h)]), [b, cB]].filter(e => e[1]).map(tag)); GROUND.sort(byX);
+    // 镜头
+    const ck = (l, x) => { if (!l.length) return null; for (let i = 1; i < l.length; i++) { const p = l[i - 1], q = l[i]; if (x <= q[0]) { const t = sstep(p[0], q[0], x); return [x, lerp(p[1], q[1], t), lerp(p[2], q[2], t), lerp(p[3], q[3], t), lerp(p[4] ?? 0, q[4] ?? 0, t)]; } }
+      const k = l[l.length - 1]; return [x, k[1], k[2], k[3], k[4] ?? 0]; };
+    const kA = at(CAMKEYS.filter(lt), a, ck), kB = at(CAMKEYS.filter(rt), b, ck);
+    cutPts(CAMKEYS, n, a, b); CAMKEYS.push(...[kA, ...L.cam, kB].filter(Boolean).map(tag)); CAMKEYS.sort(byX);
+    // 光：两头照两章各自的关键帧；中间登记的几项改在两头的插值上
+    const ek = (l, x) => { const s = l.slice().sort((p, q) => p.x - q.x); if (!s.length) return null; let i = 1; while (i < s.length - 1 && x > s[i].x) i++;
+      if (s.length === 1) return { ...s[0].raw }; const p = s[i - 1], q = s[i]; return envMixRaw(p.raw, q.raw, clamp((x - p.x) / ((q.x - p.x) || 1), 0, 1)); };
+    const eA = ek(ENVKEYS.filter(lt), a), eB = ek(ENVKEYS.filter(rt), b) ?? eA;
+    cutPts(ENVKEYS, n, a, b);
+    const mixAt = x => envMixRaw(eA, eB, clamp((x - a) / (b - a), 0, 1));
+    ENVKEYS.push(tag(envKey(a, eA)), ...L.env.map(([x, o]) => tag(envKey(x, o === 'A' ? eA : o === 'B' ? eB : { ...mixAt(x), ...o }))), tag(envKey(b, eB)));
+    ENVKEYS.sort((p, q) => p.x - q.x);
+    // 地面往前后铺到哪、路的弯、脚下的声音：两章各自的剪到 a、b；这一段自己的排在最前面（先登记的优先）
+    for (const R of [GROUND_BACK, GROUND_FRONT, ZPATH, SURFS]) cutRange(R, n, a, b);
+    const spans = v => v === undefined ? [] : Array.isArray(v) ? v : [[a, b, v]];     // 一个数：整段都是；也可以是几段 [x1, x2, z]
+    for (const r of spans(L.front)) GROUND_FRONT.unshift(tag([...r]));
+    for (const r of spans(L.back)) GROUND_BACK.unshift(tag([...r]));
+    if (L.zp) ZPATH.unshift(tag([a, b, L.zp]));
+    if (L.surf) SURFS.push(tag([a, b, L.surf]));
+    // 洞顶：伸过来的那一段剪到 a、b（剪开的地方补一个点）
+    for (let i = CEILS.length - 1; i >= 0; i--) {
+      const S = CEILS[i], P0 = S.pts, cy = x => gy(P0, x);
+      if (S.c <= n && P0[P0.length - 1][0] > a) { const k = P0.filter(p => p[0] < a); S.pts = k.length && k[0][0] < a ? [...k, [a, cy(a)]] : []; }
+      else if (S.c > n && P0[0][0] < b) { const k = P0.filter(p => p[0] > b); S.pts = k.length && k[k.length - 1][0] > b ? [[b, cy(b)], ...k] : []; }
+      if (S.pts.length < 2) CEILS.splice(i, 1);
+    }
+    for (const pts of L.ceil ?? []) CEILS.push({ c: mid, pts });
+    joinCeil();
+  }
+}
 // 脚下是什么（脚步声用，见 52-audio.js）：每一章一个默认的（章节对象上的 ground），这里登记例外的几段 [x1, x2, 种类]，种类也可以是 x => 种类。
 // 后登记的盖住先登记的。站在方块上时看方块自己的 snd（没写就是 wood）。种类：concrete 水泥 / metal 铁板 / wood 木头 / dirt 土路 / forest 林子里的地 /
 // leaves 干落叶 / grass 草地 / gravel 碎石 / sand 沙土 / mud 湿泥 / rock 湿岩石 / puddle 水洼 / wade 蹚水
 const SURFS = [];
-function surface(x1, x2, kind) { SURFS.push([x1, x2, kind]); }
+function surface(x1, x2, kind) { const r = [x1, x2, kind]; r.c = regC(); SURFS.push(r); }
 function surfaceAt(x) {
   for (let i = SURFS.length - 1; i >= 0; i--) { const s = SURFS[i]; if (x >= s[0] && x < s[1]) return typeof s[2] === 'function' ? s[2](x) : s[2]; }
   return chapterAt(x).ground ?? 'concrete';
@@ -911,12 +970,24 @@ const ENV_COL = ['fog', 'hemiS', 'hemiG', 'keyC', 'rimC', 'dustC'], ENV_RAW = ['
 const ENVKEYS = [];
 // 没写的项沿用上一个关键帧；fresh：从默认值（ENV0）重新算起 —— 一个故事的第一个关键帧用，不接着前一个故事的光
 function env(x, o = {}, fresh = false) {
-  const prev = fresh ? null : ENVKEYS[ENVKEYS.length - 1], raw = { ...(prev ? prev.raw : ENV0), ...o }, k = { x, raw };
+  const prev = fresh ? null : ENVKEYS[ENVKEYS.length - 1], k = envKey(x, { ...(prev ? prev.raw : ENV0), ...o });
+  k.c = regC(); ENVKEYS.push(k); return k;     // c：哪一章登记的（20-world.js 的 stitch 在两章接起来的地方按它剪）
+}
+function envKey(x, raw) {                                // 一个关键帧：raw 是写的时候的原样（颜色是十六进制数），其余是算好的
+  const k = { x, raw };
   for (const f of ENV_NUM) k[f] = raw[f];
   for (const f of ENV_COL) k[f] = new THREE.Color(raw[f]);
   for (const f of ENV_RAW) k[f] = hex3(raw[f]);
   k.sky = raw.sky.map(hex3); k.keyDir = V3(...raw.keyDir).normalize();
-  ENVKEYS.push(k); return k;
+  return k;
+}
+// 两个关键帧（原样）之间按 t 插一个：数取中间，颜色按通道插，主光方向插完不用归一（envKey 会归一）
+function envMixRaw(a, b, t) {
+  const c = (p, q) => new THREE.Color(p).lerp(new THREE.Color(q), t).getHex(), o = { ...a };
+  for (const f of ENV_NUM) o[f] = lerp(a[f], b[f], t);
+  for (const f of [...ENV_COL, ...ENV_RAW]) o[f] = c(a[f], b[f]);
+  o.sky = a.sky.map((h, i) => c(h, b.sky[i])); o.keyDir = a.keyDir.map((v, i) => lerp(v, b.keyDir[i], t));
+  return o;
 }
 const E = { sky: [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0]), sunC: [0, 0, 0], cloudC: [0, 0, 0], keyDir: V3(0, 1, 0), ext: 0 };
 for (const f of ENV_COL) E[f] = new THREE.Color();
@@ -934,18 +1005,21 @@ function applyEnv(x) {
   for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(a.sky[s][j], b.sky[s][j], t);
   E.keyDir.lerpVectors(a.keyDir, b.keyDir, t).normalize();
   if (envMod) envMod(E);
-  if (MIST.k > 0) {                                      // 两章之间那段雾里的路（80-ui.js 的 stepMist）：雾越来越浓，天、远处的东西先没进雾里
-    const f = sstep(0, 0.75, MIST.k);
-    E.fog.lerp(MIST.tint, f); E.fogD = lerp(E.fogD, Math.max(E.fogD, 1.15 / MIST.d), f * f);   // 浓到主角自己也只剩一个影子（MIST.d：镜头离他多远）
-    for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) E.sky[s][j] = lerp(E.sky[s][j], MIST.sky[j], f);
-    E.sunP *= 1 - f; E.stars *= 1 - f; E.cloud *= 1 - f;
-  }
   scene.fog.color.copy(E.fog); scene.background.copy(E.fog); scene.fog.density = E.fogD;
   hemi.color.copy(E.hemiS); hemi.groundColor.copy(E.hemiG); hemi.intensity = E.hemiI;
   key.color.copy(E.keyC); key.intensity = E.keyI; keyDir.copy(E.keyDir);
   rim.color.copy(E.rimC); rim.intensity = E.rimI;
   dustMat.color.copy(E.dustC); dustMat.opacity = E.dustO;
   if (Math.abs(E.vig - vigNow) > 0.002) $('vig').style.opacity = vigNow = E.vig;
+}
+
+// 结局里镜头挪到别处（比如机房那一章的城里）时，用 envMod 把这一刻的环境往某个关键帧（envKey 算好的）推过去，f = 1 就整个换成它
+function envToward(e, k, f) {
+  for (const n of ENV_NUM) e[n] = lerp(e[n], k[n], f);
+  for (const n of ENV_COL) e[n].lerp(k[n], f);
+  for (const n of ENV_RAW) for (let j = 0; j < 3; j++) e[n][j] = lerp(e[n][j], k[n][j], f);
+  for (let s = 0; s < 6; s++) for (let j = 0; j < 3; j++) e.sky[s][j] = lerp(e.sky[s][j], k.sky[s][j], f);
+  e.keyDir.lerp(k.keyDir, f).normalize();
 }
 
 // ---- 天空：一块永远铺满屏幕、画在最底下的面。颜色只跟视线的仰角有关，所以走多远都不会“走出”天空 ----
@@ -1039,18 +1113,16 @@ function zoneStep(z) {                                   // 搭建过程是一�
   z.ms.push(Math.round(performance.now() - t0));      // 每一步花了多久（调试用：__g.zone(n).ms）
   if (r.done) { z.gen = null; z.built = true; }
 }
-// cx2：另一处也要搭好的地方 —— 人正走在两章之间那段雾里的时候，下一章入口那一带的布景提前搭（一帧一小步），人到了不用现搭、不会卡一下
-function streamZones(cx, sync = false, cx2 = cx) {
+function streamZones(cx, sync = false) {
   let stepped = false;
   for (const z of ZONES) {
-    const near = d => (cx > z.vis[0] - d && cx < z.vis[1] + d) || (cx2 > z.vis[0] - d && cx2 < z.vis[1] + d), want = near(75);
-    if (want && !z.root) { z.root = new THREE.Group(); scene.add(z.root); z._seed = 1000 + origN(z.n) * 7919; z.ms = []; z.gen = z.build(z.root); }   // 种子按章节原来的编号（20-world.js 的 origN）：旧原型挪到第 8–20 章、《逃出工厂》删掉第一章，布景的样子都不变
+    const near = d => cx > z.vis[0] - d && cx < z.vis[1] + d, want = near(75);
+    if (want && !z.root) { z.root = new THREE.Group(); scene.add(z.root); z._seed = 1000 + origN(z.n) * 7919 + (z.link ? 4243 : 0); z.ms = []; z.gen = z.build(z.root); }   // 种子按章节原来的编号（20-world.js 的 origN）：旧原型挪到第 8–20 章、《逃出工厂》删掉第一章，布景的样子都不变；两章之间那一段（link）另算
     if (z.gen && (sync || !stepped)) { do zoneStep(z); while (sync && z.gen); stepped = true; }
     if (!want && z.root && !z.gen && !near(140)) { if (z.unbuild) z.unbuild(); disposeTree(z.root); z.root = null; z.built = false; }
   }
 }
-// 换了章节（从菜单跳、从上一章一路走进来）：离得远的章节马上卸掉，不等走出 140 米 ——
-// 不挨着的两章在世界里只隔几十米，上一章不受雾影响的远景会露在这一章的布景板外面
+// 换了章节（从菜单跳、从存档进来）：离得远的章节马上卸掉，不等走出 140 米
 function dropFarZones(cx) {
   for (const z of ZONES) if (z.root && !z.gen && (cx < z.vis[0] - 75 || cx > z.vis[1] + 75)) { if (z.unbuild) z.unbuild(); disposeTree(z.root); z.root = null; z.built = false; }
 }
@@ -6854,7 +6926,7 @@ function resetPant() { Object.assign(BR, { ex: 0, ph: 0.6, chest: 0.3, bend: 0, 
 // ============================================================
 // 整段放在哪：旧原型的十三章从 x = -60 起往右排，这几章挪到它们左边，中间空出一千来米。各章的原点都从 EX 算起
 // （删掉的焚化炉原来在 EX - 60 到 EX + 80，那一段现在空着：分拣从 EX + 80 开始，位置没动）
-const EX = -2000;
+const EX = -1038;                                    // 2026-11-17 从 -2000 挪到这里：结尾的坡顶往右接一段下山的路（src/69-zz-links.js 第 8 → 9 章），正好走到旧原型工厂（第 9 章）左墙的门口
 const ex = x => x - EX;                                    // 换回挪过来之前的 x：照 x 算的花样（远山的山脊线、地上的波纹）用它，整段挪了位置，样子还是原来的
 // 关卡那一套随机数（10-core.js 的 _seed）走到哪了：这几章载入时会用掉一些，载完在 69-e9-ending.js 里拨回来，旧原型的章节载入时拿到的随机数和原来一样
 const ESC_SEED = _seed;
@@ -9191,7 +9263,7 @@ const E9 = (() => {
   terrain([X + 200, 1.3], [X + 206, 1.3], [X + 208.5, 0.55], [X + 212, 0.55], [X + 214.5, 1.4], [X + 228, 2.0], [X + 252, 7.6], [X + 264, 9.2], [X + 278, 9.6], [X + 360, 9.6]);   // 野地、水渠、一道长坡
   ground(X + 200, 0x2f3a2e); ground(X + 240, 0x4a5236); ground(X + 360, 0x4a5236);
   surface(X + 208.4, X + 212.1, 'wade');
-  // st：0 还在路上 / 1 到了坡顶，回头看。t 回头以后过了多久
+  // st：0 还在路上 / 1 到了坡顶，回头看 / 2 看完了（结局画面上按了接着往前走，或者是从后面的章节走回来的）：坡顶不再停下来。t 回头以后过了多久
   const S = { st: 0, t: 0, shown: false };
   for (const x of [198, 216, 232, 250]) checkpoint(X + x);
   camKeys([X + 200, 21, 2.2, 1], [X + 215, 22, 2.4, 1.5], [X + 232, 22, 2.6, 2], [X + 262, 21, 2.2, 1], [X + 300, 21, 2.2, 1]);
@@ -9206,7 +9278,7 @@ const E9 = (() => {
   function* build(R) {
     const v = {}, own = m => { m.userData.own = true; return m; };
     // 远处：一层层的丘陵；近一些是野地边上的树篱、几棵孤零零的树（朝工厂那一面是开阔的：不挡住回头看的那一眼）
-    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(ex(x) * 0.012 + 2) + 5 * Math.sin(ex(x) * 0.031), 4); }, { fog: false, fadeL: 30 });
+    backdrop(X + 120, X + 420, -10, 70, -420, 2, g => { setInk(g, '#3d4658'); ridge(g, X + 120, X + 420, -10, x => 26 + 9 * Math.sin(ex(x) * 0.012 + 2) + 5 * Math.sin(ex(x) * 0.031), 4); }, { fog: false, fadeL: 30, fadeR: 90 });   // 右头也渐隐：往右是下山去工厂的路（src/69-zz-links.js），走得过去、看得见
     backdrop(X + 180, X + 340, -4, 24, -70, 6, g => { setInk(g, '#232b2c'); ridge(g, X + 180, X + 340, -4, x => groundY(x) + 0.6 + 0.5 * Math.sin(ex(x) * 0.2) + rr(0, 0.4), 1.2); for (let x = X + 186; x < X + 336; x += rr(9, 22)) if (x > X + 244 || x < X + 190) tree(g, x, groundY(x) + 0.2, rr(5, 10), pick(['round', 'round', 'pine', 'dead'])); }, { fadeL: 8 });
     backdrop(X + 196, X + 300, -2, 14, -9, 14, g => { setInk(g, '#151b1a'); for (const x of [X + 203, X + 243, X + 272, X + 281]) tree(g, x, groundY(x) - 0.1, rr(6, 10), x > X + 260 ? 'dead' : 'round'); grass(g, X + 196, X + 300, x => groundY(x) - 0.05, 0.3, 0.9, 360); }, { fadeL: 4 });
     for (const [a, b] of [[X + 190, X + 250], [X + 250, X + 310]]) foreTufts(a, b, 8.7, { cols: ['#0c1210', '#101814', '#0a0f0d'], h: 1.0, fern: 0.1 });
@@ -9253,7 +9325,7 @@ const E9 = (() => {
       if (t > 15 && !S.shown && (play || state === 'end')) { S.shown = true; showEndBare(ZONE, false); }
     }
     const v = V; if (!v) return;
-    const k = S.st === 1 ? sstep(1.8, 6.5, S.t) : 0;
+    const k = S.st === 1 ? sstep(1.8, 6.5, S.t) : S.st === 2 && S.shown ? sstep(TOP + 26, TOP + 6, P.x) : 0;   // 看完了往前走：回头看见的那片谷地慢慢淡掉
     v.valley.material.opacity = k; v.valley.visible = k > 0.001; v.glowF.material.opacity = 0.28 * k;
     v.smoke.forEach((s, i) => { const u = (T * 0.035 + i / 7) % 1; s.position.set(vx(FX - 6.9 + 26 * u * u + 2 * Math.sin(T * 0.2 + i)), vy(FY + 35 + 30 * u), VZ + 0.5); s.scale.setScalar((7 + 30 * u) * SC); s.material.opacity = 0.75 * k * Math.sin(Math.PI * u) ** 0.6; });
     v.cars.forEach((c, i) => {                                                  // 一串车灯：沿着那条路，从右边远处往大门开
@@ -9262,10 +9334,12 @@ const E9 = (() => {
     });
   }
   function reset() { Object.assign(S, { st: 0, t: 0, shown: false }); }
+  // 结局画面上按了接着往前走（80-ui.js 的 continueFromEnd）：人从坡顶转过身来，往右下山，走到旧原型工厂的门口（src/69-zz-links.js）
+  function cont() { S.st = 2; P.facing = 1; }
   function retry() {                                     // 结局画面上按 R：从坡脚再走一遍
     reset(); placePlayer(X + 240); P.cp = cpAt(P.x); ctl = true; autoDir = 0; state = 'play'; camOvr = null; $('end').classList.add('hide'); snapCamera();
   }
-  const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); }, retry, unbuild() { V = null; }, S });
+  const ZONE = defZone({ n: 8, vis: [X + 186, X + 330], build, update, reset, solve() { reset(); S.st = 2; }, retry, cont, unbuild() { V = null; }, S });
   return ZONE;
 })();
 // 《逃出工厂》到这里载完。关卡随机数拨回到这几章载入之前（见 60-kit.js 的 ESC_SEED），后面旧原型的章节和单独拼的时候拿到一样的随机数
@@ -9278,13 +9352,12 @@ _seed = ESC_SEED;
 //  把空箱沿着拖痕推到断电杆下面，站上去拉下断电杆：输送带和压机停下，安全闸门升起
 // ============================================================
 const CH1 = (() => {
-  const C = chapter({ n: OLD + 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线', enter: [-6.5, 0.5] });   // enter：从《逃出工厂》的结尾一路走进来时，人出现在左墙里面（20-world.js 的 chapterExit）
+  const C = chapter({ n: OLD + 1, x0: -9.5, start: 2, name: '工厂', sub: '关闭回收线' });   // x0：左墙上的门。从《逃出工厂》的结尾下了山，从这道门走进来（src/69-zz-links.js）
   C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
-  if (TERRAIN.length) groundFront(TERRAIN[TERRAIN.length - 1][0], -60, null);     // 左边接着《逃出工厂》那条路的尽头：中间空着的一千来米不铺地面
   terrain([-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [104, 0]);
   ground(-60, 0x1c2529); ground(103.9, 0x1c2529);
-  solid({ id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 });
+  solid({ id: 'wallL', x1: -9, x2: -7, y1: 2.6, y2: 12 });                        // 左墙：底下 2.6 米是门（门外是《逃出工厂》下山的路）
   solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
   solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
   solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
@@ -9356,6 +9429,7 @@ const CH1 = (() => {
     V.wHead.lookAt(tx, ty, 0); V.eyeMat.color.copy(beam.color); V.eyeGlow.material.color.copy(beam.color);
   }
 
+  const FX0 = -9.2;                                    // 厂房的左墙（外皮）：里面的布景从这里画起，墙外是《逃出工厂》下山的那段路（src/69-zz-links.js）
   function* build(R) {
     // ---------------- 布景板：废弃的巨型厂房 ----------------
     // 最远的后墙：一排高窗透进冷光。逆光的关键在这里 —— 整块板提亮 30 倍，隔着八成多的雾，墙和窗还是比雾亮
@@ -9367,7 +9441,7 @@ const CH1 = (() => {
         setInk(g, '#131b1e'); for (let y = 8; y < 28; y += 3.2) box(g, x - 0.1, y, 1.9, 0.28);
       }
     });
-    backWall(-90, 104.7).material.color.setScalar(30);
+    backWall(FX0, 104.7).material.color.setScalar(30);
     backWall(104.7, 106);                                 // 出口那面墙外侧露出的一小段不提亮：从第二章回头看，它只是厂房的一条暗边
     yield;
     // 高窗照进来的光：朝着镜头、斜着向下穿过雾，从每扇窗往左下铺开一片。
@@ -9376,7 +9450,7 @@ const CH1 = (() => {
     // （离那一屏很远的窗子，就当镜头在它的斜对面）。坡道上方那一扇（x = 52）不画：它的光会落在远处的坡面上，成了一块亮斑
     const WINS = []; for (let x = -58.5; x < 100; x += 8.5) if (Math.abs(x - 52) > 1) WINS.push(x);
     const REF = [69.43, 3.025, 20.5], LD = [-0.16, -0.83, 0.53];   // 定稿那一屏（主角站在 x = 67.25）的镜头位置；光的方向
-    backdrop(-90, 106, -2, 29, -31.9, 10, g => {
+    backdrop(FX0, 106, -2, 29, -31.9, 10, g => {
       const gr = g.createLinearGradient(0, 6.66, 0, -0.98);         // 窗子下面最亮，越往地面越淡
       gr.addColorStop(0, 'rgba(190,222,230,.22)'); gr.addColorStop(0.55, 'rgba(190,222,230,.1)'); gr.addColorStop(1, 'rgba(190,222,230,.02)');
       g.fillStyle = gr;
@@ -9390,13 +9464,13 @@ const CH1 = (() => {
       }
     }, { additive: true, fog: false, blur: 4, order: -127 });
     // 光落在地上的那一块：靠墙的一头亮，朝镜头这一头淡下去
-    backdrop(-90, 106, -31, -11, 0, 5, g => {
+    backdrop(FX0, 106, -31, -11, 0, 5, g => {
       g.fillStyle = vgrad(g, -29, -13, 'rgba(190,222,230,.15)', 'rgba(190,222,230,.03)');
       for (const x of WINS) poly(g, [[x - 0.96, -28.8], [x + 0.74, -28.8], [x - 3.7, -14.1], [x - 5.4, -14.1]]);
     }, { floor: 0.03, additive: true, fog: false, blur: 2, order: -100 });
     yield;
     // 高窗与天窗漏下来的光（叠加发光，不受雾影响）
-    backdrop(-60, 106, -1, 26, -30, 7, g => {
+    backdrop(FX0, 106, -1, 26, -30, 7, g => {
       for (let x = -84 + 8.5 * 3; x < 104; x += 8.5) {
         const gr = g.createLinearGradient(0, 26, 0, 2); gr.addColorStop(0, 'rgba(150,185,192,.30)'); gr.addColorStop(1, 'rgba(150,185,192,0)');
         g.fillStyle = gr; box(g, x - 1.4, 2, 4.5, 24);
@@ -9404,7 +9478,7 @@ const CH1 = (() => {
     }, { additive: true, fog: false, blur: 6 });
     yield;
     // 远景：一排高大的拱廊；探照灯机器站在中间那个大开口后面
-    backdrop(-50, 106, -1, 26, -16, 20, g => {
+    backdrop(FX0, 106, -1, 26, -16, 20, g => {
       setInk(g, '#0d1416');
       g.beginPath(); g.rect(-50, -1, 156, 27);
       const arch = (x1, x2, top) => { const r = (x2 - x1) / 2; g.moveTo(x1, -1); g.lineTo(x1, top - r); g.arc(x1 + r, top - r, r, Math.PI, 0, true); g.lineTo(x2, -1); g.closePath(); };
@@ -9438,7 +9512,7 @@ const CH1 = (() => {
     });
     yield;
     // 中景：机器残骸、龙门架、楼梯
-    backdrop(-30, 106, -1, 20, -8, 26, g => {
+    backdrop(FX0, 106, -1, 20, -8, 26, g => {
       setInk(g, '#0a1012');
       // 熔炉 + 烟道
       box(g, -1, 0, 7, 4.6); box(g, 0.2, 4.6, 1.5, 15.4); box(g, -1.4, 3.9, 7.8, 0.5); box(g, 3.2, 4.6, 2.2, 1.3);
@@ -9465,7 +9539,7 @@ const CH1 = (() => {
     });
     yield;
     // 近景：一排工字钢立柱 + 吊车梁 + 管道（场地和回收大厅那两段不放柱子）
-    backdrop(-25, 106, -1, 15, -3.2, 34, g => {
+    backdrop(FX0, 106, -1, 15, -3.2, 34, g => {
       const col = (x, w = 0.85) => {
         const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0); gr.addColorStop(0, '#070b0d'); gr.addColorStop(0.75, '#0b1215'); gr.addColorStop(1, '#172226');
         g.fillStyle = gr; box(g, x - w / 2, -1, w, 16);
@@ -9482,7 +9556,7 @@ const CH1 = (() => {
     yield;
     // 前景：离镜头最近的一层，全黑、略微虚焦，不挡住主角。
     // （原来沿着画面下沿还有一道废料堆的剪影；以这个镜头的高度看过去，它前面还露着一截地面，成了横在地面中间的一道黑带，去掉了）
-    backdrop(-22, 104.6, -3, 10, 6, 22, g => {
+    backdrop(FX0, 104.6, -3, 10, 6, 22, g => {
       setInk(g, '#040607');
       for (const [x, w] of [[7.2, 0.34], [52.4, 0.5]]) box(g, x, -3, w, 13);                       // 两根近处的柱子：经过时扫过画面
       for (let x = -20; x < 100; x += rr(9, 17)) cable(g, x, 10, x + rr(6, 12), 10, rr(1.6, 2.5), 0.09);  // 顶上垂下的缆线
@@ -9511,7 +9585,7 @@ const CH1 = (() => {
     // ---------------- 3D 道具 ----------------
     const v = {};
     // 地面的伸缩缝：一道道伸向远处的细线，增强纵深感
-    for (let x = -18; x < 102; x += 5.5) if (x < 46 || x > 58) add(R, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
+    for (let x = -6.5; x < 102; x += 5.5) if (x < 46 || x > 58) add(R, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
     for (const z of [3.2, -4.5]) add(R, bx(124, 0.012, 0.07), MAT.dark, 40, 0.004, z, false);
     yield;
     // ---------------- 探照灯场地的地面 ----------------
@@ -9771,7 +9845,7 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: OLD + 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: OLD + 1, vis: [-12, 105], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x >= -60 && c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();
 
@@ -11948,8 +12022,9 @@ const CH8 = (() => {
   const d1 = gate({ id: 'd81', x: D1, w: 0.6, h: 3.4, T: 1.6 }), d2 = gate({ id: 'd82', x: D2, w: 0.6, h: 3.4, T: 3 }), d3 = gate({ id: 'd83', x: D3, w: 0.6, h: 3.4, T: 1.8 }), d4 = gate({ id: 'd84', x: EX, w: 0.9, h: 3.6 });
   // 三段各自的负载状态：eye 监控 / drop 水泵 / leaf 灌溉
   const S = { eye1: true, lv: 0, st: [{ eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 0 }, { eye: 1, drop: 0, leaf: 1 }], v2: 0, open2: false, k: [[1, 0, 0], [1, 0, 0], [1, 0, 1]] };
-  // 结局：choice 1 修复 / 2 旁路；t 选了以后过了多久；t2 走出中枢以后过了多久；night、deep 天色变到哪一步（见下面的 nightfall）
-  const END = { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, lights: 0 };
+  // 结局：choice 1 修复 / 2 旁路；t 选了以后过了多久；t2 走出中枢以后过了多久；night、deep 天色变到哪一步（见下面的 nightfall）；
+  // cont：结局画面上按了“接着往前走”（80-ui.js 的 continueFromEnd）—— 结局不再往下演，人站起来，沿着坡顶往右走到山洞（第 17 章）
+  const END = { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, lights: 0, cont: false };
   const near = (a, x) => Math.abs(a - x) < 0.3;
   const SUNX = X + 85.5, SUNR = 7.9;                     // 核心后墙上那盏圆灯：圆心正对着最后一块电池，左边是维修座，右边是配电盘
   const MASTS = [[X + 104, 14], [X + 172, 16], [X + 201, 11]];                              // 谷地里的三座中继塔：[x, 高]
@@ -12311,10 +12386,10 @@ const CH8 = (() => {
 
     // ---- 最后的选择 ----
     if (!END.choice && state === 'play') { if (batt.x <= SOCK_L + 0.02) choose(1); else if (batt.x >= SOCK_R - 0.02) choose(2); }
-    const E1 = END.choice === 1, E2 = END.choice === 2;
+    const E1 = END.choice === 1, E2 = END.choice === 2, go = !END.cont;
     if (END.choice) { END.t += dt; if (END.t > 0.9) batt.off = true; }                              // 电池滑进插座里，不再挡路
     const t = END.t;
-    if (E1) {
+    if (E1 && go) {
       // 修复：07 自己走进维修座，夹具合上，灯一点点亮回来；然后门开了，它带着小猫离开
       if (t < 8.4) { ctl = false; autoDir = t > 0.8 && P.x > DOCK - 0.3 ? -1 : 0; if (t > 1.2 && autoDir === 0) P.facing = 1; }
       else if (state === 'play' && !ctl && P.x < EX + 20) { ctl = true; autoDir = 0; d4.want = 1; fx('ok'); }
@@ -12322,7 +12397,7 @@ const CH8 = (() => {
       if (t > 3 && t < 7.8) { HX.pose = { arms: [{ a: 0.2, b: 0.1 }, { a: 0.2, b: 0.1 }], look: 0 }; if (Math.floor(t * 2) !== Math.floor((t - dt) * 2)) fx('servo'); }
       if (state === 'play' && ctl && P.x > X + 122) { ctl = false; autoDir = 1; }                    // 走上坡顶：最后一段自己走完
       if (P.x > X + 122) { END.t2 += dt; if (P.x > X + 133) autoDir = 0; if (END.t2 > 6 && !END.shown) { END.shown = true; state = 'end'; showEnd('结局 · 修复', '07 带着小猫离开了。<br>中枢照旧运转：水泵、镜头和修剪机，仍然只为算得清的生命工作。'); } }
-    } else if (E2) {
+    } else if (E2 && go) {
       // 旁路：三样负载里，水泵和灌溉亮起来，监控熄灭。07 走出门去，越走越慢，灯越来越暗
       if (t > 2.6 && d4.want === 0) { d4.want = 1; fx('powerDown'); }
       const far = sstep(EX - 4, X + 126, P.x);
@@ -12337,7 +12412,7 @@ const CH8 = (() => {
       envMod = nightfall;
     }
     if (END.choice && P.x > X + 60) HX.energy = END.energy;
-    if (END.choice && P.x > X + 112 && state !== 'title') { const k = E2 ? sstep(1.5, 9, END.t2) : 0; camOvr = { d: lerp(30, 19, k), yo: lerp(3.6, 1.6, k), xo: lerp(5.5, 3.2, k) }; }   // 坐下以后镜头慢慢靠近
+    if (END.choice && go && P.x > X + 112 && state !== 'title') { const k = E2 ? sstep(1.5, 9, END.t2) : 0; camOvr = { d: lerp(30, 19, k), yo: lerp(3.6, 1.6, k), xo: lerp(5.5, 3.2, k) }; }   // 坐下以后镜头慢慢靠近
     outL.on = E.ext > 0.5 ? 0 : d4.open;
     dockL.on = E1 ? 0.3 + 0.7 * sstep(1, 3, t) : 0.25; panL.on = E2 ? 1 : 0.25;
 
@@ -12372,7 +12447,7 @@ const CH8 = (() => {
     v.galaxy.material.opacity = sstep(0.3, 1, dk);
     v.sprout.visible = E2 && END.t2 > 12; if (v.sprout.visible) { v.sprout.position.set(P.x + 0.34, P.y, 0.3); v.sprout.scale.setScalar(sstep(12, 17, END.t2)); }
   }
-  function resetEnd() { placeBox(batt, X + 85.5); batt.locked = false; batt.off = false; setGate(d4, 0); Object.assign(END, { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false }); envMod = null; P.speedK = 1; STORY.ending = 0; }
+  function resetEnd() { placeBox(batt, X + 85.5); batt.locked = false; batt.off = false; setGate(d4, 0); Object.assign(END, { choice: 0, t: 0, t2: 0, energy: 0.54, sit: 0, night: 0, deep: 0, shown: false, cont: false }); envMod = null; P.speedK = 1; STORY.ending = 0; }
   function reset() {
     { const r = ch7Root(); if (r) r.visible = true; }       // 从菜单跳到别的章节时，把上面藏起来的布景还回去
     S.eye1 = true; S.lv = 0; S.v2 = 0; S.open2 = false; placeBox(b2, P2[0]); placeBox(c1, P3[0]); placeBox(c2, P3[1]);
@@ -12385,7 +12460,10 @@ const CH8 = (() => {
     placePlayer(D3 + 3); P.cp = cpAt(P.x); if (STORY.cat) catPlace(P.x - 0.9, 0); ctl = true; autoDir = 0; state = 'play'; camOvr = null;
     $('end').classList.add('hide'); $('fade').style.opacity = 0; saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
-  return defZone({ n: OLD + 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
+  // 结局以后接着往前走：人站起来（旁路结局里是坐着的），天色回到傍晚，往右沿着坡顶走（小猫：修复结局里跟着走，旁路结局里留在原地）
+  function cont() { END.cont = true; END.sit = 0; P.speedK = 1; P.facing = 1; }
+  // choose：工具页、自动检查直接做最后的选择
+  return defZone({ n: OLD + 8, vis: [X - 6, X + 232], build, update, reset, solve, retry, cont, choose, unbuild() { if (V && V.mir) V.mir.dispose(); V = null; }, S, END, batt, b2, c1, c2, d1, d2, d3, d4 });
 })();
 function retryEnding() { (endZone ?? CH8).retry(); }
 
@@ -12399,12 +12477,11 @@ function retryEnding() { (endZone ?? CH8).retry(); }
 //    七 发光的水（最深最黑的地方，两段潜水，中间一口气） 八 洞口的天光（水被外面的光照成绿的，走出山洞）
 //  形状全由地面（terrain）和洞顶（ceiling）两条折线决定：画出来的岩石就是挡住人的岩石
 // ============================================================
-const X9 = 1100;
+const X9 = X8 + 266;                                       // 接在生态中枢（第 16 章）门外那道坡后面：坡顶往右下到洞口（src/69-zz-links.js）
 const CH9 = (() => {
   const X = X9;
   const C = chapter({ n: OLD + 9, x0: X - 6.4, start: X + 3, name: '山洞与暗河', sub: '潜下去，游到有光的地方',
-    enter: [X - 5.6, X + 2.5],                               // 从上一章一路走进来：人出现在身后那道空气墙的右边，洞口的暗处（20-world.js 的 chapterExit）
-    intro() { CAT.state = 'none'; } });                    // 小猫不进山洞（它怕水）
+    nocat: true });                                        // 小猫不进山洞（它怕水）：一路走过来的话，它在洞口外面坐下（80-ui.js 的 arriveChapter）
   C.ground = 'rock';                                                               // 脚步声：湿的岩石
   const A = (pts) => pts.map(([x, y]) => [X + x, y]);
   // ---- 地面（脚下的岩石、潭底）----
@@ -12428,9 +12505,6 @@ const CH9 = (() => {
   const W = [[9.62, 23.3, -3.3], [47.12, 62.2, -4.2], [85.35, 98.6, -4.6], [122.15, 138.15, -3.8], [155.1, 176.3, -5.1], [197.12, 209.95, -3.4], [236.12, 268.3, -4.9], [285.12, 300.15, -3.6]]
     .map(([a, b, bot]) => water({ x1: X + a, x2: X + b, y: -0.35, bot }));
   groundFront(X - 30, X + 360, null);                     // 共用的地面这一段不铺：山洞自己搭（前面是岩石的剖面）
-  solid({ x1: X + 338, x2: X + 340, y1: -2, y2: 30, noclimb: true });   // 走出山洞以后先到这里为止
-  chapterExit(OLD + 9, { a0: X + 322, a1: X + 335.5, tint: 0x6a7c7a });   // 走出洞口，外面起着雾：一直往右走，雾里接到下一章（吊绳与高台）
-  solid({ x1: X - 7.5, x2: X - 6.5, y1: -2, y2: 30, noclimb: true });   // 身后是进来的洞口，不往回走
   ground(X - 30, 0x1c2224); ground(X + 360, 0x1c2224);
   for (const x of [3, 25.5, 41, 63.5, 81, 100, 119, 139.5, 151, 177.5, 193, 211, 233, 269.5, 281, 301.5, 320]) checkpoint(X + x);
   // 镜头压到和主角的头差不多高、平着看（抬高量是负的：眼睛往下挪，看的还是同一点），水面、地面、洞顶都只是窄窄的一条，和剖面图一样
@@ -12672,20 +12746,18 @@ const CH9 = (() => {
 //  往远处去，每一级台阶的边上都还有一排同样的吊臂（布景）：有的绳子还在，有的割断了，有的只剩一只空滑轮
 //  （故事还在重写，这一章先单独放在最后，从章节菜单进；以后按剧情挪到该放的地方）
 // ============================================================
-const X10 = 1500;
+const X10 = X9 + 392;                                      // 走出山洞，下一道缓坡就到（src/69-zz-links.js）
 const CH10 = (() => {
   const X = X10;
-  const C = chapter({ n: OLD + 10, x0: X - 6.9, start: X + 3, enter: [X - 6.2, X + 2], name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
-    intro() { CAT.state = 'none'; } });
-  const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5;
+  const C = chapter({ n: OLD + 10, x0: X - 6.9, start: X + 3, nocat: true, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
+  });
+  const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5, ZG = -3.2;   // ZG：矮墙、栏杆从这里往后才有（前面是下坡的豁口）
   terrain([X - 30, 0], [X + 29.9, 0], [X + 30.1, DITCH], [X + 32.85, DITCH], [X + 33.05, 0], [X + 150, 0]);
   ground(X - 30, 0x2c3231); ground(X + 150, 0x2c3231);
-  solid({ x1: X - 8.4, x2: X - 7, y1: -2, y2: 40, noclimb: true });                   // 身后：一堵塌了半截的墙
   const S1 = solid({ id: 'step1', x1: X + 14, x2: X + 30, y1: DITCH, y2: H1, snd: 'concrete' });
   const S2 = solid({ id: 'step2', x1: X + 32.95, x2: X + 60, y1: DITCH, y2: H2, snd: 'concrete' });
   const S3 = solid({ id: 'step3', x1: X + 60, x2: END, y1: 0, y2: H3, snd: 'concrete' });
-  solid({ x1: END - 1.35, x2: END - 0.9, y1: H3, y2: 40, noclimb: true });             // 最高一级的边上有一道矮墙和栏杆，走到这里为止
-  chapterExit(OLD + 10, { a0: END - 15, a1: END - 3, when: () => P.y > H3 - 0.3, tint: 0x6f7b78 });   // 在最高一级上往矮墙那边走：雾越来越浓，雾里接到下一章（夜搜）
+  // 最高一级的边上有一道矮墙和栏杆；靠镜头这一头（z > ZG，人走的那一条）留着豁口，从这里接着往右下坡（src/69-zz-links.js）
   // 三根能抓的绳子：挂在吊臂顶端的滑轮下面，离台阶的墙一米
   const R1 = rope({ x: X + 13.0, top: H1 + 1.95, bot: 1.95 });
   const R2 = rope({ x: X + 31.95, top: H2 + 1.95, bot: 3.35 });
@@ -12909,9 +12981,9 @@ const CH10 = (() => {
     yield;
     // ---------------- 最高一级的尽头：一道矮墙、上面一道锈栏杆 ----------------
     {
-      const x0 = END - 0.9; add(R, bx(0.9, 0.85, DEEP), M.conc, x0 + 0.45, H3 + 0.42, ZF - DEEP / 2);
-      for (let z = ZF - 0.3; z > -40; z -= 2.2) add(R, cy(0.025, 0.025, 0.9, 6), M.rust2, x0 + 0.3, H3 + 1.3, z);
-      for (const y of [H3 + 1.72, H3 + 1.3]) add(R, bx(0.05, 0.05, 42), M.rust2, x0 + 0.3, y, ZF - 21.3);
+      const x0 = END - 0.9, D = DEEP + ZG - ZF; add(R, bx(0.9, 0.85, D), M.conc, x0 + 0.45, H3 + 0.42, ZG - D / 2);   // 靠镜头这一头留出下坡的豁口（z > ZG）
+      for (let z = ZG - 0.3; z > -40; z -= 2.2) add(R, cy(0.025, 0.025, 0.9, 6), M.rust2, x0 + 0.3, H3 + 1.3, z);
+      for (const y of [H3 + 1.72, H3 + 1.3]) add(R, bx(0.05, 0.05, 40 + ZG), M.rust2, x0 + 0.3, y, (ZG - 40) / 2);
     }
     // ---------------- 前景：最近处的枯草（在地上）、斜着穿过画面上方的几根电线（在高处） ----------------
     backdrop(X - 24, X + 116, -1.5, 24, 7.5, 26, g => {
@@ -13151,19 +13223,16 @@ function fogRockGeo(seed, o = {}) {
 //    颜色几乎全去掉，只留孩子的红上衣、落叶和直升机的航行灯；没有路灯，没有前景道具；远处是雾里一层比一层浅的枯树、谷仓、高压线塔。
 //    探照灯不受这些管：它扫到哪里，哪里就亮 —— 画面里最亮的东西还是那盏灯
 // ============================================================
-const X11 = 1800;
+const X11 = X10 + 173;                                     // 从吊绳那一章最高一级的豁口下坡，坡脚往右几步就是这一章的公路（src/69-zz-links.js）
 const CH11 = (() => {
   const X = X11;
-  const C = chapter({ n: OLD + 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯', enter: [X - 6.8, X + 2],
-    intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
+  const C = chapter({ n: OLD + 11, x0: X - 30, start: X + 3, name: '夜搜', sub: '躲开直升机的灯', nocat: true });   // 这一章先不带小猫（故事还没定它这时候在不在）
+  const G0 = X - 30, G1 = X + 165;                                                 // 这一章自己铺的地面从哪到哪：两头接着前后两段连接的路（src/69-zz-links.js），那里是共用的地面
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
   ground(X - 70, 0x1e2b30); ground(X + 200, 0x1e2b30);
-  groundFront(X - 70, X + 200, null);                                              // 共用的地面这一段不铺：这一章自己铺（路两边要有起伏，远处要跟着雾）
+  groundFront(G0, G1, null);                                              // 共用的地面这一段不铺：这一章自己铺（路两边要有起伏，远处要跟着雾）
   surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
-  solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
-  solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
-  chapterExit(OLD + 11, { a0: X + 137, a1: X + 149, tint: 0x3c4146 });   // 走进林子里的浓雾：一直往右走，接到下一章（作坊一角）
 
   // ---------------- 画面：雾里的剪影（照第二十一章的做法，见 design/visual-style.md）----------------
   // 地面的起伏：路面那一条（z 在 RB..RF）是平的，跟着物理地形走；路后面是野地，离路越远起伏越大、越远越高（丘陵在孩子身后，不挡人）；
@@ -13407,7 +13476,7 @@ const CH11 = (() => {
     // 近处一块细的、远处一块粗的，用同一个高度函数；远处那块挨着近处的那一排压低一点、塞在近处那块底下，接缝里不漏
     {
       const groundMat = S(0xffffff, 4, 0.5);
-      const kinks = TERRAIN.map(p => p[0]).filter(x => x > X - 70 && x < X + 200);              // 物理地形的折点：路面那一条要和它分毫不差（路面的贴图是按折点切的）
+      const kinks = TERRAIN.map(p => p[0]).filter(x => x > G0 && x < G1);              // 物理地形的折点：路面那一条要和它分毫不差（路面的贴图是按折点切的）
       const span = (a, b, d, extra = []) => { const o = []; for (let x = a; x < b + d / 2; x += d) o.push(x); o.push(...extra); o.sort((p, q) => p - q); return o.filter((x, i) => i === 0 || x - o[i - 1] > 0.05); };
       // 一块网格地面，按 x 切成一条条（每条 cw 米）：镜头只看得到其中两三条，看不到的不画。法线按整块算好再切，接缝处的明暗对得上
       const grid = (xs, zs, cw, drop = 0) => {
@@ -13426,10 +13495,10 @@ const CH11 = (() => {
           i0 = i1;
         }
       };
-      grid(span(X - 70, X + 200, LOW ? 0.8 : 0.4, kinks), span(-12, 16, LOW ? 0.6 : 0.35), 20);
+      grid(span(G0, G1, LOW ? 0.8 : 0.4, kinks), span(-12, 16, LOW ? 0.6 : 0.35), 20);
       yield;
       const zs = []; for (let z = -11.9, st = 0.5; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);
-      grid(span(X - 260, X + 420, LOW ? 3.2 : 1.6), zs.reverse(), 80, 0.04);                     // 比这一章宽得多：镜头看得到的远处都要铺到
+      grid(span(G0, G1, LOW ? 3.2 : 1.6), zs.reverse(), 80, 0.04);                                // 远处也只铺这一章这一段：两头是共用的地面（一直铺到看不见的地方）
     }
     yield;
 
@@ -13966,22 +14035,18 @@ const CH11 = (() => {
 //    二 · 按 E 凿记号：小錾子在灯头的金属套上凿出一个缺了一角的方框，光从凿穿的地方漏出来；镜头推近到灯跟前
 //    三 · 按 E 取下来：取下来以后只剩一团低低的余光；举到检验光底下，突然亮了一下，旁边筐里待修的坏灯一点反应也没有；
 //         用布包好，余光一点也透不出来，揣进怀里
-//  然后右边的门开了，走出去是黑的，接着往右走就到了第十三章机房的门口（中间九章还没做；出口见下面的 chapterExit）
+//  然后右边的门开了，走出去是一条夜里的窄巷，接着往右走就到了第十三章机房的门口（窄巷见 src/69-zz-links.js；从夜搜那一章走过来，是从左边山墙上的侧门进的屋）
 //  （故事里第一章凿完记号是把灯放进周转箱、推上输送带送走的，夜里它从天上掉下来，孩子在门廊里才把它揣进怀里；这里为了接上机房，直接收进包里）
 // ============================================================
-const X12 = 2200;
+const X12 = X11 + 190;                                     // 夜搜那一章走进林子里的雾，林子边上就是作坊的侧门（src/69-zz-links.js）
 const CH12 = (() => {
   const X = X12, BENCH = X + 4.2, INSP = BENCH + 0.5, DOOR = X + 9.4, STAND = BENCH - 0.42;
   const FIX = { x: BENCH, y: 1.0, z: 0.02 };                                         // 工作台上的检测灯座：灯泡挂在它下面（灯头朝上）
-  const C = chapter({ n: OLD + 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood', enter: [X - 0.3, X + 1.2],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 12, x0: X - 4, start: X + 1.2, name: '作坊一角', sub: '在灯头上凿一个记号', ground: 'wood', nocat: true });
   terrain([X - 60, 0], [X + 60, 0]);
   ground(X - 60, 0x3a2f25); ground(X + 60, 0x3a2f25);
-  solid({ x1: X - 1.6, x2: X - 0.6, y1: -2, y2: 30, noclimb: true });              // 身后是作坊里面
   const door = gate({ id: 'd121', x: DOOR, w: 0.5, h: 2.6, T: 1.4 });
-  solid({ x1: DOOR + 2.2, x2: DOOR + 3.2, y1: -2, y2: 30, noclimb: true });
   checkpoint(X + 1.2);
-  chapterExit(OLD + 12, { a0: DOOR - 0.8, a1: DOOR + 1.5, when: () => S.step === 3, tint: 0x090c12 });   // 灯泡收好、门开了：走出门，门外是黑的，接着走就到了机房门口
   camKeys([X - 3, 9.6, 1.25, 1.6], [X + 2, 9.6, 1.25, 1.2], [BENCH, 9.2, 1.2, 0.4], [DOOR - 1, 9.6, 1.25, -0.4], [DOOR + 3, 10, 1.3, -1.2]);
   // 作坊的暖光：头顶一盏吊灯，工作台上一盏冷白的检验灯。门外是夜里
   env(X - 6, { fog: 0x17110c, fogD: 0.03, hemiS: 0xb39876, hemiG: 0x1a130e, hemiI: 0.42, keyC: 0xffd8a8, keyI: 0.55, keyDir: [-0.3, 1, 0.45], rimC: 0xffc890, rimI: 0.35,
@@ -14141,19 +14206,19 @@ const CH12 = (() => {
 //         刚断了电的星灯也一排排自己亮起来。画面全白，只剩风声
 //  结局后面不写结局名和说明；按 R 回到选择之前
 // ============================================================
-const X13 = 2300;
+const X13 = X12 + 41;                                      // 出了作坊的门，穿过一段夜里的窄巷，就到机房门口（src/69-zz-links.js）
 const CH13 = (() => {
   const X = X13;
   const L1 = X + 1.3, WIN = X + 2.75, WIN_Y = 2.72, LEV = X + 3.9, L2 = X + 5.4, CON = X + 7.5, SOCK = X + 10.45, SOCK_Y = 1.32, L3 = X + 11.8, FAULT = X + 12.6,
-    ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 92;
+    ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 9, CY = 150;
+  // CITY、CY：拧回去的结局最后两个镜头里那片城区搭在哪 —— 机房正上方 CY 米（2026-11-17 以前在机房右边 92 米，现在那里是往下一章去的路；城里的光见下面的 CITYK）
   const BACK = -3.0, CH_Z = -0.72;                                                      // 后墙在哪；老人和椅子在走道后面一点（孩子从他身前走过去）
-  const C = chapter({ n: OLD + 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal', enter: [X - 8.2, X - 3.4],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal', nocat: true });
   terrain([X - 40, 0], [X + 140, 0]);
   ground(X - 40, 0x1b1f22); ground(X + 140, 0x1b1f22);
-  solid({ x1: X - 9.6, x2: X - 8.6, y1: -2, y2: 30, noclimb: true });              // 身后：爬上来的台阶（还没做），不往回走
   solid({ x1: X - 0.2, x2: X + 0.2, y1: 2.38, y2: 30, noclimb: true });             // 左墙：门洞以上是墙
-  solid({ x1: RW - 0.2, x2: RW + 0.8, y1: -2, y2: 30, noclimb: true });              // 右墙
+  solid({ x1: RW - 0.2, x2: RW + 0.8, y1: 2.38, y2: 30, noclimb: true });            // 右墙：门洞以上
+  const exitDoor = gate({ id: 'roomExit', x: RW + 0.3, w: 1.0, h: 2.38, T: 2.2 });   // 右墙上的门：演完结局、按了接着往前走才开（门外是往“墙”那一章去的路，src/69-zz-links.js）
   checkpoint(X - 3.2); checkpoint(X + 4.8); checkpoint(X + 11.1); checkpoint(X + 15.5);
   camKeys([X - 14, 20, 3.4, 2], [X + 24, 20.5, 3.6, 0]);                             // 机房里每一帧由下面的 roomCam 接管
   // 机房：窄、冷白；后墙之外是外面（白光），头顶是星灯的背面，再往上是外壳
@@ -14164,7 +14229,7 @@ const CH13 = (() => {
   // 城里（拧回去的结局最后两个镜头）：长夜里的街区
   const CITYE = { ...ROOM, fog: 0x0d1220, fogD: 0.01, hemiS: 0x6a7898, hemiG: 0x0a0c12, hemiI: 0.42, keyC: 0x9fb2d6, keyI: 0.3, keyDir: [-0.3, 0.7, 0.4], rimC: 0x8fa6cc, rimI: 0.4,
     sky: [0x03050c, 0x060a16, 0x0b1222, 0x121a2c, 0x182236, 0x0a0e18], stars: 1.3, aRoom: 0, aHum: 0, aCity: 0.6, rvHall: 0, rvOut: 1, aWind: 0.25, aFar: 0 };
-  env(X + 62, CITYE); env(X + 140, CITYE);
+  const CITYK = envKey(0, { ...ENV0, ...CITYE });                                    // 城里那两个镜头的光：镜头在那里的时候整个换成它（envMod）
   const workL = spotLight({ p: [X + 9.6, 4.0, 0.8], t: [X + 9.6, 0, -0.9], c: 0xe6f0f4, i: 3.4, a: 0.85, d: 10 });         // 顶上的工作灯：屋子中间一盏，靠门一盏（窄窄的冷白光）
   const workL2 = spotLight({ p: [X + 2.6, 4.0, 0.8], t: [X + 2.8, 0, -1.0], c: 0xe6f0f4, i: 2.6, a: 0.8, d: 9 });
   const winL = spotLight({ p: [WIN, WIN_Y, -2.7], t: [WIN + 0.7, 0, 1.4], c: 0xffffff, i: 16, a: 0.44, pen: 0.55, d: 12, on: 0 });   // 小窗漏进来的白光
@@ -14172,14 +14237,14 @@ const CH13 = (() => {
   const tableL = pointLight({ p: [TABLE + 0.05, 1.45, -0.2], c: 0xffe2b8, i: 2.2, d: 4.2 });                                // 老人桌上的小灯
   const skyL = pointLight({ p: [ROOMC, 6.6, 0.6], c: 0xffe6c0, i: 2.4, d: 14, dec: 1 });                                     // 头顶星灯的漫光
   const pinL = pointLight({ p: [X + 15.3, 7.2, -1.6], c: 0xffa040, i: 5, d: 7, on: 0 });                                        // 拉闸的后半程：大锁销旁边一盏警示灯
-  const cityL = [[CITY - 6, 4.2], [CITY + 3, 5.5], [CITY + 10, 3.6]].map(([x, y]) => pointLight({ p: [x, y, -6], c: 0xffc98a, i: 3, d: 12, on: 0 }));
+  const cityL = [[CITY - 6, 4.2], [CITY + 3, 5.5], [CITY + 10, 3.6]].map(([x, y]) => pointLight({ p: [x, y + CY, -6], c: 0xffc98a, i: 3, d: 12, on: 0 }));
 
   // ---- 进度 ----
   // l[i] 三道闸刀合上没有，lt[i] 合上以后过了多久；seen1 小窗打开过；cmp 对过灯泡；cmpT 对灯泡这一段走到哪（-1 没在做）；
   // fault 0 还没坏 / 1 正坏着 / 2 按回去了，ft 这一段过了多久；done3 第三段做完（两件装置可以用了）；look 推近镜头的程度；lookAt 推近到哪
   const S = { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, lookAt: 'table', still: 0, winSnd: false, sk0: 0, pk0: 0 };
-  // 结局：c 1 拧回去 / 2 拉闸，t 过了多久
-  const END = { c: 0, t: 0, shown: false, step: 0 };
+  // 结局：c 1 拧回去 / 2 拉闸，t 过了多久；cont 结局画面上按了接着往前走：结局不再往下演，人站起来，右墙的门开了
+  const END = { c: 0, t: 0, shown: false, step: 0, cont: false };
   let V = null;
   const busy = () => !!CARRY.act || S.cmpT >= 0;
   const near = (x, r = 0.9) => Math.abs(P.x - x) < r && P.y < 0.4;
@@ -14255,7 +14320,10 @@ const CH13 = (() => {
     add(R, bx(0.4, CEIL + 0.3 - 2.38, 4.6), plate_, X, 2.38 + (CEIL + 0.3 - 2.38) / 2, BACK + 2.3);   // 左墙门洞以上
     add(R, bx(0.4, CEIL + 0.3, 1.6), plate_, X, (CEIL + 0.3) / 2, BACK + 0.8);         // 左墙门洞后面的一截
     add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, -1.4); add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, 1.0);    // 门框
-    add(R, bx(0.4, CEIL + 0.3, 4.6), plate_, RW, (CEIL + 0.3) / 2, BACK + 2.3);       // 右墙
+    add(R, bx(0.4, CEIL + 0.3 - 2.38, 4.6), plate_, RW, 2.38 + (CEIL + 0.3 - 2.38) / 2, BACK + 2.3);   // 右墙门洞以上
+    add(R, bx(0.4, CEIL + 0.3, 1.6), plate_, RW, (CEIL + 0.3) / 2, BACK + 0.8);       // 右墙门洞后面的一截
+    add(R, bx(0.12, 2.38, 0.12), MAT.steel, RW - 0.18, 1.19, -1.4); add(R, bx(0.12, 2.38, 0.12), MAT.steel, RW - 0.18, 1.19, 1.0);   // 门框
+    v.exitDoor = add(R, bx(0.16, 2.38, 2.6), plate_, RW + 0.05, 1.19, -0.2);          // 门扇：往上收进墙里
     add(R, bx(RW - X + 0.6, 0.26, 4.6), plate2, ROOMC, CEIL + 0.13, BACK + 2.3);       // 顶（剖开的这一面朝着镜头）
     for (let x = X + 1.6; x < RW; x += 3.2) add(R, bx(0.14, 0.3, 4.6), dark, x, CEIL - 0.12, BACK + 2.3);
     // 地上一圈磨亮的走道
@@ -14415,7 +14483,8 @@ const CH13 = (() => {
     v.cableA = V3(RW - 0.3, CEIL + 0.1, -1.8); v.cableB = V3(PX + 1.2, PY, PZ + 0.1);
     v.dust = []; for (let i = 0; i < 24; i++) { const s = glow(R, 0x8a8a84, 0.12, 0, 0, 0, 0); v.dust.push({ s, t: 9, vx: 0, vy: 0 }); }
     yield;
-    // ---------------- 城里（拧回去的结局最后两个镜头）----------------
+    // ---------------- 城里（拧回去的结局最后两个镜头）：整片搭在一个抬高了 CY 米的组里 ----------------
+    const R0 = R, ROOT0 = ROOT; R = ROOT = grp(R0, 0, CY, 0);
     backdrop(CITY - 30, CITY + 30, -2, 30, -60, 6, g => {                              // 远处的钩形星群（补齐了）和几排房顶
       setInk(g, '#0a0e18'); for (let x = CITY - 30; x < CITY + 30; x += rr(2, 5)) box(g, x, -2, rr(2, 5), rr(4, 9));
     }, { fog: false, order: -2000 });
@@ -14442,6 +14511,7 @@ const CH13 = (() => {
     v.roofGlow = add(R, new THREE.PlaneGeometry(1.4, 1.2), own(new THREE.MeshBasicMaterial({ color: 0xffc27a, fog: false })), CITY - 4.2, 4.3, -1.99, false);
     v.roofShut = add(R, bx(1.5, 1.3, 0.05), lam(0x4a5058), CITY - 4.2, 4.35, -1.95); for (let y = -0.55; y < 0.6; y += 0.12) add(v.roofShut, bx(1.5, 0.02, 0.06), lam(0x3a3f46), 0, y, 0, false);
     v.crackGlow = glow(R, 0xffc27a, 1.1, 0, CITY - 4.2, 3.76, -1.85);
+    R = R0; ROOT = ROOT0;
     V = v;
   }
 
@@ -14516,12 +14586,12 @@ const CH13 = (() => {
 
   function update(dt) {
     const here = P.x > X - 12 && P.x < RW + 2;
-    if (!here && !END.c) return;
+    if (!here && (!END.c || END.cont)) return;
     if (!CARRY.bulb) CARRY.bulb = makeBulb(scene, 'square', { glow: 0.12 });
     if (CARRY.state === 'none' || (CARRY.state === 'set' && !END.c)) { CARRY.state = 'bag'; CARRY.at = null; }
     for (let i = 0; i < 3; i++) S.lt[i] += dt;
     // 控制：取放灯泡、对灯、结局的时候不能动
-    const lock = busy() || END.c > 0;
+    const lock = busy() || (END.c > 0 && !END.cont);                                   // 结局以后按了接着往前走：又能走了
     if (state === 'play') { if (lock) { ctl = false; S.locked = true; } else if (S.locked) { ctl = true; S.locked = false; } }
     // 灯泡拿在手上，按方向键就先揣回怀里
     if (CARRY.state === 'out' && !CARRY.act && P.mode !== 'hold' && !END.c && S.cmpT < 0 && (keys.has('L') || keys.has('R') || keys.has('J'))) carryStart('in');
@@ -14588,27 +14658,28 @@ const CH13 = (() => {
       if (t > 12 && END.step === 4) { END.step = 5; $('fade').style.opacity = 1; }
       if (t > 13.6 && END.step === 5) { END.step = 6; placePlayer(CHAIR, 0); P.facing = -1; snapCam({ x: CHAIR - 0.5, y: 1.3, d: 8.5 }); }
       if (t > 14 && END.step === 6) { END.step = 7; $('fade').style.opacity = 0; }
-      tableau = t > 13.6;
+      tableau = t > 13.6 && !END.cont;
       if (t > 18.6 && END.step === 7) { END.step = 8; fx('bell', 740, 1); }                 // 工作铃
       if (t > 19.4 && END.step === 8) { END.step = 9; $('fade').style.opacity = 1; }
-      if (t > 21 && END.step === 9) { END.step = 10; snapCam({ x: CITY - 1.5, y: 6.6, d: 17 }); $('fade').style.opacity = 0; }
+      if (t > 21 && END.step === 9) { END.step = 10; snapCam({ x: CITY - 1.5, y: 6.6 + CY, d: 17 }); $('fade').style.opacity = 0; }
       if (t > 26 && END.step === 10) { END.step = 11; $('fade').style.opacity = 1; }
       if (t > 27.6 && END.step === 11) { END.step = 12; fx('bell', 520, 0.8); $('fade').style.opacity = 0; }   // 睡觉铃：下一次宵禁
       cityK = t > 21 && t < 27.6 ? sstep(21.2, 24.5, t) : 0;
       if (t > 33 && !END.shown) { END.shown = true; showEndBare(ZONE, false); }
     } else if (E2) {
       if (t > 0.9 && END.step === 0) { END.step = 1; fx('pinStep'); }
-      white = sstep(2.6, 9.0, t); flood = sstep(3.0, 8.0, t); relit = t;
+      white = END.cont ? 0 : sstep(2.6, 9.0, t); flood = sstep(3.0, 8.0, t); relit = t;   // 接着往前走以后白光退下去，外壳还是开着的
       excite = Math.max(excite, 2.2 * sstep(1.6, 4.0, t));
       if (t > 7 && END.step === 1) { END.step = 2; $('white').style.opacity = 1; }
       if (t > 11 && !END.shown) { END.shown = true; showEndBare(ZONE, true); }
     }
     CARRY.excite = excite;
-    if (E2) envMod = (e => {                                                                    // 白光：雾和环境光变白，主光从后上方压过来，人成了剪影；风声起来，屋里的嗡嗡声没了
+    if (E1 && t > 21 && !END.cont) envMod = e => envToward(e, CITYK, 1);                 // 城里那两个镜头
+    if (E2 && !END.cont) envMod = (e => {                                                                    // 白光：雾和环境光变白，主光从后上方压过来，人成了剪影；风声起来，屋里的嗡嗡声没了
       const k = white; e.fog.lerp(_white, k); e.fogD = lerp(e.fogD, 0.05, k); e.hemiI = lerp(e.hemiI, 0.18, k); e.keyI = lerp(e.keyI, 2.4, k); e.rimI = lerp(e.rimI, 2.2, k);
       e.keyC.lerp(_white, k); e.rimC.lerp(_white, k); e.aWind = lerp(e.aWind, 3.2, k); e.aRoom *= 1 - k; e.aHum *= 1 - k; e.rvOut = lerp(e.rvOut, 1, k); e.rvHall *= 1 - k; e.aFar = 0; });
     // 镜头
-    if (here || END.c) {
+    if (here || (END.c && !END.cont)) {
       let f = roomCam();
       if (S.cmpT >= 0) f = blendCam(f, { x: SOCK - 0.1, y: SOCK_Y - 0.12, d: 3.2 }, sstep(0, 0.5, S.cmpT + (CARRY.act ? 0.25 : 0)) * (1 - sstep(3.6, 4.3, S.cmpT)));
       if (S.l[1] && S.lt[1] < 6.5) f = blendCam(f, { x: CON, y: 2.5, d: 7.2 }, sstep(0.3, 1.2, S.lt[1]) * (1 - sstep(5.4, 6.4, S.lt[1])));     // 屏幕一块块亮起来
@@ -14625,8 +14696,8 @@ const CH13 = (() => {
       if (pk > 0.002 && !END.c) { const u = sstep(0.45, 0.7, pk); f = blendCam(f, { x: lerp(ROOMC + 2, X + 15.3, u), y: lerp(4.4, 3.3, u), d: lerp(20.5, 15.2, u) }, sstep(0, 0.12, pk)); }   // 后半程：老人、孩子、上面的大锁销都在画面里，老人不压在提示字底下
       if (E1 && t < 12) f = blendCam(f, { x: SOCK, y: lerp(3.6, sockY + 0.6, sstep(1.6, 4, t)), d: lerp(14, 12, sstep(5, 7, t)) }, sstep(1.0, 2.6, t) * (1 - sstep(8.8, 10.4, t)));
       if (E1 && tableau && t < 21) f = { x: CHAIR - 0.5, y: 1.3, d: 8.5 };
-      if (E1 && t >= 21) f = { x: CITY - 1.5, y: 6.6, d: 17 };
-      if (E2) f = blendCam(f, { x: ROOMC + 2, y: 4.2, d: 23 }, sstep(0.5, 6, t));
+      if (E1 && t >= 21 && !END.cont) f = { x: CITY - 1.5, y: 6.6 + CY, d: 17 };
+      if (E2 && !END.cont) f = blendCam(f, { x: ROOMC + 2, y: 4.2, d: 23 }, sstep(0.5, 6, t));
       setCam(f);
     }
     // 孩子的动作：握着手柄 / 拧灯 / 坐在椅子上
@@ -14636,6 +14707,7 @@ const CH13 = (() => {
     stepDust(dt);
 
     const v = V; if (!v) return;
+    v.exitDoor.position.z = -0.2 - 2.4 * exitDoor.open;                                 // 右墙的门：往后滑进墙里
     // 闸刀和线
     v.knife.forEach((K, i) => { const k = sstep(0, 0.25, S.l[i] ? S.lt[i] : 0) * S.l[i]; K.arm.rotation.z = lerp(-1.2, 0, k); K.lamp.color.setHex(S.l[i] ? 0x7dff9a : 0x2a1210); });
     v.pulse.forEach((p, i) => { const k = S.l[i] ? S.lt[i] / 0.9 : 2; p.material.opacity = k < 1 ? 0.9 : 0; if (k < 1) p.position.copy(v.pulsePath[i].getPointAt(clamp(k, 0, 1))); });
@@ -14723,7 +14795,7 @@ const CH13 = (() => {
 
   function resetEnd() {
     if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到怀里（只在演过结局以后：从菜单跳到第十二章时不要动它）
-    Object.assign(END, { c: 0, t: 0, shown: false, step: 0 }); STORY.room = 0;
+    Object.assign(END, { c: 0, t: 0, shown: false, step: 0, cont: false }); STORY.room = 0; setGate(exitDoor, 0);
     screw.k = 0; screw.locked = false; screw.on = false; pull.k = 0; pull.locked = false; pull.on = false;
     envMod = null; { const w = $('white'); w.style.transition = 'none'; w.style.opacity = 0; void w.offsetWidth; w.style.transition = ''; } $('fade').style.opacity = 0; $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
   }
@@ -14731,7 +14803,13 @@ const CH13 = (() => {
     Object.assign(S, { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, still: 0, winSnd: false, sk0: 0, pk0: 0 });
     lever.k = 0; resetEnd(); if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; }
   }
-  function solve() { reset(); }
+  function solve() { reset(); setGate(exitDoor, 1); }                                 // 从后面的章节开始，往回走到这里：右墙的门开着
+  // 结局画面上按了接着往前走（80-ui.js 的 continueFromEnd）：坐在椅子上的孩子站起来，白光退下去，右墙的门打开，往右走出去
+  function cont() {
+    END.cont = true; exitDoor.want = 1; fx('doorStop');
+    if (END.c === 1) { placePlayer(CHAIR + 0.75); P.cp = cpAt(P.x); }
+    P.facing = 1; $('white').style.opacity = 0; snapCamera();
+  }
   // 结局以后按 R：回到选择之前（三段线路都已经走过）
   function retry() {
     reset(); Object.assign(S, { l: [1, 1, 1], lt: [9, 9, 9], seen1: true, cmp: true, fault: 2, ft: 9, ft0: 9, done3: true });
@@ -14739,7 +14817,7 @@ const CH13 = (() => {
     saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
   function respawn() { if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; } S.cmpT = -1; }
-  const ZONE = defZone({ n: OLD + 13, vis: [X - 12, CITY + 18], build, update, reset, solve, retry, respawn, unbuild() { V = null; }, S, END, lever, screw, pull });
+  const ZONE = defZone({ n: OLD + 13, vis: [X - 12, RW + 4], build, update, reset, solve, retry, respawn, cont, exitDoor, choose, unbuild() { V = null; }, S, END, lever, screw, pull });
   return ZONE;
 })();
 // ============================================================
@@ -14759,7 +14837,7 @@ const CH13 = (() => {
 //  两道墙都是爬过去的（2026-11-17）：扒住墙头撑上去，站到墙顶上；高墙那一边转过身扒着墙头倒着爬下去，再松手（见 update 里的“攀墙”）
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=21）
 // ============================================================
-const X14 = 2600;
+const X14 = X13 + 58;                                      // 机房右墙上的门出去，下一段坡就到墙这一章的碎石坡（src/69-zz-links.js）
 const CH14 = (() => {
   const X = X14, WX = X + 8;                                   // 墙的中线在哪个 x
   const T = 0.34, BL = 0.215, BH = 0.065, BD = 0.1025, J = 0.011, PZ = BL + J, PY = BH + J, NC = 11, CAPH = 0.1;
@@ -14771,13 +14849,9 @@ const CH14 = (() => {
   // 旧木箱：高度正好是两道墙的高差 —— 站在箱子上，墙头离脚下和第一道矮墙一样高。CR0 一开始放在哪；往左最多拉到 CRMIN，往右推到贴着墙（CRMAX）
   const CR_W = 1.1, CR_D = 0.9, CR_H = TOP2 - TOP, CR0 = X + 37.2, CRMIN = X + 35.6, CRMAX = W2X - HALF - CR_W / 2;
   const S14 = 0.62;                                            // 路面石块的大小（米）                                            // 灰缝比砖面缩进去多少
-  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel', enter: [X - 10.8, X - 1],   // 脚步声：山上的碎石
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 14, x0: X - 12, start: X + 2, name: '墙', sub: '翻过去', ground: 'gravel', nocat: true });   // 脚步声：山上的碎石
   ground(X - 60, 0x2a2520); ground(X + 60, 0x2a2520);
-  groundFront(X - 60, X + 60, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
-  solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });
-  solid({ x1: X + 58, x2: X + 59, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 14, { a0: X + 45, a1: X + 56, tint: 0x2f3439 });   // 翻过第二道墙，往雾里走：接到下一章（高台）
+  groundFront(X - 20, X + 62, null);                           // 共用的地面这一段不铺：这一章自己铺（远处要跟着压暗）
   solid({ x1: WX - HALF, x2: WX + HALF, y1: -1, y2: TOP, snd: 'concrete', noclimb: true });   // 墙在玩法平面上的那一截（攀墙在下面 update 里自己接）
   solid({ x1: W2X - HALF, x2: W2X + HALF, y1: -1, y2: TOP2, snd: 'concrete', noclimb: true });   // 第二道墙：从地上跳够不着墙头；站在箱子上才扒得住（也在 update 里）
   checkpoint(X + 2); checkpoint(WX + 1.4); checkpoint(X + 33); checkpoint(W2X + 1.3);
@@ -15247,9 +15321,9 @@ const CH14 = (() => {
         const m = new THREE.Mesh(g, mat); m.receiveShadow = m.castShadow = true; m.frustumCulled = false; R.add(m); return m;
       };
       const span = (a, b, d) => { const o = []; for (let v = a; v < b + d / 2; v += d) o.push(v); return o; };
-      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 32, X + 78, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
+      const gd = LOW ? 0.4 : 0.22; grid([...new Set([...span(X - 20, X + 62, gd).filter(x => !nearStep(x)), ...span(ST_A - 0.6, ST_A + 0.6, 0.03), ...span(ST_B - 0.6, ST_B + 0.6, 0.03)])].sort((a, b) => a - b), span(-6, 16, gd), true, shade(lam(0xffffff), 2, 0.5));   // 近处平滑着色：石块错开的台阶上不出锯齿，细节交给凹凸   // 近处：网格要细，石块之间的缝才做得出来
       const zs = []; for (let z = -6, st = 0.25; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);   // 远处：越远越稀
-      grid(span(X - 160, X + 240, LOW ? 1.6 : 1), zs.reverse());
+      grid(span(X - 20, X + 62, LOW ? 1.6 : 1), zs.reverse());   // 远处只铺这一章这一段：两头是连接的路，那里是共用的地面（src/69-zz-links.js）
       // ---- 地上的东西：石块、碎石子、落叶。贴着起伏的地面放，材质也走这一章的明暗（镜头跟前照样是黑的） ----
       //   沿着路散开：路两边多，路中间少（中间只有零星的小石子和几片叶子）；墙脚两边各一溜
       const gy = (x, z) => BIGG(x, z) + DET(x, z) + STONE(x, z);
@@ -15682,16 +15756,12 @@ const CH14 = (() => {
 //    地面 → 枕木（1.45）可以；地面 → 站台（2.9）、水泥墩（3.25）、墙头（3.4）都不行；枕木 → 水泥墩可以；箱子顶（1.05）→ 墙头可以
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=23）
 // ============================================================
-const X15 = 2760;
+const X15 = X14 + 100;                                     // 翻过墙那一章的第二道墙，往雾里走，雾散开是傍晚的货运站（src/69-zz-links.js）
 const CH15 = (() => {
   const X = X15;
-  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel', enter: [X - 10.8, X - 1],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel', nocat: true });
   terrain([X - 40, 0], [X + 80, 0]);
   ground(X - 40, 0x5b4d40); ground(X + 26, 0x5e5142); ground(X + 80, 0x655743);
-  solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });            // 两头的空气墙
-  solid({ x1: X + 44, x2: X + 45, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 15, { a0: X + 30, a1: X + 42, tint: 0x8c7869 });               // 翻过高墙，朝落下去的太阳走：一片暖色的雾，接到下一章（水下实验室）
   // 一垛枕木（踩上去的第一阶）→ 站台头上的水泥墩（第二阶；也把箱子挡在站台上，推不到左边去）→ 站台 → 高墙
   const STEP = solid({ id: 'sleepers', x1: X + 5.2, x2: X + 6.8, y1: 0, y2: 1.45, snd: 'wood' });
   const K = solid({ id: 'pier', x1: X + 6.8, x2: X + 7.6, y1: 0, y2: 3.25, snd: 'concrete' });
@@ -15920,10 +15990,11 @@ const CH15 = (() => {
   return defZone({ n: OLD + 15, vis: [X - 20, X + 50], build, update, reset, solve, unbuild() { V = null; }, crate, S, STEP, K, B, W });
 })();
 // 第 24 章 · 水下实验室：海床闸门 → 潜水通道 → 内部水井 → 干燥实验区。
-// 接在第 23 章“高台”（69-ch15-drop.js，地形铺到 x = 2840）右边；?ch=24
+// 接在第 23 章“高台”（69-ch15-drop.js）右边：翻过高墙往太阳那边走，下到海边；?ch=24
+const X16 = X15 + 82;                                      // 货运站往右下到海边（src/69-zz-links.js）
 const CH16 = (() => {
-  const X = 2900;
-  chapter({ n: OLD + 16, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', enter: [X - 1.6, X + 2.5], intro() { CAT.state = 'none'; } });
+  const X = X16;
+  chapter({ n: OLD + 16, x0: X - 10, start: X + 2, name: '水下实验室', sub: '入口在水底', ground: 'metal', nocat: true });
   terrain([X - 30, 0], [X + 5, 0], [X + 6, -6], [X + 22, -6], [X + 23, -2.6], [X + 42, -2.6]);
   ground(X - 30, 0x152c30); ground(X + 42, 0x243a40);
   const sea = water({ x1: X + 5.05, x2: X + 18, y: -0.4, bot: -6 });
@@ -15932,16 +16003,15 @@ const CH16 = (() => {
   // 屋顶和外墙连成实体，不能从水面绕过入口。
   solid({ x1: X + 14.7, x2: X + 18.5, y1: -3.5, y2: 8, noclimb: true });
   solid({ x1: X + 18.5, x2: X + 40, y1: 0.5, y2: 8, noclimb: true });
-  solid({ x1: X - 3, x2: X - 2, y1: -8, y2: 12, noclimb: true });
-  solid({ x1: X + 39, x2: X + 40, y1: -8, y2: 12, noclimb: true });
+  solid({ x1: X + 39, x2: X + 40, y1: 0.5, y2: 12, noclimb: true });                // 右墙：门以上（门在下面，见 exitDoor）
+  const exitDoor = gate({ id: 'labExit', x: X + 39.5, y0: -2.6, w: 1, h: 3.1, T: 1.6 });   // 往实验室深处去的门：电源恢复以后才开（门外是往上去工厂深处的走廊，src/69-zz-links.js）
   checkpoint(X + 2); checkpoint(X + 24);
-  chapterExit(OLD + 16, { a0: X + 32.5, a1: X + 38.5, tint: 0x0b1a1e, when: () => powered });   // 电源恢复以后，往实验室深处走：起一阵雾，接到工厂深处（第 25 章，69-h01-vat.js）
   camKeys([X - 20, 20, 1, 1, 0], [X + 8, 20, 0.5, 2, 0], [X + 24, 17, 1.2, 1, 0], [X + 42, 17, 1.2, 1, 0]);
   env(X - 20, { fog: 0x102b35, fogD: 0.025, hemiS: 0x83b5c0, hemiG: 0x102022, hemiI: 0.65, keyI: 0.4 }, true);
-  let doorMesh, lamp, powered = false;
+  let doorMesh, lamp, exitMesh, powered = false;
   // 阀门：贴着海底（按住 ↓ 时人会沉到 y ≈ -6.3）也够得着
   usable({ x: X + 13.9, r: 1.1, y0: -7, y1: -4.4, can: () => !hatch.want, on() { hatch.want = 1; fx('lever'); } });
-  usable({ x: X + 31, r: 1.3, y0: -3, y1: -2, can: () => !powered, on() { powered = true; fx('lever'); } });
+  usable({ x: X + 31, r: 1.3, y0: -3, y1: -2, can: () => !powered, on() { powered = true; exitDoor.want = 1; fx('lever'); } });
   hint(() => P.x > X && P.x < X + 8, '入口在水底。<b>↓</b> 下潜，<b>空格</b> 上浮，注意换气');
   hint(() => P.x > X + 12 && P.x < X + 15 && P.y < -4.4 && !hatch.want, '按 <b>E</b> 转动阀门，打开水下入口');
   hint(() => P.x > X + 15 && P.x < X + 23, '沿通道向右游，从水井按 <b>空格</b> 上浮');
@@ -15949,17 +16019,18 @@ const CH16 = (() => {
   hint(() => P.x > X + 24 && P.x < X + 32 && powered, '实验室电源已恢复，往里面走');
   function* build(R) {
     const block = (x,y,w,h,d,color,z=-1) => { const m = new THREE.Mesh(bx(w,h,d), lam(color)); m.position.set(X+x,y,z); R.add(m); return m; };
-    backdrop(X-5,X+41,-8,10,-9,25,g=>{
+    backdrop(X-5,X+41,-8,10,-9,25,g=>{   // 左头渐隐：从海边走过来，它是雾里慢慢显出来的一大块（src/69-zz-links.js）
       setInk(g,'#102d39'); box(g,X-5,-8,46,18);
       for(let i=0;i<18;i++){ setInk(g,i%2?'#153842':'#1b4149'); box(g,X+i*2.7,-7,1,5+(i%4)); }
       setInk(g,'#283e43'); box(g,X+18,-6,22,7);
       for(let i=0;i<4;i++){setInk(g,'#0b222c');box(g,X+24+i*3.5,-1.4,2.5,1.3);setInk(g,'#407279');box(g,X+24+i*3.5,-1.45,2.5,.06);}
-    });
+    }, { fadeL: 8 });
     block(16.6,2.25,3.8,11.5,3,0x293f42);
     block(29.2,.7,21.5,.4,5,0x263c41);
     block(31,-2.85,16,.5,5,0x34474b);
     block(16.5,-6.25,5,.5,4,0x34474b);
     doorMesh = block(15,-4.75,.5,2.5,2.8,0x826747,0);
+    exitMesh = block(39.5,-1.05,1,3.1,3,0x4a5a5c,-0.3);                    // 往深处去的门（右墙上）
     const wheel = new THREE.Mesh(new THREE.TorusGeometry(.32,.055,8,24),lam(0xd09a51)); wheel.position.set(X+13.95,-4.8,.7); R.add(wheel);
     block(13.95,-5.1,.1,1.4,.15,0x58676a,.4);
     for(let x=24;x<39;x+=3.5){ block(x,-1.9,2.5,.18,1.4,0x788c8b);block(x,-2.25,.12,.7,1,0x34484b);block(x,-1.5,.4,.65,.4,0x4c8c88); }
@@ -15971,37 +16042,39 @@ const CH16 = (() => {
   return defZone({ n: OLD+16, vis:[X-10,X+44], build, update() {
     if(doorMesh) doorMesh.position.y = -4.75+hatch.open*(hatch.h+.15);
     if(lamp) lamp.material.color.setHex(powered?0x91ffe1:0x19483f);
+    if(exitMesh) exitMesh.position.y = -1.05 + exitDoor.open * 3.25;
     // 两个水面高度不同，穿过通道时切换到对应水体。
     if(P.mode==='swim' && P.x>X+5 && P.x<X+23) P.water=P.x>=X+18?well:sea;
-  }, reset(){setGate(hatch,0);powered=false;}, solve(){setGate(hatch,1);powered=true;}, unbuild(){doorMesh=null;lamp=null;} });
+  }, reset(){setGate(hatch,0);setGate(exitDoor,0);powered=false;}, solve(){setGate(hatch,1);setGate(exitDoor,1);powered=true;}, unbuild(){doorMesh=null;lamp=null;exitMesh=null;} });
 })();
 // ============================================================
 //  工厂深处（第 25–36 章，2026-11-16）：十二个试验场景共用的东西
 //  一组“恐怖工厂”的灰模：冒泡的绿色药水、暗红的沉淀池、熔渣、漏液、晾衣场、冷库、停电的车间、敲铃的地方……
-//  接在第 24 章“水下实验室”后面，从第 25 章起每章占 130 米（x = 3000 起），章与章之间用“雾里的路”接起来（20-world.js 的 chapterExit）。
+//  接在第 24 章“水下实验室”后面，一章挨着一章：每章 HLEN[k] 米，章与章之间是一道带门的隔墙（竖井出来是一段往下的斜坡），见 src/69-zz-links.js。
 //  这一组的文件名是 69-h01 … 69-h12（h 排在 ch 后面，拼页面时在旧原型和试验关后面），章节号是 HN(k) = OLD + 17 + k。
 //  讲法照《逃出工厂》的规矩（design/environmental-escape-story.md 第二节）：只讲看得见的东西，没有带字的招牌，远看靠剪影、颜色和光
 //  这个文件里：每章的骨架（hChapter）、一池会冒泡的液体（ooze）、拿手电扫的看守（hWatch）、几样声音
 // ============================================================
-const HX0 = 3000, HSTEP = 130;
-const hX = k => HX0 + HSTEP * k;                      // 第 25 + k 章的原点
+const HX0 = X16 + 70;                                 // 水下实验室右墙的门出去，一段往上的走廊（src/69-zz-links.js）
+const HLEN = [60, 64, 64, 60, 50, 60, 60, 64, 64, 60, 64, 60];   // 每章多长：右边的墙在 X + HLEN[k]
+const HGAP = k => k === 4 ? 59 : 24;                  // 这一章的墙到下一章原点隔多远：章尾 4 米 + 隔墙那一段 6 米 + 下一章章首 14 米；竖井（k = 4）出来要从 15 米高往下走一段长坡
+const hX = k => { let x = HX0; for (let i = 0; i < k; i++) x += HLEN[i] + HGAP(i); return x; };   // 第 25 + k 章的原点
 const HN = k => OLD + 17 + k;                         // 第 25 + k 章的章节号
 const HLAST = 11;                                     // 一共十二章：k = 0 … 11
 
-// ---- 每章的骨架：登记章节、两头的空气墙、出口的雾 ----
-// o：name / sub / ground 脚下默认的声音 / len 这一章多长（空气墙在 X + len）/ tint 出口那段雾的颜色 / start 出生点（相对 X）
+// ---- 每章的骨架：登记章节；最后一章的右边是整条路的尽头（空气墙）----
+// o：name / sub / ground 脚下默认的声音 / len 这一章多长（= HLEN[k]）/ start 出生点（相对 X）
 function hChapter(k, o) {
-  const X = hX(k), n = HN(k), len = o.len ?? 60;
-  const c = chapter({ n, x0: X - 10, start: X + (o.start ?? 2), name: o.name, sub: o.sub, ground: o.ground ?? 'concrete', enter: o.enter ?? [X - 6.5, X + 0.5], grp: 'deep',
-    intro() { CAT.state = 'none'; if (o.intro) o.intro(); } });
-  solid({ x1: X - 8.6, x2: X - 7.6, y1: -30, y2: 40, noclimb: true });
-  solid({ x1: X + len, x2: X + len + 1, y1: -30, y2: 40, noclimb: true });
-  if (k < HLAST) chapterExit(n, { a0: X + len - 13, a1: X + len - 1.2, tint: o.tint ?? 0x0a0d0f, when: o.when ?? null });
+  const X = hX(k), n = HN(k), len = HLEN[k];
+  if (o.len !== undefined && o.len !== len) console.error(`工厂深处第 ${k} 章：LEN ${o.len} 和 HLEN ${len} 对不上`);
+  const c = chapter({ n, x0: X - 10, start: X + (o.start ?? 2), name: o.name, sub: o.sub, ground: o.ground ?? 'concrete', grp: 'deep', nocat: true, intro: o.intro });
+  if (k === HLAST) solid({ x1: X + len, x2: X + len + 1, y1: -30, y2: 40, noclimb: true });   // 整条路的尽头
   BIRDS[n] = [['bird', 0]];                             // 厂房里没有鸟
   return c;
 }
 // 一章的环境：在章首和章尾各登记一次（fresh：不接着前一章的光）。base 是这一组共用的“厂房里”的底子
-const H_IN = { fogD: 0.03, hemiI: 0.45, keyI: 0.25, rimI: 0.35, dustO: 0.35, wind: 0.02, ext: 0, sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
+// sky：厂房里头顶是黑的（以前没写，沿用默认的黄昏天色，柱子、墙中间漏出来一块块米黄色；现在两章之间的门洞、走廊也看得见天，一起换成暗的）
+const H_IN = { sky: [0x050706, 0x060807, 0x070908, 0x080a09, 0x080a09, 0x050706], fogD: 0.03, hemiI: 0.45, keyI: 0.25, rimI: 0.35, dustO: 0.35, wind: 0.02, ext: 0, sunP: 0, stars: 0, cloud: 0, birds: 0, flies: 0, vig: 1.15,
   aWind: 0, aWhis: 0.1, aLeaf: 0, aBug: 0, aDrip: 0.3, aFlow: 0, aRoom: 0.8, roomF: 120, aHum: 0.3, aCity: 0, aFar: 0.7, rvOut: 0, rvHall: 1, rvCave: 0 };
 function hEnv(k, o, len = 60) { const X = hX(k), e = { ...H_IN, ...o }; env(X - 12, e, true); env(X + len + 2, e); return e; }
 
@@ -16232,7 +16305,7 @@ function hCutFace(R, x1, x2, top = 0, deep = 8) { add(R, bx(x2 - x1, deep, 0.3),
 //  玩法：药水上面吊着六只铁托架，铃一响就有一只往下沉，在药水里泡一会儿再提上来。跳着托架过去，脚下这只开始抖就跳到还在上面的那一只
 // ============================================================
 const H1 = (() => {
-  const k = 0, X = hX(k), LEN = 60;
+  const k = 0, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '浸泡槽', sub: '铃一响就往下沉', ground: 'metal', len: LEN, tint: 0x0d1a0c });
   const V1 = X + 8, V2 = X + 26, SURF = -0.8, BOT = -4;
   terrain([X - 14, 0], [V1, 0], [V1 + 0.02, BOT], [V2 - 0.02, BOT], [V2, 0], [X + LEN + 4, 0]);
@@ -16339,7 +16412,7 @@ const H1 = (() => {
 //  光扫到身上的时候别动（漂着的东西是不会动的），在光里走、跳就被盯上。快到格栅时跳上右边的岸
 // ============================================================
 const H2 = (() => {
-  const k = 1, X = hX(k), LEN = 64;
+  const k = 1, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '沉淀池', sub: '漂过去', ground: 'concrete', len: LEN, tint: 0x160606 });
   const V1 = X + 8, V2 = X + 30, SURF = -0.6, BOT = -3.5;
   terrain([X - 14, 0], [V1, 0], [V1 + 0.02, BOT], [V2 - 0.02, BOT], [V2, 0], [X + LEN + 4, 0]);
@@ -16448,7 +16521,7 @@ const H2 = (() => {
 //   对齐前后各 1.7 秒桥一直伸到岸边；从池心往外跑，要在对齐前 4 到 1.5 秒之间起跑）
 // ============================================================
 const H3 = (() => {
-  const k = 2, X = hX(k), LEN = 64;
+  const k = 2, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '刮泥桥', sub: '等它转过来', ground: 'concrete', len: LEN, tint: 0x14130e });
   const CX = X + 19, RAD = 9.5, SURF = -0.55, BOT = -3, OM = 2 * Math.PI / 52, HALFW = 2.0, TOPY = 0.02;   // 桥面和岸一样高：走上去不用跳
   terrain([X - 14, 0], [CX - RAD - 0.3, 0], [CX - RAD - 0.28, BOT], [CX + RAD + 0.28, BOT], [CX + RAD + 0.3, 0], [X + LEN + 4, 0]);
@@ -16535,7 +16608,7 @@ const H3 = (() => {
 //  一块一块往前跳，别在一块上站着不走。中间两块自己也会裂开、再结上：先站在它前面那只铁锭模子上（不会裂），看准了再跳
 // ============================================================
 const H4 = (() => {
-  const k = 3, X = hX(k), LEN = 60;
+  const k = 3, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '熔渣池', sub: '踩上去就裂', ground: 'gravel', len: LEN, tint: 0x1a0904 });
   const V1 = X + 9, V2 = X + 30, SURF = -0.7, BOT = -3, TOPY = -0.42;
   terrain([X - 14, 0], [V1, 0], [V1 + 0.02, BOT], [V2 - 0.02, BOT], [V2, 0], [X + LEN + 4, 0]);
@@ -16637,7 +16710,7 @@ const H4 = (() => {
 //  被追上就回到存档点：井底，或者半路那一层（到过那一层以后，液面从那一层下面重新涨）
 // ============================================================
 const H5 = (() => {
-  const k = 4, X = hX(k), LEN = 50;
+  const k = 4, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '竖井', sub: '往上爬', ground: 'metal', len: LEN, tint: 0x0c180b, start: 1 });
   const S1 = X + 6, S2 = X + 18, FLOOR = -2, TOPF = 15;
   terrain([X - 14, FLOOR], [X + LEN + 4, FLOOR]);                                                  // 走廊和井底一样高：从井底走进去
@@ -16732,7 +16805,7 @@ const H5 = (() => {
 //  代价是罐子里的人也一起流出来，躺在去门口的路上（一个改不回去的选择）
 // ============================================================
 const H6 = (() => {
-  const k = 5, X = hX(k), LEN = 60;
+  const k = 5, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '玻璃大罐', sub: '已经裂了', ground: 'concrete', len: LEN, tint: 0x141a10 });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x23281f); ground(X + LEN + 4, 0x20251d);
@@ -16879,7 +16952,7 @@ const H6 = (() => {
 //  被浇到、滴到就回到存档点。快到头的时候，身后一整段管子爆开，药水哗地浇下来 —— 别回头
 // ============================================================
 const H7 = (() => {
-  const k = 6, X = hX(k), LEN = 60, CEIL_Y = 4;
+  const k = 6, X = hX(k), LEN = HLEN[k], CEIL_Y = 4;
   hChapter(k, { name: '漏液', sub: '看准了再走', ground: 'concrete', len: LEN, tint: 0x0c140c });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x1e221d); ground(X + LEN + 4, 0x1c201b);
@@ -16987,7 +17060,7 @@ const H7 = (() => {
 //  走到一半，看守在后面那排衣服前站住了，用棍子捅了捅其中一件 —— 那是一个躲在里面的人。他掉下来，被拖走
 // ============================================================
 const H8 = (() => {
-  const k = 7, X = hX(k), LEN = 64;
+  const k = 7, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '晾衣场', sub: '挂进去', ground: 'concrete', len: LEN, tint: 0x12140f });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x262823); ground(X + LEN + 4, 0x232521);
@@ -17108,7 +17181,7 @@ const H8 = (() => {
 //  过了检查口马上起来，在被卷进那张嘴以前跳上右上方的走道
 // ============================================================
 const H9 = (() => {
-  const k = 8, X = hX(k), LEN = 64;
+  const k = 8, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '进料带', sub: '躺下', ground: 'metal', len: LEN, tint: 0x100c0c });
   const B1 = X + 6, B2 = X + 40, BT = 0.6, SPD = 1.0, M1 = B2, M2 = B2 + 3.2;
   terrain([X - 14, 0], [M1, 0], [M1 + 0.02, -3], [M2 - 0.02, -3], [M2, 0], [X + LEN + 4, 0]);
@@ -17219,7 +17292,7 @@ const H9 = (() => {
 //  一停下来就站住别动 —— 这时候走一步，他就听见了，手电一下子转过来。等它重新响起来再走
 // ============================================================
 const H10 = (() => {
-  const k = 9, X = hX(k), LEN = 60;
+  const k = 9, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '冷库', sub: '安静的时候别动', ground: 'concrete', len: LEN, tint: 0xc0ccd0 });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x3a4246); ground(X + LEN + 4, 0x384044);
@@ -17309,7 +17382,7 @@ const H10 = (() => {
 //  掉下去就回到存档点。劳动者不会碰你，只是看着你
 // ============================================================
 const H11 = (() => {
-  const k = 10, X = hX(k), LEN = 64;
+  const k = 10, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '停电', sub: '灯转过来的时候看', ground: 'metal', len: LEN, tint: 0x040302 });
   const HOLES = [[11.2, 12.8], [17.6, 19.2], [27.4, 29.0], [33.0, 34.4], [40.6, 42.2], [46.4, 48.0]].map(([a, b]) => [X + a, X + b]);
   const tp = [[X - 14, 0]]; for (const [a, b] of HOLES) tp.push([a, 0], [a + 0.02, -5], [b - 0.02, -5], [b, 0]); tp.push([X + LEN + 4, 0]);
@@ -17391,7 +17464,7 @@ const H11 = (() => {
 //  右边的门开了，外面是白的。走出去，就是这一组的结尾
 // ============================================================
 const H12 = (() => {
-  const k = 11, X = hX(k), LEN = 60;
+  const k = 11, X = hX(k), LEN = HLEN[k];
   const ZC = hChapter(k, { name: '铃', sub: '整座工厂都听它的', ground: 'concrete', len: LEN, tint: 0x0d0f10 });
   ZC.end = { h1: '工厂深处', go: '按 R 再听一次铃　·　Esc 选择章节' }; ZC.endTint = 0xf3f1ea;
   terrain([X - 14, 0], [X + LEN + 4, 0]);
@@ -17498,6 +17571,311 @@ const H12 = (() => {
   ZONE = defZone({ n: HN(k), vis: [X - 14, X + LEN + 4], build, update, reset, retry, solve() { S.ph = 3; setGate(DOOR, 1); }, unbuild() { V = null; }, S, DOOR, SHELF });
   return ZONE;
 })();
+// ============================================================
+//  两章之间的路（2026-11-17）：三十六章在世界里接成一条连着的路，从第 1 章一直往右走，走得到第 36 章
+//  以前不挨着的几处（第 8 → 9、16 → 17 …… 35 → 36 章）中间隔着空气墙和几百米空地，走到头起一阵雾、把人挪过去；
+//  现在两章挨着摆（各章的原点 X9、X10 …、HX0 都是照前一章算的），两章之间铺一段真的路（20-world.js 的 link）：
+//  下山的坡、往下的坡道、门、窄巷、走廊、带门的隔墙。中间没有空气墙，往回走也走得回去。
+//  每一段：a 左边那一章的路走到哪 / b 右边那一章从哪开始 / pts 中间的地形 / build 这一段自己的布景（灰模：方块、剖面、几块布景板）
+//  这个文件拼在所有章节后面（文件名 69-zz 排在 69-h 后面）：用得到各章的原点
+// ============================================================
+
+// ---- 布景的小零件 ----
+const lkMat = (col, o = {}) => { const m = lam(col, o); m.userData.own = true; return m; };   // 这一段自己的材质：卸载时释放
+// 一块朝着镜头的剖面（地面、斜坡被剖开的那一面）：上沿跟着 top(x)，下到 yb
+function lkFace(R, x1, x2, z, mat, yb = -8, top = groundY, step = 0.25) {
+  const s = new THREE.Shape(), up = 0.03; s.moveTo(x1, yb);                 // up：上沿比地面高一点点，和地面那一条压住，接缝里不漏天
+  for (let x = x1; x < x2; x += step) s.lineTo(x, top(x) + up);
+  s.lineTo(x2, top(x2) + up); s.lineTo(x2, yb); s.closePath();
+  return add(R, new THREE.ShapeGeometry(s), mat, 0, 0, z, false);
+}
+// 一块平铺在 y 高度的地面（剖面前后那一截低处的地）
+function lkFlat(R, x1, x2, z1, z2, y, mat) {
+  const m = add(R, new THREE.PlaneGeometry(x2 - x1, z2 - z1), mat, (x1 + x2) / 2, y, (z1 + z2) / 2, false); m.rotation.x = -Math.PI / 2; m.receiveShadow = true; return m;
+}
+// 一块沿着折线 prof(x) 的厚板（斜着的走廊顶）：在 [x1, x2] 上，下沿是 prof(x)，厚 th，从 z1 到 z2
+function lkSlab(R, x1, x2, prof, th, z1, z2, mat, step = 0.5) {
+  const s = new THREE.Shape(); s.moveTo(x1, prof(x1));
+  for (let x = x1 + step; x < x2; x += step) s.lineTo(x, prof(x));
+  s.lineTo(x2, prof(x2)); s.lineTo(x2, prof(x2) + th);
+  for (let x = x2 - step; x > x1; x -= step) s.lineTo(x, prof(x) + th);
+  s.lineTo(x1, prof(x1) + th); s.closePath();
+  return add(R, new THREE.ExtrudeGeometry(s, { depth: z2 - z1, bevelEnabled: false }), mat, 0, 0, z1);
+}
+// 一道带门的墙（剖开的样子）：墙在 x，厚 w；门洞从地面 y0 高 door，前后在 zd..zf（人走的那一条 z = 0 在里面）；
+// 门洞后面（zb..zd）整面到顶，门洞上面（zd..zf）是门楣
+function lkDoorWall(R, x, o = {}) {
+  const { y0 = 0, door = 2.6, top = 10, w = 0.5, zb = -6, zd = -1.2, zf = 1.6, mat = MAT.dark } = o;
+  add(R, bx(w, top - y0, zd - zb), mat, x, (top + y0) / 2, (zb + zd) / 2);
+  add(R, bx(w, top - y0 - door, zf - zd), mat, x, (top + y0 + door) / 2, (zd + zf) / 2);
+  if (o.frame) for (const z of [zd + 0.06, zf - 0.06]) add(R, bx(w + 0.08, door, 0.1), o.frame, x, y0 + door / 2, z);
+}
+// 远山和中景：一条山脊、一排树。a..b 两头渐隐（和两边章节的远景接上时看不出边）
+function lkHills(a, b, o = {}) {
+  const f = o.ridge ?? (x => 14 + 5 * Math.sin(x * 0.021) + 2.5 * Math.sin(x * 0.067 + 1));
+  backdrop(a - 30, b + 30, -10, 60, o.zFar ?? -220, 2, g => { setInk(g, o.far ?? '#38404a'); ridge(g, a - 30, b + 30, -10, f, 3); }, { fadeL: 40, fadeR: 40 });
+  if (o.trees !== false) backdrop(a, b, -4, 22, o.zMid ?? -36, 6, g => {
+    setInk(g, o.mid ?? '#20272a'); ridge(g, a, b, -4, x => groundY(x) + 0.3 + 0.4 * Math.sin(x * 0.3), 1);
+    for (let x = a + 3; x < b - 3; x += rr(6, 14)) tree(g, x, groundY(x), rr(5, 10), pick(o.kinds ?? ['round', 'pine', 'dead']));
+  }, { fadeL: 6, fadeR: 6 });
+}
+// 地上的一把草（plants 的格式）：x1..x2，前后 z1..z2
+function lkGrass(R, x1, x2, z1, z2, n, cols = [0x4c5c3c, 0x56664a, 0x5f6a48], kinds = ['grass', 'grass', 'dry']) {
+  const list = []; for (let i = 0; i < n; i++) { const x = rr(x1, x2); list.push([x, groundY(x), rr(z1, z2), pick(kinds), rr(0.35, 0.9), pick(cols)]); }
+  plants(R, list);
+}
+
+// ============================================================
+//  第 8 章（结尾）→ 第 9 章（旧原型 · 工厂）：坡顶往右是一道长长的下坡，下到平地，旧厂房的山墙上开着一道门
+// ============================================================
+{
+  const T8 = E7_X + E8_L, A = T8 + 300, B = -10;                    // T8：结尾那一章的原点（escape/69-e9-ending.js 的 X）；坡顶在 T8 + 264，往右一直是平的
+  link(8, { a: A, b: B,
+    pts: [[A + 8, 9.55], [A + 18, 9.0], [A + 30, 7.2], [A + 42, 4.6], [A + 54, 2.0], [A + 64, 0.6], [A + 72, 0.08]],
+    col: [[A + 46, 0x46503a], [B - 8, 0x2a302c]],
+    surf: x => x > B - 7 ? 'concrete' : 'grass',
+    env: [[B - 14, 'A']],                                                // 一直是天快亮的野地，走到厂房门口才进到厂房里的光
+    cam: [[A + 36, 20.5, 2.3, 1.2], [B - 6, 16, 1.6, 0.6]],
+    vis: [A - 8, B + 2],
+    build: function* (R) {
+      lkHills(A, B, { far: '#3d4658', mid: '#232b2c', zFar: -300 });
+      foreTufts(A, B - 14, 8.7, { cols: ['#0c1210', '#101814', '#0a0f0d'], h: 1.0, fern: 0.1 });
+      yield;
+      lkGrass(R, A, B - 10, -2.4, -16, 420); lkGrass(R, A, B - 10, 2.2, 8, 200);
+      for (const [x, z, s] of [[A + 14, -2.6, 0.7], [A + 47, 2.2, 0.5], [A + 66, -3.4, 0.9], [B - 18, 2.6, 0.6]]) rock(R, x, z, s, { moss: 0.3 });
+      yield;
+      // 旧厂房的山墙（左墙，厚两米）：底下一道门，门上一盏旧灯
+      const wall = lkMat(0x1d2528), frame = lkMat(0x39444a);
+      lkDoorWall(R, -8, { door: 2.6, top: 16, w: 2, zb: -32.5, zd: -1.3, zf: 2.2, mat: wall, frame });
+      add(R, bx(2.6, 0.12, 0.5), frame, -9.3, 2.75, 0.2);
+      glow(R, 0xffd9a0, 1.6, 0.7, -9.5, 3.05, 0.6);
+    } });
+  pointLight({ p: [-9.6, 3.0, 0.9], c: 0xffd9a0, i: 2.2, d: 7 });
+}
+
+// ============================================================
+//  第 16 章（生态中枢）→ 第 17 章（山洞与暗河）：中枢门外的坡顶往右下到一面石壁，洞口在石壁底下
+// ============================================================
+{
+  const A = X8 + 212, B = X9 - 16;
+  link(16, { a: A, b: B,
+    pts: [[A + 10, 2.45], [A + 20, 1.6], [A + 28, 0.6], [A + 34, 0.1]],
+    col: [[B - 10, 0x2e3330]], back: -6,                                // 坡的背后低下去（和中枢门外一样是一片谷地，由布景板来画）
+    surf: x => x > B - 9 ? 'rock' : 'grass',
+    vis: [A - 4, B + 4],
+    build: function* (R) {
+      // 洞口所在的那面石壁：从坡脚往右越来越高，接上山洞自己的岩石
+      backdrop(A + 6, B + 22, -2, 40, -6.4, 10, g => {
+        setInk(g, '#1a1f20'); ridge(g, A + 6, B + 22, -2, x => 2 + 34 * sstep(A + 8, B + 2, x) + 1.4 * Math.sin(x * 0.9), 0.5);
+        g.fillStyle = 'rgba(120,150,150,.08)'; for (let i = 0; i < 40; i++) { const x = rr(A + 14, B + 20); box(g, x, rr(0, 30) * sstep(A + 8, B, x), rr(0.6, 2.4), 0.08); }
+      }, { fadeL: 6 });
+      lkGrass(R, A, B - 8, -2, -5.5, 160, [0x3f4636, 0x4a5236, 0x56603e]); lkGrass(R, A, B - 8, 2, 7, 90, [0x3f4636, 0x4a5236, 0x56603e]);
+      for (const [x, z, s] of [[B - 9, -2.2, 0.9], [B - 6, 2.0, 1.1], [B - 3, -3.6, 1.4], [B - 1, 2.8, 0.8]]) rock(R, x, z, s, { moss: 0.1 });
+      yield;
+    } });
+}
+
+// ============================================================
+//  第 17 章（山洞）→ 第 18 章（吊绳与高台）：出了洞口，一道缓坡下到碎石地
+// ============================================================
+{
+  const A = X9 + 356, B = X10 - 24;
+  link(17, { a: A, b: B, pts: [[A + 3, 1.45], [A + 8, 0.4]], surf: 'gravel', vis: [A, B],
+    build: function* (R) { for (const [x, z, s] of [[A + 2, -2.4, 1.2], [A + 6, 2.4, 0.8], [A + 9, -4, 1.6]]) rock(R, x, z, s, { moss: 0.2 }); yield; } });
+}
+
+// ============================================================
+//  第 18 章（吊绳与高台）→ 第 19 章（夜搜）：最高一级的矮墙在靠镜头这一头有个豁口，外面是一道土坡，一直下到公路
+//  坡是地形（20-world.js 的 terrain），靠镜头那一面剖开（和台阶的正面齐平），坡前面的低处另铺一块平地
+// ============================================================
+{
+  const END = X10 + 100.5, H3 = 11.8, ZF = 1.6, A = END - 0.05, B = X11 - 30, FOOT = END + 38;
+  const prof = [[END - 0.03, H3], [END + 1.5, 11.78], [END + 6, 11.1], [END + 12, 9.0], [END + 20, 5.7], [END + 28, 2.5], [END + 34, 0.6], [FOOT, 0.05]];
+  link(10 + OLD, { a: A, b: B, pts: prof,                               // 台阶底下的地形在 A 处往上一跳（藏在台阶里面），接上坡顶
+    front: [[A, FOOT, ZF]],                                              // 坡只铺到台阶正面那么靠前，前面剖开
+    col: [[END + 2, 0x3a3a30], [FOOT, 0x2a3030]],
+    surf: x => x < END + 4 ? 'gravel' : 'dirt',
+    cam: [[END + 18, 21.5, 2.6, 1.2]],
+    vis: [A - 2, B + 2],
+    build: function* (R) {
+      const earth = lkMat(0x2a2620), low = lkMat(0x262c2c);
+      lkFace(R, END, FOOT, ZF, earth, -0.5);                             // 坡被剖开的那一面
+      lkFlat(R, END, FOOT, ZF, 14, 0.002, low);                          // 坡前面的低处（坡脚往右是共用的地面）
+      lkGrass(R, END + 2, FOOT, -1.5, -12, 260, [0x55553e, 0x63604a, 0x4a4c38], ['dry', 'grass', 'seed']);
+      lkGrass(R, FOOT, B, -2, -10, 60, [0x3a463a, 0x445040], ['grass', 'dry']);
+      // 坡边上一排歪了的木桩和一道断了的铁丝
+      const wood = lkMat(0x3b2f24);
+      for (let x = END + 3; x < FOOT - 2; x += 3.4) { const m = add(R, bx(0.12, 1.1, 0.12), wood, x, groundY(x) + 0.45, ZF - 0.35); m.rotation.z = rr(-0.15, 0.15); }
+      lkHills(A, B, { far: '#4a5552', mid: '#2a3231', zFar: -240, kinds: ['dead', 'pine'] });
+      yield;
+    } });
+}
+
+// ============================================================
+//  第 19 章（夜搜）→ 第 20 章（作坊一角）：林子里的雾往前走，林子边上是一间作坊，侧面开着一道门
+// ============================================================
+{
+  const A = X11 + 165, W = X12 - 3.4, B = W;
+  link(11 + OLD, { a: A, b: B,
+    pts: [[A + 6, 1.15], [A + 13, 0.3], [A + 17, 0.02]],
+    col: [[B - 2.5, 0x22282a]],
+    surf: x => x > B - 0.6 ? 'wood' : 'forest',
+    env: [[A + 6, 'A'], [B - 1.2, { fogD: 0.03 }]],                    // 一直是林子里的雾，进了门才是屋里的光
+    cam: [[A + 8, 19, 1.9, 0.8], [B - 3, 11, 1.35, 0.6]],
+    vis: [A - 4, X12 + 13],
+    build: function* (R) {
+      backdrop(A - 6, B, -2, 22, -7, 12, g => {                          // 林子边上最后几棵树
+        setInk(g, '#16191c'); for (let x = A - 4; x < B - 4; x += rr(2.5, 5)) tree(g, x, groundY(x) - 0.1, rr(8, 16), pick(['pine', 'dead', 'round']));
+      }, { fadeL: 6, fadeR: 3 });
+      // 作坊：外面看是一间矮房子（剖开的），左边山墙上一道门，门口一盏小灯
+      backdrop(W - 0.8, X12 + 10.6, -0.5, 7.4, -3.05, 24, g => {
+        setInk(g, '#1c1712'); box(g, W - 0.2, -0.5, X12 + 10.4 - W, 5.4);
+        poly(g, [[W - 0.6, 4.8], [X12 + 10.6, 4.8], [X12 + 6.4, 7.3], [W + 3, 7.3]]);
+      }, { fog: false });
+      lkDoorWall(R, W + 0.2, { door: 2.3, top: 5.2, w: 0.4, zb: -3.1, zd: -1.05, zf: 1.4, mat: lkMat(0x2b221a), frame: lkMat(0x4a3a2c) });
+      add(R, bx(X12 + 10.6 - W, 0.25, 4.8), lkMat(0x17120e), (W + X12 + 10.6) / 2, 5.3, -0.7);   // 屋顶（剖开的那一面朝着镜头）
+      glow(R, 0xffcf96, 1.0, 0.75, W - 0.45, 2.6, 0.7);
+      lkGrass(R, A, B - 2, -1.6, -6, 120, [0x26302a, 0x2c3530, 0x323a30]);
+      yield;
+    } });
+  pointLight({ p: [W - 0.6, 2.55, 0.9], c: 0xffcf96, i: 1.8, d: 6 });
+}
+
+// ============================================================
+//  第 20 章（作坊一角）→ 第 21 章（机房）：出了作坊的门，一条夜里的窄巷，尽头一段铁楼梯平台就是机房的门口
+// ============================================================
+{
+  const A = X12 + 15, B = X13 - 12;
+  link(12 + OLD, { a: A, b: B, surf: 'concrete', vis: [A - 6, B],
+    build: function* (R) {
+      backdrop(A - 6, B, -0.5, 12, -3.2, 20, g => {                       // 巷子的后墙：砖墙、一扇亮着的小窗、管子
+        setInk(g, '#15171c'); box(g, A - 6, -0.5, B - A + 6, 12.5);
+        g.fillStyle = 'rgba(0,0,0,.35)'; for (let y = 0; y < 12; y += 0.3) box(g, A - 6, y, B - A + 6, 0.02);
+        setInk(g, '#2a3038'); box(g, A + 3, 3.4, 1.0, 1.3); g.fillStyle = '#d8b07a'; box(g, A + 3.1, 3.5, 0.8, 1.1);
+        setInk(g, '#22262c'); box(g, A + 8.6, -0.5, 0.12, 12.5); box(g, A + 8.2, 6.4, 0.9, 0.1);
+      }, { fog: false });
+      add(R, bx(0.9, 0.7, 0.8), lkMat(0x2a2620), A + 6.2, 0.35, -2.2); add(R, bx(0.7, 0.5, 0.6), lkMat(0x23201b), A + 6.9, 0.25, -2.0);
+      yield;
+    } });
+  pointLight({ p: [A + 3.6, 3.6, -1.6], c: 0xffc98a, i: 1.4, d: 6 });
+}
+
+// ============================================================
+//  第 21 章（机房）→ 第 22 章（墙）：机房右墙的门出去，一块铁格栅的平台，下几步到山坡上的碎石路，往夜里的雾里走
+// ============================================================
+{
+  const RW = X13 + 18.35, A = RW + 1.6, B = X14 - 20;
+  link(13 + OLD, { a: A, b: B,
+    col: [[A + 1, 0x1b1f22], [A + 6, 0x2a2520]],
+    surf: x => x < A + 4 ? 'metal' : 'gravel',
+    env: [[A + 1.5, 'A']],                                               // 出了门几步还是机房里的光
+    cam: [[A + 6, 14, 1.4, 0.8]],
+    vis: [RW, B + 2],
+    build: function* (R) {
+      add(R, bx(4.2, 0.12, 3), lkMat(0x3a4448), RW + 2.5, -0.06, -0.3);  // 门外的格栅平台
+      for (const x of [RW + 0.9, RW + 4.4]) add(R, bx(0.08, 1.0, 0.08), MAT.steel, x, 0.5, 1.0);
+      add(R, bx(3.6, 0.06, 0.06), MAT.steel, RW + 2.65, 1.0, 1.0);
+      backdrop(RW + 0.4, B + 6, -2, 14, -4.6, 12, g => {                 // 机房外壳的一角，往右是夜里的山坡
+        setInk(g, '#11151a'); poly(g, [[RW + 0.4, -2], [RW + 0.4, 14], [RW + 3, 14], [RW + 6, 6], [RW + 7.5, -2]]);
+      }, { fog: false, fadeR: 4 });
+      lkHills(A, B, { far: '#232830', mid: '#15191b', zFar: -200, kinds: ['dead', 'dead', 'pine'] });
+      for (const [x, z, s] of [[A + 6, -2.4, 0.6], [A + 10, 2.4, 0.5], [B - 3, -3, 0.9]]) rock(R, x, z, s, { moss: 0 });
+      yield;
+    } });
+  pointLight({ p: [RW + 1.2, 2.6, 0.6], c: 0xd8e6ee, i: 1.6, d: 6 });
+}
+
+// ============================================================
+//  第 22 章（墙）→ 第 23 章（高台）：翻过第二道墙往前走，雾越来越浓，走出雾是傍晚的货运站
+// ============================================================
+{
+  const A = X14 + 62, B = X15 - 22;
+  link(14 + OLD, { a: A, b: B, surf: 'gravel',
+    env: [[A + 5, { fogD: 0.09 }], [B - 4, { fogD: 0.06 }]],          // 雾最浓的地方在中间
+    col: [[A + 8, 0x3a3128]],
+    vis: [A, B],
+    build: function* (R) { for (const [x, z, s] of [[A + 3, -2, 0.7], [A + 9, 2.2, 0.5], [A + 13, -3.2, 1.0]]) rock(R, x, z, s, { moss: 0 }); lkGrass(R, A, B, -2, -8, 80, [0x4a4636, 0x5a5440]); yield; } });
+}
+
+// ============================================================
+//  第 23 章（高台）→ 第 24 章（水下实验室）：朝落下去的太阳走，下到海边
+// ============================================================
+{
+  const A = X15 + 56, B = X16 - 12;
+  link(15 + OLD, { a: A, b: B, surf: x => x < B - 6 ? 'gravel' : 'sand',
+    col: [[B - 6, 0x3a3a34]],
+    vis: [A, B],
+    build: function* (R) {
+      const wood = lkMat(0x3b2f24);
+      for (let x = A + 2; x < B - 4; x += 2.6) { const m = add(R, bx(0.1, 1.0, 0.1), wood, x, groundY(x) + 0.42, -1.4); m.rotation.z = rr(-0.2, 0.2); }   // 一排歪了的栅栏桩
+      for (const [x, z, s] of [[A + 6, 2.4, 0.6], [B - 3, -2.4, 0.9], [B - 1, 2.6, 0.7]]) rock(R, x, z, s, { moss: 0.2 });
+      lkGrass(R, A, B - 5, -2, -9, 90, [0x6a5a40, 0x7a6a48, 0x5a5038], ['dry', 'seed', 'grass']);
+      yield;
+    } });
+}
+
+// ============================================================
+//  第 24 章（水下实验室）→ 第 25 章（工厂深处 · 浸泡槽）：电源恢复以后右墙的门打开，一条往上去的走廊（-2.6 米上到地面）
+// ============================================================
+const lkCorridor = (R, a, b, floor, ceil, o = {}) => {                  // 剖开的走廊：后墙、顶（跟着 ceil(x)）、前面黑的切口（跟着地面往下）
+  const wall = lkMat(o.wall ?? 0x1f2a2a), top = lkMat(o.top ?? 0x161e1e);
+  lkFace(R, a, b, o.zb ?? -3.2, wall, -6, x => ceil(x) + (o.up ?? 12));               // 后墙一直到顶上很高的地方：上面不漏天
+  lkSlab(R, a, b, ceil, 0.35, o.zb ?? -3.2, H_CUT, top);
+  lkFace(R, a, b, H_CUT + 0.01, MAT.black, -10, floor);
+  for (let x = a + 1.5; x < b; x += 3.2) add(R, bx(0.08, 0.06, 4.6), lkMat(o.rib ?? 0x2c3838), x, ceil(x) - 0.04, -0.7, false);   // 顶上的一道道肋
+};
+{
+  const A = X16 + 40.2, B = HX0 - 14;
+  const ceil = [[A, 0.5], [A + 2, 0.6], [A + 10.5, 3.1], [B, 3.2]], cy = x => { for (let i = 1; i < ceil.length; i++) if (x <= ceil[i][0]) return lerp(ceil[i - 1][1], ceil[i][1], clamp((x - ceil[i - 1][0]) / (ceil[i][0] - ceil[i - 1][0]), 0, 1)); return 3.2; };
+  link(16 + OLD, { a: A, b: B,
+    pts: [[A + 1.3, -2.6], [A + 3.5, -2.45], [A + 9.5, -0.25], [A + 11.5, 0]],
+    ceil: [ceil], front: H_CUT, back: -3.4, surf: 'metal',
+    col: [[A + 1, 0x243a40], [B, 0x1d241d]],
+    vis: [A, B],
+    build: function* (R) { lkCorridor(R, A, B, groundY, cy, { wall: 0x1e3034, rib: 0x355054 }); yield; } });
+  pointLight({ p: [A + 6, 1.4, 0.4], c: 0x8edfd3, i: 1.6, d: 7 });
+  pointLight({ p: [B - 2, 2.7, 0.4], c: 0x9cff7a, i: 1.2, d: 6 });
+}
+
+// ============================================================
+//  工厂深处（第 25–36 章）一章接一章：两个厂房中间一道带门的隔墙（门上一盏灯）
+//  第 28 章（熔渣池）→ 第 29 章（竖井）：竖井的走廊低两米，过了门往下走一段；
+//  第 29 章（竖井）→ 第 30 章（玻璃大罐）：从竖井顶上的出口出来，一道长长的斜坡走廊往下 15 米
+// ============================================================
+for (let k = 0; k < HLAST; k++) {
+  const A = hX(k) + HLEN[k] + 4, B = hX(k + 1) - 14, n = HN(k);
+  if (k === 4) {                                                           // 竖井 → 玻璃大罐
+    const X5 = hX(4), TOPF = 15, A2 = X5 + HLEN[4] + 0.9, F = A2 + 41;    // A2：竖井顶上那块岩石（到 X + LEN + 1）里面一点，地形在这里往上一跳，接上岩石顶
+    const pts = [[A2 + 0.02, TOPF], [A2 + 1.5, 14.95], [A2 + 6, 14.0], [A2 + 14, 10.5], [A2 + 24, 5.6], [A2 + 32, 2.0], [A2 + 38, 0.3], [F, 0]];
+    const cy = x => groundY(x) + (x < A2 + 1.5 ? 3.6 : 3.4);
+    link(n, { a: A2, b: B, pts, front: H_CUT, back: [[A2, F, -4.4]], surf: 'metal',
+      col: [[A2 + 1, 0x1b201b], [B, 0x1d221d]],
+      cam: [[A2 + 20, 17, 1.4, 1.2]],
+      vis: [A2 - 1, B + 1],
+      build: function* (R) {
+        lkCorridor(R, A2, F, groundY, cy, { zb: -4.4, wall: 0x1a221a, top: 0x121812, rib: 0x2a342a });
+        lkFace(R, F, B, H_CUT + 0.01, MAT.black, -10);
+        lkDoorWall(R, B - 1.5, { door: 2.9, top: 16, w: 0.8, zb: -27, zd: -1.2, zf: H_CUT, mat: MAT.dark });
+        glow(R, 0xffb070, 0.9, 0.7, B - 1.5, 3.2, H_CUT - 0.2);
+        yield;
+      } });
+    for (const x of [A2 + 8, A2 + 22, A2 + 36]) pointLight({ p: [x, groundY(x) + 2.9, 0.4], c: 0x9cff7a, i: 1.1, d: 6 });
+    continue;
+  }
+  const M = (A + B) / 2, down = k === 3;                                     // down：熔渣池 → 竖井（竖井的走廊在 -2 米）
+  link(n, { a: A, b: B, front: H_CUT, surf: 'concrete',
+    pts: down ? [[M + 0.6, 0], [B - 0.6, -2]] : [],
+    ceil: down ? [[[M + 0.4, 2.9], [B, 1.2]]] : undefined,
+    vis: [A, B],
+    build: function* (R) {
+      lkFace(R, A, B, H_CUT + 0.01, MAT.black, -10);
+      lkDoorWall(R, M, { door: 2.9, top: 16, w: 0.8, zb: -27, zd: -1.2, zf: H_CUT, mat: MAT.dark });
+      glow(R, 0xffb070, 0.9, 0.7, M, 3.2, H_CUT - 0.2);
+      if (down) lkSlab(R, M + 0.4, B, x => lerp(2.9, 1.2, (x - M - 0.4) / (B - M - 0.4)), 0.3, -4, H_CUT, MAT.dark);
+      yield;
+    } });
+  pointLight({ p: [M - 0.6, 3.1, 1.0], c: 0xffb070, i: 1.4, d: 6 });
+}
 
 // ============================================================
 //  空中的细节（一）：画法和公用的几种东西
@@ -18824,70 +19202,36 @@ function startChapter(n, o = {}) {
   for (let k = 1; k <= CHAPTERS.length; k++) { if (k < n) { if (k > (STORY.done ?? 0) && SKIP[k]) SKIP[k](STORY); } else if (UNDO[k]) UNDO[k](STORY); }
   STORY.done = n - 1; STORY.ch = n; saveGame();
   for (const z of ZONES) { if (z.n < n) z.solve(); else z.reset(); }
-  const at = o.at ?? c.start, walk = o.at !== undefined;   // walk：是从上一章一路走进来的（见下面的 walkInto），不是从菜单、存档进来的 —— 人放在这一章的入口，不放在出生点
-  placePlayer(at); P.cp = cpAt(c.start + 0.01); resetPant();
-  const first = localN(n) === 1 && !walk;               // 两个故事的第一章：操作提示从头教一遍（走进来的已经会了）
+  placePlayer(c.start); P.cp = cpAt(c.start + 0.01); resetPant();
+  const first = localN(n) === 1;                        // 两个故事的第一章：操作提示从头教一遍
   Object.assign(P, { moved: !first, jumped: !first, pushed: !first, used: !first });
-  // 小猫是旧原型里的：旧第三章救下以后跟着走；《逃出工厂》的章节里没有它
-  if (STORY.cat) catPlace(at - 0.9, floorY(at - 0.9, P.y + 0.1)); else if (n > OLD + 3 || n <= OLD) CAT.state = 'none';
+  // 小猫是旧原型里的：旧第三章救下以后跟着走；《逃出工厂》的章节里没有它，旧原型第八章以后的章节（nocat）也不带它
+  if (STORY.cat && !c.nocat && n > OLD) catPlace(c.start - 0.9, floorY(c.start - 0.9, P.y + 0.1)); else if (n > OLD + 3 || n <= OLD) CAT.state = 'none';
   ctl = true; autoDir = 0; state = 'play'; envMod = null; camOvr = null; fadeThen = null; endZone = null;
   $('end').classList.add('hide'); $('end').classList.remove('bare', 'white'); $('fade').style.opacity = 0; $('white').style.opacity = 0;
-  if (!walk) { MIST.k = 0; MIST.go = MIST.arr = MIST.pre = null; }
   if (c.intro) c.intro();
-  if (walk) placePlayer(at);                            // 开场的摆法（比如工厂那一章从上层掉下来）是给“从这一章开始”用的；走进来的人就在地上
   snapCamera(); applyEnv(camera.position.x); dropFarZones(cam.x); streamZones(cam.x, true);
   if (!o.quiet) showChapter(c);
 }
+// 一路走进了下一章（三十六章在世界里接成一条路，见 20-world.js 的 link）：记下前面的章节都走完了，亮出章节卡。
+// 故事进度照实际玩的留着，不按“跳过去”补；不演“从这一章开始”的开场（工厂那一章从上层掉下来）。这一章不带小猫的话，小猫停在原地坐着
+function arriveChapter(c) {
+  STORY.done = Math.max(STORY.done ?? 0, c.n - 1); STORY.ch = c.n; saveGame(); showChapter(c);
+  if (c.nocat && CAT.state === 'follow') catHold(CAT.x, CAT.y, 'sit', 1);
+}
 
-// ---- 二十四章接成一条路：一直往右走，就从第 1 章走到第 24 章 ----
-// 世界里挨着的章节（第 1–8 章、第 9–16 章）本来就是一条路。不挨着的几处（中间隔着空气墙和几百米空地）用一段“雾里的路”接起来：
-// 人走到这一章的尽头，越往前雾越浓（暗处就是越走越黑），浓到什么都看不见的那一步，把人挪到下一章的入口，接着走，雾又散开。
-// 人一直在走、一直听玩家的，没有黑屏，也不停下来。出口登记在章节文件里（20-world.js 的 chapterExit），入口是章节对象上的 enter。
-// 演结局的三章（第 8 章结尾、第 16 章生态中枢、第 21 章机房）在结局画面上按一下 → / 回车 / 空格 / E（触屏点一下），同样起一阵雾，人出现在下一章的入口。
-// MIST（20-world.js）：k 雾有多浓（0..1）/ tint 颜色 / pre 快到了的下一章入口在哪（它的布景提前搭好，见 38-stream.js）/ arr 刚到下一章，雾还没散 / go 结局画面上按了继续
+// ---- 结局以后接着往前走 ----
+// 演结局的三章（第 8 章结尾、第 16 章生态中枢、第 21 章机房）：结局画面上按 → / 回车 / 空格 / E（触屏点一下），画面收起来，人又归玩家管，
+// 从结局停下的地方接着往右走，走进下一章（每一章的 cont() 把人摆回能走的样子、把结局里改过的镜头和光收回去）。按 R 照旧是再看一遍 / 回到最后的选择
 const chapLabel = c => c.label ?? `第${CN[c.n - 1]}章`;
-const mistEl = $('mist');
-// 工具页（Last/tools/）把游戏装在 iframe 里、一章一章单独摆主角截图：在那里走到一章的尽头不接下一章，和接起来以前一样。地址后面加 ?link=1 / ?link=0 可以硬开、硬关
-const LINK = (new URLSearchParams(location.search).get('link') ?? (window.parent === window ? '1' : '0')) === '1';
-const enterOf = c => c.enter ?? [c.start - 5, c.start];
-function mistTint(hex) { MIST.tint.setHex(hex); MIST.sky = hex3(hex); mistEl.style.background = '#' + hex.toString(16).padStart(6, '0'); }
-function walkInto(n) {                                  // 从第 n - 1 章走进第 n 章
-  const c = CHAPTERS[n - 1], [b0, b1] = enterOf(c), vx = P.vx, face = P.facing;
-  STORY.done = Math.max(STORY.done ?? 0, n - 1);        // 先记下上一章已经走完：startChapter 不再按“跳过去”替它补故事进度
-  const keep = { ...STORY };
-  startChapter(n, { at: b0 });
-  // 前面几章的故事进度照实际玩的留着：startChapter 把走完的章节摆成“已经通过”的样子时，有的会顺手把自己的结局清掉（选了哪个结局）
-  Object.assign(STORY, keep, { ch: n, done: n - 1 }); for (let k = n; k <= CHAPTERS.length; k++) if (UNDO[k]) UNDO[k](STORY); saveGame();
-  P.vx = Math.max(0, vx); P.facing = face > 0 ? 1 : P.facing;   // 脚下不停：接着往右走
-  MIST.arr = { b0, b1, t: 0 }; MIST.pre = null; MIST.k = 1;
-}
-function stepMist(dt) {
-  let k = 0;
-  if (MIST.go) {                                        // 结局画面上按了继续：雾自己起来（人这时候不归玩家管）
-    const g = MIST.go; g.t += dt; k = sstep(0, 1.2, g.t);
-    if (g.t >= 1.35) { MIST.go = null; walkInto(g.n + 1); k = 1; }
-  } else if (MIST.arr) {                                // 刚到下一章：往前走雾就散；站着不动，过一会儿也散
-    const a = MIST.arr; a.t += dt;
-    k = Math.min(sstep(a.b1, a.b0, P.x), 1 - sstep(0.3, 2.8, a.t));
-    if (k <= 0) MIST.arr = null;
-  } else if (state === 'play' || state === 'fade') {
-    const n = chapterAt(P.x).n; MIST.pre = null;
-    if (LINK) for (const e of EXITS) if (e.n === n && n < CHAPTERS.length && P.x > e.a0 && (!e.when || e.when())) {
-      k = sstep(e.a0, e.a1, P.x); mistTint(e.tint); MIST.pre = enterOf(CHAPTERS[n])[0];
-      if (P.x >= e.a1 && state === 'play') { walkInto(n + 1); k = 1; }
-      break;
-    }
-  }
-  MIST.k = k; MIST.d = Math.max(8, cam.d);
-  const op = sstep(0.3, 1, k); if (Math.abs(op - MIST.op) > 0.002 || (op === 0) !== (MIST.op === 0)) mistEl.style.opacity = MIST.op = op;
-}
 let endAt = -1e9;                                       // 结局画面是什么时候出来的：刚出来的一会儿不接受“继续”，免得手上正按着的键把它跳过去
 const endChapter = () => (endZone ?? chapterAt(P.x)).n;
 function continueFromEnd() {
-  const n = endChapter(); if (state !== 'end' || T - endAt < 1.5 || MIST.go || n >= CHAPTERS.length) return;
-  $('end').classList.add('hide');
-  mistTint($('end').classList.contains('white') ? 0xf3f1ea : CHAPTERS[n - 1].endTint ?? 0x0a0d0f);     // 拉闸的结局画面已经全白：雾也是白的
-  MIST.go = { n, t: 0 }; MIST.pre = enterOf(CHAPTERS[n])[0];
+  const n = endChapter(); if (state !== 'end' || T - endAt < 1.5 || n >= CHAPTERS.length) return;
+  const z = endZone ?? CH8;
+  $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
+  state = 'play'; ctl = true; autoDir = 0; camOvr = null; envMod = null; endZone = null; P.speedK = 1; $('fade').style.opacity = 0;
+  if (z.cont) z.cont();
 }
 
 // ---- 章节菜单（Esc）----
@@ -19219,8 +19563,8 @@ function sim(dt) {
   if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { setMuted(!muted); soundNote(); }
-  if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end' && !MIST.go) retryEnding(); }
-  if (state === 'end' && (pressed.has('R') || pressed.has('E') || pressed.has('J') || rawKeys.has('Enter') || rawKeys.has('Space'))) continueFromEnd();   // 结局画面：接着往前走，走进下一章
+  if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
+  if (state === 'end' && (pressed.has('R') || pressed.has('E') || pressed.has('J') || rawKeys.has('Enter') || rawKeys.has('Space'))) continueFromEnd();   // 结局画面：收起来，从结局停下的地方接着往前走（80-ui.js）
 
   // 这些每一帧都清零，由走到的那一章重新填写
   HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null; camJit = null;
@@ -19231,8 +19575,8 @@ function sim(dt) {
   stepSidestep(dt); stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
-  stepPits(); stepFade(dt); stepMist(dt); stepChapterCard(dt);
-  if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
+  stepPits(); stepFade(dt); stepChapterCard(dt);
+  if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) arriveChapter(c); }   // 一路走进了下一章（80-ui.js）
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
@@ -19249,14 +19593,14 @@ function sim(dt) {
   stepCat(dt);
 
   updateCamera(dt);
-  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x, false, MIST.pre ?? cam.x); updateSky(T, cam.az, 0.05 + cam.lift / cam.d);
+  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x, false); updateSky(T, cam.az, 0.05 + cam.lift / cam.d);
   updateDust(dt, T, cam.x, cam.y, E.wind); updateFlies(dt, T, cam.x, groundY(cam.x), E.flies);
   updateHint(); updateAudio(dt, stepNow);
   pressed.clear(); rawKeys.clear(); anyKey = false;
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, EXITS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
@@ -19265,7 +19609,7 @@ const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUS
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
   brush: { BRUSH, BRK, BRV, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
-  zone: n => ZONES.find(z => z.n === n), MIST, walk(n) { walkInto(n); renderer.render(scene, camera); },   // walk(n)：像从上一章一路走过来那样进第 n 章（人在入口，雾还没散）
+  zone: n => ZONES.find(z => z.n === n && !z.link), link: n => LINKS.find(L => L.n === n),   // link(n)：第 n 章和第 n + 1 章之间那一段路（20-world.js）
   touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
   kit: { fig, figAct, figStep, figSnap, mkCrowd, makeNPC, FIG_ACT, SKINS, CAST, CAST_ROLE, CAST_LIB, castLoad, castSpawn },   // 配角：小人、路人、现成的模型（工具页 cast-sheet.html 用）
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
@@ -19297,6 +19641,7 @@ function frame(now) {
 }
 
 document.querySelectorAll('#skins button').forEach(b => b.addEventListener('click', () => { setSkin(b.dataset.k); b.blur(); canvas.focus(); }));
+stitch();                                               // 两章接起来的地方：剪掉各自伸出去的那一截，铺上中间那一段（20-world.js）
 CAMKEYS.sort((a, b) => a[0] - b[0]); CPS.sort((a, b) => a.x - b.x);
 buildGround();
 CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;

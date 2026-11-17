@@ -33,8 +33,8 @@ function sim(dt) {
   if (pressed.has('LEGS') && hero.kind === 'K') { kidLegs = (kidLegs + 1) % KID_LEGS.length; rebuildHero(); }   // 小孩：长裤靴子 / 短裤光腿
   if (pressed.has('VIEW') && state !== 'title') closeUp = !closeUp;
   if (pressed.has('MUTE')) { setMuted(!muted); soundNote(); }
-  if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end' && !MIST.go) retryEnding(); }
-  if (state === 'end' && (pressed.has('R') || pressed.has('E') || pressed.has('J') || rawKeys.has('Enter') || rawKeys.has('Space'))) continueFromEnd();   // 结局画面：接着往前走，走进下一章
+  if (pressed.has('RESET')) { if (state === 'play' && ctl) respawn(); else if (state === 'end') retryEnding(); }
+  if (state === 'end' && (pressed.has('R') || pressed.has('E') || pressed.has('J') || rawKeys.has('Enter') || rawKeys.has('Space'))) continueFromEnd();   // 结局画面：收起来，从结局停下的地方接着往前走（80-ui.js）
 
   // 这些每一帧都清零，由走到的那一章重新填写
   HX.hide = 0; HX.alert = 0; HX.pose = null; HX.energy = energyFor(STORY.ch); camOvr = null; camJit = null;
@@ -45,8 +45,8 @@ function sim(dt) {
   stepSidestep(dt); stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
-  stepPits(); stepFade(dt); stepMist(dt); stepChapterCard(dt);
-  if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) { STORY.done = c.n - 1; STORY.ch = c.n; saveGame(); showChapter(c); } }
+  stepPits(); stepFade(dt); stepChapterCard(dt);
+  if (state === 'play') { const c = chapterAt(P.x); if (c.n > STORY.ch) arriveChapter(c); }   // 一路走进了下一章（80-ui.js）
 
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
@@ -63,14 +63,14 @@ function sim(dt) {
   stepCat(dt);
 
   updateCamera(dt);
-  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x, false, MIST.pre ?? cam.x); updateSky(T, cam.az, 0.05 + cam.lift / cam.d);
+  applyEnv(camera.position.x); assignLights(cam.x); streamZones(cam.x, false); updateSky(T, cam.az, 0.05 + cam.lift / cam.d);
   updateDust(dt, T, cam.x, cam.y, E.wind); updateFlies(dt, T, cam.x, groundY(cam.x), E.flies);
   updateHint(); updateAudio(dt, stepNow);
   pressed.clear(); rawKeys.clear(); anyKey = false;
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, EXITS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
@@ -79,7 +79,7 @@ const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUS
   tap(k) { pressed.add(k); keys.add(k); sim(1 / 60); keys.delete(k); renderer.render(scene, camera); },
   tp(x) { placePlayer(x); P.cp = cpAt(x); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true); renderer.render(scene, camera); },
   brush: { BRUSH, BRK, BRV, plant: (kind, x, z, o) => brushPlant(scene, kind, x, z, o), drop(Pl) { for (const m of [Pl.mesh, ...Pl.extra, ...Pl.drops.map(d => d.m)]) { m.parent?.remove(m); m.geometry.dispose(); } BRUSH.list.splice(BRUSH.list.indexOf(Pl), 1); } },
-  zone: n => ZONES.find(z => z.n === n), MIST, walk(n) { walkInto(n); renderer.render(scene, camera); },   // walk(n)：像从上一章一路走过来那样进第 n 章（人在入口，雾还没散）
+  zone: n => ZONES.find(z => z.n === n && !z.link), link: n => LINKS.find(L => L.n === n),   // link(n)：第 n 章和第 n + 1 章之间那一段路（20-world.js）
   touch: TOUCH_DBG, touchMode: on => setTouchMode(on),
   kit: { fig, figAct, figStep, figSnap, mkCrowd, makeNPC, FIG_ACT, SKINS, CAST, CAST_ROLE, CAST_LIB, castLoad, castSpawn },   // 配角：小人、路人、现成的模型（工具页 cast-sheet.html 用）
   // 声音：sound(true) 打开；play('st:leaves:w') 放一组里的一个（名字见 52-audio.js 的 RECIPE）；breath('in', 0.4, 1) 现算一口气；audio() 看现在的状态
@@ -111,6 +111,7 @@ function frame(now) {
 }
 
 document.querySelectorAll('#skins button').forEach(b => b.addEventListener('click', () => { setSkin(b.dataset.k); b.blur(); canvas.focus(); }));
+stitch();                                               // 两章接起来的地方：剪掉各自伸出去的那一截，铺上中间那一段（20-world.js）
 CAMKEYS.sort((a, b) => a[0] - b[0]); CPS.sort((a, b) => a.x - b.x);
 buildGround();
 CAT.crit = makeCritter('cat', scene); CAT.crit.root.visible = false;

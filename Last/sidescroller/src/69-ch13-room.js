@@ -21,19 +21,19 @@
 //         刚断了电的星灯也一排排自己亮起来。画面全白，只剩风声
 //  结局后面不写结局名和说明；按 R 回到选择之前
 // ============================================================
-const X13 = 2300;
+const X13 = X12 + 41;                                      // 出了作坊的门，穿过一段夜里的窄巷，就到机房门口（src/69-zz-links.js）
 const CH13 = (() => {
   const X = X13;
   const L1 = X + 1.3, WIN = X + 2.75, WIN_Y = 2.72, LEV = X + 3.9, L2 = X + 5.4, CON = X + 7.5, SOCK = X + 10.45, SOCK_Y = 1.32, L3 = X + 11.8, FAULT = X + 12.6,
-    ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 92;
+    ADJ = X + 13.2, CHAIR = X + 13.95, TABLE = X + 14.7, CLO = X + 16.0, MARKS = X + 16.9, MAIN = X + 17.45, RW = X + 18.35, CEIL = 4.2, TIP = 5.6, ROOMC = X + 9.15, SEAM = X + 9.6, CITY = X + 9, CY = 150;
+  // CITY、CY：拧回去的结局最后两个镜头里那片城区搭在哪 —— 机房正上方 CY 米（2026-11-17 以前在机房右边 92 米，现在那里是往下一章去的路；城里的光见下面的 CITYK）
   const BACK = -3.0, CH_Z = -0.72;                                                      // 后墙在哪；老人和椅子在走道后面一点（孩子从他身前走过去）
-  const C = chapter({ n: OLD + 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal', enter: [X - 8.2, X - 3.4],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 13, x0: X - 10, start: X - 3.2, name: '机房', sub: '一张椅子，一个老人', ground: 'metal', nocat: true });
   terrain([X - 40, 0], [X + 140, 0]);
   ground(X - 40, 0x1b1f22); ground(X + 140, 0x1b1f22);
-  solid({ x1: X - 9.6, x2: X - 8.6, y1: -2, y2: 30, noclimb: true });              // 身后：爬上来的台阶（还没做），不往回走
   solid({ x1: X - 0.2, x2: X + 0.2, y1: 2.38, y2: 30, noclimb: true });             // 左墙：门洞以上是墙
-  solid({ x1: RW - 0.2, x2: RW + 0.8, y1: -2, y2: 30, noclimb: true });              // 右墙
+  solid({ x1: RW - 0.2, x2: RW + 0.8, y1: 2.38, y2: 30, noclimb: true });            // 右墙：门洞以上
+  const exitDoor = gate({ id: 'roomExit', x: RW + 0.3, w: 1.0, h: 2.38, T: 2.2 });   // 右墙上的门：演完结局、按了接着往前走才开（门外是往“墙”那一章去的路，src/69-zz-links.js）
   checkpoint(X - 3.2); checkpoint(X + 4.8); checkpoint(X + 11.1); checkpoint(X + 15.5);
   camKeys([X - 14, 20, 3.4, 2], [X + 24, 20.5, 3.6, 0]);                             // 机房里每一帧由下面的 roomCam 接管
   // 机房：窄、冷白；后墙之外是外面（白光），头顶是星灯的背面，再往上是外壳
@@ -44,7 +44,7 @@ const CH13 = (() => {
   // 城里（拧回去的结局最后两个镜头）：长夜里的街区
   const CITYE = { ...ROOM, fog: 0x0d1220, fogD: 0.01, hemiS: 0x6a7898, hemiG: 0x0a0c12, hemiI: 0.42, keyC: 0x9fb2d6, keyI: 0.3, keyDir: [-0.3, 0.7, 0.4], rimC: 0x8fa6cc, rimI: 0.4,
     sky: [0x03050c, 0x060a16, 0x0b1222, 0x121a2c, 0x182236, 0x0a0e18], stars: 1.3, aRoom: 0, aHum: 0, aCity: 0.6, rvHall: 0, rvOut: 1, aWind: 0.25, aFar: 0 };
-  env(X + 62, CITYE); env(X + 140, CITYE);
+  const CITYK = envKey(0, { ...ENV0, ...CITYE });                                    // 城里那两个镜头的光：镜头在那里的时候整个换成它（envMod）
   const workL = spotLight({ p: [X + 9.6, 4.0, 0.8], t: [X + 9.6, 0, -0.9], c: 0xe6f0f4, i: 3.4, a: 0.85, d: 10 });         // 顶上的工作灯：屋子中间一盏，靠门一盏（窄窄的冷白光）
   const workL2 = spotLight({ p: [X + 2.6, 4.0, 0.8], t: [X + 2.8, 0, -1.0], c: 0xe6f0f4, i: 2.6, a: 0.8, d: 9 });
   const winL = spotLight({ p: [WIN, WIN_Y, -2.7], t: [WIN + 0.7, 0, 1.4], c: 0xffffff, i: 16, a: 0.44, pen: 0.55, d: 12, on: 0 });   // 小窗漏进来的白光
@@ -52,14 +52,14 @@ const CH13 = (() => {
   const tableL = pointLight({ p: [TABLE + 0.05, 1.45, -0.2], c: 0xffe2b8, i: 2.2, d: 4.2 });                                // 老人桌上的小灯
   const skyL = pointLight({ p: [ROOMC, 6.6, 0.6], c: 0xffe6c0, i: 2.4, d: 14, dec: 1 });                                     // 头顶星灯的漫光
   const pinL = pointLight({ p: [X + 15.3, 7.2, -1.6], c: 0xffa040, i: 5, d: 7, on: 0 });                                        // 拉闸的后半程：大锁销旁边一盏警示灯
-  const cityL = [[CITY - 6, 4.2], [CITY + 3, 5.5], [CITY + 10, 3.6]].map(([x, y]) => pointLight({ p: [x, y, -6], c: 0xffc98a, i: 3, d: 12, on: 0 }));
+  const cityL = [[CITY - 6, 4.2], [CITY + 3, 5.5], [CITY + 10, 3.6]].map(([x, y]) => pointLight({ p: [x, y + CY, -6], c: 0xffc98a, i: 3, d: 12, on: 0 }));
 
   // ---- 进度 ----
   // l[i] 三道闸刀合上没有，lt[i] 合上以后过了多久；seen1 小窗打开过；cmp 对过灯泡；cmpT 对灯泡这一段走到哪（-1 没在做）；
   // fault 0 还没坏 / 1 正坏着 / 2 按回去了，ft 这一段过了多久；done3 第三段做完（两件装置可以用了）；look 推近镜头的程度；lookAt 推近到哪
   const S = { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, lookAt: 'table', still: 0, winSnd: false, sk0: 0, pk0: 0 };
-  // 结局：c 1 拧回去 / 2 拉闸，t 过了多久
-  const END = { c: 0, t: 0, shown: false, step: 0 };
+  // 结局：c 1 拧回去 / 2 拉闸，t 过了多久；cont 结局画面上按了接着往前走：结局不再往下演，人站起来，右墙的门开了
+  const END = { c: 0, t: 0, shown: false, step: 0, cont: false };
   let V = null;
   const busy = () => !!CARRY.act || S.cmpT >= 0;
   const near = (x, r = 0.9) => Math.abs(P.x - x) < r && P.y < 0.4;
@@ -135,7 +135,10 @@ const CH13 = (() => {
     add(R, bx(0.4, CEIL + 0.3 - 2.38, 4.6), plate_, X, 2.38 + (CEIL + 0.3 - 2.38) / 2, BACK + 2.3);   // 左墙门洞以上
     add(R, bx(0.4, CEIL + 0.3, 1.6), plate_, X, (CEIL + 0.3) / 2, BACK + 0.8);         // 左墙门洞后面的一截
     add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, -1.4); add(R, bx(0.12, 2.38, 0.12), MAT.steel, X + 0.18, 1.19, 1.0);    // 门框
-    add(R, bx(0.4, CEIL + 0.3, 4.6), plate_, RW, (CEIL + 0.3) / 2, BACK + 2.3);       // 右墙
+    add(R, bx(0.4, CEIL + 0.3 - 2.38, 4.6), plate_, RW, 2.38 + (CEIL + 0.3 - 2.38) / 2, BACK + 2.3);   // 右墙门洞以上
+    add(R, bx(0.4, CEIL + 0.3, 1.6), plate_, RW, (CEIL + 0.3) / 2, BACK + 0.8);       // 右墙门洞后面的一截
+    add(R, bx(0.12, 2.38, 0.12), MAT.steel, RW - 0.18, 1.19, -1.4); add(R, bx(0.12, 2.38, 0.12), MAT.steel, RW - 0.18, 1.19, 1.0);   // 门框
+    v.exitDoor = add(R, bx(0.16, 2.38, 2.6), plate_, RW + 0.05, 1.19, -0.2);          // 门扇：往上收进墙里
     add(R, bx(RW - X + 0.6, 0.26, 4.6), plate2, ROOMC, CEIL + 0.13, BACK + 2.3);       // 顶（剖开的这一面朝着镜头）
     for (let x = X + 1.6; x < RW; x += 3.2) add(R, bx(0.14, 0.3, 4.6), dark, x, CEIL - 0.12, BACK + 2.3);
     // 地上一圈磨亮的走道
@@ -295,7 +298,8 @@ const CH13 = (() => {
     v.cableA = V3(RW - 0.3, CEIL + 0.1, -1.8); v.cableB = V3(PX + 1.2, PY, PZ + 0.1);
     v.dust = []; for (let i = 0; i < 24; i++) { const s = glow(R, 0x8a8a84, 0.12, 0, 0, 0, 0); v.dust.push({ s, t: 9, vx: 0, vy: 0 }); }
     yield;
-    // ---------------- 城里（拧回去的结局最后两个镜头）----------------
+    // ---------------- 城里（拧回去的结局最后两个镜头）：整片搭在一个抬高了 CY 米的组里 ----------------
+    const R0 = R, ROOT0 = ROOT; R = ROOT = grp(R0, 0, CY, 0);
     backdrop(CITY - 30, CITY + 30, -2, 30, -60, 6, g => {                              // 远处的钩形星群（补齐了）和几排房顶
       setInk(g, '#0a0e18'); for (let x = CITY - 30; x < CITY + 30; x += rr(2, 5)) box(g, x, -2, rr(2, 5), rr(4, 9));
     }, { fog: false, order: -2000 });
@@ -322,6 +326,7 @@ const CH13 = (() => {
     v.roofGlow = add(R, new THREE.PlaneGeometry(1.4, 1.2), own(new THREE.MeshBasicMaterial({ color: 0xffc27a, fog: false })), CITY - 4.2, 4.3, -1.99, false);
     v.roofShut = add(R, bx(1.5, 1.3, 0.05), lam(0x4a5058), CITY - 4.2, 4.35, -1.95); for (let y = -0.55; y < 0.6; y += 0.12) add(v.roofShut, bx(1.5, 0.02, 0.06), lam(0x3a3f46), 0, y, 0, false);
     v.crackGlow = glow(R, 0xffc27a, 1.1, 0, CITY - 4.2, 3.76, -1.85);
+    R = R0; ROOT = ROOT0;
     V = v;
   }
 
@@ -396,12 +401,12 @@ const CH13 = (() => {
 
   function update(dt) {
     const here = P.x > X - 12 && P.x < RW + 2;
-    if (!here && !END.c) return;
+    if (!here && (!END.c || END.cont)) return;
     if (!CARRY.bulb) CARRY.bulb = makeBulb(scene, 'square', { glow: 0.12 });
     if (CARRY.state === 'none' || (CARRY.state === 'set' && !END.c)) { CARRY.state = 'bag'; CARRY.at = null; }
     for (let i = 0; i < 3; i++) S.lt[i] += dt;
     // 控制：取放灯泡、对灯、结局的时候不能动
-    const lock = busy() || END.c > 0;
+    const lock = busy() || (END.c > 0 && !END.cont);                                   // 结局以后按了接着往前走：又能走了
     if (state === 'play') { if (lock) { ctl = false; S.locked = true; } else if (S.locked) { ctl = true; S.locked = false; } }
     // 灯泡拿在手上，按方向键就先揣回怀里
     if (CARRY.state === 'out' && !CARRY.act && P.mode !== 'hold' && !END.c && S.cmpT < 0 && (keys.has('L') || keys.has('R') || keys.has('J'))) carryStart('in');
@@ -468,27 +473,28 @@ const CH13 = (() => {
       if (t > 12 && END.step === 4) { END.step = 5; $('fade').style.opacity = 1; }
       if (t > 13.6 && END.step === 5) { END.step = 6; placePlayer(CHAIR, 0); P.facing = -1; snapCam({ x: CHAIR - 0.5, y: 1.3, d: 8.5 }); }
       if (t > 14 && END.step === 6) { END.step = 7; $('fade').style.opacity = 0; }
-      tableau = t > 13.6;
+      tableau = t > 13.6 && !END.cont;
       if (t > 18.6 && END.step === 7) { END.step = 8; fx('bell', 740, 1); }                 // 工作铃
       if (t > 19.4 && END.step === 8) { END.step = 9; $('fade').style.opacity = 1; }
-      if (t > 21 && END.step === 9) { END.step = 10; snapCam({ x: CITY - 1.5, y: 6.6, d: 17 }); $('fade').style.opacity = 0; }
+      if (t > 21 && END.step === 9) { END.step = 10; snapCam({ x: CITY - 1.5, y: 6.6 + CY, d: 17 }); $('fade').style.opacity = 0; }
       if (t > 26 && END.step === 10) { END.step = 11; $('fade').style.opacity = 1; }
       if (t > 27.6 && END.step === 11) { END.step = 12; fx('bell', 520, 0.8); $('fade').style.opacity = 0; }   // 睡觉铃：下一次宵禁
       cityK = t > 21 && t < 27.6 ? sstep(21.2, 24.5, t) : 0;
       if (t > 33 && !END.shown) { END.shown = true; showEndBare(ZONE, false); }
     } else if (E2) {
       if (t > 0.9 && END.step === 0) { END.step = 1; fx('pinStep'); }
-      white = sstep(2.6, 9.0, t); flood = sstep(3.0, 8.0, t); relit = t;
+      white = END.cont ? 0 : sstep(2.6, 9.0, t); flood = sstep(3.0, 8.0, t); relit = t;   // 接着往前走以后白光退下去，外壳还是开着的
       excite = Math.max(excite, 2.2 * sstep(1.6, 4.0, t));
       if (t > 7 && END.step === 1) { END.step = 2; $('white').style.opacity = 1; }
       if (t > 11 && !END.shown) { END.shown = true; showEndBare(ZONE, true); }
     }
     CARRY.excite = excite;
-    if (E2) envMod = (e => {                                                                    // 白光：雾和环境光变白，主光从后上方压过来，人成了剪影；风声起来，屋里的嗡嗡声没了
+    if (E1 && t > 21 && !END.cont) envMod = e => envToward(e, CITYK, 1);                 // 城里那两个镜头
+    if (E2 && !END.cont) envMod = (e => {                                                                    // 白光：雾和环境光变白，主光从后上方压过来，人成了剪影；风声起来，屋里的嗡嗡声没了
       const k = white; e.fog.lerp(_white, k); e.fogD = lerp(e.fogD, 0.05, k); e.hemiI = lerp(e.hemiI, 0.18, k); e.keyI = lerp(e.keyI, 2.4, k); e.rimI = lerp(e.rimI, 2.2, k);
       e.keyC.lerp(_white, k); e.rimC.lerp(_white, k); e.aWind = lerp(e.aWind, 3.2, k); e.aRoom *= 1 - k; e.aHum *= 1 - k; e.rvOut = lerp(e.rvOut, 1, k); e.rvHall *= 1 - k; e.aFar = 0; });
     // 镜头
-    if (here || END.c) {
+    if (here || (END.c && !END.cont)) {
       let f = roomCam();
       if (S.cmpT >= 0) f = blendCam(f, { x: SOCK - 0.1, y: SOCK_Y - 0.12, d: 3.2 }, sstep(0, 0.5, S.cmpT + (CARRY.act ? 0.25 : 0)) * (1 - sstep(3.6, 4.3, S.cmpT)));
       if (S.l[1] && S.lt[1] < 6.5) f = blendCam(f, { x: CON, y: 2.5, d: 7.2 }, sstep(0.3, 1.2, S.lt[1]) * (1 - sstep(5.4, 6.4, S.lt[1])));     // 屏幕一块块亮起来
@@ -505,8 +511,8 @@ const CH13 = (() => {
       if (pk > 0.002 && !END.c) { const u = sstep(0.45, 0.7, pk); f = blendCam(f, { x: lerp(ROOMC + 2, X + 15.3, u), y: lerp(4.4, 3.3, u), d: lerp(20.5, 15.2, u) }, sstep(0, 0.12, pk)); }   // 后半程：老人、孩子、上面的大锁销都在画面里，老人不压在提示字底下
       if (E1 && t < 12) f = blendCam(f, { x: SOCK, y: lerp(3.6, sockY + 0.6, sstep(1.6, 4, t)), d: lerp(14, 12, sstep(5, 7, t)) }, sstep(1.0, 2.6, t) * (1 - sstep(8.8, 10.4, t)));
       if (E1 && tableau && t < 21) f = { x: CHAIR - 0.5, y: 1.3, d: 8.5 };
-      if (E1 && t >= 21) f = { x: CITY - 1.5, y: 6.6, d: 17 };
-      if (E2) f = blendCam(f, { x: ROOMC + 2, y: 4.2, d: 23 }, sstep(0.5, 6, t));
+      if (E1 && t >= 21 && !END.cont) f = { x: CITY - 1.5, y: 6.6 + CY, d: 17 };
+      if (E2 && !END.cont) f = blendCam(f, { x: ROOMC + 2, y: 4.2, d: 23 }, sstep(0.5, 6, t));
       setCam(f);
     }
     // 孩子的动作：握着手柄 / 拧灯 / 坐在椅子上
@@ -516,6 +522,7 @@ const CH13 = (() => {
     stepDust(dt);
 
     const v = V; if (!v) return;
+    v.exitDoor.position.z = -0.2 - 2.4 * exitDoor.open;                                 // 右墙的门：往后滑进墙里
     // 闸刀和线
     v.knife.forEach((K, i) => { const k = sstep(0, 0.25, S.l[i] ? S.lt[i] : 0) * S.l[i]; K.arm.rotation.z = lerp(-1.2, 0, k); K.lamp.color.setHex(S.l[i] ? 0x7dff9a : 0x2a1210); });
     v.pulse.forEach((p, i) => { const k = S.l[i] ? S.lt[i] / 0.9 : 2; p.material.opacity = k < 1 ? 0.9 : 0; if (k < 1) p.position.copy(v.pulsePath[i].getPointAt(clamp(k, 0, 1))); });
@@ -603,7 +610,7 @@ const CH13 = (() => {
 
   function resetEnd() {
     if (END.c) { CARRY.state = 'bag'; CARRY.act = null; CARRY.at = null; CARRY.power = 0; CARRY.spin = 0; }   // 灯泡回到怀里（只在演过结局以后：从菜单跳到第十二章时不要动它）
-    Object.assign(END, { c: 0, t: 0, shown: false, step: 0 }); STORY.room = 0;
+    Object.assign(END, { c: 0, t: 0, shown: false, step: 0, cont: false }); STORY.room = 0; setGate(exitDoor, 0);
     screw.k = 0; screw.locked = false; screw.on = false; pull.k = 0; pull.locked = false; pull.on = false;
     envMod = null; { const w = $('white'); w.style.transition = 'none'; w.style.opacity = 0; void w.offsetWidth; w.style.transition = ''; } $('fade').style.opacity = 0; $('end').classList.add('hide'); $('end').classList.remove('bare', 'white');
   }
@@ -611,7 +618,13 @@ const CH13 = (() => {
     Object.assign(S, { l: [0, 0, 0], lt: [9, 9, 9], seen1: false, cmp: false, cmpT: -1, fault: 0, ft: 0, ft0: 0, done3: false, win: 0, locked: false, look: 0, still: 0, winSnd: false, sk0: 0, pk0: 0 });
     lever.k = 0; resetEnd(); if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; }
   }
-  function solve() { reset(); }
+  function solve() { reset(); setGate(exitDoor, 1); }                                 // 从后面的章节开始，往回走到这里：右墙的门开着
+  // 结局画面上按了接着往前走（80-ui.js 的 continueFromEnd）：坐在椅子上的孩子站起来，白光退下去，右墙的门打开，往右走出去
+  function cont() {
+    END.cont = true; exitDoor.want = 1; fx('doorStop');
+    if (END.c === 1) { placePlayer(CHAIR + 0.75); P.cp = cpAt(P.x); }
+    P.facing = 1; $('white').style.opacity = 0; snapCamera();
+  }
   // 结局以后按 R：回到选择之前（三段线路都已经走过）
   function retry() {
     reset(); Object.assign(S, { l: [1, 1, 1], lt: [9, 9, 9], seen1: true, cmp: true, fault: 2, ft: 9, ft0: 9, done3: true });
@@ -619,6 +632,6 @@ const CH13 = (() => {
     saveGame(); snapCamera(); applyEnv(camera.position.x); streamZones(cam.x, true);
   }
   function respawn() { if (CARRY.state === 'out' || CARRY.act) { CARRY.act = null; CARRY.state = 'bag'; } S.cmpT = -1; }
-  const ZONE = defZone({ n: OLD + 13, vis: [X - 12, CITY + 18], build, update, reset, solve, retry, respawn, unbuild() { V = null; }, S, END, lever, screw, pull });
+  const ZONE = defZone({ n: OLD + 13, vis: [X - 12, RW + 4], build, update, reset, solve, retry, respawn, cont, exitDoor, choose, unbuild() { V = null; }, S, END, lever, screw, pull });
   return ZONE;
 })();

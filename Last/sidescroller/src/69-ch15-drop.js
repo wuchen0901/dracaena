@@ -7,16 +7,12 @@
 //    地面 → 枕木（1.45）可以；地面 → 站台（2.9）、水泥墩（3.25）、墙头（3.4）都不行；枕木 → 水泥墩可以；箱子顶（1.05）→ 墙头可以
 //  先单独放在最后，从章节菜单进（或者地址后面加 ?ch=23）
 // ============================================================
-const X15 = 2760;
+const X15 = X14 + 100;                                     // 翻过墙那一章的第二道墙，往雾里走，雾散开是傍晚的货运站（src/69-zz-links.js）
 const CH15 = (() => {
   const X = X15;
-  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel', enter: [X - 10.8, X - 1],
-    intro() { CAT.state = 'none'; } });
+  const C = chapter({ n: OLD + 15, x0: X - 12, start: X + 1, name: '高台', sub: '箱子在上面', ground: 'gravel', nocat: true });
   terrain([X - 40, 0], [X + 80, 0]);
   ground(X - 40, 0x5b4d40); ground(X + 26, 0x5e5142); ground(X + 80, 0x655743);
-  solid({ x1: X - 12.6, x2: X - 11.6, y1: -2, y2: 30, noclimb: true });            // 两头的空气墙
-  solid({ x1: X + 44, x2: X + 45, y1: -2, y2: 30, noclimb: true });
-  chapterExit(OLD + 15, { a0: X + 30, a1: X + 42, tint: 0x8c7869 });               // 翻过高墙，朝落下去的太阳走：一片暖色的雾，接到下一章（水下实验室）
   // 一垛枕木（踩上去的第一阶）→ 站台头上的水泥墩（第二阶；也把箱子挡在站台上，推不到左边去）→ 站台 → 高墙
   const STEP = solid({ id: 'sleepers', x1: X + 5.2, x2: X + 6.8, y1: 0, y2: 1.45, snd: 'wood' });
   const K = solid({ id: 'pier', x1: X + 6.8, x2: X + 7.6, y1: 0, y2: 3.25, snd: 'concrete' });

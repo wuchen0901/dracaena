@@ -11,19 +11,16 @@
 //    颜色几乎全去掉，只留孩子的红上衣、落叶和直升机的航行灯；没有路灯，没有前景道具；远处是雾里一层比一层浅的枯树、谷仓、高压线塔。
 //    探照灯不受这些管：它扫到哪里，哪里就亮 —— 画面里最亮的东西还是那盏灯
 // ============================================================
-const X11 = 1800;
+const X11 = X10 + 173;                                     // 从吊绳那一章最高一级的豁口下坡，坡脚往右几步就是这一章的公路（src/69-zz-links.js）
 const CH11 = (() => {
   const X = X11;
-  const C = chapter({ n: OLD + 11, x0: X - 40, start: X + 3, name: '夜搜', sub: '躲开直升机的灯', enter: [X - 6.8, X + 2],
-    intro() { CAT.state = 'none'; } });                    // 这一章先不带小猫（故事还没定它这时候在不在）
+  const C = chapter({ n: OLD + 11, x0: X - 30, start: X + 3, name: '夜搜', sub: '躲开直升机的灯', nocat: true });   // 这一章先不带小猫（故事还没定它这时候在不在）
+  const G0 = X - 30, G1 = X + 165;                                                 // 这一章自己铺的地面从哪到哪：两头接着前后两段连接的路（src/69-zz-links.js），那里是共用的地面
   C.ground = 'grass';                                                              // 脚步声：公路是水泥的那一种，过了断桥是土路，再往前是林子里的地
   terrain([X - 70, 0], [X - 8, 0], [X + 6, 0.22], [X + 16, 0.08], [X + 26, 0], [X + 104, 0], [X + 114, 0.35], [X + 128, 1.0], [X + 150, 1.3], [X + 200, 1.3]);
   ground(X - 70, 0x1e2b30); ground(X + 200, 0x1e2b30);
-  groundFront(X - 70, X + 200, null);                                              // 共用的地面这一段不铺：这一章自己铺（路两边要有起伏，远处要跟着雾）
+  groundFront(G0, G1, null);                                              // 共用的地面这一段不铺：这一章自己铺（路两边要有起伏，远处要跟着雾）
   surface(X - 8, X + 106, 'concrete'); surface(X + 106, X + 126, 'dirt'); surface(X + 126, X + 200, 'forest');
-  solid({ x1: X - 8.5, x2: X - 7.5, y1: -2, y2: 30, noclimb: true });   // 身后是来的方向，不往回走
-  solid({ x1: X + 152, x2: X + 154, y1: -2, y2: 30, noclimb: true });   // 进了林子以后先到这里为止
-  chapterExit(OLD + 11, { a0: X + 137, a1: X + 149, tint: 0x3c4146 });   // 走进林子里的浓雾：一直往右走，接到下一章（作坊一角）
 
   // ---------------- 画面：雾里的剪影（照第二十一章的做法，见 design/visual-style.md）----------------
   // 地面的起伏：路面那一条（z 在 RB..RF）是平的，跟着物理地形走；路后面是野地，离路越远起伏越大、越远越高（丘陵在孩子身后，不挡人）；
@@ -267,7 +264,7 @@ const CH11 = (() => {
     // 近处一块细的、远处一块粗的，用同一个高度函数；远处那块挨着近处的那一排压低一点、塞在近处那块底下，接缝里不漏
     {
       const groundMat = S(0xffffff, 4, 0.5);
-      const kinks = TERRAIN.map(p => p[0]).filter(x => x > X - 70 && x < X + 200);              // 物理地形的折点：路面那一条要和它分毫不差（路面的贴图是按折点切的）
+      const kinks = TERRAIN.map(p => p[0]).filter(x => x > G0 && x < G1);              // 物理地形的折点：路面那一条要和它分毫不差（路面的贴图是按折点切的）
       const span = (a, b, d, extra = []) => { const o = []; for (let x = a; x < b + d / 2; x += d) o.push(x); o.push(...extra); o.sort((p, q) => p - q); return o.filter((x, i) => i === 0 || x - o[i - 1] > 0.05); };
       // 一块网格地面，按 x 切成一条条（每条 cw 米）：镜头只看得到其中两三条，看不到的不画。法线按整块算好再切，接缝处的明暗对得上
       const grid = (xs, zs, cw, drop = 0) => {
@@ -286,10 +283,10 @@ const CH11 = (() => {
           i0 = i1;
         }
       };
-      grid(span(X - 70, X + 200, LOW ? 0.8 : 0.4, kinks), span(-12, 16, LOW ? 0.6 : 0.35), 20);
+      grid(span(G0, G1, LOW ? 0.8 : 0.4, kinks), span(-12, 16, LOW ? 0.6 : 0.35), 20);
       yield;
       const zs = []; for (let z = -11.9, st = 0.5; z > -420; z -= st, st = Math.min(8, st * 1.06)) zs.push(z);
-      grid(span(X - 260, X + 420, LOW ? 3.2 : 1.6), zs.reverse(), 80, 0.04);                     // 比这一章宽得多：镜头看得到的远处都要铺到
+      grid(span(G0, G1, LOW ? 3.2 : 1.6), zs.reverse(), 80, 0.04);                                // 远处也只铺这一章这一段：两头是共用的地面（一直铺到看不见的地方）
     }
     yield;
 

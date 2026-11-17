@@ -6,13 +6,12 @@
 //  把空箱沿着拖痕推到断电杆下面，站上去拉下断电杆：输送带和压机停下，安全闸门升起
 // ============================================================
 const CH1 = (() => {
-  const C = chapter({ n: OLD + 1, x0: -60, start: 2, name: '工厂', sub: '关闭回收线', enter: [-6.5, 0.5] });   // enter：从《逃出工厂》的结尾一路走进来时，人出现在左墙里面（20-world.js 的 chapterExit）
+  const C = chapter({ n: OLD + 1, x0: -9.5, start: 2, name: '工厂', sub: '关闭回收线' });   // x0：左墙上的门。从《逃出工厂》的结尾下了山，从这道门走进来（src/69-zz-links.js）
   C.ground = 'concrete';                                                           // 脚步声：水泥地；铁梁、推车是铁的，空箱是木头的
   C.intro = () => { P.y = 3.3; P.vy = 0; P.grounded = false; P.gy = 0.6; };       // 开场：从上层断开的格栅掉下来
-  if (TERRAIN.length) groundFront(TERRAIN[TERRAIN.length - 1][0], -60, null);     // 左边接着《逃出工厂》那条路的尽头：中间空着的一千来米不铺地面
   terrain([-60, 0], [47.9, 0], [48, 3], [49.2, 3], [57, 0], [104, 0]);
   ground(-60, 0x1c2529); ground(103.9, 0x1c2529);
-  solid({ id: 'wallL', x1: -9, x2: -7, y1: 0, y2: 12 });
+  solid({ id: 'wallL', x1: -9, x2: -7, y1: 2.6, y2: 12 });                        // 左墙：底下 2.6 米是门（门外是《逃出工厂》下山的路）
   solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
   solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
   solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
@@ -84,6 +83,7 @@ const CH1 = (() => {
     V.wHead.lookAt(tx, ty, 0); V.eyeMat.color.copy(beam.color); V.eyeGlow.material.color.copy(beam.color);
   }
 
+  const FX0 = -9.2;                                    // 厂房的左墙（外皮）：里面的布景从这里画起，墙外是《逃出工厂》下山的那段路（src/69-zz-links.js）
   function* build(R) {
     // ---------------- 布景板：废弃的巨型厂房 ----------------
     // 最远的后墙：一排高窗透进冷光。逆光的关键在这里 —— 整块板提亮 30 倍，隔着八成多的雾，墙和窗还是比雾亮
@@ -95,7 +95,7 @@ const CH1 = (() => {
         setInk(g, '#131b1e'); for (let y = 8; y < 28; y += 3.2) box(g, x - 0.1, y, 1.9, 0.28);
       }
     });
-    backWall(-90, 104.7).material.color.setScalar(30);
+    backWall(FX0, 104.7).material.color.setScalar(30);
     backWall(104.7, 106);                                 // 出口那面墙外侧露出的一小段不提亮：从第二章回头看，它只是厂房的一条暗边
     yield;
     // 高窗照进来的光：朝着镜头、斜着向下穿过雾，从每扇窗往左下铺开一片。
@@ -104,7 +104,7 @@ const CH1 = (() => {
     // （离那一屏很远的窗子，就当镜头在它的斜对面）。坡道上方那一扇（x = 52）不画：它的光会落在远处的坡面上，成了一块亮斑
     const WINS = []; for (let x = -58.5; x < 100; x += 8.5) if (Math.abs(x - 52) > 1) WINS.push(x);
     const REF = [69.43, 3.025, 20.5], LD = [-0.16, -0.83, 0.53];   // 定稿那一屏（主角站在 x = 67.25）的镜头位置；光的方向
-    backdrop(-90, 106, -2, 29, -31.9, 10, g => {
+    backdrop(FX0, 106, -2, 29, -31.9, 10, g => {
       const gr = g.createLinearGradient(0, 6.66, 0, -0.98);         // 窗子下面最亮，越往地面越淡
       gr.addColorStop(0, 'rgba(190,222,230,.22)'); gr.addColorStop(0.55, 'rgba(190,222,230,.1)'); gr.addColorStop(1, 'rgba(190,222,230,.02)');
       g.fillStyle = gr;
@@ -118,13 +118,13 @@ const CH1 = (() => {
       }
     }, { additive: true, fog: false, blur: 4, order: -127 });
     // 光落在地上的那一块：靠墙的一头亮，朝镜头这一头淡下去
-    backdrop(-90, 106, -31, -11, 0, 5, g => {
+    backdrop(FX0, 106, -31, -11, 0, 5, g => {
       g.fillStyle = vgrad(g, -29, -13, 'rgba(190,222,230,.15)', 'rgba(190,222,230,.03)');
       for (const x of WINS) poly(g, [[x - 0.96, -28.8], [x + 0.74, -28.8], [x - 3.7, -14.1], [x - 5.4, -14.1]]);
     }, { floor: 0.03, additive: true, fog: false, blur: 2, order: -100 });
     yield;
     // 高窗与天窗漏下来的光（叠加发光，不受雾影响）
-    backdrop(-60, 106, -1, 26, -30, 7, g => {
+    backdrop(FX0, 106, -1, 26, -30, 7, g => {
       for (let x = -84 + 8.5 * 3; x < 104; x += 8.5) {
         const gr = g.createLinearGradient(0, 26, 0, 2); gr.addColorStop(0, 'rgba(150,185,192,.30)'); gr.addColorStop(1, 'rgba(150,185,192,0)');
         g.fillStyle = gr; box(g, x - 1.4, 2, 4.5, 24);
@@ -132,7 +132,7 @@ const CH1 = (() => {
     }, { additive: true, fog: false, blur: 6 });
     yield;
     // 远景：一排高大的拱廊；探照灯机器站在中间那个大开口后面
-    backdrop(-50, 106, -1, 26, -16, 20, g => {
+    backdrop(FX0, 106, -1, 26, -16, 20, g => {
       setInk(g, '#0d1416');
       g.beginPath(); g.rect(-50, -1, 156, 27);
       const arch = (x1, x2, top) => { const r = (x2 - x1) / 2; g.moveTo(x1, -1); g.lineTo(x1, top - r); g.arc(x1 + r, top - r, r, Math.PI, 0, true); g.lineTo(x2, -1); g.closePath(); };
@@ -166,7 +166,7 @@ const CH1 = (() => {
     });
     yield;
     // 中景：机器残骸、龙门架、楼梯
-    backdrop(-30, 106, -1, 20, -8, 26, g => {
+    backdrop(FX0, 106, -1, 20, -8, 26, g => {
       setInk(g, '#0a1012');
       // 熔炉 + 烟道
       box(g, -1, 0, 7, 4.6); box(g, 0.2, 4.6, 1.5, 15.4); box(g, -1.4, 3.9, 7.8, 0.5); box(g, 3.2, 4.6, 2.2, 1.3);
@@ -193,7 +193,7 @@ const CH1 = (() => {
     });
     yield;
     // 近景：一排工字钢立柱 + 吊车梁 + 管道（场地和回收大厅那两段不放柱子）
-    backdrop(-25, 106, -1, 15, -3.2, 34, g => {
+    backdrop(FX0, 106, -1, 15, -3.2, 34, g => {
       const col = (x, w = 0.85) => {
         const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0); gr.addColorStop(0, '#070b0d'); gr.addColorStop(0.75, '#0b1215'); gr.addColorStop(1, '#172226');
         g.fillStyle = gr; box(g, x - w / 2, -1, w, 16);
@@ -210,7 +210,7 @@ const CH1 = (() => {
     yield;
     // 前景：离镜头最近的一层，全黑、略微虚焦，不挡住主角。
     // （原来沿着画面下沿还有一道废料堆的剪影；以这个镜头的高度看过去，它前面还露着一截地面，成了横在地面中间的一道黑带，去掉了）
-    backdrop(-22, 104.6, -3, 10, 6, 22, g => {
+    backdrop(FX0, 104.6, -3, 10, 6, 22, g => {
       setInk(g, '#040607');
       for (const [x, w] of [[7.2, 0.34], [52.4, 0.5]]) box(g, x, -3, w, 13);                       // 两根近处的柱子：经过时扫过画面
       for (let x = -20; x < 100; x += rr(9, 17)) cable(g, x, 10, x + rr(6, 12), 10, rr(1.6, 2.5), 0.09);  // 顶上垂下的缆线
@@ -239,7 +239,7 @@ const CH1 = (() => {
     // ---------------- 3D 道具 ----------------
     const v = {};
     // 地面的伸缩缝：一道道伸向远处的细线，增强纵深感
-    for (let x = -18; x < 102; x += 5.5) if (x < 46 || x > 58) add(R, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
+    for (let x = -6.5; x < 102; x += 5.5) if (x < 46 || x > 58) add(R, bx(0.07, 0.012, 34), MAT.dark, x, 0.004, -8, false).receiveShadow = true;
     for (const z of [3.2, -4.5]) add(R, bx(124, 0.012, 0.07), MAT.dark, 40, 0.004, z, false);
     yield;
     // ---------------- 探照灯场地的地面 ----------------
@@ -499,6 +499,6 @@ const CH1 = (() => {
     reset(); placeBox(cart, 37.15); placeBox(crate, 97.0); LEVER.pulled = true; LEVER.t = 1; setGate(door, 1);
     LINE.on = false; LINE.spd = 0; RUN1.t = -1;
   }
-  return defZone({ n: OLD + 1, vis: [-40, 105], build, update, reset, solve, unbuild() { V = null; },
+  return defZone({ n: OLD + 1, vis: [-12, 105], build, update, reset, solve, unbuild() { V = null; },
     respawn(c) { if (c.x >= -60 && c.x < 104) Object.assign(WATCH, { exposure: 0, caught: 0, t: 1.2 }); }, cart, crate, door, LEVER, WATCH, LINE, RUN1 });
 })();

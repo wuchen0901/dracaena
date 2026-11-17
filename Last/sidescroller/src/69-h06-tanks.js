@@ -7,7 +7,7 @@
 //  代价是罐子里的人也一起流出来，躺在去门口的路上（一个改不回去的选择）
 // ============================================================
 const H6 = (() => {
-  const k = 5, X = hX(k), LEN = 60;
+  const k = 5, X = hX(k), LEN = HLEN[k];
   hChapter(k, { name: '玻璃大罐', sub: '已经裂了', ground: 'concrete', len: LEN, tint: 0x141a10 });
   terrain([X - 14, 0], [X + LEN + 4, 0]);
   ground(X - 14, 0x23281f); ground(X + LEN + 4, 0x20251d);

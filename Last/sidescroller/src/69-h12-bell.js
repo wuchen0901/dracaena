@@ -8,7 +8,7 @@
 //  右边的门开了，外面是白的。走出去，就是这一组的结尾
 // ============================================================
 const H12 = (() => {
-  const k = 11, X = hX(k), LEN = 60;
+  const k = 11, X = hX(k), LEN = HLEN[k];
   const ZC = hChapter(k, { name: '铃', sub: '整座工厂都听它的', ground: 'concrete', len: LEN, tint: 0x0d0f10 });
   ZC.end = { h1: '工厂深处', go: '按 R 再听一次铃　·　Esc 选择章节' }; ZC.endTint = 0xf3f1ea;
   terrain([X - 14, 0], [X + LEN + 4, 0]);

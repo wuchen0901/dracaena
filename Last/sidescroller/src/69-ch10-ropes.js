@@ -8,20 +8,18 @@
 //  往远处去，每一级台阶的边上都还有一排同样的吊臂（布景）：有的绳子还在，有的割断了，有的只剩一只空滑轮
 //  （故事还在重写，这一章先单独放在最后，从章节菜单进；以后按剧情挪到该放的地方）
 // ============================================================
-const X10 = 1500;
+const X10 = X9 + 392;                                      // 走出山洞，下一道缓坡就到（src/69-zz-links.js）
 const CH10 = (() => {
   const X = X10;
-  const C = chapter({ n: OLD + 10, x0: X - 6.9, start: X + 3, enter: [X - 6.2, X + 2], name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
-    intro() { CAT.state = 'none'; } });
-  const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5;
+  const C = chapter({ n: OLD + 10, x0: X - 6.9, start: X + 3, nocat: true, name: '吊绳与高台', sub: '跳起来抓住绳子，爬上去', ground: 'gravel',   // 脚步声：地上是碎石，台阶上是水泥
+  });
+  const H1 = 3.6, H2 = 6.8, H3 = 11.8, DITCH = -2.6, WATER_Y = -1.05, ZF = 1.6, DEEP = 92, END = X + 100.5, ZG = -3.2;   // ZG：矮墙、栏杆从这里往后才有（前面是下坡的豁口）
   terrain([X - 30, 0], [X + 29.9, 0], [X + 30.1, DITCH], [X + 32.85, DITCH], [X + 33.05, 0], [X + 150, 0]);
   ground(X - 30, 0x2c3231); ground(X + 150, 0x2c3231);
-  solid({ x1: X - 8.4, x2: X - 7, y1: -2, y2: 40, noclimb: true });                   // 身后：一堵塌了半截的墙
   const S1 = solid({ id: 'step1', x1: X + 14, x2: X + 30, y1: DITCH, y2: H1, snd: 'concrete' });
   const S2 = solid({ id: 'step2', x1: X + 32.95, x2: X + 60, y1: DITCH, y2: H2, snd: 'concrete' });
   const S3 = solid({ id: 'step3', x1: X + 60, x2: END, y1: 0, y2: H3, snd: 'concrete' });
-  solid({ x1: END - 1.35, x2: END - 0.9, y1: H3, y2: 40, noclimb: true });             // 最高一级的边上有一道矮墙和栏杆，走到这里为止
-  chapterExit(OLD + 10, { a0: END - 15, a1: END - 3, when: () => P.y > H3 - 0.3, tint: 0x6f7b78 });   // 在最高一级上往矮墙那边走：雾越来越浓，雾里接到下一章（夜搜）
+  // 最高一级的边上有一道矮墙和栏杆；靠镜头这一头（z > ZG，人走的那一条）留着豁口，从这里接着往右下坡（src/69-zz-links.js）
   // 三根能抓的绳子：挂在吊臂顶端的滑轮下面，离台阶的墙一米
   const R1 = rope({ x: X + 13.0, top: H1 + 1.95, bot: 1.95 });
   const R2 = rope({ x: X + 31.95, top: H2 + 1.95, bot: 3.35 });
@@ -245,9 +243,9 @@ const CH10 = (() => {
     yield;
     // ---------------- 最高一级的尽头：一道矮墙、上面一道锈栏杆 ----------------
     {
-      const x0 = END - 0.9; add(R, bx(0.9, 0.85, DEEP), M.conc, x0 + 0.45, H3 + 0.42, ZF - DEEP / 2);
-      for (let z = ZF - 0.3; z > -40; z -= 2.2) add(R, cy(0.025, 0.025, 0.9, 6), M.rust2, x0 + 0.3, H3 + 1.3, z);
-      for (const y of [H3 + 1.72, H3 + 1.3]) add(R, bx(0.05, 0.05, 42), M.rust2, x0 + 0.3, y, ZF - 21.3);
+      const x0 = END - 0.9, D = DEEP + ZG - ZF; add(R, bx(0.9, 0.85, D), M.conc, x0 + 0.45, H3 + 0.42, ZG - D / 2);   // 靠镜头这一头留出下坡的豁口（z > ZG）
+      for (let z = ZG - 0.3; z > -40; z -= 2.2) add(R, cy(0.025, 0.025, 0.9, 6), M.rust2, x0 + 0.3, H3 + 1.3, z);
+      for (const y of [H3 + 1.72, H3 + 1.3]) add(R, bx(0.05, 0.05, 40 + ZG), M.rust2, x0 + 0.3, y, (ZG - 40) / 2);
     }
     // ---------------- 前景：最近处的枯草（在地上）、斜着穿过画面上方的几根电线（在高处） ----------------
     backdrop(X - 24, X + 116, -1.5, 24, 7.5, 26, g => {
