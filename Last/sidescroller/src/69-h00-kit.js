@@ -13,13 +13,12 @@ const hX = k => { let x = HX0; for (let i = 0; i < k; i++) x += HLEN[i] + HGAP(i
 const HN = k => OLD + 17 + k;                         // 第 25 + k 章的章节号
 const HLAST = 11;                                     // 一共十二章：k = 0 … 11
 
-// ---- 每章的骨架：登记章节；最后一章的右边是整条路的尽头（空气墙）----
+// ---- 每章的骨架：登记章节（最后一章的右边原来是整条路的尽头；2026-11-17 起出了铃那一章的门还有一章“草地”，路的尽头挪到那里）----
 // o：name / sub / ground 脚下默认的声音 / len 这一章多长（= HLEN[k]）/ start 出生点（相对 X）
 function hChapter(k, o) {
   const X = hX(k), n = HN(k), len = HLEN[k];
   if (o.len !== undefined && o.len !== len) console.error(`工厂深处第 ${k} 章：LEN ${o.len} 和 HLEN ${len} 对不上`);
   const c = chapter({ n, x0: X - 10, start: X + (o.start ?? 2), name: o.name, sub: o.sub, ground: o.ground ?? 'concrete', grp: 'deep', nocat: true, intro: o.intro });
-  if (k === HLAST) solid({ x1: X + len, x2: X + len + 1, y1: -30, y2: 40, noclimb: true });   // 整条路的尽头
   BIRDS[n] = [['bird', 0]];                             // 厂房里没有鸟
   return c;
 }
