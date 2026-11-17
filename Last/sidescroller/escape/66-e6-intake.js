@@ -19,8 +19,8 @@ const E6 = (() => {
   const WAT = { a: X + 7, b: X + 39, wait: 0, dir: 1, ax: X + 9 };
   const WALL = solid({ id: 'e6wall', x1: X + 41.4, x2: X + 42.6, y1: 0, y2: 2.6, snd: 'concrete' });
   const crate = pushable({ id: 'e6crate', x: X + 31.2, w: 1.2, h: 1.25, min: X + 30.6, max: X + 40.75, snd: 'wood' });
-  // 院子里朝左投下影子的三样东西（都摆在路上，要翻过去），和卡车底下
-  const KS = [[49.5, 51, 1.4], [58.5, 60, 1.3], [66, 67.5, 1.4]].map(([a, b, h], i) => solid({ id: 'e6k' + i, x1: X + a, x2: X + b, y1: 0, y2: h, snd: i === 1 ? 'wood' : 'metal' }));
+  // 院子里朝左投下影子的三样东西（都摆在路上；平时从前面绕过去，见 20-world.js 的 thru），和卡车底下
+  const KS = [[49.5, 51, 1.4], [58.5, 60, 1.3], [66, 67.5, 1.4]].map(([a, b, h], i) => solid({ id: 'e6k' + i, x1: X + a, x2: X + b, y1: 0, y2: h, snd: i === 1 ? 'wood' : 'metal', thru: true, zf: 0.58 }));
   const TRUCKX = X + 75.2, UNDER = [X + 72.5, X + 81.4];
   ceiling([X + 72.2, 1.16], [X + 81.6, 1.16]);
   const GATE = gate({ id: 'e6gate', x: GX, w: 1.0, h: 4.2, T: 2.4 });

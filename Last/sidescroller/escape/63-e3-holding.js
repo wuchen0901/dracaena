@@ -17,12 +17,12 @@ const E3 = (() => {
   const COVA = [[15.6, 17.2], [24.0, 25.6]].map(([a, b]) => ({ a: X + a, b: X + b, zb: -1.45, zf: -0.55 }));
   const WAT = { a: X + 9, b: X + 31, wait: 0, dir: 1, ax: X + 12 };
   const HIDE = [X + 35.0, X + 38.5];                                         // 躲在铁箱后面的这一段
-  solid({ id: 'e3box', x1: X + 38.6, x2: X + 40.2, y1: 0, y2: 1.25, snd: 'metal' });
+  solid({ id: 'e3box', x1: X + 38.6, x2: X + 40.2, y1: 0, y2: 1.25, snd: 'metal', thru: true, zf: 0.53 });
   const DOCK = solid({ id: 'e3dock', x1: X + 54, x2: X + 68, y1: 0, y2: 1.1, snd: 'concrete' });
   const WALL = solid({ id: 'e3wall', x1: X + 68, x2: X + 69.2, y1: 0, y2: 3.3, snd: 'concrete' });
   const crate = pushable({ id: 'e3crate', x: X + 57.6, y1: 1.1, w: 1.15, h: 1.0, min: X + 55.6, max: X + 67.4, snd: 'wood' });
-  solid({ id: 'e3hurdle1', x1: X + 76, x2: X + 76.9, y1: 0, y2: 0.9, snd: 'metal' });
-  solid({ id: 'e3hurdle2', x1: X + 84, x2: X + 85.6, y1: 0, y2: CART.rail, snd: 'metal' });
+  solid({ id: 'e3hurdle1', x1: X + 76, x2: X + 76.9, y1: 0, y2: 0.9, snd: 'metal', thru: true, zf: 0.53 });   // 铁箱、推车平时不挡路：从前面绕过去（20-world.js 的 thru）
+  solid({ id: 'e3hurdle2', x1: X + 84, x2: X + 85.6, y1: 0, y2: CART.rail, snd: 'metal', thru: true, zf: CART.W / 2 });
   const GATE = gate({ id: 'e3gate', x: X + 96, T: 0.45 }), LEVER = { x: X + 98.3, t: 0 };
   usable({ id: 'e3lever', x: LEVER.x, r: 0.9, can: () => GATE.want === 1 && S.ev >= 5, on() { GATE.want = 0; fx('lever'); } });
   // ev：0 还没开始 / 1 轮子声，看守推着空车过来 / 2 开笼门、进去 / 3 把人拖出来、拖上车 / 4 推着车往左，经过主角 / 5 被指认，追 / 7 闸门落下，甩开了
@@ -48,7 +48,7 @@ const E3 = (() => {
   const inA = () => P.x > X + 7 && P.x < X + 33.6, hidA = () => inShadow(P.x, COVA, WG.x, WZ), inHide = () => P.x > HIDE[0] && P.x < HIDE[1] && P.y < 0.4;
   hint(() => S.ev === 0 && inA() && P.x < X + 15 && W.ex < 0.2, '笼顶上有人打着手电 —— 光扫过来时，站到那摞货箱前面的影子里');
   hint(() => S.ev >= 1 && S.ev <= 4 && W.ex < 0.3, '有人来了 —— 躲在铁箱后面，别出去');
-  hint(() => S.ev === 5 && P.x < X + 53, '跑！翻过铁箱，往右');
+  hint(() => S.ev === 5 && P.x < X + 53, '跑！往右');
   hint(() => S.ev === 5 && P.x > X + 54 && P.x < X + 68 && P.y > 1 && crate.x < X + 67, '按住 <b>E</b> 把箱子推到墙脚，翻过去 —— 狗会找到路上来');
   hint(() => S.ev === 5 && P.x > X + 69.3 && P.x < X + 97, '别停，往右跑');
   hint(() => S.ev === 5 && GATE.want === 1 && Math.abs(P.x - LEVER.x) < 0.9, '按 <b>E</b> 放下闸门');

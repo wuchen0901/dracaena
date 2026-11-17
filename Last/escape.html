@@ -381,7 +381,7 @@ const POST = { on: new URLSearchParams(location.search).get('post') !== '0', blu
     renderer.getDrawingBufferSize(sz);
     if (RT.width !== sz.x || RT.height !== sz.y) RT.setSize(sz.x, sz.y);
     renderer.setRenderTarget(RT); _render(s, c); renderer.setRenderTarget(null);
-    camera.getWorldDirection(_d); _h.set(P.x, P.y + 0.6, pathZ(P.x)).sub(camera.position);
+    camera.getWorldDirection(_d); _h.set(P.x, P.y + 0.6, pathZ(P.x) + (P.zo ?? 0)).sub(camera.position);
     U.focus.value = Math.max(2, _h.dot(_d)); U.cn.value = camera.near; U.cf.value = camera.far;
     U.res.value.copy(sz); U.blurPx.value = 2.4 * sz.y / 1080 * POST.blur; U.gradeK.value = POST.grade; U.grainK.value = POST.grain;
     U.grainCell.value = Math.max(1, Math.round(sz.y / 900)); U.seed.value = (seed = (seed + 37.17) % 997);
@@ -480,10 +480,15 @@ function groundColor(x, out) {
 // ---- 登记表 ----
 const SOLIDS = [], PUSHABLES = [], GATES = [], USES = [], PITS = [], CPS = [], ZONES = [], HINTS = [], CAMKEYS = [];
 // 实心方块（从 y1 到 y2）。玩家会被侧面挡住，可以站在顶上。plat: 悬空也能站（漂在水上的木梁）
-function solid(o) { SOLIDS.push(o); return o; }
+// thru: 箱子、推车这类摆在路上的东西 —— 平时不挡路：人在地上走着碰到它，就从它前面（离镜头近的那一侧）绕过去，不用跳（2026-11-17）。
+//   跳起来朝它撞过去照旧是实心的（扒得住就爬上去），从前面跳起来也能落到它顶上。只在它放在地面上（不是搁在台子、架子上）的时候才绕得过去。
+//   zf：它的前脸离路中间有多远（米，不写就是 0.55，一只普通的木箱），人绕过去时让到这前面一点。pushable() 推得动的东西都默认 thru
+function solid(o) { SOLIDS.push(o); if (o.thru) THRU.push(o); return o; }
+const THRU = [];                                     // 登记过 thru 的东西；pass：人这会儿正从它前面走过去（这时它不挡人）
+const thruOnGround = s => Math.abs(s.y1 - groundY((s.x1 + s.x2) / 2)) < 0.08;
 function syncBox(o) { o.x1 = o.x - o.w / 2; o.x2 = o.x + o.w / 2; }
 // 可以按住 E 推拉的东西：{ id, x, w, h, min, max }。只能放在平地上；lo() / hi() 可以给出会变的活动范围
-function pushable(o) { o.v = 0; o.x0 = o.x; o.y1 ??= groundY(o.x); o.y2 = o.y1 + o.h; syncBox(o); SOLIDS.push(o); PUSHABLES.push(o); return o; }
+function pushable(o) { o.v = 0; o.x0 = o.x; o.y1 ??= groundY(o.x); o.y2 = o.y1 + o.h; o.thru ??= true; syncBox(o); solid(o); PUSHABLES.push(o); return o; }
 function placeBox(o, x) { o.x = x; o.v = 0; syncBox(o); }
 // 向上升起的闸门：want = 1 打开，0 关上
 function gate(o) {
@@ -584,12 +589,12 @@ function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z
 
 // ---- 玩家状态 ----
 const P = { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, hw: 0.19, hh: 1.1, H: 1.24, coyote: 0, jumpBuf: 0,
-  mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1 };
+  mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1, zo: 0, zv: 0 };
 // 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势，brush 拨开路边的植物（48-brush.js）
 const HX = { hide: 0, alert: 0, energy: 1, pose: null, brush: null };
 
 function sideHit(nx, y) {      // 位置 (nx, y) 是否撞进某个方块的侧面
-  for (const s of SOLIDS) if (!s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
+  for (const s of SOLIDS) if (!s.off && !s.pass && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
   return null;
 }
 function floorY(x, y) {        // 脚下的支撑面高度（地形或方块顶面）
@@ -5312,6 +5317,7 @@ function stepTired(dt, d) {
 function stepPlayer(dt) {
   const d = ctl ? (keys.has('R') ? 1 : 0) - (keys.has('L') ? 1 : 0) : autoDir;      // autoDir：过场时自动往前走
   P.impact = 0;
+  for (const s of THRU) if (s.pass && !(P.x + P.hw > s.x1 && P.x - P.hw < s.x2)) s.pass = false;   // 从箱子前面走过去了：它又挡人了
   stepTired(dt, d);
   if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
   P.jumpBuf -= dt; P.coyote -= dt;
@@ -5387,7 +5393,10 @@ function stepPlayer(dt) {
   if (P.prep > 0 && (P.prep -= dt) <= 0) takeOff();
 
   // 水平移动，被方块侧面挡住
-  let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
+  let nx = P.x + P.vx * dt;
+  // 箱子、推车（thru）：在地上走着碰到它，就从它前面绕过去（画面上让一步，见下面的 stepSidestep），不挡人；跳起来撞上去照旧挡（扒得住就爬上去）
+  if (P.grounded) for (const s of THRU) if (!s.pass && !s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && Math.abs(P.y - s.y1) < 0.12 && P.y + 0.03 < s.y2 && thruOnGround(s)) s.pass = true;
+  const hit = sideHit(nx, P.y);
   if (hit) {
     const side = P.x < (hit.x1 + hit.x2) / 2 ? 1 : -1;   // 方块在哪一边：看人在它中线的哪一侧（慢慢走下台阶边时身子还压着台阶的侧面，按速度判断会被推到台阶另一头去）
     nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
@@ -5430,6 +5439,24 @@ function stepPlayer(dt) {
   for (let i = CPS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CPS[i].x) { P.cp = i; break; }
 }
 
+// ---- 从箱子、推车前面绕过去：人往镜头这边让一步（只是画面，玩法还在 z = 0 上）----
+// P.zo：让出去多远（米，往镜头那边是 +），P.zv：让的速度（转身朝那边斜着走一点用）。
+// 走近一只挡在前面的箱子，离它还有 lead 米就开始往外让，走到它跟前正好让到它前脸外面 gap 米；走过去了再慢慢回到路上。
+// 按着 E 走过去（要去推它）、推着拉着、攀爬、站到它顶上的时候都不让
+const SIDESTEP = { lead: 0.75, gap: 0.27, zf: 0.55, k: 8, back: 5 };
+function stepSidestep(dt) {
+  let want = 0;
+  if (P.mode === 'normal') for (const s of THRU) {
+    if (s.off || P.y > s.y2 - 0.05) continue;
+    const out = (s.zf ?? SIDESTEP.zf) + SIDESTEP.gap;
+    if (s.pass) { want = Math.max(want, out); continue; }
+    if (!P.grounded || keys.has('E') || Math.abs(P.y - s.y1) > 0.12 || !thruOnGround(s)) continue;
+    const g = P.vx > 0.2 ? s.x1 - (P.x + P.hw) : P.vx < -0.2 ? (P.x - P.hw) - s.x2 : -1;   // 朝着它走、离它还有多远
+    if (g >= -0.02 && g < SIDESTEP.lead) want = Math.max(want, out * sstep(SIDESTEP.lead, 0, g));
+  }
+  const z0 = P.zo ?? 0; P.zo = damp(z0, want, want > z0 ? SIDESTEP.k : SIDESTEP.back, dt); P.zv = (P.zo - z0) / Math.max(dt, 1e-4);
+}
+
 // ---- 闸门：匀速开关；有人站在门洞里就先不落下来 ----
 function stepGates(dt) {
   for (const g of GATES) {
@@ -5451,7 +5478,8 @@ function stepFade(dt) {
 function placePlayer(x, y) {
   if (P.holdObj) P.holdObj.on = false;
   Object.assign(P, { x, vx: 0, vy: 0, prep: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
-  P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
+  for (const s of THRU) s.pass = false;
+  P.y = y ?? floorY(x, 60); P.gy = P.y; P.zo = 0; P.zv = 0; resetTired();
 }
 function respawn() {
   fadeOut(() => {
@@ -7474,12 +7502,12 @@ const E3 = (() => {
   const COVA = [[15.6, 17.2], [24.0, 25.6]].map(([a, b]) => ({ a: X + a, b: X + b, zb: -1.45, zf: -0.55 }));
   const WAT = { a: X + 9, b: X + 31, wait: 0, dir: 1, ax: X + 12 };
   const HIDE = [X + 35.0, X + 38.5];                                         // 躲在铁箱后面的这一段
-  solid({ id: 'e3box', x1: X + 38.6, x2: X + 40.2, y1: 0, y2: 1.25, snd: 'metal' });
+  solid({ id: 'e3box', x1: X + 38.6, x2: X + 40.2, y1: 0, y2: 1.25, snd: 'metal', thru: true, zf: 0.53 });
   const DOCK = solid({ id: 'e3dock', x1: X + 54, x2: X + 68, y1: 0, y2: 1.1, snd: 'concrete' });
   const WALL = solid({ id: 'e3wall', x1: X + 68, x2: X + 69.2, y1: 0, y2: 3.3, snd: 'concrete' });
   const crate = pushable({ id: 'e3crate', x: X + 57.6, y1: 1.1, w: 1.15, h: 1.0, min: X + 55.6, max: X + 67.4, snd: 'wood' });
-  solid({ id: 'e3hurdle1', x1: X + 76, x2: X + 76.9, y1: 0, y2: 0.9, snd: 'metal' });
-  solid({ id: 'e3hurdle2', x1: X + 84, x2: X + 85.6, y1: 0, y2: CART.rail, snd: 'metal' });
+  solid({ id: 'e3hurdle1', x1: X + 76, x2: X + 76.9, y1: 0, y2: 0.9, snd: 'metal', thru: true, zf: 0.53 });   // 铁箱、推车平时不挡路：从前面绕过去（20-world.js 的 thru）
+  solid({ id: 'e3hurdle2', x1: X + 84, x2: X + 85.6, y1: 0, y2: CART.rail, snd: 'metal', thru: true, zf: CART.W / 2 });
   const GATE = gate({ id: 'e3gate', x: X + 96, T: 0.45 }), LEVER = { x: X + 98.3, t: 0 };
   usable({ id: 'e3lever', x: LEVER.x, r: 0.9, can: () => GATE.want === 1 && S.ev >= 5, on() { GATE.want = 0; fx('lever'); } });
   // ev：0 还没开始 / 1 轮子声，看守推着空车过来 / 2 开笼门、进去 / 3 把人拖出来、拖上车 / 4 推着车往左，经过主角 / 5 被指认，追 / 7 闸门落下，甩开了
@@ -7505,7 +7533,7 @@ const E3 = (() => {
   const inA = () => P.x > X + 7 && P.x < X + 33.6, hidA = () => inShadow(P.x, COVA, WG.x, WZ), inHide = () => P.x > HIDE[0] && P.x < HIDE[1] && P.y < 0.4;
   hint(() => S.ev === 0 && inA() && P.x < X + 15 && W.ex < 0.2, '笼顶上有人打着手电 —— 光扫过来时，站到那摞货箱前面的影子里');
   hint(() => S.ev >= 1 && S.ev <= 4 && W.ex < 0.3, '有人来了 —— 躲在铁箱后面，别出去');
-  hint(() => S.ev === 5 && P.x < X + 53, '跑！翻过铁箱，往右');
+  hint(() => S.ev === 5 && P.x < X + 53, '跑！往右');
   hint(() => S.ev === 5 && P.x > X + 54 && P.x < X + 68 && P.y > 1 && crate.x < X + 67, '按住 <b>E</b> 把箱子推到墙脚，翻过去 —— 狗会找到路上来');
   hint(() => S.ev === 5 && P.x > X + 69.3 && P.x < X + 97, '别停，往右跑');
   hint(() => S.ev === 5 && GATE.want === 1 && Math.abs(P.x - LEVER.x) < 0.9, '按 <b>E</b> 放下闸门');
@@ -8011,8 +8039,8 @@ const E6 = (() => {
   const WAT = { a: X + 7, b: X + 39, wait: 0, dir: 1, ax: X + 9 };
   const WALL = solid({ id: 'e6wall', x1: X + 41.4, x2: X + 42.6, y1: 0, y2: 2.6, snd: 'concrete' });
   const crate = pushable({ id: 'e6crate', x: X + 31.2, w: 1.2, h: 1.25, min: X + 30.6, max: X + 40.75, snd: 'wood' });
-  // 院子里朝左投下影子的三样东西（都摆在路上，要翻过去），和卡车底下
-  const KS = [[49.5, 51, 1.4], [58.5, 60, 1.3], [66, 67.5, 1.4]].map(([a, b, h], i) => solid({ id: 'e6k' + i, x1: X + a, x2: X + b, y1: 0, y2: h, snd: i === 1 ? 'wood' : 'metal' }));
+  // 院子里朝左投下影子的三样东西（都摆在路上；平时从前面绕过去，见 20-world.js 的 thru），和卡车底下
+  const KS = [[49.5, 51, 1.4], [58.5, 60, 1.3], [66, 67.5, 1.4]].map(([a, b, h], i) => solid({ id: 'e6k' + i, x1: X + a, x2: X + b, y1: 0, y2: h, snd: i === 1 ? 'wood' : 'metal', thru: true, zf: 0.58 }));
   const TRUCKX = X + 75.2, UNDER = [X + 72.5, X + 81.4];
   ceiling([X + 72.2, 1.16], [X + 81.6, 1.16]);
   const GATE = gate({ id: 'e6gate', x: GX, w: 1.0, h: 4.2, T: 2.4 });
@@ -9333,7 +9361,7 @@ const CH1 = (() => {
   solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
   solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
   solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
-  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal' });
+  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal', zf: 0.61 });
   const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0, snd: 'wood' });      // 轮挡正好把它停在断电杆下面
   const door = gate({ id: 'door1', x: 104 });
   const LEVER = { x: 97.0, pulled: false, t: 0, reach: 0 };
@@ -14893,7 +14921,7 @@ const CH14 = (() => {
   // 地面用的大起伏：孩子身前（往镜头这边）不许高过脚下这条路 —— 只能往下走，不挡人；身后照样起伏
   const BIGG = (x, z) => { const b = BIG(x, z), zr = z - PZ_(x); if (zr <= 0) return b; const bp = BIG(x, PZ_(x)); return lerp(b, Math.min(b, bp - 0.15 * zr), sstep(0, 1.2, zr)); };
   // 旧木箱（要等上面的地形登记完：它记下自己脚下的地面有多高）
-  const crate = pushable({ id: 'crate21', x: CR0, w: CR_W, h: CR_H, min: CRMIN, max: CRMAX, snd: 'wood' });
+  const crate = pushable({ id: 'crate21', x: CR0, w: CR_W, h: CR_H, min: CRMIN, max: CRMAX, snd: 'wood', zf: CR_D / 2 });
   hint(() => crate.x < CRMAX - 0.5 && P.x > W2X - 2.2 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '墙太高了，跳不上去 —— 地上的拖痕通向一只旧木箱');
   hint(() => crate.x < CRMAX - 0.5 && P.x < W2X && Math.abs(P.x - crate.x) < 2.2 && P.y < 0.5 && P.mode !== 'push', '按住 <b>E</b> 把箱子推到墙脚');
   hint(() => crate.x >= CRMAX - 0.5 && P.x > W2X - 4 && P.x < W2X && P.y < 0.5 && P.mode !== 'push', '跳上箱子，再跳向墙头');
@@ -19544,7 +19572,7 @@ function sim(dt) {
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
-  stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
+  stepSidestep(dt); stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
   stepPits(); stepFade(dt); stepChapterCard(dt);
@@ -19553,7 +19581,8 @@ function sim(dt) {
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
-  hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x), yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
+  // z 里的 P.zo：从箱子前面绕过去时让出去的那一步（50-player.js 的 stepSidestep）；yawOff 里加的那一项让身子也跟着斜过去一点
+  hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x) + P.zo, yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1 + (Math.abs(P.vx) > 0.3 ? clamp(P.zv / P.vx, -0.6, 0.6) : 0)), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? clamp(mantleK(P.mantle), 0, 1) : 0, mant: P.mode === 'mantle' ? P.mantle : null, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
     tired: TIRED.k, tiredMix: TIRED.mix, rest: TIRED.rest, wipeT: TIRED.wipeT, lookT: TIRED.lookT, stbT: TIRED.stbT,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
@@ -19571,7 +19600,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角

@@ -15,7 +15,7 @@ const CH1 = (() => {
   solid({ id: 'beam', x1: 9.0, x2: 10.3, y1: 0, y2: 0.45, snd: 'metal' });
   solid({ id: 'slab', x1: 15, x2: 19, y1: 0, y2: 0.9, snd: 'concrete' });
   solid({ id: 'terrace', x1: 38, x2: 48, y1: 0, y2: 3.0, snd: 'concrete' });
-  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal' });
+  const cart = pushable({ id: 'cart', x: 25.4, w: 1.5, h: 0.95, min: 23.4, max: 37.15, snd: 'metal', zf: 0.61 });
   const crate = pushable({ id: 'crate1', x: 88.6, w: 1.15, h: 0.95, min: 86.3, max: 97.0, snd: 'wood' });      // 轮挡正好把它停在断电杆下面
   const door = gate({ id: 'door1', x: 104 });
   const LEVER = { x: 97.0, pulled: false, t: 0, reach: 0 };

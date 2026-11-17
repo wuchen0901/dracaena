@@ -42,7 +42,7 @@ function sim(dt) {
 
   let impact = 0; const n = Math.max(1, Math.ceil(dt * 120));            // 物理按不超过 1/120 秒一小步来走
   if (state !== 'title') for (let i = 0; i < n; i++) { stepPlayer(dt / n); impact = Math.max(impact, P.impact); pressed.delete('J'); pressed.delete('E'); }
-  stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
+  stepSidestep(dt); stepHolds(dt); stepGates(dt); stepBreath(); stepWaterFx(dt);
   for (const z of ZONES) if (P.x > z.vis[0] - 30 && P.x < z.vis[1] + 30) z.update(dt);
   stepBrush(dt);                                                         // 路边的植物：叶子被推开、弹回来，主角伸手去拨
   stepPits(); stepFade(dt); stepChapterCard(dt);
@@ -51,7 +51,8 @@ function sim(dt) {
   GUST.v = GUST.force ?? gustAt(T); stepPant(dt, impact);                   // 阵风（force：工具页里硬给一阵风）/ 喘气（声音和动作都用）
   poseCarry(dt);                                                         // 《长夜》：从怀里取灯泡、揣回去时两只手放在哪（43-carry.js）
   const onTerrain = P.grounded && P.y - groundY(P.x) < 0.02, o = P.grabObj;
-  hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x), yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
+  // z 里的 P.zo：从箱子前面绕过去时让出去的那一步（50-player.js 的 stepSidestep）；yawOff 里加的那一项让身子也跟着斜过去一点
+  hero.update(dt, { prep: P.prep > 0 ? 1 - P.prep / P.prepT : -1, x: P.x, y: P.y, z: pathZ(P.x) + P.zo, yawOff: -Math.atan((pathZ(P.x + 0.05) - pathZ(P.x - 0.05)) / 0.1 + (Math.abs(P.vx) > 0.3 ? clamp(P.zv / P.vx, -0.6, 0.6) : 0)), vx: P.vx, vy: P.vy, grounded: P.grounded, facing: P.facing, mode: P.mode, t: T, impact, hide: HX.hide,
     modeT: P.mode === 'mantle' ? clamp(mantleK(P.mantle), 0, 1) : 0, mant: P.mode === 'mantle' ? P.mantle : null, land: P.land, slope: onTerrain ? groundSlope(P.x) : 0, alert: HX.alert, energy: HX.energy, pose: HX.pose, br: BR, brush: HX.brush,
     tired: TIRED.k, tiredMix: TIRED.mix, rest: TIRED.rest, wipeT: TIRED.wipeT, lookT: TIRED.lookT, stbT: TIRED.stbT,
     hand: P.mode === 'mantle' ? { x: P.mantle.ex, y: P.mantle.top } : P.mode === 'push' ? { x: P.grab > 0 ? o.x1 : o.x2, y: o.y1 + (o.grip ?? 0.82) } : null,
@@ -69,7 +70,7 @@ function sim(dt) {
 }
 
 // 调试接口：在控制台里用 __g.ch(章) 跳章节、__g.tp(x) 传送、__g.step(秒) 手动推进、__g.hold(['R'], 秒) 模拟按住按键
-const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, cam, keys, pressed, paused: false, setSkin, begin, respawn,
+const DBG = window.__g = { P, POST, STORY, CAT, E, HX, AUD, BR, BREATH, SND, GUST, ZONES, LINKS, SOLIDS, PUSHABLES, GATES, USES, HOLDS, CARRY, CPS, CHAPTERS, LIGHTS, WATERS, SWIM, LAND, TURN, TIRED, MOCAP, ROPES, ROPE, enterRope, groundY, ceilY, floorY, pathZ, cam, keys, pressed, paused: false, setSkin, begin, respawn,
   closeUp(on = !closeUp) { closeUp = on; }, legs(n) { kidLegs = n; if (hero.kind === 'K') rebuildHero(); }, hero: () => hero, state: () => state, ctl: () => ctl, scene, camera, renderer, THREE,
   ch(n) { if (state === 'title') { $('title').classList.add('hide'); $('skins').classList.add('on'); } startChapter(n); renderer.render(scene, camera); },
   view(d, yo = 0.6, xo = 0) { camera.position.set(P.x + xo, P.y + yo + d * 0.05, d); camera.lookAt(P.x + xo, P.y + yo, 0); renderer.render(scene, camera); },   // 近看主角
