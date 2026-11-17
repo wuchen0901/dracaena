@@ -1,10 +1,11 @@
 // ============================================================
 //  第 37 章 · 草地（2026-11-17）
-//  铃那一章的门外面是白的：往外走，白光一点点退下去，原来是雾 —— 夜里的一片草地，月亮在左上方，地上铺着浅浅的一层白雾（齐膝）。
-//  草其实不多：只有零零星星几根长的伸出雾来（有的带穗），矮的都没在雾里，看不见。远远看过去，雾底下像是一整片草坪，
-//  其实就那么几根长草 —— 雾把空着的地方都“补”上了。矮草只在离镜头近、雾薄的地方隐约看得见一点影子。
-//  没有谜题，是一段走过去的路：一道半截泡在雾里的矮石墙要跳过去；洼地里雾深一些，长草也只露出个尖；一棵枯树；坡顶是路的尽头。
-//  雾（mdMist）：贴着地面一层层叠起来的半透明薄片，跟着地形起伏。每一片有多浓，按“视线在这一层里走了多远”算 ——
+//  铃那一章的门外面是白的：往外走，白光一点点退下去，原来是雾 —— 夜里的一片草地，月亮在左上方。
+//  草长成一簇一簇的（一块块草窝），草窝中间是光着的土地和石头。雾只伏在草窝上（浅浅的，齐膝），比草窝大一圈，把草根全淹在里面：
+//  伸出雾来的只有几根长的（有的带穗），矮的都没在雾里 —— 看上去像是雾底下一整窝草，其实就那么几根长草。没有草的地方没有雾。
+//  （2026-11-17 第一版是满地铺雾、草零零星星撒满一地，看上去像下了雪；改成现在这样）
+//  没有谜题，是一段走过去的路：一道矮石墙要跳过去；洼地里草窝多一些、雾稍深一点；一棵枯树；坡顶是路的尽头。
+//  雾（mdMist）：贴着地面一层层叠起来的半透明薄片，跟着地形起伏，用一张“草窝在哪”的图挖掉没草的地方。每一片有多浓，按“视线在这一层里走了多远”算 ——
 //    镜头底下往下看，视线很快穿过去，雾是薄的；往远处看，视线贴着雾面走好长一段，雾就浓得看不透。雾顶照着一张噪声图高高低低、慢慢飘，人走过去搅开一点。
 //    远处的布景板（树、山）也在雾里：透明的东西不写深度，只能靠先后次序，所以雾按深度切成三段，和布景板一段隔一段地画。
 //  草（mdBlade）：一根根细长的叶子、带穗的草茎（叶面总朝着镜头，从侧面看就是一笔弯线），跟着风摆，人走过去往两边让。
@@ -13,6 +14,36 @@
 const MD_A = hX(HLAST) + HLEN[HLAST] + 4;                 // 铃那一章的地面到这里为止：往右是白茫茫的一段路（69-zz-links.js 的 link）
 const XM = MD_A + 56;                                      // 这一章的原点
 const MD_N = HN(HLAST) + 1;                                // 第 37 章
+const MD_END = XM + 130;                                   // 坡顶：整条路的尽头
+const MD_WX = XM + 36;                                     // 矮石墙
+
+// ---- 草窝：草长在哪。一窝是一两个叠着的小椭圆 [x, z, 半宽, 半深]（草就长在这里面），一两米大小；常常三五窝挨在一起，中间隔着光的土地 ----
+// 近处（路前后）小而密，越往远处越大、越稀；洼地里多一些；坡顶上少，多是石头。雾比草窝大一圈（见 build 里的草窝图）。随机数单独一颗种子，不碰别处的
+const MD_PATCHES = withSeed(3701, () => {
+  const L = [], X = XM;
+  const add = (cx, cz, rx, rz) => {
+    const parts = [[cx, cz, rx, rz]];
+    for (let k = 0, n = Math.floor(rnd() * 2.2); k < n; k++) { const a = rr(0, 6.28); parts.push([cx + Math.cos(a) * rx * 0.8, cz + Math.sin(a) * rz * 0.8, rx * rr(0.45, 0.8), rz * rr(0.45, 0.8)]); }
+    L.push({ parts, x1: cx - rx * 2 - 3, x2: cx + rx * 2 + 3 });
+  };
+  const band = (z1, z2, step, r0, r1, x1 = MD_A + 10, x2 = MD_END + 40) => {
+    for (let x = x1 + rr(0, step); x < x2; x += step * rr(0.5, 1.5)) {
+      if (x > X + 104 && rnd() < 0.6) continue;                                  // 坡顶上草少
+      const rx = rr(r0, r1), cz = rr(z1, z2); add(x, cz, rx, rx * rr(0.6, 0.85));
+      while (rnd() < 0.45) add(x + rr(-2.6, 2.6) * rx, cz + rr(-1.6, 1.6) * rx, rx * rr(0.4, 0.8), rx * rr(0.3, 0.6));   // 旁边再挨着一两小窝
+    }
+  };
+  band(2, 8, 5.5, 0.5, 1.4); band(-2, 2, 9, 0.5, 1.2); band(-8, -2, 5, 0.6, 1.6); band(-16, -8, 6, 0.8, 2.0); band(-30, -16, 8, 1.2, 2.6); band(-60, -30, 11, 1.6, 3.4); band(-94, -60, 14, 2.2, 4.4);
+  band(-12, 6, 4.2, 0.6, 1.5, X + 56, X + 84);                                    // 洼地里草多一些
+  return L;
+});
+// (x, z) 在不在草窝里（margin：往外放宽几米）；mdIn 给出有多靠里（0 在边上，1 在正中）
+function mdIn(x, z, margin = 0) {
+  let d = 0;
+  for (const P of MD_PATCHES) if (x > P.x1 - margin && x < P.x2 + margin) for (const [cx, cz, rx, rz] of P.parts) { const u = (x - cx) / (rx + margin), w = (z - cz) / (rz + margin), r = u * u + w * w; if (r < 1) d = Math.max(d, 1 - Math.sqrt(r)); }
+  return d;
+}
+const mdOnGrass = x => mdIn(x, 0) > 0;                   // 脚下踩的是草还是土（脚步声）
 
 // ---- 一张能平铺的噪声图：r 是大的起伏，g 是小的，b 是中等的一团团（雾顶的高低、浓淡照它慢慢飘）----
 const MD_NOISE = (() => {
@@ -33,9 +64,9 @@ const MD_NOISE = (() => {
 
 // ---- 雾：贴着地面一层层叠起来的薄片 ----
 // 每一片在一根竖线上占 dh 那么厚；视线往下斜得越平，在这一片里走得越远：不透明度 = 1 - exp(-浓度 × dh / 视线往下斜的正弦)。
-// 每个顶点带 aM：x 这一层离地是雾顶的几倍，y 这里的雾顶有多高（米，洼地里高、坡顶上低）。雾顶再照噪声图在 0.78 到 1.28 倍之间起伏
+// 每个顶点带 aM：x 这一层离地是雾顶的几倍，y 这里的雾顶有多高（米，洼地里高、坡顶上低）。雾顶再照噪声图高高低低；草窝的图（透明度）管雾在哪、草窝边上雾顶矮下去
 const MD_TOPK = 1.35;                                      // 最上面一层离地是雾顶的几倍（雾顶最高到 1.28 倍，上面留一点空）
-const MD_MIST_U = { uN: { value: MD_NOISE }, uT: { value: 0 }, uD: { value: 0.62 }, uDh: { value: 0.1 }, uC: { value: new THREE.Color() }, uC2: { value: new THREE.Color() },
+const MD_MIST_U = { uN: { value: MD_NOISE }, uMask: { value: null }, uMR: { value: new THREE.Vector4() }, uT: { value: 0 }, uD: { value: 0.95 }, uDh: { value: 0.1 }, uC: { value: new THREE.Color() }, uC2: { value: new THREE.Color() },
   uFogC: { value: new THREE.Color() }, uFogD: { value: 0 }, uFogK: { value: 0.85 }, uMoon: { value: new THREE.Vector2(-0.3, -1).normalize() }, uX: { value: new THREE.Vector4() },
   uW: { value: [0, 1, 2].map(() => new THREE.Vector4(0, 0, 1, 0)) } };
 function mdMistMat() {
@@ -43,22 +74,25 @@ function mdMistMat() {
     vertexShader: `attribute vec2 aM; varying vec3 vW; varying vec2 vM;
       void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vM = aM; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `
-      uniform sampler2D uN; uniform float uT, uD, uDh, uFogD, uFogK; uniform vec3 uC, uC2, uFogC; uniform vec2 uMoon; uniform vec4 uX, uW[3];
+      uniform sampler2D uN, uMask; uniform float uT, uD, uDh, uFogD, uFogK; uniform vec3 uC, uC2, uFogC; uniform vec2 uMoon; uniform vec4 uX, uW[3], uMR;
       varying vec3 vW; varying vec2 vM;
       void main() {
-        vec3 V = vW - cameraPosition; float dist = length(V); vec3 v = V / dist;
         vec2 p = vW.xz;
+        float m = texture2D(uMask, vec2((p.x - uMR.x) * uMR.z, 1.0 - (p.y - uMR.y) * uMR.w)).a;   // 草窝的图（存在透明度里：虚化读回来的颜色在有一点点透明度的地方就是满的白）：没有草的地方没有雾
+        if (m < 0.02) discard;
+        vec3 V = vW - cameraPosition; float dist = length(V); vec3 v = V / dist;
         vec4 t1 = texture2D(uN, p * 0.021 + vec2(uT * 0.0021, uT * 0.0008));     // r：雾顶大的起伏 / b：一团一团浓的、淡的
-        float n2 = texture2D(uN, p * 0.083 + vec2(-uT * 0.0055, uT * 0.0021)).g, n3 = t1.b;
-        float n = 0.7 * smoothstep(0.3, 0.7, t1.r) + 0.3 * smoothstep(0.25, 0.75, n2);
-        float top = vM.y * (0.78 + 0.5 * n), r = vM.x * vM.y / top;              // r：这一层在这一点的雾里有多高（1 = 雾顶）
-        float dens = uD * (0.5 + 1.0 * smoothstep(0.3, 0.72, n3)) * (smoothstep(1.0, 0.45, r) * (1.25 - 0.5 * r) + 0.06 * smoothstep(1.3, 1.0, r));   // 雾顶软软的没有边，越往下越浓；雾顶上面还飘着薄薄一层
+        // nh：一两米的一团团（雾堆的顶鼓鼓囊囊、边是毛的）。前后方向拉长：斜着看过去，上下相邻的两层取的是前后错开一截的地方，花样要够长，不然叠出一道道横纹，像水面
+        float nh = smoothstep(0.2, 0.8, texture2D(uN, vec2(p.x * 0.16, p.y * 0.06) + vec2(-uT * 0.012, uT * 0.004)).g), n3 = t1.b;
+        float n = smoothstep(0.3, 0.7, t1.r);
+        float mk = clamp(smoothstep(0.0, 1.0, m) * (0.45 + 0.9 * nh), 0.0, 1.0), top = vM.y * (0.12 + 0.88 * mk) * (0.75 + 0.35 * n + 0.3 * nh), r = vM.x * vM.y / top;   // r：这一层在这一点的雾里有多高（1 = 雾顶）。草窝边上雾顶矮下去，像一个个低低的雾堆
+        float dens = uD * mk * (0.6 + 0.8 * smoothstep(0.3, 0.72, n3)) * (1.1 - 0.5 * r) * smoothstep(1.15, 0.5, r);   // 贴地的浓一些（草根埋得住），雾顶软软地淡掉；边上淡到没有，侧着看也没有硬边
         for (int i = 0; i < 3; i++) { vec2 d = p - uW[i].xy; dens *= 1.0 - uW[i].w * exp(-dot(d, d) / uW[i].z); }   // 人走过去搅开一点
-        float a = 1.0 - exp(-dens * uDh * vM.y / max(-v.y, 0.03));
-        a *= smoothstep(uX.x, uX.y, vW.x) * (1.0 - smoothstep(uX.z, uX.w, vW.x)) * smoothstep(-166.0, -120.0, vW.z);   // 两头、最远处淡掉
+        float a = 1.0 - exp(-dens * uDh * vM.y / max(-v.y, 0.085));             // 视线贴得再平也只算到这么长：远处的雾堆还是半透的一团，不变成地上一块白（像雪）
+        a *= smoothstep(uX.x, uX.y, vW.x) * (1.0 - smoothstep(uX.z, uX.w, vW.x));   // 两头淡掉
         if (a < 0.003) discard;
         float fw = pow(max(dot(normalize(v.xz), uMoon), 0.0), 8.0);              // 朝着月亮那一边的雾亮一些
-        vec3 col = uC * (0.78 + 0.36 * clamp(r, 0.0, 1.0)) + uC2 * fw;
+        vec3 col = uC * (0.55 + 0.65 * clamp(r, 0.0, 1.0)) + uC2 * fw;            // 雾堆上面被月光照着亮，底下暗一些：看得出是一团，不是地上一块亮斑
         col = mix(col, uFogC, (1.0 - exp(-uFogD * uFogD * dist * dist)) * uFogK);
         gl_FragColor = vec4(col, a);
         #include <colorspace_fragment>
@@ -168,13 +202,14 @@ function mdStoneWall(R, x, z1, z2, mat) {
 }
 
 const MEADOW = (() => {
-  const X = XM, A = MD_A, END = X + 130;
-  const C = chapter({ n: MD_N, x0: X - 8, start: X + 2, name: '草地', sub: '雾贴着地', ground: 'grass', grp: 'out', nocat: true });
-  // 地形：缓缓的起伏 —— 一道矮石墙（X + 36），一处洼地（X + 70 一带，雾在这里深一些），往右慢慢上到坡顶（X + 118 起），坡顶就是路的尽头
+  const X = XM, A = MD_A, END = MD_END;
+  const C = chapter({ n: MD_N, x0: X - 8, start: X + 2, name: '草地', sub: '雾贴着地', ground: 'dirt', grp: 'out', nocat: true });
+  // 地形：缓缓的起伏 —— 一道矮石墙（X + 36），一处洼地（X + 70 一带，草窝多一些，雾稍深一点），往右慢慢上到坡顶（X + 118 起），坡顶就是路的尽头
   terrain([X - 8, 0], [X + 6, 0.05], [X + 18, 0.32], [X + 30, 0.42], [X + 42, 0.3], [X + 52, 0], [X + 61, -0.62], [X + 70, -0.9], [X + 79, -0.68], [X + 90, -0.05],
     [X + 104, 0.62], [X + 118, 1.12], [X + 128, 1.2], [X + 146, 0.95], [X + 190, 0.4], [X + 240, 0.2]);
-  ground(X - 8, 0x1b2420); ground(X + 60, 0x18211d); ground(X + 120, 0x1d2520); ground(X + 240, 0x1b2420);
-  const WX = X + 36, WALL = solid({ id: 'mdWall', x1: WX - 0.3, x2: WX + 0.3, y1: groundY(WX) - 0.05, y2: groundY(WX) + 0.8, snd: 'concrete' });
+  ground(X - 8, 0x625b4f); ground(X + 60, 0x5a5448); ground(X + 120, 0x67625a); ground(X + 240, 0x625b4f);   // 光着的土地（夜里看着是暗暗的灰褐）
+  surface(X - 8, END + 60, x => mdOnGrass(x) ? 'grass' : 'dirt');                  // 脚步声：踩进草窝是草，出来是土
+  const WX = MD_WX, WALL = solid({ id: 'mdWall', x1: WX - 0.3, x2: WX + 0.3, y1: groundY(WX) - 0.05, y2: groundY(WX) + 0.8, snd: 'concrete' });
   solid({ x1: END, x2: END + 1, y1: -30, y2: 40, noclimb: true });          // 整条路的尽头（空气墙）：坡顶往前是一大片雾
   checkpoint(X + 2); checkpoint(WX + 3); checkpoint(X + 96);
   camKeys([X - 8, 16.5, 1.7, 1.0], [X + 30, 17, 1.65, 1.3], [X + 66, 18, 1.55, 1.4], [X + 100, 17.5, 1.6, 1.3], [X + 124, 19.5, 1.5, 2.6]);
@@ -185,10 +220,10 @@ const MEADOW = (() => {
     aWind: 0.3, aWhis: 0, aLeaf: 0.12, leafDry: 0.3, aBug: 0.9, aDrip: 0, aFlow: 0, aRoom: 0, roomF: 210, aHum: 0, aCity: 0, aFar: 0.45, rvOut: 1, rvHall: 0, rvCave: 0 };
   env(X - 8, NIGHT, true); env(END + 60, NIGHT);
   BIRDS[MD_N] = [['bird', 0]]; FAR[MD_N] = ['owl', 'twig', 'owl'];
-  // 雾顶有多高（米）：平常齐膝，洼地里深，坡顶上浅
-  const Hm = x => 0.42 + 0.42 * sstep(X + 50, X + 62, x) * sstep(X + 88, X + 77, x) - 0.08 * sstep(X + 104, X + 118, x);
-  const MX1 = A - 2, MX2 = END + 70;                                         // 雾铺到哪：从铃那一章的门外（白光里）一直到坡顶外面
-  const NIGHT_MIST = new THREE.Color(0x8a9ab0), FWD = new THREE.Color(0x1c2633), _c = new THREE.Color();
+  // 草窝正中雾顶有多高（米）：平常齐膝，洼地里稍深，坡顶上浅
+  const Hm = x => 0.48 + 0.16 * sstep(X + 50, X + 62, x) * sstep(X + 88, X + 77, x) - 0.08 * sstep(X + 104, X + 118, x);
+  const MX1 = A - 2, MX2 = END + 70, MZ1 = -104, MZ2 = 13;                  // 雾可能在哪：从铃那一章的门外（白光里）一直到坡顶外面，前后从树篱前面一点到镜头底下
+  const NIGHT_MIST = new THREE.Color(0x7e8ea4), FWD = new THREE.Color(0x1c2633), _c = new THREE.Color();
 
   let V = null;
   function* build(R) {
@@ -214,52 +249,75 @@ const MEADOW = (() => {
       for (let x = MX1; x < MX2; x += 0.6) xs.push(x);
       for (const [tx] of TERRAIN) if (tx > MX1 && tx < MX2) xs.push(tx);
       xs.push(MX2); xs.sort((p, q) => p - q);
+      // 草窝的图：每一块比草窝大一圈、往镜头这边再多出去一点（视线斜着往下看，草根前面那一截也要有雾挡着），边上虚掉
+      const PPM = 6, [mc, mg] = mkCanvas(Math.ceil((MX2 - MX1) * PPM), Math.ceil((MZ2 - MZ1) * PPM));
+      mg.setTransform(PPM, 0, 0, PPM, -MX1 * PPM, -MZ1 * PPM);
+      blurDraw(mg, 0.45 * PPM, g => {                                              // 每一窝画成一堆大大小小的圆团：边是毛的，不是一个光溜溜的椭圆
+        g.fillStyle = '#fff';
+        for (const P of MD_PATCHES) for (const [cx, cz, rx, rz] of P.parts) {
+          g.beginPath(); g.ellipse(cx, cz + 0.3, rx * 0.8 + 0.2, rz * 0.8 + 0.25, 0, 0, 6.2832); g.fill();
+          for (let k = 0, n = 5 + Math.round(rx * rz * 3); k < n; k++) { const a = rr(0, 6.28), d = Math.sqrt(rnd()); g.beginPath(); g.arc(cx + Math.cos(a) * d * (rx + 0.3), cz + 0.3 + Math.sin(a) * d * (rz + 0.4), rr(0.3, 0.7), 0, 6.2832); g.fill(); }
+        }
+      }, true);
+      const mt = canvasTex(mc); mt.colorSpace = THREE.NoColorSpace; mt.anisotropy = 8;
+      MD_MIST_U.uMask.value = mt; MD_MIST_U.uMR.value.set(MX1, MZ1, PPM / mc.width, PPM / mc.height);
       const mat = mdMistMat();
       MD_MIST_U.uDh.value = MD_TOPK / N; MD_MIST_U.uX.value.set(MX1, MX1 + 12, MX2 - 30, MX2);
-      v.mist = [mdMistSlab(R, mat, xs, Hm, -168, -90, N, -500), mdMistSlab(R, mat, xs, Hm, -90, -40, N, -300), mdMistSlab(R, mat, xs, Hm, -40, 13, N, -100)];
+      v.mist = [mdMistSlab(R, mat, xs, Hm, MZ1, -90, N, -500), mdMistSlab(R, mat, xs, Hm, -90, -40, N, -300), mdMistSlab(R, mat, xs, Hm, -40, MZ2, N, -100)];
     }
     yield;
-    // ---- 草：长的稀稀拉拉，一小片一小片；矮的藏在雾里 ----
+    // ---- 草：只长在草窝里。窝中间高、边上矮；长的伸出雾来，矮的（不到膝盖）都没在雾里 ----
     const GR0 = 0x18211a, GR1 = 0x5a6a5b, DRY0 = 0x24251a, DRY1 = 0x857f62, ST0 = 0x262d22, ST1 = 0x6e705a, HD0 = 0x8a8468, HD1 = 0xa9a184, SH0 = 0x141b15, SH1 = 0x34402f;
     const gmat = mdGrassMat(), K = LOW ? 0.6 : 1;
-    const tallD = z => (z > 1.2 ? 0.15 : z > -1.2 ? 0.09 : z > -12 ? 0.13 : z > -35 ? 0.07 : 0.035) * K;
-    const patch = (x, z) => 0.25 + 1.5 * sstep(0.3, 0.75, mdVN(x * 0.18, z * 0.25));
     const clear = (x, z) => Math.abs(x - WX) < 0.55 || (Math.abs(x - (X + 71)) < 0.6 && Math.abs(z + 15) < 0.6);   // 石墙里、树干上不长
     const side = () => (rnd() < 0.5 ? 0 : Math.PI) + rr(-0.6, 0.6);
-    for (let c0 = A + 4; c0 < END + 40; c0 += 40) {
-      const B = { p: [], c: [], b: [], i: [] }, c1 = Math.min(END + 40, c0 + 40);
-      for (const [z1, z2] of [[1.2, 9], [-1.2, 1.2], [-12, -1.2], [-35, -12], [-80, -35]]) {
-        const dm = tallD((z1 + z2) / 2), n = Math.round((c1 - c0) * (z2 - z1) * dm * 1.6);
-        for (let k = 0; k < n; k++) {
-          const x = rr(c0, c1), z = rr(z1, z2);
-          if (rnd() > patch(x, z) / 1.6 * (x < A + 16 ? sstep(A + 4, A + 16, x) : 1) || clear(x, z)) continue;
-          const y = groundY(x) - 0.02, ph = rr(0, 6.28);
-          if (rnd() < 0.22) {                                                          // 带穗的草茎：一两根
-            for (let j = 0, m = rnd() < 0.6 ? 1 : 2; j < m; j++) {
-              const L = rr(0.72, 1.12), ang = side(), xr = x + rr(-0.04, 0.04), zr = z + rr(-0.04, 0.04);
-              const tip = mdBlade(B, xr, y, zr, L, rr(0.008, 0.011), ang, rr(-0.06, 0.12), rr(0.05, 0.35), ST0, ST1, { k: 5, wp: 0.3, ph });
-              mdBlade(B, tip[0], tip[1], tip[2], rr(0.07, 0.13), rr(0.02, 0.028), ang, tip[3], rr(0, 0.15), HD0, HD1, { k: 3, prof: s => Math.sin(Math.PI * (0.08 + 0.84 * s)), s0: L, rx: xr, rz: zr, ph });
-            }
-          } else {                                                                     // 一根到四五根叶子从同一个地方长出来
-            const m = 1 + Math.floor(Math.pow(rnd(), 1.6) * 4.5), L0 = 0.42 + 0.62 * Math.pow(rnd(), 0.9), dry = rnd() < 0.3;
-            for (let j = 0; j < m; j++) mdBlade(B, x + rr(-0.03, 0.03), y, z + rr(-0.03, 0.03), L0 * rr(0.62, 1), rr(0.016, 0.03), side(), rr(0.02, 0.28), rr(0.1, 0.9),
-              dry ? DRY0 : GR0, dry ? DRY1 : GR1, { k: 5, ph: ph + j * 0.4 });
+    const chunks = new Map(), chunk = x => { const k = Math.floor((x - A) / 40); if (!chunks.has(k)) chunks.set(k, { p: [], c: [], b: [], i: [] }); return chunks.get(k); };
+    for (const P of MD_PATCHES) for (const [cx, cz, rx, rz] of P.parts) {
+      const tallD = (cz > -16 ? 2.2 : cz > -36 ? 1.3 : 0.8) * K, n = Math.max(2, Math.round(Math.PI * rx * rz * tallD)), B = chunk(cx);
+      for (let k = 0; k < n; k++) {                                               // 长草：一丛一到四五根叶子，或者一两根带穗的草茎
+        const a = rr(0, 6.28), rad = Math.sqrt(rnd()), x = cx + Math.cos(a) * rad * rx, z = cz + Math.sin(a) * rad * rz;
+        if (clear(x, z)) continue;
+        const y = groundY(x) - 0.02, ph = rr(0, 6.28), dk = mdIn(x, z), hk = 0.62 + 0.45 * Math.min(1, dk * 1.6);   // hk：窝边上的矮一些
+        if (rnd() < 0.2) {
+          for (let j = 0, m = rnd() < 0.6 ? 1 : 2; j < m; j++) {
+            const L = rr(0.72, 1.12) * hk, ang = side(), xr = x + rr(-0.04, 0.04), zr = z + rr(-0.04, 0.04);
+            const tip = mdBlade(B, xr, y, zr, L, rr(0.008, 0.011), ang, rr(-0.06, 0.12), rr(0.05, 0.35), ST0, ST1, { k: 5, wp: 0.3, ph });
+            mdBlade(B, tip[0], tip[1], tip[2], rr(0.07, 0.13), rr(0.02, 0.028), ang, tip[3], rr(0, 0.15), HD0, HD1, { k: 3, prof: s => Math.sin(Math.PI * (0.08 + 0.84 * s)), s0: L, rx: xr, rz: zr, ph });
           }
+        } else {
+          const m = 1 + Math.floor(Math.pow(rnd(), 1.6) * 4.5), L0 = (0.42 + 0.62 * Math.pow(rnd(), 0.9)) * hk, dry = rnd() < 0.3;
+          for (let j = 0; j < m; j++) mdBlade(B, x + rr(-0.03, 0.03), y, z + rr(-0.03, 0.03), L0 * rr(0.62, 1), rr(0.016, 0.03), side(), rr(0.02, 0.28), rr(0.1, 0.9),
+            dry ? DRY0 : GR0, dry ? DRY1 : GR1, { k: 5, ph: ph + j * 0.4 });
         }
       }
-      // 矮草：一丛丛不到膝盖高，都没在雾里（只在镜头跟前、雾薄的地方隐约看得见）
-      for (let k = 0, n = Math.round((c1 - c0) * 22 * 0.15 * K); k < n; k++) {
-        const x = rr(c0, c1), z = rr(-14, 8.5); if (clear(x, z)) continue;
-        const y = groundY(x) - 0.01, L0 = rr(0.1, 0.25), ph = rr(0, 6.28);
+      if (cz > -18) for (let k = 0, ns = Math.round(Math.PI * rx * rz * 3 * K); k < ns; k++) {   // 矮草：铺满草窝，都在雾底下（只有镜头跟前、雾薄的地方隐约看得见）
+        const a = rr(0, 6.28), rad = Math.sqrt(rnd()), x = cx + Math.cos(a) * rad * rx, z = cz + Math.sin(a) * rad * rz;
+        if (clear(x, z)) continue;
+        const y = groundY(x) - 0.01, L0 = rr(0.1, 0.24), ph = rr(0, 6.28);
         for (let j = 0, m = 3 + Math.floor(rnd() * 4); j < m; j++) mdBlade(B, x + rr(-0.05, 0.05), y, z + rr(-0.05, 0.05), L0 * rr(0.6, 1), rr(0.012, 0.02), rr(0, 6.28), rr(0.05, 0.4), rr(0.2, 0.8), SH0, SH1, { k: 3, ph });
       }
-      mdGrassMesh(R, B, gmat);
-      yield;
     }
+    for (const B of chunks.values()) { mdGrassMesh(R, B, gmat); yield; }
+    // ---- 草窝中间光着的土地：一块块深浅、干裂的印子、碎石子 ----
+    for (const [x1, x2] of [[A + 4, X + 60], [X + 60, END + 40]]) groundDecal(x1, x2, -16, 10, 20, g => {
+      blurDraw(g, 8, g => { for (let i = 0; i < (x2 - x1) * 1.6; i++) { const x = rr(x1, x2), z = rr(-16, 10), r = rr(0.4, 2.2); g.fillStyle = rnd() < 0.55 ? `rgba(28,24,18,${rr(0.08, 0.2).toFixed(2)})` : `rgba(150,142,124,${rr(0.06, 0.14).toFixed(2)})`; g.beginPath(); g.ellipse(x, z, r, r * rr(0.4, 0.8), rr(0, 3.14), 0, 6.2832); g.fill(); } });   // 一块块深浅（虚边）
+      g.lineWidth = 0.025; g.strokeStyle = 'rgba(20,16,12,0.35)';
+      for (let i = 0; i < (x2 - x1) * 0.8; i++) { let x = rr(x1, x2), z = rr(-16, 10); g.beginPath(); g.moveTo(x, z); for (let k = 0; k < 4; k++) { x += rr(-0.35, 0.35); z += rr(-0.25, 0.25); g.lineTo(x, z); } g.stroke(); }   // 干裂的细纹
+      for (let i = 0; i < (x2 - x1) * 14; i++) { const x = rr(x1, x2), z = rr(-16, 10), r = rr(0.015, 0.05); g.fillStyle = rnd() < 0.5 ? 'rgba(170,166,152,0.55)' : 'rgba(40,36,30,0.5)'; g.beginPath(); g.arc(x, z, r, 0, 6.2832); g.fill(); }   // 碎石子
+    }, { order: -2000, fadeL: 3, fadeR: 3 });
+    yield;
+    // ---- 石头：散在光着的地上（离草窝远一点，石头身上不挂雾）----
+    {
+      const pts = [];
+      for (let i = 0; i < (END + 40 - A) * 5 * K; i++) { const x = rr(A + 6, END + 40), z = rr(-14, 8.5); if (mdIn(x, z, 1.6) === 0 && !clear(x, z)) pts.push([x, z, rr(0.04, 0.13) * (rnd() < 0.1 ? 2 : 1)]); }
+      pebbles(R, pts, { cols: [0x8a877c, 0x77756c, 0x96938a, 0x6a6a62, 0x8a8272] });
+      for (let i = 0; i < 70; i++) { const x = rr(A + 8, END + 30), z = rr(-30, 7.5); if (mdIn(x, z, 2.4) > 0 || Math.abs(z) < 1.2 || clear(x, z)) continue; rock(R, x, z, rr(0.18, 0.62) * (x > X + 104 ? 1.3 : 1), { moss: 0.15, col: 0x6a6a64, sink: 0.4 }); }
+    }
+    yield;
     // ---- 矮石墙 ----
     { const m = lam(0xffffff, { vertexColors: true }); m.userData.own = true; mdStoneWall(R, WX, -62, 7.5, m); }
     yield;
-    // ---- 一棵枯树（洼地里）、两道旧栅栏、几块石头 ----
+    // ---- 一棵枯树（洼地里）、两道旧栅栏 ----
     {
       const T3 = { p: [], n: [] };
       deadTree(T3, X + 71, groundY(X + 71) - 0.2, -15, 6.4, { thick: 0.9, branch: 1.8 });
@@ -278,7 +336,6 @@ const MEADOW = (() => {
       }
       // 坡上一排木桩斜着往远处去，一根比一根没在雾里深
       for (let k = 0; k < 24; k++) { const t2 = k / 23, x = lerp(X + 98, X + 128, t2), z = lerp(-2.6, -75, t2); if (rnd() < 0.15) continue; post(x + rr(-0.2, 0.2), z, rr(1.0, 1.25)); }
-      for (const [x, z, s] of [[X + 12, -5.5, 0.5], [X + 48, -7, 0.6], [X + 84, -4.5, 0.45], [X + 110, -9, 0.7]]) rock(R, x, z, s, { moss: 0.25, col: 0x5c605c, sink: 0.45 });   // 几块石头，大半没在雾里
     }
     yield;
     V = v;
