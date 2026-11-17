@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>棱光</title>
+<style>
+html,body{margin:0;height:100%;background:#05070d;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- 规则和关卡：不碰页面，mini/tools/check.mjs 也直接拿这一段去跑求解器 -->
+<script id="core">
+// 地图字符
+//   .  空地        #  墙
+//   > v < ^  光源（白光，朝这个方向射）
+//   a b c d  能转的镜子，起始角度 0° 45° 90° 135°（a 横 ─，b ╲，c 竖 │，d ╱）
+//   A B C D  固定的镜子
+//   p q      能翻面的棱镜（p 往顺时针那边分，q 往逆时针那边分）
+//   0..6     晶体：0 白 1 红 2 绿 3 蓝 4 黄(红+绿) 5 青(绿+蓝) 6 品红(红+蓝)
+const LEVELS = [
+  { name: '一面镜子', tip: '点一下镜子，它会转 45°。让光照到晶体上。', map: [
+    '.......',
+    '.>...a.',
+    '.......',
+    '.....0.',
+    '.......',
+  ]},
+  { name: '转两次弯', tip: '光碰到镜子就拐弯，镜子两面都能反光。', map: [
+    '.......',
+    '.>...a.',
+    '.......',
+    '.0...c.',
+    '.......',
+  ]},
+  { name: '绕过墙', tip: '墙挡光。方底座的镜子是固定的，转不动。', map: [
+    '.......',
+    '.>.d..B',
+    '...#...',
+    '.......',
+    '.0.c..c',
+    '.......',
+  ]},
+  { name: '两束光', tip: '两束光交叉时互不影响。', map: [
+    '..v....',
+    '.......',
+    '>.a..a.',
+    '.......',
+    '0.c..0.',
+    '.......',
+  ]},
+  { name: '棱镜', tip: '白光穿过棱镜，分成红、绿、蓝三束。点棱镜可以翻面。', map: [
+    '.......',
+    '.>.q..1',
+    '.......',
+    '.....2.',
+    '...a..3',
+    '.......',
+  ]},
+  { name: '斜光', tip: '斜着走的光，碰到横着的镜子会弹起来。', map: [
+    '........',
+    '>.q.a.#.',
+    '.......2',
+    '........',
+    '.....d..',
+    '....1...',
+    '..a....3',
+  ]},
+  { name: '黄', tip: '红 + 绿 = 黄。晶体要的颜色，多一种都不行。', map: [
+    '........',
+    '>.q..a..',
+    '........',
+    '........',
+    '..b..4..',
+    '........',
+    '..a....3',
+  ]},
+  { name: '重新变白', tip: '红、绿、蓝合在一起，又是白光。', map: [
+    '..c..d..a',
+    '.........',
+    '.........',
+    '>.p..d..0',
+    '...#.....',
+  ]},
+];
+
+const DX = [1, 1, 0, -1, -1, -1, 0, 1], DY = [0, 1, 1, 1, 0, -1, -1, -1];
+const GEM_MASK = { '0': 7, '1': 1, '2': 2, '3': 4, '4': 3, '5': 6, '6': 5 };
+const SRC_DIR = { '>': 0, 'v': 2, '<': 4, '^': 6 };
+
+function parseLevel(def) {
+  const h = def.map.length, w = def.map[0].length;
+  const grid = [], pieces = [], gems = [], sources = [], init = [];
+  for (let r = 0; r < h; r++) {
+    const row = [];
+    for (let c = 0; c < w; c++) {
+      const ch = def.map[r][c];
+      let cell = { t: 'empty' };
+      if (ch === '#') cell = { t: 'wall' };
+      else if (ch in SRC_DIR) { cell = { t: 'src', k: SRC_DIR[ch] }; sources.push({ c, r, k: SRC_DIR[ch] }); }
+      else if ('abcd'.includes(ch)) { cell = { t: 'mir', p: pieces.length }; pieces.push({ c, r, kind: 'mir', n: 4 }); init.push('abcd'.indexOf(ch)); }
+      else if ('ABCD'.includes(ch)) cell = { t: 'mir', m: 'ABCD'.indexOf(ch) };
+      else if (ch === 'p' || ch === 'q') { cell = { t: 'prism', p: pieces.length }; pieces.push({ c, r, kind: 'prism', n: 2 }); init.push(ch === 'p' ? 0 : 1); }
+      else if (ch === 'P' || ch === 'Q') cell = { t: 'prism', m: ch === 'P' ? 0 : 1 };
+      else if (ch in GEM_MASK) { cell = { t: 'gem', i: gems.length }; gems.push({ c, r, mask: GEM_MASK[ch] }); }
+      row.push(cell);
+    }
+    grid.push(row);
+  }
+  return { w, h, grid, pieces, gems, sources, init, name: def.name, tip: def.tip };
+}
+
+// 顺时针转 90°（手机竖着拿时用）：方向 +2，镜子 +90°，棱镜不变
+const ROT_CH = { a: 'c', b: 'd', c: 'a', d: 'b', A: 'C', B: 'D', C: 'A', D: 'B', '>': 'v', 'v': '<', '<': '^', '^': '>' };
+function rotateDef(def) {
+  const h = def.map.length, w = def.map[0].length, map = [];
+  for (let r = 0; r < w; r++) {
+    let row = '';
+    for (let c = 0; c < h; c++) { const ch = def.map[h - 1 - c][r]; row += ROT_CH[ch] || ch; }
+    map.push(row);
+  }
+  return Object.assign({}, def, { map });
+}
+
+const stateOf = (cell, st) => (cell.p !== undefined ? st[cell.p] : cell.m);
+
+// 光走一遍：返回每一段光（格子坐标）、每颗晶体收到的颜色
+function trace(lv, st) {
+  const segs = [], gemIn = lv.gems.map(() => 0), touched = new Set(), seen = new Set();
+  const q = lv.sources.map(s => ({ c: s.c, r: s.r, k: s.k, mask: 7, d: 0 }));
+  while (q.length) {
+    const b = q.shift();
+    const key = b.c + ',' + b.r + ',' + b.k + ',' + b.mask;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const x0 = b.c + 0.5, y0 = b.r + 0.5, unit = b.k % 2 ? Math.SQRT2 : 1;
+    const push = (x, y, len, end) => segs.push({ x1: x0, y1: y0, x2: x, y2: y, mask: b.mask, d0: b.d, d1: b.d + len, end });
+    let c = b.c, r = b.r, n = 0;
+    for (;;) {
+      c += DX[b.k]; r += DY[b.k]; n++;
+      const out = c < 0 || r < 0 || c >= lv.w || r >= lv.h;
+      const cell = out ? null : lv.grid[r][c];
+      if (out || cell.t === 'wall' || cell.t === 'src') {
+        push(c + 0.5 - DX[b.k] * 0.5, r + 0.5 - DY[b.k] * 0.5, (n - 0.5) * unit, null);
+        break;
+      }
+      if (cell.t === 'gem') { push(c + 0.5, r + 0.5, n * unit, cell.i); gemIn[cell.i] |= b.mask; break; }
+      if (cell.t === 'mir') {
+        touched.add(c + ',' + r);
+        const nk = (((2 * stateOf(cell, st) - b.k) % 8) + 8) % 8;
+        if (nk === b.k) continue; // 和镜面平行，擦过去
+        push(c + 0.5, r + 0.5, n * unit, null);
+        q.push({ c, r, k: nk, mask: b.mask, d: b.d + n * unit });
+        break;
+      }
+      if (cell.t === 'prism') {
+        touched.add(c + ',' + r);
+        if (b.mask !== 7) continue; // 有颜色的光直接穿过去
+        const s = stateOf(cell, st) ? -1 : 1;
+        push(c + 0.5, r + 0.5, n * unit, null);
+        for (const [mk, dk] of [[1, 0], [2, s], [4, 2 * s]]) q.push({ c, r, k: (b.k + dk + 8) % 8, mask: mk, d: b.d + n * unit });
+        break;
+      }
+    }
+  }
+  const gemLit = lv.gems.map((gm, i) => gemIn[i] === gm.mask);
+  return { segs, gemIn, gemLit, touched, solved: gemLit.every(Boolean) };
+}
+
+// 把所有能转的东西的每种角度都试一遍：最少点几下、一共几种解法
+function solve(lv, from) {
+  const n = lv.pieces.length, st = from.slice();
+  let best = null, cost = Infinity, count = 0;
+  const total = lv.pieces.reduce((a, p) => a * p.n, 1);
+  for (let idx = 0; idx < total; idx++) {
+    let x = idx;
+    for (let i = 0; i < n; i++) { st[i] = x % lv.pieces[i].n; x = Math.floor(x / lv.pieces[i].n); }
+    if (!trace(lv, st).solved) continue;
+    count++;
+    let k = 0;
+    for (let i = 0; i < n; i++) k += (st[i] - from[i] + lv.pieces[i].n) % lv.pieces[i].n;
+    if (k < cost) { cost = k; best = st.slice(); }
+  }
+  return { best, cost, count };
+}
+</script>
+
+<script>
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","WenQuanYi Zen Hei",sans-serif';
+const COL = { 7: [255, 240, 214], 1: [255, 84, 104], 2: [80, 255, 160], 4: [90, 150, 255], 3: [255, 214, 80], 6: [80, 230, 255], 5: [230, 110, 255] };
+const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const SPEED = 15; // 光往前长的速度：格 / 秒
+
+// ---------- 存档（读不到就当没有） ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const progress = store.get('prism.v1', { cleared: [], at: 0 });
+if (!Array.isArray(progress.cleared)) progress.cleared = [];
+let muted = store.get('prism.mute', false);
+const maxUnlocked = () => Math.min(LEVELS.length - 1, Math.max(-1, ...progress.cleared) + 2);
+
+// ---------- 声音：全是现合成的 ----------
+let AC = null, master = null;
+function audio() {
+  if (!AC) {
+    try {
+      AC = new (window.AudioContext || window.webkitAudioContext)();
+      master = AC.createGain(); master.gain.value = 0.9;
+      const dl = AC.createDelay(1), fb = AC.createGain(), lp = AC.createBiquadFilter(), wet = AC.createGain();
+      dl.delayTime.value = 0.23; fb.gain.value = 0.33; lp.type = 'lowpass'; lp.frequency.value = 2600; wet.gain.value = 0.35;
+      master.connect(AC.destination); master.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(AC.destination);
+    } catch (e) { AC = null; }
+  }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(f, t, dur, gain, type = 'sine', f2) {
+  const a = audio(); if (!a || muted) return;
+  const o = a.createOscillator(), v = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(gain, t + 0.008); v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(v); v.connect(master); o.start(t); o.stop(t + dur + 0.05);
+}
+const NOTE = { 7: 1046.5, 1: 523.25, 2: 659.25, 4: 783.99, 3: 880, 6: 987.77, 5: 739.99 };
+const sfx = {
+  tick() { const a = audio(); if (!a) return; const t = a.currentTime; tone(2400, t, 0.045, 0.05, 'triangle', 1400); tone(700, t, 0.09, 0.05, 'sine', 420); },
+  chime(mask) { const a = audio(); if (!a) return; const t = a.currentTime, f = NOTE[mask] || 880;
+    tone(f, t, 2.4, 0.11); tone(f * 2.005, t, 1.4, 0.035); tone(f * 3.01, t, 0.8, 0.015); },
+  win() { const a = audio(); if (!a) return; const t = a.currentTime;
+    [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => { tone(f, t + i * 0.09, 2.2, 0.07); tone(f * 2, t + i * 0.09, 1, 0.02); }); },
+  undo() { const a = audio(); if (!a) return; const t = a.currentTime; tone(900, t, 0.08, 0.04, 'triangle', 500); },
+};
+
+// ---------- 游戏状态 ----------
+let li = 0, lv, st, vis, disp, hist, tr, prevKeys = new Set();
+let gemArrive = [], gemOn = [], gemGlow = [], won = false, winAt = 0, winPlayed = false, overlay = 0, hint = null;
+let parts = [], hover = null, firstShown = 0;
+
+function load(i) {
+  li = clamp(i, 0, LEVELS.length - 1);
+  const def = LEVELS[li], portrait = innerHeight > innerWidth * 1.15;
+  lv = parseLevel(portrait && def.map[0].length > def.map.length ? rotateDef(def) : def);
+  st = lv.init.slice(); vis = st.slice(); disp = st.slice(); hist = [];
+  gemOn = lv.gems.map(() => false); gemGlow = lv.gems.map(() => 0);
+  won = false; winAt = 0; winPlayed = false; overlay = 0; hint = null; parts = [];
+  prevKeys = new Set(); retrace(true);
+  progress.at = li; store.set('prism.v1', progress);
+  firstShown = performance.now() / 1000;
+  layout();
+}
+
+function retrace(first) {
+  const now = performance.now() / 1000;
+  const nt = trace(lv, st);
+  const keys = new Set(); let dmin = Infinity;
+  for (const s of nt.segs) {
+    s.key = [s.x1, s.y1, s.x2, s.y2, s.mask].join();
+    s.len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
+    s.isNew = first || !prevKeys.has(s.key);
+    keys.add(s.key);
+    if (s.isNew) dmin = Math.min(dmin, s.d0);
+  }
+  for (const s of nt.segs) s.t0 = s.isNew ? now + (first ? 0.35 : 0) + (s.d0 - dmin) / SPEED : -1;
+  gemArrive = lv.gems.map(() => Infinity);
+  for (const s of nt.segs) if (s.end !== null) {
+    const t = s.isNew ? s.t0 + s.len / SPEED : now;
+    gemArrive[s.end] = Math.min(gemArrive[s.end], t);
+  }
+  prevKeys = keys; tr = nt;
+  won = nt.solved;
+  if (won) {
+    winAt = Math.max(now, ...gemArrive.filter(isFinite)) + 0.55; winPlayed = false;
+    if (!progress.cleared.includes(li)) progress.cleared.push(li);
+    store.set('prism.v1', progress);
+  } else overlay = 0;
+}
+
+function rotate(p) {
+  if (won) return;
+  hist.push(st.slice());
+  st[p] = (st[p] + 1) % lv.pieces[p].n; vis[p]++;
+  hint = null; sfx.tick(); retrace(false);
+}
+function undo() {
+  if (!hist.length) return;
+  const prev = hist.pop();
+  for (let i = 0; i < st.length; i++) vis[i] -= (st[i] - prev[i] + lv.pieces[i].n) % lv.pieces[i].n;
+  st = prev; hint = null; sfx.undo(); retrace(false);
+}
+function restart() {
+  if (!hist.length) return;
+  hist.push(st.slice());
+  for (let i = 0; i < st.length; i++) vis[i] -= (st[i] - lv.init[i] + lv.pieces[i].n) % lv.pieces[i].n;
+  st = lv.init.slice(); hint = null; sfx.undo(); retrace(false);
+}
+function doHint() {
+  if (won) return;
+  const sol = solve(lv, st);
+  if (!sol.best) return;
+  const diffs = [];
+  for (let i = 0; i < st.length; i++) if (sol.best[i] !== st[i]) diffs.push(i);
+  if (!diffs.length) return;
+  const lit = diffs.find(i => tr.touched.has(lv.pieces[i].c + ',' + lv.pieces[i].r));
+  const p = lit !== undefined ? lit : diffs[0];
+  if (hint && hint.p === p) hint.level = 2;
+  else hint = { p, target: sol.best[p], level: 1, t: performance.now() / 1000 };
+  sfx.tick();
+}
+function nextLevel() {
+  if (li < LEVELS.length - 1) load(li + 1); else load(0);
+}
+
+// ---------- 版面 ----------
+let W = 0, H = 0, DPR = 1, S = 60, OX = 0, OY = 0, TOP = 90, BOT = 110, ui = [];
+let bgCanvas = null;
+function layout() {
+  W = innerWidth; H = innerHeight; DPR = Math.min(devicePixelRatio || 1, 2);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const small = W < 560;
+  TOP = small ? 84 : 104; BOT = small ? 118 : 128;
+  if (lv) {
+    S = Math.floor(Math.min(86, (W - 24) / lv.w, (H - TOP - BOT) / lv.h));
+    OX = Math.round((W - S * lv.w) / 2);
+    OY = Math.round(TOP + (H - TOP - BOT - S * lv.h) / 2);
+  }
+  // 背景只在改尺寸时画一次
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width = cv.width; bgCanvas.height = cv.height;
+  const b = bgCanvas.getContext('2d'); b.scale(DPR, DPR);
+  const gr = b.createRadialGradient(W * 0.55, H * 0.42, 40, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+  gr.addColorStop(0, '#141b33'); gr.addColorStop(0.55, '#0a0f1f'); gr.addColorStop(1, '#04060b');
+  b.fillStyle = gr; b.fillRect(0, 0, W, H);
+  let s = 11; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < (W * H) / 5000; i++) {
+    b.fillStyle = `rgba(180,200,255,${0.03 + rnd() * 0.07})`;
+    b.beginPath(); b.arc(rnd() * W, rnd() * H, rnd() * 1.2 + 0.2, 0, 7); b.fill();
+  }
+  const vg = b.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  b.fillStyle = vg; b.fillRect(0, 0, W, H);
+}
+addEventListener('resize', layout);
+
+const cx = c => OX + c * S, cy = r => OY + r * S;
+function rr(x, y, w, h, rad) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, rad); else g.rect(x, y, w, h); }
+function glow(x, y, rad, col, a) {
+  if (a <= 0.003 || rad <= 0) return;
+  g.save(); g.globalCompositeOperation = 'lighter';
+  const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+  gr.addColorStop(0, rgba(col, a)); gr.addColorStop(0.35, rgba(col, a * 0.35)); gr.addColorStop(1, rgba(col, 0));
+  g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill(); g.restore();
+}
+const hash = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+
+// ---------- 每一帧 ----------
+let last = performance.now() / 1000;
+function frame() {
+  const now = performance.now() / 1000, dt = Math.min(0.05, now - last); last = now;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.drawImage(bgCanvas, 0, 0, W, H);
+  ui = [];
+  const k = S / 72;
+
+  // 底下的格子
+  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
+    if (lv.grid[r][c].t === 'wall') continue;
+    rr(cx(c) + 3 * k, cy(r) + 3 * k, S - 6 * k, S - 6 * k, 10 * k);
+    g.fillStyle = 'rgba(140,160,220,0.026)'; g.fill();
+    g.strokeStyle = 'rgba(150,170,230,0.045)'; g.lineWidth = 1; g.stroke();
+  }
+
+  // 光
+  g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const s of tr.segs) {
+    const shown = s.t0 < 0 ? s.len : clamp((now - s.t0) * SPEED, 0, s.len);
+    if (shown <= 0) continue;
+    const f = shown / s.len;
+    const x1 = cx(s.x1), y1 = cy(s.y1), x2 = cx(s.x1 + (s.x2 - s.x1) * f), y2 = cy(s.y1 + (s.y2 - s.y1) * f);
+    const col = COL[s.mask];
+    for (const [w, a] of [[64, 0.022], [30, 0.05], [14, 0.12], [6.5, 0.33]]) {
+      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.strokeStyle = rgba(col, a); g.lineWidth = w * k; g.stroke();
+    }
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2);
+    g.strokeStyle = rgba(col.map(v => (v + 255) / 2), 0.95); g.lineWidth = Math.max(1.4, 2.2 * k); g.stroke();
+    // 光里飘的微尘
+    const L = s.len * S, n = Math.floor(L / 11), ux = (x2 - x1) / (shown * S || 1), uy = (y2 - y1) / (shown * S || 1);
+    for (let j = 0; j < n; j++) {
+      const h1 = hash(j, s.d0 * 7 + s.mask), h2 = hash(j + 9, s.x1 * 3 + s.y1);
+      const t = (h1 + now * (0.5 + h2 * 0.6) * 1.2 / s.len) % 1;
+      if (t > f) continue;
+      const off = (h2 - 0.5) * 20 * k + Math.sin(now * 1.7 + j) * 2 * k;
+      const px = x1 + ux * t * L - uy * off, py = y1 + uy * t * L + ux * off;
+      g.fillStyle = rgba(col, 0.12 + h1 * 0.45);
+      g.beginPath(); g.arc(px, py, (h2 * 1.4 + 0.4) * k, 0, 7); g.fill();
+    }
+    // 光头上一颗亮点
+    if (f < 1) glow(x2, y2, 22 * k, col, 0.8);
+  }
+  g.restore();
+
+  // 墙
+  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
+    if (lv.grid[r][c].t !== 'wall') continue;
+    const x = cx(c) + 2 * k, y = cy(r) + 2 * k, s2 = S - 4 * k;
+    rr(x, y + 5 * k, s2, s2, 12 * k); g.fillStyle = 'rgba(0,0,0,0.45)'; g.fill();
+    rr(x, y, s2, s2, 12 * k);
+    const wg = g.createLinearGradient(0, y, 0, y + s2); wg.addColorStop(0, '#2a3150'); wg.addColorStop(1, '#151a2e');
+    g.fillStyle = wg; g.fill(); g.strokeStyle = 'rgba(170,190,255,0.12)'; g.lineWidth = 1.2; g.stroke();
+  }
+
+  // 光源
+  for (const s of lv.sources) {
+    const x = cx(s.c + 0.5), y = cy(s.r + 0.5), pulse = 0.5 + 0.06 * Math.sin(now * 2.2);
+    glow(x, y, 110 * k, COL[7], pulse);
+    g.beginPath(); g.arc(x, y, 25 * k, 0, 7); g.fillStyle = '#1b2036'; g.fill();
+    g.strokeStyle = 'rgba(255,230,190,0.55)'; g.lineWidth = 2 * k; g.stroke();
+    const a0 = s.k * Math.PI / 4;
+    g.beginPath(); g.arc(x, y, 31 * k, a0 - 0.5, a0 + 0.5); g.strokeStyle = 'rgba(255,230,190,0.45)'; g.lineWidth = 1.6 * k; g.stroke();
+    const cg = g.createRadialGradient(x - 3 * k, y - 3 * k, 1, x, y, 15 * k);
+    cg.addColorStop(0, '#fffdf6'); cg.addColorStop(0.6, '#ffe3b0'); cg.addColorStop(1, 'rgba(255,200,140,0.2)');
+    g.fillStyle = cg; g.beginPath(); g.arc(x, y, 14 * k, 0, 7); g.fill();
+  }
+
+  // 镜子、棱镜
+  for (let i = 0; i < disp.length; i++) disp[i] += (vis[i] - disp[i]) * (1 - Math.exp(-dt * 16));
+  for (let r = 0; r < lv.h; r++) for (let c = 0; c < lv.w; c++) {
+    const cell = lv.grid[r][c];
+    if (cell.t !== 'mir' && cell.t !== 'prism') continue;
+    const x = cx(c + 0.5), y = cy(r + 0.5), rot = cell.p !== undefined;
+    const lit = tr.touched.has(c + ',' + r);
+    const isHover = rot && hover && hover.c === c && hover.r === r && !won;
+    if (rot) {
+      g.beginPath(); g.arc(x, y, 28 * k, 0, 7); g.fillStyle = 'rgba(22,28,52,0.92)'; g.fill();
+      g.strokeStyle = isHover ? 'rgba(200,225,255,0.75)' : 'rgba(150,175,235,0.28)'; g.lineWidth = (isHover ? 2 : 1.2) * k; g.stroke();
+      ui.push({ x, y, r: S * 0.5, fn: () => rotate(cell.p) });
+    } else {
+      rr(x - 26 * k, y - 26 * k, 52 * k, 52 * k, 8 * k); g.fillStyle = 'rgba(16,20,36,0.95)'; g.fill();
+      g.strokeStyle = 'rgba(120,135,180,0.25)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(150,165,210,0.35)';
+      for (const [bx, by] of [[-19, -19], [19, -19], [-19, 19], [19, 19]]) { g.beginPath(); g.arc(x + bx * k, y + by * k, 1.8 * k, 0, 7); g.fill(); }
+    }
+    if (cell.t === 'mir') {
+      const ang = (rot ? disp[cell.p] : cell.m) * Math.PI / 4;
+      g.save(); g.translate(x, y); g.rotate(ang);
+      const mg = g.createLinearGradient(0, -5 * k, 0, 5 * k);
+      if (rot) { mg.addColorStop(0, '#f4f8ff'); mg.addColorStop(0.45, '#9fb4dd'); mg.addColorStop(1, '#3c4a70'); }
+      else { mg.addColorStop(0, '#c9d2e8'); mg.addColorStop(0.45, '#7787aa'); mg.addColorStop(1, '#2c3550'); }
+      rr(-30 * k, -4 * k, 60 * k, 8 * k, 4 * k); g.fillStyle = mg; g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(-26 * k, -3.2 * k, 52 * k, 1.2 * k);
+      g.restore();
+    } else {
+      const flip = (rot ? disp[cell.p] : cell.m) * Math.PI;
+      g.save(); g.translate(x, y); g.rotate(flip);
+      g.beginPath();
+      for (let j = 0; j < 3; j++) { const a = -Math.PI / 2 + j * 2 * Math.PI / 3; g[j ? 'lineTo' : 'moveTo'](Math.cos(a) * 27 * k, 5 * k + Math.sin(a) * 27 * k); }
+      g.closePath();
+      const pg = g.createLinearGradient(-27 * k, -22 * k, 27 * k, 22 * k);
+      pg.addColorStop(0, 'rgba(255,120,150,0.55)'); pg.addColorStop(0.5, 'rgba(140,255,200,0.45)'); pg.addColorStop(1, 'rgba(120,170,255,0.6)');
+      g.fillStyle = pg; g.fill(); g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 1.6 * k; g.stroke();
+      g.restore();
+    }
+    if (lit) { glow(x, y, (cell.t === 'prism' ? 60 : 42) * k, COL[7], 0.55); glow(x, y, 10 * k, [255, 255, 255], 0.9); }
+    // 提示
+    if (hint && rot && hint.p === cell.p) {
+      const pu = 0.5 + 0.5 * Math.sin((now - hint.t) * 5);
+      g.beginPath(); g.arc(x, y, (33 + pu * 4) * k, 0, 7);
+      g.strokeStyle = `rgba(255,226,140,${0.45 + pu * 0.4})`; g.lineWidth = 2.2 * k; g.stroke();
+      if (hint.level === 2) {
+        g.save(); g.translate(x, y); g.setLineDash([4 * k, 4 * k]); g.strokeStyle = 'rgba(255,226,140,0.9)'; g.lineWidth = 1.5 * k;
+        if (cell.t === 'mir') { g.rotate(hint.target * Math.PI / 4); rr(-32 * k, -6 * k, 64 * k, 12 * k, 6 * k); g.stroke(); }
+        else { g.rotate(hint.target * Math.PI); g.beginPath();
+          for (let j = 0; j < 3; j++) { const a = -Math.PI / 2 + j * 2 * Math.PI / 3; g[j ? 'lineTo' : 'moveTo'](Math.cos(a) * 31 * k, 5 * k + Math.sin(a) * 31 * k); }
+          g.closePath(); g.stroke(); }
+        g.restore();
+      }
+    }
+  }
+
+  // 晶体
+  lv.gems.forEach((gm, i) => {
+    const on = tr.gemLit[i] && now >= gemArrive[i];
+    if (on && !gemOn[i]) { sfx.chime(gm.mask); burst(cx(gm.c + 0.5), cy(gm.r + 0.5), COL[gm.mask], 26); }
+    gemOn[i] = on;
+    gemGlow[i] += ((on ? 1 : 0) - gemGlow[i]) * (1 - Math.exp(-dt * 7));
+    drawGem(cx(gm.c + 0.5), cy(gm.r + 0.5), gm, gemGlow[i], tr.gemIn[i], now, k, i);
+  });
+
+  // 火花
+  g.save(); g.globalCompositeOperation = 'lighter';
+  parts = parts.filter(p => (p.life -= dt) > 0);
+  for (const p of parts) {
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy = p.vy * 0.96 + 20 * dt;
+    g.fillStyle = rgba(p.col, Math.min(1, p.life * 1.4));
+    g.beginPath(); g.arc(p.x, p.y, p.s * k, 0, 7); g.fill();
+  }
+  g.restore();
+
+  drawUI(now, k);
+
+  // 过关
+  if (won && now >= winAt) {
+    if (!winPlayed) { winPlayed = true; sfx.win(); }
+    overlay = Math.min(1, overlay + dt * 2.2);
+    drawWin(now);
+  }
+  requestAnimationFrame(frame);
+}
+
+function burst(x, y, col, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.283, v = 40 + Math.random() * 140;
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.8, col, s: 0.8 + Math.random() * 1.6 });
+  }
+}
+
+function drawGem(x, y, gm, on, got, now, k, i) {
+  const col = COL[gm.mask];
+  if (on > 0.01) {
+    glow(x, y, (100 + 8 * Math.sin(now * 2 + i)) * k, col, 0.45 * on);
+    g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+    for (let j = 0; j < 10; j++) {
+      const a = j / 10 * 6.283 + now * 0.25 + i, l = (34 + (j % 3) * 14) * k;
+      g.strokeStyle = rgba(col, 0.13 * on); g.lineWidth = 1.2 * k;
+      g.beginPath(); g.moveTo(x + Math.cos(a) * 24 * k, y + Math.sin(a) * 24 * k); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+    g.restore();
+  }
+  const sc = 1 + 0.06 * on * Math.sin(now * 3 + i);
+  const pts = [[0, -28], [16, -10], [12, 22], [0, 28], [-12, 22], [-16, -10]].map(([px, py]) => [x + px * k * sc, y + py * k * sc]);
+  const shape = () => { g.beginPath(); pts.forEach(([px, py], j) => g[j ? 'lineTo' : 'moveTo'](px, py)); g.closePath(); };
+  shape(); g.fillStyle = 'rgba(36,32,64,0.95)'; g.fill();
+  if (got && !on) { shape(); g.fillStyle = rgba(COL[got], 0.22); g.fill(); } // 收到的颜色不对：淡淡透一点
+  if (on > 0.01) {
+    shape();
+    const cg = g.createLinearGradient(x - 16 * k, y - 28 * k, x + 16 * k, y + 28 * k);
+    cg.addColorStop(0, `rgba(255,255,255,${on})`); cg.addColorStop(0.35, rgba(col, on)); cg.addColorStop(1, rgba(col.map(v => v * 0.45), on));
+    g.fillStyle = cg; g.fill();
+  }
+  shape();
+  g.strokeStyle = on > 0.5 ? 'rgba(255,255,255,0.85)' : rgba(col, 0.6);
+  g.lineWidth = 1.4 * k; if (on < 0.5) g.setLineDash([4 * k, 4 * k]); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = on > 0.5 ? 'rgba(255,255,255,0.45)' : rgba(col, 0.25); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); g.lineTo(pts[3][0], pts[3][1]);
+  g.moveTo(pts[5][0], pts[5][1]); g.lineTo(x, y - 2 * k); g.lineTo(pts[1][0], pts[1][1]); g.stroke();
+  if (on > 0.01) glow(x - 4 * k, y - 10 * k, 9 * k, [255, 255, 255], 0.9 * on);
+}
+
+function iconBtn(x, y, draw, fn, active) {
+  g.beginPath(); g.arc(x, y, 21, 0, 7); g.fillStyle = active ? 'rgba(255,226,140,0.14)' : 'rgba(150,170,230,0.08)'; g.fill();
+  g.strokeStyle = active ? 'rgba(255,226,140,0.55)' : 'rgba(200,215,255,0.28)'; g.lineWidth = 1.2; g.stroke();
+  g.save(); g.strokeStyle = 'rgba(225,232,255,0.85)'; g.fillStyle = 'rgba(225,232,255,0.85)'; g.lineWidth = 2; g.lineCap = 'round'; g.lineJoin = 'round';
+  draw(x, y); g.restore();
+  ui.push({ x, y, r: 24, fn });
+}
+
+function drawUI(now, k) {
+  const small = W < 560, L = Math.max(16, Math.min(OX, W / 2 - 300)), R = W - L;
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgba(200,215,255,0.5)'; g.font = `${small ? 13 : 15}px ${FONT}`;
+  g.fillText(`第 ${li + 1} 关`, L, small ? 34 : 44);
+  g.fillStyle = 'rgba(240,244,255,0.92)'; g.font = `${small ? 22 : 28}px ${FONT}`;
+  g.fillText(lv.name, L, small ? 62 : 78);
+
+  const by = small ? 46 : 56;
+  iconBtn(R - 21, by, (x, y) => {
+    g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 8, y - 3); g.lineTo(x - 4, y - 3); g.lineTo(x + 1, y - 8); g.lineTo(x + 1, y + 8); g.lineTo(x - 4, y + 3); g.lineTo(x - 8, y + 3); g.closePath(); g.stroke();
+    if (muted) { g.beginPath(); g.moveTo(x + 5, y - 4); g.lineTo(x + 11, y + 4); g.moveTo(x + 11, y - 4); g.lineTo(x + 5, y + 4); g.stroke(); }
+    else { g.beginPath(); g.arc(x + 2, y, 5, -0.9, 0.9); g.stroke(); g.beginPath(); g.arc(x + 2, y, 9, -0.9, 0.9); g.stroke(); }
+  }, () => { muted = !muted; store.set('prism.mute', muted); if (!muted) sfx.tick(); });
+  iconBtn(R - 71, by, (x, y) => { g.beginPath(); g.arc(x, y, 8, -1.2, 4.3); g.stroke();
+    g.beginPath(); g.moveTo(x + 2, y - 11); g.lineTo(x + 4, y - 7); g.lineTo(x - 0.5, y - 5); g.stroke(); }, restart);
+  iconBtn(R - 121, by, (x, y) => { g.beginPath(); g.arc(x + 1, y + 1, 8, Math.PI * 1.1, Math.PI * 2.4); g.stroke();
+    g.beginPath(); g.moveTo(x - 9, y - 6); g.lineTo(x - 7, y + 1); g.lineTo(x - 1, y - 2); g.stroke(); }, undo);
+  iconBtn(R - 171, by, (x, y) => { g.font = `bold 17px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', x, y + 1); }, doHint, !!hint);
+
+  // 下面：提示文字、点亮了几颗、关卡
+  const bTop = OY + lv.h * S;
+  const lit = tr.gemLit.filter((v, i) => v && gemOn[i]).length;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const tipA = Math.min(1, (now - firstShown) * 1.5) * (li < 5 || hist.length < 3 ? 0.72 : 0.4) * (1 - overlay);
+  g.fillStyle = `rgba(210,222,255,${tipA})`; g.font = `${small ? 13 : 15}px ${FONT}`;
+  wrapText(lv.tip, W / 2, bTop + 30, W - 40, small ? 18 : 20);
+
+  const gy = H - (small ? 62 : 70), n = lv.gems.length, gx0 = W / 2 - (n - 1) * 14 - 34;
+  lv.gems.forEach((gm, i) => {
+    const x = gx0 + i * 28, col = COL[gm.mask], on = gemGlow[i];
+    if (on > 0.05) glow(x, gy, 16, col, 0.5 * on);
+    g.beginPath(); g.moveTo(x, gy - 8); g.lineTo(x + 6, gy); g.lineTo(x, gy + 8); g.lineTo(x - 6, gy); g.closePath();
+    g.fillStyle = on > 0.5 ? rgba(col, 1) : 'rgba(60,55,95,0.9)'; g.fill();
+    if (on <= 0.5) { g.strokeStyle = rgba(col, 0.5); g.lineWidth = 1; g.stroke(); }
+  });
+  g.textAlign = 'left'; g.fillStyle = 'rgba(210,222,255,0.6)'; g.font = `14px ${FONT}`;
+  g.fillText(`${lit} / ${n}`, gx0 + n * 28 - 4, gy + 1);
+
+  const dy = H - (small ? 28 : 32), mx = maxUnlocked(), dx0 = W / 2 - (LEVELS.length - 1) * 13;
+  for (let i = 0; i < LEVELS.length; i++) {
+    const x = dx0 + i * 26, open = i <= mx, done = progress.cleared.includes(i), cur = i === li;
+    g.beginPath(); g.arc(x, dy, cur ? 6 : 4.2, 0, 7);
+    g.fillStyle = cur ? 'rgba(255,240,214,0.95)' : done ? 'rgba(200,215,255,0.65)' : open ? 'rgba(200,215,255,0.22)' : 'rgba(200,215,255,0.07)';
+    g.fill();
+    if (cur) glow(x, dy, 16, COL[7], 0.4);
+    if (open && !cur) ui.push({ x, y: dy, r: 13, fn: () => load(i) });
+  }
+}
+
+function wrapText(text, x, y, maxW, lh) {
+  const lines = []; let line = '';
+  for (const ch of text) { if (g.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch; }
+  lines.push(line);
+  lines.forEach((l, i) => g.fillText(l, x, y + i * lh));
+}
+
+function drawWin(now) {
+  const a = overlay, last = li === LEVELS.length - 1, small = W < 560;
+  // 盖住下面的提示、进度
+  const top = OY + lv.h * S + 6;
+  const fade = g.createLinearGradient(0, top, 0, top + 30);
+  fade.addColorStop(0, 'rgba(6,9,18,0)'); fade.addColorStop(1, `rgba(6,9,18,${0.96 * a})`);
+  g.fillStyle = fade; g.fillRect(0, top, W, H - top);
+  const y = Math.min(H - 62, top + 40);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = `rgba(255,246,228,${a})`; g.font = `${small ? 20 : 24}px ${FONT}`;
+  const bw = 150, bh = 42, gap = 18, tw = g.measureText(last ? '全部点亮了' : '点亮了').width;
+  const x0 = W / 2 - (tw + gap + bw) / 2;
+  g.textAlign = 'left';
+  g.fillText(last ? '全部点亮了' : '点亮了', x0, y + 1);
+  g.textAlign = 'center';
+  const bx = x0 + tw + gap, byy = y - bh / 2;
+  rr(bx, byy, bw, bh, 23); g.fillStyle = `rgba(255,240,214,${0.12 * a})`; g.fill();
+  g.strokeStyle = `rgba(255,240,214,${0.55 * a})`; g.lineWidth = 1.3; g.stroke();
+  g.fillStyle = `rgba(255,246,228,${0.95 * a})`; g.font = `17px ${FONT}`;
+  g.fillText(last ? '从头再玩' : '下一关  →', bx + bw / 2, byy + bh / 2 + 1);
+  ui = [{ x: W / 2, y: H / 2, r: Math.max(W, H), fn: nextLevel }];
+}
+
+// ---------- 输入 ----------
+function pick(x, y) {
+  for (let i = ui.length - 1; i >= 0; i--) { const u = ui[i]; if (Math.hypot(x - u.x, y - u.y) <= u.r) return u; }
+  return null;
+}
+cv.addEventListener('pointerdown', e => {
+  audio();
+  if (won && performance.now() / 1000 < winAt) return; // 光还在走
+  const u = pick(e.clientX, e.clientY);
+  if (u) u.fn();
+});
+cv.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  const c = Math.floor((e.clientX - OX) / S), r = Math.floor((e.clientY - OY) / S);
+  hover = { c, r };
+  cv.style.cursor = pick(e.clientX, e.clientY) ? 'pointer' : 'default';
+});
+addEventListener('keydown', e => {
+  audio();
+  const key = e.key.toLowerCase();
+  if (won) { if (performance.now() / 1000 >= winAt && (key === 'enter' || key === ' ' || key === 'n')) nextLevel(); else if (key === 'z') undo(); return; }
+  if (key === 'z' || key === 'backspace') undo();
+  else if (key === 'r') restart();
+  else if (key === 'h' || key === '?') doHint();
+  else if (key === 'm') { muted = !muted; store.set('prism.mute', muted); }
+  else if (key === 'arrowright' && li < maxUnlocked()) load(li + 1);
+  else if (key === 'arrowleft' && li > 0) load(li - 1);
+});
+
+const qs = new URLSearchParams(location.search);
+const startAt = qs.has('level') ? +qs.get('level') - 1 : clamp(+progress.at || 0, 0, maxUnlocked());
+load(startAt);
+requestAnimationFrame(frame);
+// 调试用
+window.__prism = { trace, solve, parseLevel, LEVELS, get lv() { return lv; }, get st() { return st; }, load, rotate, ui: () => ui };
+</script>
+</body>
+</html>
