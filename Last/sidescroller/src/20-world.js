@@ -81,10 +81,15 @@ function groundColor(x, out) {
 // ---- 登记表 ----
 const SOLIDS = [], PUSHABLES = [], GATES = [], USES = [], PITS = [], CPS = [], ZONES = [], HINTS = [], CAMKEYS = [];
 // 实心方块（从 y1 到 y2）。玩家会被侧面挡住，可以站在顶上。plat: 悬空也能站（漂在水上的木梁）
-function solid(o) { SOLIDS.push(o); return o; }
+// thru: 箱子、推车这类摆在路上的东西 —— 平时不挡路：人在地上走着碰到它，就从它前面（离镜头近的那一侧）绕过去，不用跳（2026-11-17）。
+//   跳起来朝它撞过去照旧是实心的（扒得住就爬上去），从前面跳起来也能落到它顶上。只在它放在地面上（不是搁在台子、架子上）的时候才绕得过去。
+//   zf：它的前脸离路中间有多远（米，不写就是 0.55，一只普通的木箱），人绕过去时让到这前面一点。pushable() 推得动的东西都默认 thru
+function solid(o) { SOLIDS.push(o); if (o.thru) THRU.push(o); return o; }
+const THRU = [];                                     // 登记过 thru 的东西；pass：人这会儿正从它前面走过去（这时它不挡人）
+const thruOnGround = s => Math.abs(s.y1 - groundY((s.x1 + s.x2) / 2)) < 0.08;
 function syncBox(o) { o.x1 = o.x - o.w / 2; o.x2 = o.x + o.w / 2; }
 // 可以按住 E 推拉的东西：{ id, x, w, h, min, max }。只能放在平地上；lo() / hi() 可以给出会变的活动范围
-function pushable(o) { o.v = 0; o.x0 = o.x; o.y1 ??= groundY(o.x); o.y2 = o.y1 + o.h; syncBox(o); SOLIDS.push(o); PUSHABLES.push(o); return o; }
+function pushable(o) { o.v = 0; o.x0 = o.x; o.y1 ??= groundY(o.x); o.y2 = o.y1 + o.h; o.thru ??= true; syncBox(o); solid(o); PUSHABLES.push(o); return o; }
 function placeBox(o, x) { o.x = x; o.v = 0; syncBox(o); }
 // 向上升起的闸门：want = 1 打开，0 关上
 function gate(o) {
@@ -131,12 +136,12 @@ function defZone(z) { z.root = null; z.gen = null; z.built = false; ZONES.push(z
 
 // ---- 玩家状态 ----
 const P = { x: 2, y: 0, vx: 0, vy: 0, grounded: true, facing: 1, hw: 0.19, hh: 1.1, H: 1.24, coyote: 0, jumpBuf: 0,
-  mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1 };
+  mode: 'normal', modeT: 0, grab: 0, grabObj: null, impact: 0, cp: 0, mantle: null, moved: false, jumped: false, pushed: false, used: false, speedK: 1, zo: 0, zv: 0 };
 // 每一帧由各章节填写、交给主角动画的“表演指令”：hide 捂灯，alert 被灯照到，energy 灯还剩多少电，pose 额外姿势，brush 拨开路边的植物（48-brush.js）
 const HX = { hide: 0, alert: 0, energy: 1, pose: null, brush: null };
 
 function sideHit(nx, y) {      // 位置 (nx, y) 是否撞进某个方块的侧面
-  for (const s of SOLIDS) if (!s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
+  for (const s of SOLIDS) if (!s.off && !s.pass && nx + P.hw > s.x1 && nx - P.hw < s.x2 && y + 0.03 < s.y2 && y + P.hh > s.y1 + 0.03) return s;
   return null;
 }
 function floorY(x, y) {        // 脚下的支撑面高度（地形或方块顶面）

@@ -58,7 +58,7 @@ const POST = { on: new URLSearchParams(location.search).get('post') !== '0', blu
     renderer.getDrawingBufferSize(sz);
     if (RT.width !== sz.x || RT.height !== sz.y) RT.setSize(sz.x, sz.y);
     renderer.setRenderTarget(RT); _render(s, c); renderer.setRenderTarget(null);
-    camera.getWorldDirection(_d); _h.set(P.x, P.y + 0.6, pathZ(P.x)).sub(camera.position);
+    camera.getWorldDirection(_d); _h.set(P.x, P.y + 0.6, pathZ(P.x) + (P.zo ?? 0)).sub(camera.position);
     U.focus.value = Math.max(2, _h.dot(_d)); U.cn.value = camera.near; U.cf.value = camera.far;
     U.res.value.copy(sz); U.blurPx.value = 2.4 * sz.y / 1080 * POST.blur; U.gradeK.value = POST.grade; U.grainK.value = POST.grain;
     U.grainCell.value = Math.max(1, Math.round(sz.y / 900)); U.seed.value = (seed = (seed + 37.17) % 997);

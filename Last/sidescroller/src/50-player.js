@@ -135,6 +135,7 @@ function stepTired(dt, d) {
 function stepPlayer(dt) {
   const d = ctl ? (keys.has('R') ? 1 : 0) - (keys.has('L') ? 1 : 0) : autoDir;      // autoDir：过场时自动往前走
   P.impact = 0;
+  for (const s of THRU) if (s.pass && !(P.x + P.hw > s.x1 && P.x - P.hw < s.x2)) s.pass = false;   // 从箱子前面走过去了：它又挡人了
   stepTired(dt, d);
   if (ctl && pressed.has('J')) P.jumpBuf = 0.13;
   P.jumpBuf -= dt; P.coyote -= dt;
@@ -210,7 +211,10 @@ function stepPlayer(dt) {
   if (P.prep > 0 && (P.prep -= dt) <= 0) takeOff();
 
   // 水平移动，被方块侧面挡住
-  let nx = P.x + P.vx * dt; const hit = sideHit(nx, P.y);
+  let nx = P.x + P.vx * dt;
+  // 箱子、推车（thru）：在地上走着碰到它，就从它前面绕过去（画面上让一步，见下面的 stepSidestep），不挡人；跳起来撞上去照旧挡（扒得住就爬上去）
+  if (P.grounded) for (const s of THRU) if (!s.pass && !s.off && nx + P.hw > s.x1 && nx - P.hw < s.x2 && Math.abs(P.y - s.y1) < 0.12 && P.y + 0.03 < s.y2 && thruOnGround(s)) s.pass = true;
+  const hit = sideHit(nx, P.y);
   if (hit) {
     const side = P.x < (hit.x1 + hit.x2) / 2 ? 1 : -1;   // 方块在哪一边：看人在它中线的哪一侧（慢慢走下台阶边时身子还压着台阶的侧面，按速度判断会被推到台阶另一头去）
     nx = side > 0 ? hit.x1 - P.hw - 1e-3 : hit.x2 + P.hw + 1e-3;
@@ -253,6 +257,24 @@ function stepPlayer(dt) {
   for (let i = CPS.length - 1; i > P.cp; i--) if (P.grounded && P.x >= CPS[i].x) { P.cp = i; break; }
 }
 
+// ---- 从箱子、推车前面绕过去：人往镜头这边让一步（只是画面，玩法还在 z = 0 上）----
+// P.zo：让出去多远（米，往镜头那边是 +），P.zv：让的速度（转身朝那边斜着走一点用）。
+// 走近一只挡在前面的箱子，离它还有 lead 米就开始往外让，走到它跟前正好让到它前脸外面 gap 米；走过去了再慢慢回到路上。
+// 按着 E 走过去（要去推它）、推着拉着、攀爬、站到它顶上的时候都不让
+const SIDESTEP = { lead: 0.75, gap: 0.27, zf: 0.55, k: 8, back: 5 };
+function stepSidestep(dt) {
+  let want = 0;
+  if (P.mode === 'normal') for (const s of THRU) {
+    if (s.off || P.y > s.y2 - 0.05) continue;
+    const out = (s.zf ?? SIDESTEP.zf) + SIDESTEP.gap;
+    if (s.pass) { want = Math.max(want, out); continue; }
+    if (!P.grounded || keys.has('E') || Math.abs(P.y - s.y1) > 0.12 || !thruOnGround(s)) continue;
+    const g = P.vx > 0.2 ? s.x1 - (P.x + P.hw) : P.vx < -0.2 ? (P.x - P.hw) - s.x2 : -1;   // 朝着它走、离它还有多远
+    if (g >= -0.02 && g < SIDESTEP.lead) want = Math.max(want, out * sstep(SIDESTEP.lead, 0, g));
+  }
+  const z0 = P.zo ?? 0; P.zo = damp(z0, want, want > z0 ? SIDESTEP.k : SIDESTEP.back, dt); P.zv = (P.zo - z0) / Math.max(dt, 1e-4);
+}
+
 // ---- 闸门：匀速开关；有人站在门洞里就先不落下来 ----
 function stepGates(dt) {
   for (const g of GATES) {
@@ -274,7 +296,8 @@ function stepFade(dt) {
 function placePlayer(x, y) {
   if (P.holdObj) P.holdObj.on = false;
   Object.assign(P, { x, vx: 0, vy: 0, prep: 0, grounded: true, mode: 'normal', facing: 1, grabObj: null, holdObj: null, mantle: null, speedK: 1, water: null, air: SWIM.breath, land: null });
-  P.y = y ?? floorY(x, 60); P.gy = P.y; resetTired();
+  for (const s of THRU) s.pass = false;
+  P.y = y ?? floorY(x, 60); P.gy = P.y; P.zo = 0; P.zv = 0; resetTired();
 }
 function respawn() {
   fadeOut(() => {
