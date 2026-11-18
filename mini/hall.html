@@ -133,7 +133,7 @@ const LIT = {
   vase: '#55606a', flower: '#8e4a40', twig: '#4a3828',
   coat: '#5b6c62', coatLo: '#43514a', hat: '#3d2c22', scarf: '#b08a4a',
   sky: '#8296c0', hill: '#6d7a5a', sea: '#6f8290', shade: '#7b6236',
-  hood: '#dfd5bf', hood2: '#bcb198', hoodIn: '#8f866f', cloth: '#4b5263', cloth2: '#3a404f', boot: '#3a2a20', sole: '#21170f', skin: '#d3af96', skin2: '#b8957d', hair: '#261d17',
+  cloth: '#4b5263',
 };
 const DARK = {
   ink: '#03040a', hi: '#b4c0e4', moon: '#cdd9f6', mass: '#090b11',
@@ -148,10 +148,8 @@ const DARK = {
   vase: '#232b3f', flower: '#2b3550', twig: '#151a27',
   coat: '#232b3f', coatLo: '#171d2b', hat: '#121624', scarf: '#2f3a55',
   sky: '#2a3657', hill: '#1a2233', sea: '#1a2233', shade: '#33313a',
-  hood: '#7783a1', hood2: '#586382', hoodIn: '#3a4360', cloth: '#272e41', cloth2: '#1e2434', boot: '#0d1017', sole: '#06080c', skin: '#68738f', skin2: '#525c76', hair: '#090b12',
+  cloth: '#272e41',
 };
-// 孩子站在窗下的月光里：比暗处亮一些，还是冷的
-const MOONKID = { hood: '#a3aecb', hood2: '#7d88a6', hoodIn: '#56607e', cloth: '#323a51', cloth2: '#262d40', boot: '#141823', sole: '#0a0c12', skin: '#8f9ab5', skin2: '#717c98', hair: '#10131c' };
 const hexRGB = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
 const rgba = (h, a) => { const [r, gg, bb] = hexRGB(h); return `rgba(${r},${gg},${bb},${a})`; };
 const hexMix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
@@ -355,7 +353,7 @@ const WIN = { x: 160, y: 170, w: 180, h: 390 };
 const CLOCK = { x: 480, base: 712 };
 const TABLE = { x0: 630, x1: 790, top: 616, base: 714, dx: 668, dy: 630, dw: 84, dh: 28 };   // dx…：抽屉的前脸
 const WINCH = { x: 850, y: 640, r: 16 };
-const LAMP = { x: 1000, top: 110, lowY: 600, highY: 225 };              // top：绳子从这儿垂下来；lowY、highY：灯泡的高度
+const LAMP = { x: 1000, top: 110, lowY: 620, highY: 225 };              // top：绳子从这儿垂下来；lowY、highY：灯泡的高度
 const STAND = { x: 1180, base: 730 };
 const DOOR = { x: 1387, y: 498, w: 96, h: 202, fan: 440 };              // fan：门上面那一条亮子的上沿
 const FEAR_X = 1055;                                                    // 影子没被照到的时候，孩子最多走到这儿
@@ -1009,36 +1007,21 @@ function drawShadow(b, a) {
 }
 
 // ---------- 主角 ----------
-// 主游戏那个孩子的侧面，和《灯下》里是同一个：轮廓照 mini/lamplight.html 的 KID（脚底是 0、朝右），放大 KS 倍。
-// 大约四个头高，头发一绺一绺，米白卫衣、帽兜垂在背后，长裤，大靴子，不画脸。
-// 姿势是算出来的（腿和伸出去的手用两节的反解），不是一帧一帧画的
-const KS = 3;
-const KID = {
-  body: [[-2.6, -35.4], [2.4, -35.6], [5, -33.6], [5.9, -29], [6.3, -23.5], [6.6, -19.8], [5.8, -18.8], [-5.3, -18.8], [-6.2, -19.8], [-6, -24.5], [-5.6, -30.5], [-4.6, -34]],
-  hood: [[-0.6, -36.5], [-4.2, -36.9], [-6.8, -35.3], [-7.5, -32.4], [-6.7, -29.8], [-5.1, -29.1], [-4.4, -31.2], [-2.8, -34]],
-  hoodIn: [[-1.4, -36.2], [-4.2, -36.5], [-6.3, -35.2], [-4.3, -34.6], [-2.4, -34.9]],
-  head: [[0.4, -48.4], [4.4, -47], [6.3, -44.2], [6.5, -42.6], [7.6, -40.7, 1], [6.5, -40], [6.6, -38.8], [6, -37.3], [4.2, -36.3], [1, -36.5], [-2.4, -37.4], [-4.8, -39.8], [-5.5, -43], [-4.2, -46.8]],
-  hair: [[6.7, -44.4], [6.5, -46.6], [4.8, -48.8], [1.6, -49.9], [-2, -49.6], [-4.8, -47.8], [-6.2, -44.6], [-6, -41.2], [-4.6, -38.8], [-3.2, -38.2],
-    [-1.6, -39.8], [-0.6, -42.4], [1, -43], [2.6, -42.2], [3.6, -43.8], [5.2, -43.6]],
-  boot: [[-2.6, -1.6], [1.4, -1.9], [4.2, -0.4], [5.4, 1.6], [5, 3.6, 1], [-2.9, 3.6, 1], [-3.3, 1]],
-};
-// 头发边上一撮一撮的：[根 x, 根 y, 朝向（度，0 朝前、90 朝下）, 长, 宽]
-const TUFTS = [[5.2, -45.4, 38, 4, 3.6], [3.2, -44.8, 74, 2.5, 2.8], [1.8, -43.2, 96, 2, 2], [4.2, -48.4, -28, 2.1, 3.6], [0.8, -49.8, -70, 2.7, 3.4], [-2.6, -49.2, -116, 3.3, 3.4],
-  [-5.2, -46.8, -152, 2.3, 3.6], [-6, -43.4, 176, 2.1, 3.4], [-5.4, -40.4, 136, 3.1, 3], [-3.4, -38.8, 108, 2.4, 2.8]];
-function tuftPts([bx, by, deg, len, wid]) {   // 一撮头发：叶子形，两边鼓，尖朝外
-  const a = deg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), px = -sa * wid / 2, py = ca * wid / 2;
-  const tx = bx + ca * len, ty = by + sa * len, mx = bx + ca * len * 0.42, my = by + sa * len * 0.42;
-  return [...quadPts([bx - px, by - py], [mx - px * 1.15, my - py * 1.15], [tx, ty], 5), ...quadPts([tx, ty], [mx + px * 1.15, my + py * 1.15], [bx + px, by + py], 5).slice(1)];
-}
-const KIDP = {};   // 轮廓先连成圆滑的曲线（还是《灯下》的单位）
-for (const n in KID) KIDP[n] = curvePts(KID[n], true, 5);
-KIDP.tufts = TUFTS.map(tuftPts);
+// 和《灯下》是同一个孩子：2026-11-18 主人在三个从头设计的候选里挑的“大衣”。形状照 mini/lamplight.html 的 coatSide
+// （那边的单位是一格的 1/64：u 朝脸、v 朝上，原点在两脚中间的地上），这里放大 KK 倍。
+// 裹在一件大一号的旧大衣里，袖子长得盖住手，领子竖到鼻子；毛线帽压到眉毛，只露出一双眼睛和冻红的鼻头；帽顶一个绒球，大衣底下露出两只靴子。
+// 姿势是算出来的，不是一帧一帧画的：靴子跟着步子走、脚在地上不打滑，大衣下摆跟着腿摆；袖子是两节的，伸手的时候用反解够到东西
+const KK = 3.4;
+const KIDC = { coat: '#8a6b3d', coat2: '#4e3c22', collar: '#795d33', button: '#3a2a1f', hat: '#596a5c', hat2: '#4a594d', lining: '#d9cfb6', hair: '#3b2c22', leg: '#45403a', boot: '#3b2b21', bootHi: '#7d6a55', skin: '#d9b59b', nose: '#c47e6d', eye: '#f3eee1', pupil: '#16110d' };
+const coldOf = h => { const [r, g2, b] = hexRGB(h); return hexMix('#2b3450', '#c3cce2', 0.3 + 0.62 * (0.299 * r + 0.587 * g2 + 0.114 * b) / 255); };   // 暗处：按深浅换成偏冷的颜色（和《灯下》一样）
+const KIDD = Object.fromEntries(Object.entries(KIDC).map(([n, v]) => [n, n === 'pupil' ? '#0b0d14' : coldOf(v)]));
+const KIDM = Object.fromEntries(Object.entries(KIDD).map(([n, v]) => [n, n === 'pupil' ? v : hexMix(v, '#dfe6f7', 0.26)]));   // 站在窗下的月光里：亮一些，还是冷的
 const KCACHE = {};
 function kidCols(lit) {   // 孩子的颜色：灯下暖的；暗处冷的，站在窗下的月光里亮一些
-  if (lit) return LIT;
-  if (kid.moon < 0.01) return DARK;
+  if (lit) return KIDC;
+  if (kid.moon < 0.01) return KIDD;
   const key = Math.round(kid.moon * 20); if (KCACHE[key]) return KCACHE[key];
-  const o = { ...DARK }; for (const n in MOONKID) o[n] = hexMix(DARK[n], MOONKID[n], key / 20); return KCACHE[key] = o;
+  const o = {}; for (const n in KIDD) o[n] = hexMix(KIDD[n], KIDM[n], key / 20); return KCACHE[key] = o;
 }
 // 两节的反解：a 是根，b 是末端要去的地方，dir = ±1 是关节往哪边弯。够不着就伸直。返回 [关节 x, 关节 y, 末端 x, 末端 y]
 function ik(ax, ay, bx, by, l1, l2, dir) {
@@ -1048,90 +1031,176 @@ function ik(ax, ay, bx, by, l1, l2, dir) {
   const a = Math.atan2(dy, dx), k = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1)) * dir;
   return [ax + Math.cos(a + k) * l1, ay + Math.sin(a + k) * l1, ax + dx, ay + dy];
 }
-// 尺寸（画面单位）：胯多高、大腿小腿、脚踝离地、胯到肩、大臂小臂
-const HIP = 62, THIGH = 27.6, SHIN = 26.4, ANKLE = 10.8, UARM = 22.2, FARM = 20.4;
-// 步子：gj 从 0（走）到 1（小跑）。st 一只脚着地占一圈的几成，fa、fb 脚落在身前、蹬到身后多远，lift、kick 抬多高、往后撩多高
-const gaitOf = gj => ({ st: lerp(0.56, 0.28, gj), fa: lerp(28, 22, gj), fb: lerp(32, 39, gj), lift: lerp(7, 12, gj), kick: lerp(0, 18, gj) });
+// 尺寸（《灯下》的单位）：胯多高（身子绕着它往前倾）、肩（袖子从这儿出来）、大臂、小臂
+const VHIP = 12, SHO = [0.4, 23.6], UA = 7.6, FA = 8.6;
+// 步子（画面单位）：gj 从 0（走）到 1（小跑）。st 一只脚着地占一圈的几成，fa、fb 脚落在身前、蹬到身后多远，lift、kick 抬多高、往后撩多高。
+// 大衣到脚踝，步子比原来那个孩子小一点
+const gaitOf = gj => ({ st: lerp(0.56, 0.3, gj), fa: lerp(22, 18, gj), fb: lerp(25, 30, gj), lift: lerp(6, 10, gj), kick: lerp(0, 10, gj) });
 function kidPose() {
   const f = kid.face, w = kid.walk, gj = kid.gait, T = V.T, G = gaitOf(gj), r = kid.r, ak = r ? r.k : 0, fear = kid.fearK;
-  const tip = r && r.ty < GY - 136 ? ak * 8 : 0;                                    // 够高处：踮脚
-  const lean = w * lerp(0.05, 0.17, gj) - fear * 0.15 + (r ? ak * clamp((r.tx - kid.x) * f / 60, -0.4, 1) * 0.1 : 0);
-  const bob = lerp(58, 59, gj) - lerp(3, 2.8, gj) * Math.cos(2 * TAU * (kid.ph - lerp(0, 0.14, gj)));
-  const hipH = lerp(HIP + Math.sin(T * 2.1) * 0.5, bob, w) + tip - fear * 4;
-  const hx = kid.x + (fear > 0.5 ? Math.sin(T * 62) * 1.2 : 0), hy = GY - hipH;     // 害怕的时候发抖
-  const legs = [0, 0.5].map((off, i) => {
+  const tipK = r ? ak * smooth((GY - r.ty - 104) / 14) : 0, tip = tipK * 9;                                       // 够高处：踮脚
+  const lean = w * lerp(0.04, 0.13, gj) - fear * 0.08 + (r ? ak * clamp((r.tx - kid.x) * f / 60, -0.4, 1) * 0.14 : 0);   // 伸手的时候身子往那边探
+  const stepB = w * lerp(1.6, 2.4, gj) * Math.cos(2 * TAU * (kid.ph - lerp(0, 0.14, gj)));                       // 每迈一步身子一沉一起（画面单位）
+  const bob = (Math.sin(T * 2.1) * 0.35 * (1 - w) - (stepB + w * 1.5) / KK) * (1 - fear);                        // 站着轻轻喘气（《灯下》的单位）
+  const x0 = kid.x + (fear > 0.5 ? Math.sin(T * 62) * 1.2 : 0), y0 = GY - tip;                                   // 害怕的时候发抖
+  const c = Math.cos(lean), s = Math.sin(lean);
+  const lift = v => v <= 3.8 ? v : 3.8 + (v - 3.8) * (1 - 0.14 * fear) + bob;                                   // 喘气、一沉一起、害怕时缩起来：下摆不动
+  const B = (u, v) => { const dv = lift(v) - VHIP, ru = u * c + dv * s, rv = VHIP - u * s + dv * c; return [x0 + f * KK * ru, y0 - KK * rv]; };   // 身上的点 → 画面
+  const legs = [0, 0.5].map((off, i) => {   // 两只脚：0 是近的那只。站着的时候近的在前、远的在后（照《灯下》）
     const q = (kid.ph + off) % 1; let fx, fy = 0;
     if (q < G.st) fx = lerp(G.fa, -G.fb, q / G.st);
-    else { const s = (q - G.st) / (1 - G.st), e = (1 - Math.cos(Math.PI * s)) / 2; fx = lerp(-G.fb, G.fa, e); fy = Math.sin(Math.PI * s) * (G.lift + (1 - s) * G.kick); }
-    const hipX = hx + f * (i ? -1.5 : 1.5), k = ik(hipX, hy, hx + f * lerp(i ? -3.3 : 3.3, fx, w), GY - ANKLE - fy * w - tip, THIGH, SHIN, -f);
-    return { hx: hipX, kx: k[0], ky: k[1], ax: k[2], ay: k[3], up: GY - ANKLE - k[3] };
+    else { const sp = (q - G.st) / (1 - G.st), e = (1 - Math.cos(Math.PI * sp)) / 2; fx = lerp(-G.fb, G.fa, e); fy = Math.sin(Math.PI * sp) * (G.lift + (1 - sp) * G.kick); }
+    const ax = x0 + f * lerp((i ? -1.6 : 2.8) * KK, fx, w), up = fy * w;
+    return { ax, ay: GY - up - tip * 0.8, up, fu: (ax - x0) * f / KK, tip: tipK };
   });
-  const c = Math.cos(lean), s = Math.sin(lean);
-  const TP = (px, py) => { const ly = py + 20.6, rx = px * c - ly * s, ry = px * s + ly * c; return [hx + f * KS * rx, hy + KS * ry]; };   // 《灯下》的单位 → 画面：绕着胯转 lean，朝 f
-  const sw = lerp(0.36, 0.8, gj) * w * Math.cos(kid.ph * TAU), bend = 0.2 + lerp(0.12, 1.2, gj) * w + fear * 1.5;
-  const arms = [[0.6, 1], [-0.6, -1]].map(([ox, sd], i) => {   // 手臂和同一边的腿反着摆；害怕的时候两只手缩到胸前
-    const [sx, sy] = TP(ox, -32.2), an = -sd * sw + (i ? -0.05 : 0.05) + fear * 0.55 + lean, ex = sx + Math.sin(an) * UARM * f, ey = sy + Math.cos(an) * UARM;
-    let px = ex + Math.sin(an + bend) * FARM * f, py = ey + Math.cos(an + bend) * FARM;
-    if (i === 0 && ak > 0) { px = lerp(px, r.tx, ak); py = lerp(py, r.ty, ak); }   // 近的那只手伸出去
-    const k = ik(sx, sy, px, py, UARM, FARM, f);
+  const sw = lerp(0.3, 0.7, gj) * w * Math.cos(kid.ph * TAU), bend = 0.75 + lerp(0, 0.5, gj) * w + fear * 1.2;
+  const arms = [[SHO[0], 1], [SHO[0] - 1.6, -1]].map(([su, sd], i) => {   // 袖子和同一边的腿反着摆；害怕的时候缩到胸前
+    const [sx, sy] = B(su, SHO[1]), an = -sd * sw - 0.05 + fear * 0.5 + lean, ex = sx + Math.sin(an) * UA * KK * f, ey = sy + Math.cos(an) * UA * KK;
+    let px = ex + Math.sin(an + bend) * FA * KK * f, py = ey + Math.cos(an + bend) * FA * KK;
+    if (i === 0 && ak > 0) { px = lerp(px, r.tx, ak); py = lerp(py, r.ty, ak); }   // 近的那只袖子伸出去
+    const k = ik(sx, sy, px, py, UA * KK, FA * KK, f);
+    if (i === 0 && ak > 0) {   // 伸手的时候胳膊差不多是直的：肘弯往袖子的直线上收
+      const t = ak * 0.85, q = Math.hypot(k[2] - sx, k[3] - sy) / (UA + FA) * UA;
+      const d = Math.hypot(k[2] - sx, k[3] - sy) || 1; k[0] = lerp(k[0], sx + (k[2] - sx) / d * q, t); k[1] = lerp(k[1], sy + (k[3] - sy) / d * q, t);
+    }
     return { sx, sy, ex: k[0], ey: k[1], hx: k[2], hy: k[3] };
   });
-  return { hx, hy, lean, legs, arms, TP };
+  return { x0, y0, lean, legs, arms, B, look: r ? ak * clamp((GY - r.ty - 31.6 * KK) / 40, -1, 1) : 0 };   // look：伸手的时候往上（下）看
 }
+// 画主角用的几样工具：Q 是一串二次曲线（起点、控制点、终点、控制点、终点……），E 是椭圆；点都是《灯下》的单位，T 把它们换到画面上
+const kQ = (...pp) => { const out = [pp[0]]; for (let i = 0; i + 2 < pp.length; i += 2) out.push(...quadPts(pp[i], pp[i + 1], pp[i + 2], 8).slice(1)); return out; };
+const kE = (cu, cv, ru, rv, n = 18) => { const p = []; for (let i = 0; i < n; i++) { const a = i / n * TAU; p.push([cu + Math.cos(a) * ru, cv + Math.sin(a) * rv]); } return p; };
+const KSH = {   // 不动的形状（《灯下》的单位）
+  coat: [[-6.2, 24.4], [0.2, 26.6], [6.6, 24.4], [8.6, 14.0]],   // 大衣的上半截；下摆在 drawKid 里跟着腿算
+  hairBack: [[0.6, 34.6], [-8.2, 34.0], [-9.0, 30.0], [-7.4, 31.2], [-7.6, 28.0], [-5.4, 30.4], [-4.6, 27.6], [-3.2, 30.6], [-1.6, 29.4], [-0.6, 32.0]],
+  collar: kQ([-6.8, 22.4], [-7.4, 25.6], [-6.6, 28.4], [0.6, 30.0], [7.6, 28.8], [8.4, 26.0], [7.8, 23.4], [0.4, 21.6], [-6.8, 22.4]),
+  hat: kQ([-8.9, 32.6], [-9.8, 45.2], [1.2, 45.6], [10.6, 45.4], [9.9, 34.2], [0.8, 34.0], [-8.9, 32.6]),
+  band: kQ([-8.9, 32.6], [0.8, 34.0], [9.9, 34.2]).concat(kQ([10.1, 37.0], [0.8, 36.8], [-9.0, 35.6])),
+  boot: kQ([-1.8, 0.2], [1.0, -0.4], [4.1, 0.4], [4.5, 2.8], [3.0, 4.1]).concat([[-1.2, 4.1], [-2.0, 2.0]]),   // 一只靴子，原点在脚踝底下的地上
+};
+// 主角身上的排线：每一帧要画两遍（暗的、亮的），一道道分开画太慢。线先在身上的坐标里排好（固定的种子，排一次就记住），
+// 每一帧跟着身子换到画面上，一片里的线合成两笔画（一笔淡、一笔浓）。身子转、弯、摇头，排线跟着走，不会在衣服上乱跳
+const KHATCH = {};
+function kidHatchSegs(id, u0, u1, v0, v1, f, seed, gap = 1.0, len = 3.8, brk = 1.2) {   // 一块长方形（u0…u1、v0…v1）里的斜线，画面上都是往右上斜
+  const key = id + ':' + f; if (KHATCH[key]) return KHATCH[key];
+  const r = rnd(seed), dx = 0.54 * f, dy = 0.84, px = -dy, py = dx, cu = (u0 + u1) / 2, cv = (v0 + v1) / 2, R = Math.hypot(u1 - u0, v1 - v0) / 2 + 1, out = [];
+  const cut = (x0, y0, x1, y1) => {   // 线段只留长方形里面的那一截
+    let t0 = 0, t1 = 1; const ex = x1 - x0, ey = y1 - y0;
+    for (const [pp, q] of [[-ex, x0 - u0], [ex, u1 - x0], [-ey, y0 - v0], [ey, v1 - y0]]) {
+      if (pp === 0) { if (q < 0) return null; continue; }
+      const t = q / pp; if (pp < 0) { if (t > t1) return null; t0 = Math.max(t0, t); } else { if (t < t0) return null; t1 = Math.min(t1, t); }
+    }
+    return [x0 + ex * t0, y0 + ey * t0, x0 + ex * t1, y0 + ey * t1];
+  };
+  for (let d = -R; d < R; d += gap * (0.7 + r() * 0.6)) {
+    let t = -R + r() * 2.4;
+    while (t < R) {
+      const t1 = Math.min(R, t + len * (0.5 + r())), ja = (r() - 0.5) * 0.3, jm = (r() - 0.5) * 0.8, k = r() < 0.5 ? 1 : 0;
+      const c = cut(cu + px * d + dx * t + ja, cv + py * d + dy * t + ja, cu + px * d + dx * t1, cv + py * d + dy * t1);
+      if (c && Math.hypot(c[2] - c[0], c[3] - c[1]) > 0.6) out.push([c[0], c[1], (c[0] + c[2]) / 2 + px * jm, (c[1] + c[3]) / 2 + py * jm, c[2], c[3], k]);
+      t = t1 + 0.9 + r() * brk;
+    }
+  }
+  return KHATCH[key] = out;
+}
+function kidHatch(b, segs, T, clip, o = {}) {   // T：身上的点 → 画面；clip：这一块的轮廓（画面上的点）
+  const p = [new Path2D(), new Path2D()];
+  for (const sg of segs) { const A = T(sg[0], sg[1]), M = T(sg[2], sg[3]), E = T(sg[4], sg[5]), q = p[sg[6]]; q.moveTo(A[0], A[1]); q.quadraticCurveTo(M[0], M[1], E[0], E[1]); }
+  const P = b.pen, ga = b.globalAlpha;
+  b.save(); b.beginPath(); clip.forEach(([x, y], i) => i ? b.lineTo(x, y) : b.moveTo(x, y)); b.closePath(); b.clip();
+  b.strokeStyle = o.col ?? P.col; b.lineCap = 'round';
+  [[0.66, 0.82], [0.94, 1.16]].forEach(([ak, wk], i) => { b.globalAlpha = ga * clamp((o.a ?? 0.42) * ak * P.a, 0, 1); b.lineWidth = (o.w ?? 0.6) * P.w * wk; b.stroke(p[i]); });
+  b.restore(); b.globalAlpha = ga;
+}
+// 袖子上的排线：沿着袖子背光的那一边一道道斜着的短线（s 从 0 到 2：0…1 是大臂、1…2 是小臂；n 从袖子中线到边上是 0…1）
+const SLEEVE_HATCH = (() => { const r = rnd(37300), out = []; for (let s = 0.08; s < 1.85; s += 0.13 + r() * 0.06) { const ds = 0.16 + r() * 0.08, n0 = 0.05 + r() * 0.2, jm = (r() - 0.5) * 0.12; out.push([s, n0, s + ds / 2 + jm, (n0 + 1.15) / 2, s + ds, 1.15, r() < 0.5 ? 1 : 0]); } return out; })();
 function drawKid(b, P0, lit) {
   if (kid.alpha <= 0.003) return;
-  const p = kidPose(), f = kid.face, P = kidCols(lit), lc = lit ? LIT.ink : DARK.ink;
+  const p = kidPose(), f = kid.face, P = kidCols(lit), lc = lit ? LIT.ink : DARK.ink, w = kid.walk, fear = kid.fearK;
   b.save(); const ga = b.globalAlpha; b.globalAlpha = ga * kid.alpha;
   if (kid.scale !== 1 || kid.lift) { b.translate(kid.x, GY - kid.lift); b.scale(kid.scale, kid.scale); b.translate(-kid.x, -GY); }
-  const pen0 = b.pen; b.pen = { ...PEN, col: lc, a: Math.min(1, PEN.a + 0.05) }; b.seedN = 37000;
+  const pen0 = b.pen; b.pen = { ...PEN, col: lc, a: Math.min(1, PEN.a + 0.08) }; b.seedN = 37000;
   // 脚下的影子：灯下是一摊排线，往背灯的那一边拖；暗处是一团淡淡的黑
   const dir = clamp((kid.x - lampPos().x) / 200, -1, 1);
-  if (lit) hatch(b, k => k.ellipse(kid.x + dir * 14, GY + 2, 30 + Math.abs(dir) * 8, 5, 0, 0, 7), [kid.x - 60, GY - 8, 120, 18], { ang: -0.25, gap: 3, a: 0.7, w: 0.8, len: 20, seed: 37001 });
-  else { b.fillStyle = 'rgba(3,4,10,0.4)'; b.beginPath(); b.ellipse(kid.x, GY + 2, 26, 4.6, 0, 0, 7); b.fill(); }
-  const limb = (pts, ws, col, seed) => part(b, tube(pts, ws), col, { w: 0.9, tex: 0, wob: 0.5, amp: 0.6, seed });
-  const TH = pts => pts.map(([x, y]) => { const q = p.TP(x, y); return [q[0] + kid.shake, q[1]]; });   // 头上的点：摇头的时候跟着晃
-  // 远的那只手臂
-  const A = p.arms[1];
-  limb([[A.sx, A.sy], [A.ex, A.ey], [A.hx, A.hy]], [12, 11.5, 11], P.hood2, 37010);
-  part(b, arcPts(A.hx, A.hy + 2, 5, 5.5, 0, TAU, 10), P.skin2, { w: 0.8, tex: 0, seed: 37011 });
-  // 两条腿和靴子：先画远的那条（legs[1]）
+  if (lit) hatch(b, k => k.ellipse(kid.x + dir * 14, GY + 2, 34 + Math.abs(dir) * 8, 5, 0, 0, 7), [kid.x - 64, GY - 8, 128, 18], { ang: -0.25, gap: 3, a: 0.7, w: 0.8, len: 20, seed: 37001 });
+  else { b.fillStyle = 'rgba(3,4,10,0.4)'; b.beginPath(); b.ellipse(kid.x, GY + 2, 30, 4.6, 0, 0, 7); b.fill(); }
+  const B = p.B, TB = pts => pts.map(([u, v]) => B(u, v));
+  const HX = kid.shake, TH = pts => pts.map(([u, v]) => { const q = B(u, v); return [q[0] + HX, q[1]]; });   // 头上的点：摇头的时候跟着晃
+  const fill = (pts, col, o) => part(b, pts, col, { w: 1, tex: 0, wob: 0.6, ...o });
+  const line = (pts, o) => ink(b, pts, { w: 0.7, taper: 3, single: 1, ...o });
+  const TBf = (u, v) => B(u, v), THf = (u, v) => { const q = B(u, v); return [q[0] + HX, q[1]]; };
+  const shade = (clipPts, id, u0, u1, v0, v1, seed, T = TBf) => kidHatch(b, kidHatchSegs(id, u0, u1, v0, v1, f, seed), T, clipPts);   // 在一块东西里、背光那一边打排线（u0…u1、v0…v1 是身上的一条）
+  const sleeve = (A, col, seed, back) => {   // 袖子：两节的粗管子，袖口里黑黑的，看不见手
+    const L = Math.hypot(A.hx - A.ex, A.hy - A.ey) || 1, ux = (A.hx - A.ex) / L, uy = (A.hy - A.ey) / L, nx = -uy, ny = ux;   // A.hx、A.hy 是袖口的中间
+    const tb = tube([[A.sx, A.sy], [A.ex, A.ey], [A.hx - ux * 1.5 * KK, A.hy - uy * 1.5 * KK]], [5.0 * KK, 5.3 * KK, 5.9 * KK]);
+    fill(tb, col, { seed, wob: 0.7 });
+    if (!back) {   // 背光的那一边（朝后、朝下）打一溜排线
+      const L1 = Math.hypot(A.ex - A.sx, A.ey - A.sy) || 1, n1 = [-(A.ey - A.sy) / L1, (A.ex - A.sx) / L1];
+      const sd = -f * nx + 0.6 * ny >= 0 ? 1 : -1, hw = 2.9 * KK * sd, Hx = A.hx - ux * 1.5 * KK, Hy = A.hy - uy * 1.5 * KK;
+      kidHatch(b, SLEEVE_HATCH, (s, n) => s <= 1 ? [A.sx + (A.ex - A.sx) * s + n1[0] * hw * n, A.sy + (A.ey - A.sy) * s + n1[1] * hw * n] : [A.ex + (Hx - A.ex) * (s - 1) + nx * hw * n, A.ey + (Hy - A.ey) * (s - 1) + ny * hw * n], tb);
+      const cl = 3.4 * KK, cx = A.hx - ux * cl, cy = A.hy - uy * cl;   // 翻过来的袖口
+      line([[cx + nx * 2.7 * KK, cy + ny * 2.7 * KK], [cx - ux * 0.5 * KK, cy - uy * 0.5 * KK], [cx - nx * 2.7 * KK, cy - ny * 2.7 * KK]], { w: 0.7, a: 0.85, seed: seed + 2 });
+    }
+    const ex = A.hx - ux * 0.1 * KK, ey = A.hy - uy * 0.1 * KK, op = [];   // 袖口：一个扁的口子，横在袖子末端
+    for (let i = 0; i < 14; i++) { const a = i / 14 * TAU, ca = Math.cos(a) * 2.5 * KK, sa = Math.sin(a) * 0.95 * KK; op.push([ex + nx * ca + ux * sa, ey + ny * ca + uy * sa]); }
+    fill(op, P.coat2, { w: 0.7, wob: 0.3, seed: seed + 3 });
+  };
+  const near = p.arms[0], farA = p.arms[1], front = (kid.r && kid.r.k > 0.3) || fear > 0.3;
+  // 远的那只袖子（在身子后面）
+  sleeve(farA, hexMix(P.coat, P.coat2, 0.42), 37010, true);
+  // 两只脚：先画远的。腿藏在大衣里，迈步的时候才露出一点；靴子抬起来的时候脚尖朝下一点
   for (const i of [1, 0]) {
-    const l = p.legs[i], rot = f * Math.min(0.5, l.up * 0.03), cr = Math.cos(rot), sr = Math.sin(rot), tr = ([x, y]) => [l.ax + x * cr - y * sr, l.ay + x * sr + y * cr];
-    limb([[l.hx, p.hy], [l.kx, l.ky], [l.ax, l.ay]], [15, 13.5, 12], i ? P.cloth2 : P.cloth, 37020 + i * 10);
-    part(b, KIDP.boot.map(([x, y]) => tr([f * x * KS, y * KS])), P.boot, { w: 0.9, tex: 0, seed: 37025 + i * 10 });
-    ink(b, [tr([f * -2.6 * KS, 3.05 * KS]), tr([f * 4.9 * KS, 3.05 * KS])], { w: 1.8, col: P.sole, taper: 2, seed: 37027 + i * 10 });   // 靴底
+    const l = p.legs[i], rot = f * Math.min(0.5, l.up * 0.035) + f * l.tip * 0.32, cr = Math.cos(rot), sr = Math.sin(rot), tr = ([u, v]) => { const x = f * u * KK, y = -v * KK; return [l.ax + x * cr - y * sr, l.ay + x * sr + y * cr]; };
+    const hipP = B(i ? -1.4 : 1.6, VHIP - 2), top = tr([0.7, 3.6]);
+    fill(tube([hipP, top], [3.6 * KK, 3.3 * KK]), i ? hexMix(P.leg, '#000000', 0.25) : P.leg, { w: 0.8, wob: 0.4, seed: 37020 + i * 10 });
+    fill(KSH.boot.map(tr), i ? hexMix(P.boot, '#000000', 0.25) : P.boot, { w: 0.95, wob: 0.4, seed: 37025 + i * 10 });
+    if (!i) line([tr([-0.8, 0.9]), tr([1.8, 1.3]), tr([3.7, 1.4])], { col: P.bootHi, w: 0.7, a: 0.9, taper: 2, seed: 37028 });
   }
-  // 卫衣（背上背光的一条、下摆的罗纹）、帽兜、脖子
-  const body = p.TP ? KIDP.body.map(([x, y]) => p.TP(x, y)) : [];
-  part(b, body, P.hood, { w: 1.1, tex: 0, seed: 37040 });
-  b.save(); b.beginPath(); body.forEach(([x, y], i) => i ? b.lineTo(x, y) : b.moveTo(x, y)); b.clip();
-  fillPts(b, [[-8, -36], [-5, -36], [-5, -19], [-8, -19]].map(([x, y]) => p.TP(x, y)), P.hood2);
-  b.restore();
-  ink(b, [p.TP(-5.6, -21.4), p.TP(6.2, -21.4)], { w: 0.7, a: 0.7, taper: 3, seed: 37041 });
-  part(b, KIDP.hood.map(([x, y]) => p.TP(x, y)), P.hood2, { w: 0.9, tex: 0, seed: 37042 });
-  fillPts(b, KIDP.hoodIn.map(([x, y]) => p.TP(x, y)), P.hoodIn);
-  ink(b, [p.TP(-0.8, -37.4), p.TP(1.8, -34.8)], { w: 10.8 / PEN.w, col: P.skin2, taper: 0, a: 1 / b.pen.a, seed: 37044 });
-  // 头、头发落在额头上的影子、耳朵
-  const head = TH(KIDP.head);
-  part(b, head, P.skin, { w: 1, tex: 0, seed: 37050 });
-  b.save(); b.beginPath(); head.forEach(([x, y], i) => i ? b.lineTo(x, y) : b.moveTo(x, y)); b.clip();
-  fillPts(b, TH(KIDP.hair).map(([x, y]) => [x - f * 1.2, y + 4.2]), P.skin2, 0.9);
-  b.restore();
-  part(b, TH(arcPts(0.5, -40.6, 1.3, 1.7, 0, TAU, 8)), P.skin2, { w: 0.6, tex: 0, seed: 37051 });
-  // 头发：盖住头顶和后脑勺的一块，边上一撮一撮的；几撮的边描一下
-  for (const tf of KIDP.tufts) fillPts(b, TH(tf), P.hair);
-  part(b, TH(KIDP.hair), P.hair, { w: 0.9, tex: 0, wob: 0.4, seed: 37052 });
-  KIDP.tufts.forEach((tf, i) => { if (i % 2 === 0) ink(b, TH(tf.slice(0, 6)), { w: 0.6, col: lc, a: 0.6, taper: 4, seed: 37060 + i }); });
-  if (!lit) { const [hcx, hcy] = TH([[0.6, -42.6]])[0]; ink(b, arcPts(hcx, hcy, 21, 21, Math.PI * 0.72, Math.PI * 1.32, 8), { col: DARK.hi, a: 0.28, w: 0.8, seed: 37080 }); }   // 朝窗那一边冷的亮边
-  // 近的那只手臂：先在衣服上压一道影子，再画袖子、袖口、手；手里拿着的东西
-  const N = p.arms[0], ux = (N.hx - N.ex) / FARM, uy = (N.hy - N.ey) / FARM;
-  b.save(); b.beginPath(); body.forEach(([x, y], i) => i ? b.lineTo(x, y) : b.moveTo(x, y)); b.clip();
-  ink(b, [[N.sx, N.sy], [N.ex, N.ey], [N.hx, N.hy]], { w: 16 / PEN.w, col: P.hood2, a: 0.8 / b.pen.a, taper: 0, amp: 0.3, seed: 37090 });
-  b.restore();
-  limb([[N.sx, N.sy], [N.ex, N.ey], [N.hx, N.hy]], [12.5, 12, 11.5], P.hood, 37091);
-  ink(b, seg(N.hx - ux * 5, N.hy - uy * 5, N.hx - ux * 1.5, N.hy - uy * 1.5), { w: 12 / PEN.w, col: P.hood2, taper: 0, a: 1 / b.pen.a, seed: 37092 });
-  part(b, arcPts(N.hx + ux * 4, N.hy + uy * 4, 5, 5.6, 0, TAU, 10), P.skin, { w: 0.8, tex: 0, seed: 37093 });
-  if (kid.r && kid.r.item && !kid.r.used && kid.r.k > 0.1) sceneItem(b, kid.r.item, N.hx + ux * 6 + f * 3, N.hy + uy * 6 - 8, 24, P0, lit, 37100);
+  // 大衣：大一号，下摆到脚踝。下摆跟着腿：迈出去的那只脚把前襟顶出去一点，抬起来的那只脚把那一边的下摆带起来一点；走得快往后荡
+  const [l0, l1] = p.legs, fwd = Math.max(l0.fu, l1.fu), bwd = Math.min(l0.fu, l1.fu), upF = (l0.fu > l1.fu ? l0 : l1).up / KK, upB = (l0.fu > l1.fu ? l1 : l0).up / KK;
+  const hemF = [10.0 + Math.max(0, fwd - 5) * 0.55, 3.8 + upF * 0.45], hemB = [-9.8 + Math.min(0, bwd + 5.5) * 0.45, 4.0 + upB * 0.35];
+  const drag = w * (0.7 + 0.5 * Math.sin(2 * TAU * kid.ph)), sway = pts => pts.map(([u, v]) => [u - drag * clamp(1 - (v - 3.8) / 10, 0, 1), v]);
+  const coatU = kQ(...KSH.coat, hemF, [0.2 + (fwd + bwd) * 0.25, 2.4 + (upF + upB) * 0.2], hemB, [-8.8, 14.4], [-6.2, 24.4]);
+  const coat = TB(sway(coatU));
+  fill(coat, P.coat, { w: 1.1, tex: 0.32, wob: 0.8, seed: 37040 });
+  shade(coat, 'coat', -12, -4.6, 2, 27, 37041);
+  line(TB(sway(kQ([hemB[0] + 0.4, 6.0], [0.2, 4.6], [hemF[0] - 0.3, 5.8]))), { w: 0.55, a: 0.5, seed: 37042 });
+  line(TB(kQ([-1.6, 12.0], [1.4, 11.4], [4.4, 12.0])), { w: 0.75, a: 0.9, seed: 37043 }); line(TB([[-1.4, 12.0], [-1.1, 7.6]]), { w: 0.6, a: 0.7, seed: 37044 }); line(TB([[4.2, 12.0], [4.0, 7.6]]), { w: 0.6, a: 0.7, seed: 37045 });   // 口袋
+  [[5.9, 19.8], [6.6, 14.0], [7.3, 8.4]].forEach(([u, v], i) => fill(TB(kE(u, v, 1.25, 1.25, 12)), P.button, { w: 0.7, wob: 0.2, seed: 37046 + i }));   // 扣子
+  if (!front) sleeve(near, P.coat, 37060);
+  // 头、后脑勺的头发、一双眼睛
+  fill(TH(kE(1.6, 33.0, 7.6, 7.8, 24)), P.skin, { w: 1.0, wob: 0.5, seed: 37070 });
+  fill(TH(KSH.hairBack), P.hair, { w: 0.8, wob: 0.4, seed: 37071 });
+  const wide = fear > 0.3, eo = wide ? 1.12 : 1, po = wide ? 0.68 : 1, lk = wide ? 0.5 : 0, lu = p.look * 0.5;   // 害怕：眼睛瞪大、瞳孔缩小；伸手的时候眼睛跟着手
+  if (kid.blink > 0 && !wide) {   // 眨眼
+    line(TH(kQ([2.0, 31.4], [4.0, 30.4], [6.0, 31.3])), { w: 0.8, a: 0.95, seed: 37072 });
+    line(TH(kQ([6.2, 31.5], [7.6, 30.8], [8.9, 31.4])), { w: 0.7, a: 0.9, seed: 37073 });
+  } else {
+    fill(TH(kE(4.0, 31.6, 2.2 * eo, 2.6 * eo, 16)), P.eye, { w: 0.75, wob: 0.25, seed: 37072 });   // 远的那只窄一些
+    fill(TH(kE(7.5, 31.7, 1.55 * eo, 2.4 * eo, 14)), P.eye, { w: 0.7, wob: 0.25, seed: 37073 });
+    fill(TH(kE(4.7 + lk, 31.4 + lu, 1.2 * po, 1.45 * po, 12)), P.pupil, { line: 0, wob: 0.15, seed: 37074 });
+    fill(TH(kE(8.0 + lk * 0.6, 31.5 + lu, 0.9 * po, 1.3 * po, 12)), P.pupil, { line: 0, wob: 0.15, seed: 37075 });
+    [[5.2, 32.2], [8.4, 32.2]].forEach(([u, v], i) => fill(TH(kE(u, v + lu, 0.4, 0.45, 8)), P.eye, { line: 0, wob: 0, seed: 37076 + i }));
+  }
+  // 竖起来的领子、毛线帽（翻边、几道竖纹、绒球）、冻红的鼻头
+  const collar = TB(KSH.collar);
+  fill(collar, P.collar, { w: 1.05, wob: 0.6, seed: 37080 });
+  shade(collar, 'collar', -9, -3, 20, 31, 37081);
+  line(TB(kQ([-6.0, 26.8], [0.6, 28.0], [7.0, 27.2])), { w: 0.55, a: 0.55, seed: 37082 });
+  const hat = TH(KSH.hat);
+  fill(hat, P.hat, { w: 1.1, tex: 0.3, wob: 0.7, seed: 37083 });
+  shade(hat, 'hat', -11, -3.5, 32, 47, 37084, THf);
+  [-0.5, 0, 0.5].forEach((t, i) => line(TH(kQ([t * 8 + 1, 37.4], [t * 9.6 + 1, 42.4], [t * 4 + 1, 45.0])), { w: 0.5, a: 0.35, seed: 37085 + i }));
+  fill(TH(KSH.band), P.hat2, { w: 0.9, wob: 0.5, seed: 37088 });
+  for (let u = -8, i = 0; u < 9.6; u += 1.4, i++) line(TH([[u, 33.5 + u * 0.06], [u + 0.15, 36.3 + u * 0.03]]), { w: 0.5, a: 0.55, taper: 0, seed: 37090 + i });
+  fill(TH(kE(1.0, 45.9, 2.9, 2.6, 16)), P.lining, { w: 0.9, wob: 0.7, seed: 37105 });
+  for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; line(TH([[1.0 + Math.cos(a) * 2.5, 45.9 + Math.sin(a) * 2.2], [1.0 + Math.cos(a) * 3.5, 45.9 + Math.sin(a) * 3.2]]), { w: 0.5, a: 0.6, taper: 0, seed: 37106 + i }); }
+  fill(TH(kE(9.6, 29.6, 1.6, 1.35, 12)), P.nose, { w: 0.8, wob: 0.25, seed: 37117 });
+  if (!lit) { const [hcx, hcy] = TH([[1.0, 37.0]])[0]; ink(b, arcPts(hcx, hcy, 12 * KK, 12 * KK, Math.PI * 0.74, Math.PI * 1.3, 8), { col: DARK.hi, a: 0.26, w: 0.8, seed: 37118 }); }   // 朝窗那一边冷的亮边
+  if (front) sleeve(near, P.coat, 37060);   // 伸手、害怕的时候袖子在脸前面
+  // 手里拿着的东西：从袖口里露出来
+  const L = Math.hypot(near.hx - near.ex, near.hy - near.ey) || 1, ux = (near.hx - near.ex) / L, uy = (near.hy - near.ey) / L;
+  if (kid.r && kid.r.item && !kid.r.used && kid.r.k > 0.1) sceneItem(b, kid.r.item, near.hx + ux * 6 + f * 3, near.hy + uy * 6 - 8, 24, P0, lit, 37130);
   b.pen = pen0; b.globalAlpha = ga; b.restore();
 }
 function kidUpdate(dt) {
@@ -1201,14 +1270,14 @@ function say(icons, dur = 1.9) { bubble = { icons, t0: V.T, dur }; }
 // 能点的地方。r 是点得到的范围，stand 是孩子站到哪儿去够，hand 是手伸到哪儿。排在前面的先算（抽屉里的灯泡排在抽屉前面）
 function spots() {
   const ly = lampY(), out = [];
-  if (S.drawer && S.bulb === 'drawer') out.push({ id: 'bulb', r: [704, 612, 740, 646], stand: 680, face: 1, hand: [720, 635] });
-  if (S.clock && S.crank === 'clock') out.push({ id: 'crank', r: [474, 606, 508, 650], stand: 520, face: -1, hand: [491, 628] });
-  out.push({ id: 'lamp', r: [LAMP.x - 52, ly - 56, LAMP.x + 52, ly + 14], stand: 974, face: 1, hand: [LAMP.x, ly + 3] });
-  out.push({ id: 'winch', r: [822, 606, 878, 674], stand: 826, face: 1, hand: [WINCH.x, WINCH.y] });
-  out.push({ id: 'drawer', r: [660, 622, 760, 674], stand: 680, face: 1, hand: [710, 646] });
-  out.push({ id: 'clock', r: [444, 478, 516, 712], stand: 520, face: -1, hand: [496, 624] });
-  out.push({ id: 'stand', r: [STAND.x - 52, STAND.base - 236, STAND.x + 54, STAND.base + 8], stand: STAND.x - 60, face: 1, hand: [STAND.x - 26, STAND.base - 108] });
-  out.push({ id: 'door', r: [DOOR.x - 8, DOOR.fan - 8, DOOR.x + DOOR.w + 8, WB + 4], stand: 1372, face: 1, hand: [DOOR.x + 14, 616] });
+  if (S.drawer && S.bulb === 'drawer') out.push({ id: 'bulb', r: [704, 612, 740, 646], stand: 670, face: 1, hand: [720, 635] });
+  if (S.clock && S.crank === 'clock') out.push({ id: 'crank', r: [474, 606, 508, 650], stand: 542, face: -1, hand: [491, 628] });
+  out.push({ id: 'lamp', r: [LAMP.x - 52, ly - 56, LAMP.x + 52, ly + 14], stand: 952, face: 1, hand: [LAMP.x, ly + 3] });
+  out.push({ id: 'winch', r: [822, 606, 878, 674], stand: 812, face: 1, hand: [WINCH.x, WINCH.y] });
+  out.push({ id: 'drawer', r: [660, 622, 760, 674], stand: 656, face: 1, hand: [710, 646] });
+  out.push({ id: 'clock', r: [444, 478, 516, 712], stand: 545, face: -1, hand: [496, 624] });
+  out.push({ id: 'stand', r: [STAND.x - 52, STAND.base - 236, STAND.x + 54, STAND.base + 8], stand: STAND.x - 72, face: 1, hand: [STAND.x - 26, STAND.base - 108] });
+  out.push({ id: 'door', r: [DOOR.x - 8, DOOR.fan - 8, DOOR.x + DOOR.w + 8, WB + 4], stand: 1359, face: 1, hand: [DOOR.x + 14, 616] });
   return out;
 }
 const spotAt = (vx, vy) => spots().find(s => vx >= s.r[0] - 6 && vx <= s.r[2] + 6 && vy >= s.r[1] - 6 && vy <= s.r[3] + 6);
@@ -1227,7 +1296,7 @@ function perform(sp, h, r) {
   if (r.fail === 'look' || r.fail === 'done') return;
   if (r.fail === 'fear') return recoil();
   const o = { hx: sp.hand[0], hy: sp.hand[1], item: h };
-  if (r.fail === 'high') { o.hx = kid.x + 10; o.hy = GY - 153; o.pre = 0.4; o.onHit = () => { snd.no(); say(['lampDown']); }; }   // 灯在高处：踮着脚也够不着
+  if (r.fail === 'high') { o.hx = kid.x + 30; o.hy = GY - 160; o.pre = 0.4; o.onHit = () => { snd.no(); say(['lampDown']); }; }   // 灯在高处：踮着脚也够不着
   else if (r.fail === 'nobulb') o.onHit = () => { V.swayV += 0.07; snd.tap(); say(['bulb']); };                                  // 灯口是空的
   else if (r.fail === 'nocrank') o.onHit = () => { V.crankA += 0.3; snd.no(); say(['crank']); };                                 // 方头用手拧不动
   else if (r.fail === 'locked') o.onHit = () => { snd.locked(); say(['key']); };
@@ -1440,7 +1509,7 @@ function drawBubble() {
   if (!bubble) return;
   const t = V.T - bubble.t0, n = bubble.icons.length, w = 28 + n * 42, h = 60;
   const a = Math.min(1, t / 0.14) * clamp((bubble.dur - t) / 0.3, 0, 1), sc = 0.7 + 0.3 * ease(t / 0.18);
-  const hx = kid.x + kid.face * 6, cx = clamp(hx + kid.face * 34, RL + w / 2 + 10, RR - w / 2 - 10), cy = GY - 146 - 50 - h / 2;
+  const hx = kid.x + kid.face * 6, cx = clamp(hx + kid.face * 34, RL + w / 2 + 10, RR - w / 2 - 10), cy = GY - 158 - 50 - h / 2;
   g.save(); g.globalAlpha = a; g.translate(cx, cy + h / 2); g.scale(sc, sc); g.translate(-cx, -(cy + h / 2));
   g.fillStyle = css(C.moon, 0.95);
   rr(cx - w / 2, cy - h / 2, w, h, 20); g.fill();
