@@ -1797,7 +1797,7 @@ function caught(k) {
   if (kid.mode === 'caught') return;
   if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
   stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走
-  kid.mode = 'caught'; kid.drive = false; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
+  kid.mode = 'caught'; kid.drive = false; kid.onBox = null; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
 }
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
@@ -2942,6 +2942,11 @@ function driveTick(dt, u) {
     if (!u || kid.auto) return;
     kid.path = []; kid.onArrive = null; kid.mode = 'idle';
   }
+  if (kid.mode === 'idle' && u && kid.onBox) {   // 站在脏衣篓上：往下、往左右拖就跳下来（接着按着就接着走）
+    if (u.uy > 0.6 || Math.abs(u.ux) > 0.5) hopOffBox(Math.abs(u.ux) > 0.5 ? Math.sign(u.ux) : 0);
+    return;
+  }
+  if (kid.mode === 'idle' && u && u.uy < -0.6 && nearBox()) return climbBox();   // 在脏衣篓旁边往上拖：跳上去
   if (kid.mode === 'idle' && u && !driveStart(u)) return;
   if (kid.mode === 'walk' && kid.drive) driveRun(dt, u);
 }
@@ -2953,6 +2958,7 @@ const PUSHABLE = {
   chair: { T: () => V.chairT, setT: t => { V.chairT = t; }, x: () => chairX(), span: CHAIR.x1 - CHAIR.x0, off: 50, fl: 'down', pushY: () => FL.down.gy - 96, speed: 70 },
 };
 const GRAB_HOLD = 0.28, GRAB_SNAP = 0.85, GRAB_NEAR = 90, GRAB_TIP = '站在它旁边，按住屏幕不放，孩子就把手搭上去；再往左右拖';
+const tipOf = id => id === 'hamper' ? '站在它旁边按住屏幕不放，手就搭上去，再往左右拖；往上拖就站上去' : GRAB_TIP;
 let toast = null, keyGrabTried = false;
 const grabHeld = () => (stick.on && stick.grabbing) || keys.has('grab');
 function grabSide(id) { return kid.x >= PUSHABLE[id].x() ? 1 : -1; }
@@ -2998,11 +3004,11 @@ function grabTick(dt) {   // 每一帧：长按够久了就去抓；按住 E 也
   if (stick.on && !stick.drag && !stick.grabbing && V.T - stick.t0 > GRAB_HOLD) { const id = nearPushable(); if (id) { stick.grabbing = true; requestGrab(id); } }
   if (keys.has('grab') && !keyGrabTried) { keyGrabTried = true; const id = nearPushable(); if (id) requestGrab(id); }
   // 头一回站到它旁边：告诉一声怎么推
-  if (kid.mode === 'idle') { const id = nearPushable(); V.told = V.told || {}; if (id && !V.told[id]) { V.told[id] = 1; toast = { text: GRAB_TIP, t0: V.T, dur: 3.6 }; } }
+  if (kid.mode === 'idle') { const id = nearPushable(); V.told = V.told || {}; if (id && !V.told[id]) { V.told[id] = 1; toast = { text: tipOf(id), t0: V.T, dur: 3.6 }; } }
 }
 // 孩子站在哪个能推的东西旁边（同一层的地上，离它的这一边站的地方不到 GRAB_NEAR）
 function nearPushable() {
-  if (kid.mode !== 'idle' || kid.kind !== 'floor') return null;
+  if (kid.mode !== 'idle' || kid.kind !== 'floor' || kid.onBox) return null;
   let best = null;
   for (const id in PUSHABLE) { const O = PUSHABLE[id], d = Math.abs(kid.x - O.x() - grabSide(id) * O.off); if (Math.abs(kid.y - FL[O.fl].gy) < 2 && d < GRAB_NEAR && (!best || d < best.d)) best = { id, d }; }
   return best ? best.id : null;
@@ -3010,6 +3016,11 @@ function nearPushable() {
 function startReach(o) { kid.mode = 'reach'; kid.r = { t: 0, k: 0, hit: false, used: false, tx: o.hx, ty: o.hy, ...o }; }
 function startPush(o) { kid.mode = 'push'; kid.pushY = o.pushY; kid.pull = !!o.pull; kid.push = { t: 0, x0: kid.x, sndT: -1, ...o }; }
 function hopTo(x1, s1, after) { kid.mode = 'hop'; kid.hop = { t: 0, dur: 0.42, x0: kid.x, x1, s0: kid.standY, s1, after }; }
+// 站到脏衣篓上（拖着走的时候）：在它旁边往上拖、按 ↑，或者点它，就跳上去站着；往下、往左右拖就跳下来。站在上面点灯绳，伸手一拉，人还站在上面
+const BOX_TOP = HAMPER.h + 6;
+const nearBox = () => kid.mode === 'idle' && !kid.onBox && kid.kind === 'floor' && Math.abs(kid.y - FL.up.gy) < 2 && Math.abs(kid.x - hamperX()) < 110;
+function climbBox() { const side = kid.x >= hamperX() ? 1 : -1; kid.boxSide = side; kid.face = -side; hopTo(hamperX(), BOX_TOP, () => { kid.onBox = 'hamper'; }); }
+function hopOffBox(dir, after) { const d = dir || kid.boxSide || -1; kid.onBox = null; kid.face = d; hopTo(hamperX() + d * 56, 0, after); }
 function meetGate(k) {
   if (k === 'cellar' && !S.hatch) { kid.face = -1; return shakeHead(['hatch']); }   // 地窖口关着：下不去
   recoil(k);
@@ -3149,9 +3160,14 @@ function tapWorld(wx, wy) {
   if (tStart < 0) tStart = V.T;
   taps++;
   held = null;
-  if (DRAG && sp && PUSHABLE[sp.id]) {   // 拖着走的时候，点一下脏衣篓、椅子不会自己推：走过去摸一下，告诉你要按住
+  if (DRAG && sp && sp.id === 'hamper') {   // 拖着走的时候，点脏衣篓：走过去跳上去站着（站在上面再点：跳下来）
+    if (kid.onBox) return hopOffBox();
+    const side = grabSide('hamper');
+    return walkTo(hamperX() + side * PUSHABLE.hamper.off, FL.up.gy, climbBox);
+  }
+  if (DRAG && sp && PUSHABLE[sp.id]) {   // 点一下椅子不会自己拉：走过去摸一下，告诉你要按住
     const O = PUSHABLE[sp.id], side = grabSide(sp.id);
-    toast = { text: GRAB_TIP, t0: V.T, dur: 3.6 }; V.told = V.told || {}; V.told[sp.id] = 1;
+    toast = { text: tipOf(sp.id), t0: V.T, dur: 3.6 }; V.told = V.told || {}; V.told[sp.id] = 1;
     return walkTo(O.x() + side * O.off, FL[O.fl].gy, () => { kid.face = -side; startReach({ hx: O.x() + side * (O.off - 24), hy: O.pushY(), onHit: () => snd.tap() }); });
   }
   if (sp) return use(sp, h);
@@ -3159,7 +3175,13 @@ function tapWorld(wx, wy) {
   if (!roomAt(wx, wy)) return;
   walkTo(wx, wy);
 }
-function use(sp, h) { walkTo(sp.stand.x, sp.stand.y, () => { kid.face = sp.face; perform(sp, h, act(S, sp.id, h)); }); }
+function use(sp, h) {
+  if (kid.onBox) {   // 站在脏衣篓上：灯绳就在头顶上就直接拉；点脏衣篓是跳下来；别的先跳下来再去
+    if (sp.id === 'cord' && S.hamper === 1) { kid.face = 1; return perform(sp, h, act(S, sp.id, h)); }
+    if (sp.id === 'hamper') return hopOffBox();
+    return hopOffBox(0, () => use(sp, h));
+  }
+  walkTo(sp.stand.x, sp.stand.y, () => { kid.face = sp.face; perform(sp, h, act(S, sp.id, h)); }); }
 // 走到了：伸手。规则说成了就照做，说不成就用动作和气泡告诉玩家差什么
 function perform(sp, h, r) {
   const f = r.fail, o = { hx: sp.hand[0], hy: sp.hand[1], item: h };
@@ -3190,7 +3212,9 @@ function perform(sp, h, r) {
     case 'hamper':   // 推脏衣篓：推到灯绳底下，或者推回去
       { const t0 = V.hamperT, t1 = ev === 'pushIn' ? 1 : 0;   // 从现在的地方推（拖着走的时候它可能停在半路上）
         return startPush({ what: 'hamper', x1: kid.x + (t1 - t0) * (HAMPER.x1 - HAMPER.x0), dur: 2.2 * Math.max(0.3, Math.abs(t1 - t0)), pushY: gy - 52, drive: e => { V.hamperT = lerp(t0, t1, e); }, after: () => commit(r) }); }
-    case 'cord':     // 跳上脏衣篓，拉一下灯绳，跳下来
+    case 'cord':     // 跳上脏衣篓，拉一下灯绳，跳下来（已经站在上面了：伸手拉一下，还站着）
+      if (kid.onBox) return startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
+        drive: rr => { V.cordPull = rr.hit ? rr.k : 0; rr.tx = CORD.x + V.cordSwing * 34; rr.ty = rr.hy + V.cordPull * 18; }, onHit: () => commit(r) });
       return hopTo(HAMPER.x1, HAMPER.h + 6, () => startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
         drive: rr => { V.cordPull = rr.hit ? rr.k : 0; rr.tx = CORD.x + V.cordSwing * 34; rr.ty = rr.hy + V.cordPull * 18; },
         onHit: () => commit(r), after: () => hopTo(HAMPER.x1 - 50, 0) }));
@@ -3256,7 +3280,7 @@ function hint() {
   const m = r.path[0]; hints++;
   ring = { id: m.spot, t0: V.T };
   if (m.held) say([m.held, '>'], 2.8);
-  if (DRAG && PUSHABLE[m.spot]) toast = { text: GRAB_TIP, t0: V.T, dur: 3.6 };
+  if (DRAG && PUSHABLE[m.spot]) toast = { text: tipOf(m.spot), t0: V.T, dur: 3.6 };
 }
 
 // ---------- 每一帧 ----------
