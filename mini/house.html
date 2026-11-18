@@ -2229,7 +2229,7 @@ function drawImpEyes(b, m, x, y, s, scared) {   // 一双大白眼睛、圆圆�
 }
 // 一双大白眼睛挨着、叠一点，挤在朝前的那一边；黑眼珠平时贴着前沿（往孩子那边看）。吓坏了眼睛瞪大、眼珠缩小、嘴张成一个小圈
 function drawImpFace(b, m, scared, closed = 0) {
-  const k = scared ? 1.12 : 1, lk = m.look, dark = '#1d1712', lw = Math.max(0.6, impMinW(b, 1.2)), ms = clamp(2.2 / impPx(b) / 1.7, 1, 1.55);   // 线在屏幕上至少 1.2 像素；画面里小的时候嘴大一点，看得见
+  const k = scared ? 1.12 : 1, lk = m.look, dark = '#1d1712', lw = Math.max(0.6, impMinW(b, 1.2));   // 线在屏幕上至少 1.2 像素
   b.lineCap = 'round';
   const EY = [[0.7, -2.4, 3.5 * k, 4.1 * k], [6.9, -1.7, 3.8 * k, 4.4 * k]], fx0 = EY[1][0] - EY[1][2];
   for (const [ex, ey, rx, ry] of EY) {
@@ -2239,20 +2239,27 @@ function drawImpFace(b, m, scared, closed = 0) {
     const pr = scared ? 1.2 : 1.65, side = lk >= 0 ? 0.72 + 0.28 * lk : 0.72 + 1.6 * lk, px = Math.min(ex + (rx - pr - 0.35) * clamp(side, -0.9, 1), ex < fx0 ? fx0 - pr * 0.7 : 1e9);   // 后面那只的眼珠不躲到前面那只后面去
     b.fillStyle = '#120d09'; b.beginPath(); b.arc(px, ey + 0.4, pr, 0, TAU); b.fill();
   }
-  if (scared && !closed) { b.fillStyle = '#3a1e10'; b.beginPath(); b.ellipse(9.2, 5 + 0.6 * (ms - 1), 0.9 * ms, 1.2 * ms, 0, 0, TAU); b.fill(); }
-  else { b.strokeStyle = dark; b.lineWidth = lw; b.beginPath(); b.arc(8.3, 4.2, 1.7 * ms, Math.PI * 0.12, Math.PI * 0.72); b.stroke(); }   // 一道小小的笑
+  // 没有嘴（2026-11-18 主人说脸上那个黑东西很怪：它就是一团发光的毛球，只有一双眼睛）
 }
 // 现在画布上一个单位在屏幕上多少像素（CSS 像素，算上放大和 DPR）；要在屏幕上有 css 那么粗，这里要画多粗
 const impPx = b => { const T = b.getTransform(); return Math.hypot(T.a, T.b) / DPR; };
 const impMinW = (b, css) => css / impPx(b);
-// 一条腿：大腿、小腿各 IMP_THIGH，膝盖朝前弯（够不着就伸直），脚尖一小笔。细细的黑铅笔线，亮处暗处一样
+// 一条腿：大腿、小腿各 IMP_THIGH，膝盖朝前弯（够不着就伸直），脚尖一小笔。细细的一条发光的线（2026-11-18 主人要的：原来是黑铅笔线）：
+// 外面一圈淡淡的暖光，里面一道很亮的细芯
 function impLegLine(b, hx, hy, fx, fy, seed) {
   let dx = fx - hx, dy = fy - hy; const d0 = Math.hypot(dx, dy) || 1e-3, L = IMP_THIGH * 2 - 0.3;
   if (d0 > L) { fx = hx + dx / d0 * L; fy = hy + dy / d0 * L; dx = fx - hx; dy = fy - hy; }
   const d = Math.min(d0, L), h = Math.sqrt(Math.max(0, IMP_THIGH * IMP_THIGH - d * d / 4)), kx = (hx + fx) / 2 + dy / d * h, ky = (hy + fy) / 2 - dx / d * h;
   const sx = fx - kx, sy = fy - ky, sl = Math.hypot(sx, sy) || 1;
-  const w = Math.max(0.5, impMinW(b, 1.4) / PEN.w);   // 在屏幕上至少和房子里别的铅笔线一样粗；放大看的时候还是细的
-  ink(b, [...curvePts([[hx, hy], [kx, ky], [fx, fy, 1]], false, 4), [fx + sy / sl * 2.6, fy - sx / sl * 2.6]], { w, col: '#1d1712', a: 1.4, amp: 0.35, taper: 2.5, seed });
+  const pts = [...curvePts([[hx, hy], [kx, ky], [fx, fy, 1]], false, 4), [fx + sy / sl * 2.6, fy - sx / sl * 2.6]];
+  b.save(); b.lineCap = 'round'; b.lineJoin = 'round'; b.globalCompositeOperation = 'lighter';
+  b.beginPath(); pts.forEach(([x, y], i) => i ? b.lineTo(x, y) : b.moveTo(x, y));
+  const core = Math.max(0.45, impMinW(b, 1.1));   // 在屏幕上至少 1.1 像素；放大看的时候还是细的
+  b.strokeStyle = 'rgba(255,196,80,0.16)'; b.lineWidth = core * 5.5; b.stroke();
+  b.strokeStyle = 'rgba(255,210,110,0.32)'; b.lineWidth = core * 2.6; b.stroke();
+  b.globalCompositeOperation = 'source-over';
+  b.strokeStyle = '#fff4cf'; b.lineWidth = core; b.stroke();
+  b.restore();
 }
 // 跑的时候一只脚在身子底下的哪儿：前一半踩在地上往后蹬，后一半抬起来往后一踢、再甩到前面
 function impStride(s, fast) {
@@ -3153,10 +3160,21 @@ function spots() {
   return out;
 }
 const spotAt = (wx, wy) => spots().find(s => wx >= s.r[0] - 6 && wx <= s.r[2] + 6 && wy >= s.r[1] - 6 && wy <= s.r[3] + 6);
+// 孩子走到 (x, y) 要走多远：不到 REACH 才算在跟前（同一间屋子里几步路；别的楼层、隔着半间屋子都不算）
+const REACH = 240;
+function withinReach(x, y) {
+  const A = nearestOnPaths(kid.x, kid.y), B = nearestOnPaths(x, y);
+  return pathLen(kid.x, kid.y, findPath(A.e, A.t, B.e, B.t)) <= REACH;
+}
 function tapWorld(wx, wy) {
   if (won || busy()) return;
   const sp = spotAt(wx, wy), h = held, hatchTap = S.hatch && wx > HATCH.x0 - 6 && wx < HATCH.x1 + 6 && wy > FL.down.wb && wy < ROOMS.cellar.top + 20;
   if (DRAG && !sp && !hatchTap) { held = null; return; }   // 拖着走的时候，点空地不走（只是把拿在手里的东西放回去）
+  if (DRAG && !kid.onBox) {   // 拖着走的时候，只有孩子就在跟前的东西点了才去用（2026-11-18 主人说：不小心点到楼下的东西，人就莫名其妙地冲过去）
+    const [tx, ty] = sp ? (PUSHABLE[sp.id] ? [PUSHABLE[sp.id].x() + grabSide(sp.id) * PUSHABLE[sp.id].off, FL[PUSHABLE[sp.id].fl].gy] : [sp.stand.x, sp.stand.y]) : [HATCH.x1 + 18, FL.down.gy];
+    if (!withinReach(tx, ty)) { toast = { text: '走到它跟前再点', t0: V.T, dur: 1.6 }; return; }   // 手里拿着的东西还拿着
+  }
+  if (DRAG && kid.onBox && !(sp && (sp.id === 'cord' || sp.id === 'hamper')) && !withinReach(sp ? sp.stand.x : HATCH.x1 + 18, sp ? sp.stand.y : FL.down.gy)) { toast = { text: '走到它跟前再点', t0: V.T, dur: 1.6 }; return; }
   if (tStart < 0) tStart = V.T;
   taps++;
   held = null;
@@ -3447,7 +3465,14 @@ function drawBubble() {   // 孩子头上的气泡：不用字，只画小图
 
 // ---------- 界面 ----------
 const NSLOT = 6;   // 物品栏：最多同时拿着六样
-function slotGeom() { const s = clamp(Math.min(W, H) * 0.085, 40, 60), gap = s * 0.22, y = H - s / 2 - Math.max(10, s * 0.22); return { s, gap, y, x: i => W / 2 + (i - (NSLOT - 1) / 2) * (s + gap) }; }
+// 物品栏：拖着走的时候放在屏幕最上面一排（底下是手指拖着走的地方，2026-11-18 主人说放在底下不方便），夹在标题和右上角的按钮中间；
+// 屏幕窄、夹不下就放到按钮下面一排。点着走（?ctl=tap）照旧在最底下
+function slotGeom() {
+  const s = clamp(Math.min(W, H) * 0.085, 40, 60), gap = s * 0.22, x = i => W / 2 + (i - (NSLOT - 1) / 2) * (s + gap);
+  if (!DRAG) return { s, gap, y: H - s / 2 - Math.max(10, s * 0.22), x };
+  const small = W < 700 || H < 480, br = small ? 16 : 19, by = small ? 26 : 44, row = NSLOT * s + (NSLOT - 1) * gap, side = Math.max(small ? 180 : 220, br * 6 + 40);
+  return { s, gap, y: W / 2 - row / 2 >= side ? Math.max(by, s / 2 + 8) : by + br + 12 + s / 2, x };
+}
 const slotAt = (px, py) => { const G = slotGeom(); for (let i = 0; i < NSLOT; i++) if (Math.abs(px - G.x(i)) <= G.s / 2 + 4 && Math.abs(py - G.y) <= G.s / 2 + 4) return i; return -1; };
 function button(x, y, r, label, fn, opts = {}) {
   g.beginPath(); g.arc(x, y, r, 0, 7);
@@ -3483,16 +3508,17 @@ function drawUI() {
   button(R - br, by, br, icoSound, toggleMute);
   button(R - br * 3 - 8, by, br, icoRestart, restart);
   button(R - br * 5 - 16, by, br, '?', hint, { size: 18 });
-  const ha = clamp(1 - (taps + drags * 0.5 - 3) * 0.5, 0, 1) * clamp(T - 0.4, 0, 1) * (won ? 0 : 0.55), maxW = W - 2 * (br * 6 + 40);
+  const SG = slotGeom(), ty = DRAG ? SG.y + SG.s / 2 + (small ? 13 : 20) : by;   // 说明的字：拖着走的时候在物品栏底下
+  const ha = clamp(1 - (taps + drags * 0.5 - 3) * 0.5, 0, 1) * clamp(T - 0.4, 0, 1) * (won ? 0 : 0.55), maxW = DRAG ? W - 40 : W - 2 * (br * 6 + 40);
   if (ha > 0.01 && maxW > 260) {
     g.fillStyle = css(C.moon, ha); g.font = `${small ? 12 : 14}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    const full = DRAG ? '按住往左右拖着走，松手就停，楼梯、梯子跟前往上下拖。点东西就去用它。' : '点哪儿走到哪儿。捡到的东西在下面：点一下拿在手里，再点要用的地方。';
-    g.fillText(g.measureText(full).width <= maxW ? full : DRAG ? '按住拖着走，松手就停。点东西去用它。' : '点哪儿走到哪儿。东西点一下拿起来，再点要用的地方。', W / 2, by);
+    const full = DRAG ? '按住往左右拖着走，松手就停，楼梯、梯子跟前往上下拖。走到东西跟前点它。' : '点哪儿走到哪儿。捡到的东西在下面：点一下拿在手里，再点要用的地方。';
+    g.fillText(g.measureText(full).width <= maxW ? full : DRAG ? '按住拖着走，松手就停。走到跟前点东西。' : '点哪儿走到哪儿。东西点一下拿起来，再点要用的地方。', W / 2, ty);
   }
   if (toast && T - toast.t0 < toast.dur && !won) {   // 一句话的提示（点了脏衣篓、椅子：要按住）
     const a = clamp((T - toast.t0) / 0.2, 0, 1) * clamp((toast.dur - (T - toast.t0)) / 0.5, 0, 1);
     g.fillStyle = css(C.lamp, 0.92 * a); g.font = `${small ? 13 : 16}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(toast.text, W / 2, by + (small ? 26 : 34));
+    g.fillText(toast.text, W / 2, ty + (small ? 18 : 24));
   }
   // 提示的圈不在画面里：在画面边上指过去
   if (ring) {
@@ -3500,7 +3526,7 @@ function drawUI() {
     if (sp) {
       const wx = (sp.r[0] + sp.r[2]) / 2, wy = (sp.r[1] + sp.r[3]) / 2, sx = (wx - camX) * Z, sy = (wy - camY) * Z;
       if (sx < 0 || sx > W || sy < 0 || sy > H) {
-        const t = T - ring.t0, a = clamp((3.4 - t) / 0.4, 0, 1) * (0.6 + 0.4 * Math.sin(t * 6)), m = 34, ax = clamp(sx, m, W - m), ay = clamp(sy, m + 40, H - m - 70), an = Math.atan2(sy - ay, sx - ax);
+        const t = T - ring.t0, a = clamp((3.4 - t) / 0.4, 0, 1) * (0.6 + 0.4 * Math.sin(t * 6)), m = 34, ax = clamp(sx, m, W - m), ay = DRAG ? clamp(sy, SG.y + SG.s / 2 + m, H - m) : clamp(sy, m + 40, H - m - 70), an = Math.atan2(sy - ay, sx - ax);
         g.save(); g.translate(ax, ay); g.rotate(an); g.fillStyle = css(C.hot, a); g.beginPath(); g.moveTo(16, 0); g.lineTo(-8, -11); g.lineTo(-3, 0); g.lineTo(-8, 11); g.closePath(); g.fill(); g.restore();
       }
     }
@@ -3534,7 +3560,7 @@ function drawUI() {
     g.fillText(`点了 ${taps} 下，${Math.round(wonT - tStart)} 秒${V.catches ? '，被抓住 ' + V.catches + ' 次' : ''}${hints ? '，看了 ' + hints + ' 次提示' : ''}`, W / 2 - 16, cy + (sm ? 12 : 16));
     if (a >= 1) pill(W / 2 + 16 + (sm ? 54 : 75), cy, sm ? 108 : 150, sm ? 34 : 42, '再来一遍', restart);
   }
-  if (H > W * 1.1) { const G = slotGeom(); g.fillStyle = css(C.moon, 0.6); g.font = `14px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('把手机横过来，画面会大一些', W / 2, G.y - G.s / 2 - (won ? 90 : 22)); }
+  if (H > W * 1.1) { const G = slotGeom(); g.fillStyle = css(C.moon, 0.6); g.font = `14px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('把手机横过来，画面会大一些', W / 2, DRAG ? H - (won ? 120 : 40) : G.y - G.s / 2 - (won ? 90 : 22)); }
 }
 
 // ---------- 输入 ----------
