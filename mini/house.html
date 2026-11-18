@@ -3425,9 +3425,28 @@ function paintIdle() {   // 空下来的时候把还没画的屋子画上（离�
 }
 const dist2 = id => { const bx = roomBox(id), cx = clamp(kid.x, bx.x0, bx.x1), cy = clamp(kid.y, bx.y0, bx.y1); return (cx - kid.x) ** 2 + (cy - kid.y) ** 2; };
 // 盖在两层上面的：灯光本身、影子的眼睛、能动的地方的铜件闪一下、扬起来的灰、提示的圈、气泡
+// 孩子挡在灯前面（2026-11-18 主人说：走过台灯的时候，那团亮光浮在孩子前面，很奇怪）。灯光本身（亮芯、光晕、飘着的灰）是最后一层盖上去的，
+// 会盖到孩子身上：先把孩子那一块原样抠下来（照他的轮廓），灯光画完再盖回去。屋子里的灯都在孩子后面（墙上、天花板上、桌上、炉子里）；
+// 只有拎在手里的萤火虫罐子在他前面，它的光照旧画在孩子上面
+let kidC = null;
+function grabKid() {
+  if (!kidVisible || kid.alpha <= 0.003 || kid.mode === 'gone') return null;
+  const y = bodyY(), x0 = kid.x - 100, y0 = y - 250 - (kid.lift || 0), x1 = kid.x + 100, y1 = y + 40;
+  const sx = Math.floor((x0 - camX) * K), sy = Math.floor((y0 - camY) * K), w = Math.ceil((x1 - x0) * K) + 2, h = Math.ceil((y1 - y0) * K) + 2;
+  if (sx + w < 0 || sy + h < 0 || sx > cv.width || sy > cv.height) return null;
+  if (!kidC || kidC.width < w || kidC.height < h) kidC = mk(Math.max(w, kidC ? kidC.width : 0), Math.max(h, kidC ? kidC.height : 0));
+  const b = kidC.getContext('2d');
+  b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, kidC.width, kidC.height);
+  pen(b, DARK, K, -camX * K - sx, -camY * K - sy); drawKid(b, DARK, false);   // 只要轮廓
+  b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-in'; b.drawImage(cv, sx, sy, w, h, 0, 0, w, h); b.globalCompositeOperation = 'source-over';
+  return { sx, sy, w, h };
+}
+const inFront = a => a.L.id === 'candle' && S.candle === 'inv' && !V.candleDown;
 function drawOverlays(lights) {
-  const T = V.T;
-  drawLightGlows(lights);
+  const T = V.T, kc = grabKid();
+  drawLightGlows(lights.filter(a => !inFront(a)));
+  if (kc) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(kidC, 0, 0, kc.w, kc.h, kc.sx, kc.sy, kc.w, kc.h); g.restore(); }
+  drawLightGlows(lights.filter(inFront));
   drawFlyers();
   for (const k of FEAR_KEYS) {   // 衣服里的眼睛：一点冷光，追人的时候发红
     const m = V.mon[k]; if (m.rise < 0.05) continue;
