@@ -1340,7 +1340,7 @@ const LIGHTS = [
   { id: 'cbulb', off: 0.3, up: 0.5, at: () => ({ x: CBULB.x, y: CBULB.y, R: 780, I: V.li.power, clip: roomClip('cellar') }) },
   { id: 'klamp', off: 0.4, up: 0.78, at: () => ({ x: 700, y: ROOMS.kitchen.top + 94, R: 660, I: V.li.power, clip: roomClip('kitchen') }) },
   { id: 'llamp', off: 0.4, up: 0.78, at: () => ({ x: 2050, y: ROOMS.living.top + 94, R: 660, I: V.li.power, clip: roomClip('living') }) },
-  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I: m.I, clip: roomClip(IMPS[k].room) }; } })),   // 灯崽：平时是灯座里的灯泡，变成小精灵跑出来的时候光跟着它走
+  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I: m.I, clip: roomClip(IMPS[k].room) }; } })),   // 灯崽：平时缩在小台灯的灯罩里，跑出来的时候光跟着它走
 ];
 // 蜡烛在哪儿：孩子手里（点着），或者放在保险丝盒旁边
 function candlePos() {
@@ -1460,7 +1460,7 @@ function drawLightGlows(lights) {
     g.translate(a.x, a.y); g.rotate(-(a.rot || 0)); g.drawImage(im.glow, -a.R, (L.off - 1) * a.R, 2 * a.R, 2 * a.R); g.restore();
     if (L.id === 'spill') continue;
     const core = L.id === 'candle' ? 0.6 : L.id === 'fire' ? 0.5 : 0.9;
-    if (L.id === 'imp') { glowAt(a.x, a.y, 40, C.lamp, 0.07 * I); glowAt(a.x, a.y, 12, C.hot, 0.35 * I); continue; }   // 灯崽：只在灯泡上亮一点，不把它的手脚冲淡
+    if (L.id === 'imp') { glowAt(a.x, a.y, 48, [255, 200, 80], 0.08 * I); continue; }   // 灯崽：身上一圈淡淡的黄光，不把它的黄毛和眼睛冲白
     glowAt(a.x, a.y, Math.min(150, a.R * 0.4), C.lamp, 0.26 * I); glowAt(a.x, a.y, L.id === 'fire' ? 60 : 24, C.hot, core * I);
     if (L.id === 'hall' || L.id === 'bath') for (let j = 0; j < 2; j++) {   // 绕着灯泡飞的两只蛾子
       const an = T * (2.3 + j * 0.9) + j * 2.4, rad = 22 + 8 * Math.sin(T * 1.1 + j * 3);
@@ -2027,32 +2027,38 @@ function drawBulbBug(b, x, y, on, t, s = 1) {   // 灯泡里住着的小虫：�
   for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x + sd * 4 * s, y - s, 4.2 * s, (1.3 + fl * 1.6) * s, sd * 0.5, 0, 7); b.fill(); }
   b.fillStyle = on ? '#fffaf0' : '#2a3048'; b.beginPath(); b.ellipse(x, y, 1.6 * s, 3.2 * s, 0, 0, 7); b.fill();
 }
-// 灯崽：卧室和门厅各有一团光。藏在灯罩下时边缘散开，探头、跳出和跑动时收成圆团。
-// 2026-11-18 又调了一次（主人说“按照你说的改”）：腿是光的颜色（淡金、两头收尖、一个小圆点当脚，亮处暗处一样）；
-// 边上的光芒平时只有几根、短而淡，吓到的时候一下子炸开变长（像毛竖起来），躲着的时候全收进去（flare）；
-// 心情看亮度和颜色：吓到时猛地变白、闪几下，平时暖黄，躲着的时候暗暗的琥珀色；变身的时候光点从四周往里飞、聚成一团，回灯罩时散开。
+// 灯崽（第八版，2026-11-18，照主人给的参考图）：一团亮黄的毛球，边上一圈细细的绒毛；一双大白眼睛挤在朝前的那一边，黑眼珠贴着前沿，底下一道小小的笑。
+// 腿是两笔细长的黑铅笔线，膝盖朝前弯，脚尖一小笔；没有胳膊。
+// 家是一盏黑色的鹅颈小台灯，钟形灯罩斜着朝下。它缩在灯罩里，从外面看只是灯口露出一点黄绒毛、底下一团光；
+// 要出来的时候往下一沉，眼睛露到灯口外面，两条腿垂下来晃，然后跳下来跑。它一走台灯就黑了。脚底下的地上一直有一小片黄光（像影子，可是亮的）。
+// 心情看绒毛和颜色：吓到的时候一下子变淡变亮、闪几下，绒毛炸开变长（毛竖起来），平静下来慢慢收回；躲着的时候绒毛贴着身子、暗暗的琥珀色。
 const IMPS = {
-  bed: { room: 'bedroom', fl: 'up', home: 150, hy: FL.up.gy, up: 0, range: [80, 600], hide: null, R: 180, seed: 432000 },
-  hall: { room: 'hall', fl: 'down', home: HCLOCK.x + 2, hy: HCLOCK.base - 241, up: 1, range: [2950, 3770], hide: 3712, R: 200, seed: 433000 },
+  bed: { room: 'bedroom', fl: 'up', lx: 118, hy: FL.up.gy, up: 0, range: [80, 600], hide: null, R: 180, seed: 432000 },
+  hall: { room: 'hall', fl: 'down', lx: HCLOCK.x - 12, hy: HCLOCK.base - 241, up: 1, range: [2950, 3770], hide: 3712, R: 200, seed: 433000 },
 };
 const IMP_KEYS = Object.keys(IMPS);
-const IMP_R = 13, IMP_LEG = 10, IMP_SOCK = 18, IMP_CUP = 25;   // 光团的半径；腿长；从台灯里跳出来、跳回去时脚在多高；灯口多高（台灯自己的单位）
-const newImps = () => Object.fromEntries(IMP_KEYS.map(k => { const D = IMPS[k]; return [k, { k, x: D.home, y: D.hy, mode: 'bulb', morph: 0, face: -1, ph: 0, v: 0, tx: D.home, fast: 0, jump: null, scare: 0, calm: 0, rest: 0, blink: 0, blinkT: 1 + hash(D.seed, 1) * 3, look: 0, flash: -10, I: 0.62, hideK: 0, flare: 0.3, then: null, goHome: 0 }]; }));
-// 光团的姿势：H 是光团底下离脚底多高，lean 是身子往前倾多少（跳的时候翻跟头），sq 是压扁几成
+// 台灯自己的单位（画的时候放大 IMP_S 倍）：原点在底座底下的正中，灯罩朝 +x。灯罩挂在 knob 上，轴线往前斜 tilt；灯口在轴线上 rim 那么深
+const IMP_S = 1.3, IMP_R = 13, IMP_HIP = 10.4, IMP_THIGH = 7.5, IMP_AIR = 23;   // 毛球半径；腿从中心往下多远长出来；大腿、小腿各多长；在空中时中心离脚多高
+const LAMP = { knob: [17, -58], tilt: 0.32, rim: 23.5, nest: 14.5 };
+const shadeAt = (u, v) => [LAMP.knob[0] + u * Math.cos(LAMP.tilt) + v * Math.sin(LAMP.tilt), LAMP.knob[1] - u * Math.sin(LAMP.tilt) + v * Math.cos(LAMP.tilt)];
+const IMP_NEST = shadeAt(0, LAMP.nest);                                   // 缩在灯罩里的时候毛球的中心
+const impDrop = f => f > 0 ? 13 : 16.5;                                   // 探出来的时候往下沉多少（朝后看的那边灯口低，多沉一点眼睛才露得出来）
+const impSock = f => (-(IMP_NEST[1] + impDrop(f)) - IMP_AIR) * IMP_S;     // 探出来、腿垂着的时候脚离台灯底多高（世界单位）：跳出去、跳回来都从这儿
+for (const k of IMP_KEYS) IMPS[k].home = IMPS[k].lx + IMP_NEST[0] * IMP_S;   // 灯罩底下（毛球）的 x
+const newImps = () => Object.fromEntries(IMP_KEYS.map(k => { const D = IMPS[k]; return [k, { k, x: D.home, y: D.hy, mode: 'bulb', morph: 0, face: 1, ph: 0, v: 0, tx: D.home, fast: 0, jump: null, scare: 0, calm: 0, rest: 0, blink: 0, blinkT: 1 + hash(D.seed, 1) * 3, look: 0, flash: -10, I: 0.62, hideK: 0, fur: 0.3, then: null, goHome: 0 }]; }));
+// 毛球的姿势（台灯的单位）：H 是毛球中心离脚底多高，lean 是身子往前倾多少（翻跟头的时候转一整圈），sq 是压扁几成
 function impPose(m) {
   const t = V.T;
-  if (m.jump) { const u = clamp(m.jump.t, 0, 1); return { H: 7, lean: m.jump.flip ? TAU * smooth(u) : 0.12 * Math.sin(u * Math.PI), sq: 1 }; }
-  if (m.mode === 'run') { const bob = Math.abs(Math.cos(m.ph * TAU)) * (m.fast ? 2.6 : 1.3); return { H: 8.2 + bob, lean: m.fast ? 0.14 : 0.04, sq: 1 - bob * 0.015 }; }
-  return { H: lerp(8.4, 0, m.hideK), lean: Math.sin(t * 1.1 + m.x) * 0.03 * (1 - m.hideK), sq: lerp(1 + Math.sin(t * 2.6 + m.x) * 0.03, 0.78, m.hideK) };
+  if (m.jump) { const u = clamp(m.jump.t, 0, 1); return { H: IMP_AIR, lean: m.jump.flip ? TAU * smooth(u) : 0.15 * Math.sin(u * Math.PI), sq: 1 }; }
+  if (m.mode === 'run') { const bob = Math.abs(Math.sin(m.ph * TAU)); return { H: (m.fast ? 20.5 : 21.5) + bob * (m.fast ? 2.2 : 1), lean: m.fast ? 0.12 : 0.04, sq: 1 + (bob - 0.5) * 0.03 }; }
+  return { H: lerp(23.5 + Math.sin(t * 2.6 + m.x) * 0.3, IMP_R * 0.78, m.hideK), lean: Math.sin(t * 1.1 + m.x) * 0.03 * (1 - m.hideK), sq: lerp(1 + Math.sin(t * 2.6 + m.x) * 0.025, 0.78, m.hideK) };
 }
 const inSocket = m => m.mode === 'bulb' || m.mode === 'pop';
-// 光从哪儿出来：在灯座里是灯泡（或者正在变的那团）的中心，跑出来了是光团的中心
-// 在灯罩里：光团中心离台灯底多高（探出来的时候往下沉一点，眼睛露到灯罩外面）
-const impNest = m => IMP_CUP + IMP_R - 8 * smooth(Math.min(1, m.morph * 2));
+// 光从哪儿出来：在灯罩里是灯罩底下（正在探出来的时候跟着往下沉），跑出来了是毛球的中心
 function impGlobe(m) {
   const D = IMPS[m.k];
-  if (inSocket(m)) return [D.home, D.hy - impNest(m) * 1.15];
-  const p = impPose(m), r = IMP_R * p.sq * 1.15, H = p.H * 1.15; return [m.x + m.face * Math.sin(p.lean) * r, m.y - H - Math.cos(p.lean) * r];
+  if (inSocket(m)) return [D.home, D.hy + (IMP_NEST[1] + impDrop(m.face) * smooth(m.morph)) * IMP_S];
+  return [m.x, m.y - impPose(m).H * IMP_S];
 }
 function impUpdate(dt) {
   const T = V.T;
@@ -2063,14 +2069,14 @@ function impUpdate(dt) {
     const room = roomAt(kid.x, kid.y), kidHere = kid.mode !== 'gone' && kid.mode !== 'caught' && kid.kind === 'floor' && Math.abs(kid.y - gy) < 4 && room && room.id === D.room;
     m.look = approach(m.look, kidHere ? Math.sign(kid.x - m.x) * m.face : 0, dt * 5);
     m.hideK = approach(m.hideK, m.mode === 'hide' ? 1 : 0, dt * 4);
-    const fw = m.mode === 'hide' ? 0 : m.scare > 0.35 ? 1 : 0.3; m.flare = approach(m.flare, fw, dt * (fw > m.flare ? 8 : 1.2));   // 光芒：吓到一下子炸开，慢慢收回来
+    const fw = m.mode === 'hide' ? 0 : m.scare > 0.35 ? 1 : 0.3; m.fur = approach(m.fur, fw, dt * (fw > m.fur ? 8 : 1.2));   // 绒毛：吓到一下子炸开，慢慢收回来
     m.morph = approach(m.morph, m.mode === 'bulb' ? 0 : 1, dt / (m.mode === 'bulb' ? 0.6 : 0.4));
     const flashE = T - m.flash;
     m.I = lerp(0.62, 0.26, m.hideK) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed)) * (flashE < 0.12 ? 1.6 : flashE < 1.1 ? 0.7 + 0.3 * Math.abs(Math.sin(flashE * 31)) : 1);
     if (m.jump) {   // 在空中
       const j = m.jump; j.t += dt / j.dur; const u = Math.min(1, j.t);
       m.x = lerp(j.x0, j.x1, u); m.y = lerp(j.y0, j.y1, u) - j.h * 4 * u * (1 - u);
-      if (u >= 1) { m.jump = null; m.y = j.y1; m.mode = j.then; m.v = j.then === 'run' ? 180 : 0; if (j.then === 'bulb') { m.x = D.home; m.rest = 0; if (inView(D.home, D.hy, 80)) impMotes(...impGlobe(m), 7, -1); } if (inView(m.x, m.y, 80)) snd.hop(); }
+      if (u >= 1) { m.jump = null; m.y = j.y1; m.mode = j.then; m.v = j.then === 'run' ? 180 : 0; if (j.then === 'bulb') { m.x = D.home; m.rest = 0; } if (inView(m.x, m.y, 80)) snd.hop(); }
       continue;
     }
     // 谁在吓它：同一层、同一间屋子地上的孩子；醒着在追人的衣服
@@ -2078,15 +2084,15 @@ function impUpdate(dt) {
     if (kidHere) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
     for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl !== D.fl || o.rise < 0.9 || o.hunt < 0.3) continue; const d = Math.abs(o.x - m.x); if (d < 260 && d < td) { th = o.x; td = d; } }
     const fleeEnd = dir => { let end = dir > 0 ? D.range[1] : D.range[0]; if (D.hide != null && m.mode !== 'hide' && Math.sign(D.hide - m.x) === dir && Math.abs(D.hide - th) > 230) end = D.hide; return end; };
-    // 从灯座里蹦出来：门厅的从座钟顶上跳到地上，卧室的往旁边一蹦
-    const hopOut = (dir, tx, fast) => { m.face = dir; m.mode = 'air'; m.jump = { x0: D.home, y0: D.hy - IMP_SOCK, x1: clamp(D.home + dir * (D.up ? 120 : 34), D.range[0], D.range[1]), y1: gy, h: D.up ? 50 : 22, dur: D.up ? 0.6 : 0.4, t: 0, then: 'run' }; m.tx = tx; m.fast = fast; };
+    // 从灯罩底下跳出来：门厅的从座钟顶上跳到地上，卧室的跳到旁边的地上（往后跳要跳过底座）
+    const hopOut = (dir, tx, fast) => { m.face = dir; m.mode = 'air'; m.jump = { x0: D.home, y0: D.hy - impSock(dir), x1: clamp(D.home + dir * (D.up ? 120 : dir > 0 ? 30 : 48), D.range[0], D.range[1]), y1: gy, h: D.up ? 50 : 22, dur: D.up ? 0.6 : 0.4, t: 0, then: 'run' }; m.tx = tx; m.fast = fast; };
     if (m.mode === 'bulb' || m.mode === 'pop') {
-      if (th !== null && m.mode === 'bulb') { m.mode = 'pop'; m.then = 'flee'; m.flash = T; m.scare = 1; if (inView(D.home, D.hy, 80)) { snd.squeak(); impMotes(...impGlobe(m), 12, 1); } }
+      if (th !== null && m.mode === 'bulb') { m.mode = 'pop'; m.then = 'flee'; m.flash = T; m.scare = 1; if (inView(D.home, D.hy, 80)) snd.squeak(); }
       else if (m.mode === 'bulb' && m.morph < 0.01) {
         m.rest += dt;
         if (m.rest > 9 + hash(D.seed, Math.floor(T / 7)) * 8) {   // 在灯座里待腻了，变出来溜一圈
           const x = lerp(D.range[0] + 40, D.range[1] - 40, hash(D.seed + 3, Math.floor(T)));
-          m.rest = 0; if (!(kidHere && Math.abs(kid.x - x) < 300) && Math.abs(x - D.home) > 120) { m.mode = 'pop'; m.then = x; if (inView(D.home, D.hy, 80)) impMotes(...impGlobe(m), 9, 1); }
+          m.rest = 0; if (!(kidHere && Math.abs(kid.x - x) < 300) && Math.abs(x - D.home) > 120) { m.mode = 'pop'; m.then = x; }
         }
       }
       if (m.mode === 'pop' && m.morph >= 1) {
@@ -2118,111 +2124,136 @@ function impUpdate(dt) {
       if (Math.abs(m.tx - m.x) < 0.5) {
         m.x = m.tx; m.v = 0; m.fast = 0; m.calm = Math.min(m.calm, 0.5); m.rest = 0;
         if (D.hide != null && Math.abs(m.x - D.hide) < 1 && m.scare > 0.2) m.mode = 'hide';
-        else if (m.goHome) {   // 到了灯座旁边：蹦回灯座里
+        else if (m.goHome) {   // 到了台灯旁边：跳回灯罩底下
           m.goHome = 0; m.face = Math.sign(D.home - m.x) || 1;
-          m.jump = { x0: m.x, y0: m.y, x1: D.home, y1: D.hy - IMP_SOCK, h: D.up ? 40 : 24, dur: D.up ? 0.65 : 0.45, t: 0, then: 'bulb' };
+          m.jump = { x0: m.x, y0: m.y, x1: D.home, y1: D.hy - impSock(m.face), h: D.up ? 40 : 24, dur: D.up ? 0.65 : 0.45, t: 0, then: 'bulb' };
         } else m.mode = 'sit';
       }
       continue;
     }
-    if (m.calm > 3.5 && !(kidHere && Math.abs(kid.x - D.home) < 300)) {   // 没人吓它了，慢慢走回灯座
-      const sx = D.home + (m.x < D.home ? -1 : 1) * (D.up ? 70 : 40);
+    if (m.calm > 3.5 && !(kidHere && Math.abs(kid.x - D.home) < 300)) {   // 没人吓它了，慢慢走回台灯
+      const sx = D.home + (m.x < D.home ? -1 : 1) * (D.up ? 70 : m.x < D.home ? 52 : 40);
       m.mode = 'run'; m.fast = 0; m.goHome = 1; m.tx = clamp(sx, D.range[0], D.range[1]);
     }
   }
 }
-// 小台灯：木墩、铜杆、灯口（后面一层），布灯罩（前面一层，盖住缩在里面的灯崽的上半截）。灯崽不在的时候灯罩是暗的
+// 地上的一小片黄光（像影子，可是是亮的）
+function impPool(b, x, y, rx, a) {
+  if (a < 0.02) return;
+  b.save(); b.translate(x, y); b.scale(1, 0.22);
+  const gr = b.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gr.addColorStop(0, `rgba(255,208,74,${0.6 * a})`); gr.addColorStop(0.5, `rgba(250,196,60,${0.3 * a})`); gr.addColorStop(1, 'rgba(244,184,48,0)');
+  b.fillStyle = gr; b.beginPath(); b.arc(0, 0, rx, 0, TAU); b.fill(); b.restore();
+}
+const impGround = (D, x) => D.up && Math.abs(x - HCLOCK.x) < 33 ? D.hy : FL[D.fl].gy;   // 底下是哪儿的地：门厅那只在座钟顶上的时候是钟顶
+// 黑色的鹅颈小台灯：扁圆的底座，鹅颈从底座后面立起来、顶上弯过去，钩着一只钟形灯罩（台灯的单位）
+const LAMP_ARM = curvePts([[-2, -3], [-4, -26], [-3.5, -48], [2, -61], [10, -65], shadeAt(0, -3.6)], false, 4);
+const LAMP_SHADE = curvePts([[3, -2.4], [4.6, 0], [6, 4], [7.8, 9], [9.8, 14], [12.6, 19], [16.4, 23.5, 1], [-16.4, 23.5, 1], [-12.6, 19], [-9.8, 14], [-7.8, 9], [-6, 4], [-4.6, 0], [-3, -2.4], [0, -3.3]], true, 4).map(([u, v]) => shadeAt(u, v));
+// back：底座和鹅颈（在灯崽后面）；front：灯罩（盖住缩在里面的灯崽的上半截）。灯崽在家的时候灯口被它照亮一道边
 function drawImpLamp(b, P, lit, D, m, front) {
-  const lc = lcOf(P, lit); b.save(); b.translate(D.home, D.hy); b.scale(1.15, 1.15); b.seedN = D.seed + (front ? 620 : 600);
+  const lc = lcOf(P, lit), col = lit ? '#322d28' : '#0a0c13';
+  b.save(); b.translate(D.lx, D.hy); b.scale(IMP_S, IMP_S); b.seedN = D.seed + (front ? 620 : 600);
   if (!front) {
-    part(b, roundPts(-13, -5, 26, 5.5, 2.5), P.wood, { w: 0.8, tex: 0.3, lc });
-    part(b, rectPts(-1.8, -IMP_CUP + 4, 3.6, IMP_CUP - 9), P.brass, { w: 0.6, tex: 0, lc });
-    part(b, [[-5, -IMP_CUP + 5], [-5.5, -IMP_CUP], [5.5, -IMP_CUP], [5, -IMP_CUP + 5]], P.brass, { w: 0.6, tex: 0, lc });
+    part(b, arcPts(0, 0, 12, 4.5, Math.PI, TAU, 12), col, { w: 0.8, tex: 0, lc });
+    part(b, tube(LAMP_ARM, LAMP_ARM.map((_, i) => lerp(2.7, 2, i / (LAMP_ARM.length - 1)))), col, { w: 0.6, tex: 0, lc });
+    part(b, arcPts(-2, -4, 2.8, 1.4, 0, TAU, 10), col, { w: 0.5, tex: 0, lc });
   } else {
-    const home = inSocket(m), glow = home ? 1 - 0.5 * smooth(m.morph) : 0, sh = [[-10, -IMP_CUP - 29], [10, -IMP_CUP - 29], [20, -IMP_CUP - 9], [-20, -IMP_CUP - 9]];
-    part(b, sh, glow > 0.05 ? hexMix(lit ? P.shade : '#3a3830', '#f2dca6', glow * (lit ? 0.85 : 0.7)) : P.shade, { w: 0.9, tex: 0.3, lc });
-    for (const u of [-10, 0, 10]) ink(b, seg(u * 0.5, -IMP_CUP - 28, u, -IMP_CUP - 10), { w: 0.4, a: 0.45, col: lc, taper: 0 });
-    if (glow > 0.05) { b.fillStyle = rgba('#fff3cf', 0.8 * glow); b.fillRect(-19, -IMP_CUP - 10.5, 38, 2); }
+    part(b, LAMP_SHADE, col, { w: 0.9, tex: 0, lc });
+    const [kx, ky] = shadeAt(0, -3.6); part(b, arcPts(kx, ky, 2.9, 2.9, 0, TAU, 10), col, { w: 0.6, tex: 0, lc });
+    ink(b, [shadeAt(-3.5, 2), shadeAt(-6.2, 10), shadeAt(-10.5, 18.5)], { col: lit ? '#8a8172' : '#29304a', w: 0.8, a: 0.8, taper: 4 });   // 灯罩上一道反光
+    if (inSocket(m)) { const [x0, y0] = shadeAt(-15.4, 23.2), [x1, y1] = shadeAt(15.4, 23.2); b.strokeStyle = `rgba(255,214,96,${clamp(0.6 * m.I / 0.62, 0, 1)})`; b.lineWidth = 0.9; b.lineCap = 'round'; b.beginPath(); b.moveTo(x0, y0); b.lineTo(x1, y1); b.stroke(); }
   }
   b.restore();
 }
-// 边缘随现身逐渐聚拢。短笔触固定在角色身上，跑动时不会逐帧闪烁。
-// 变身时的光点：in = 1 从四周往里飞、聚成一团（快到的时候淡掉）；in = -1 从中间慢慢散开
-function impMotes(x, y, n, inward) {
-  for (let i = 0; i < n; i++) {
-    const a = Math.random() * TAU, life = 0.35 + Math.random() * 0.3, r = 30 + Math.random() * 34, col = mix(C.lamp, C.hot, Math.random());
-    if (inward > 0) parts.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, vx: -Math.cos(a) * r / life, vy: -Math.sin(a) * r / life, life, col, s: 1.2 + Math.random() * 1.4 });
-    else { const v = 14 + Math.random() * 22; parts.push({ x: x + Math.cos(a) * 6, y: y + Math.sin(a) * 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: life + 0.3, col, s: 1 + Math.random() * 1.2 }); }
-  }
-}
-// 光团：一团没有边的暖光，边上几根铅笔短光芒。m 管心情：scare、flash 让它变白、闪，hideK 让它变成暗暗的琥珀色，flare 管光芒炸开几成
-function drawImpBody(b, D, R, sq, m, reveal = 1, t = V.T) {
-  const fe = t - m.flash, white = clamp(Math.max(m.scare * 0.75, fe < 0.12 ? 1 : fe < 1.1 ? 0.6 * Math.abs(Math.sin(fe * 31)) * (1 - fe / 1.1) : 0), 0, 1), amber = m.hideK;
+// 绒毛：一圈细线，从身子里面一点长到边外面。固定在身上（每一帧一样），不会闪
+const IMP_HAIR = (() => { const r = rnd(43210), out = []; for (let i = 0; i < 150; i++) { const v = r(); out.push({ a: (i + r() * 0.9) / 150 * TAU, r0: 0.72 + r() * 0.16, len: 0.06 + r() * 0.1, tw: (r() - 0.5) * 0.7, c: v < 0.25 ? 2 : v < 0.5 ? 1 : 0, ph: r() * TAU }); } return out; })();
+// 毛球（中心在原点，朝 +x）。m 管心情：scare、flash 让它变淡变亮、闪；hideK 让它变成暗暗的琥珀色；fur 管绒毛炸开几成。run 是跑起来绒毛往后飘多少
+function drawImpBody(b, m, sq, t, run = 0) {
+  const R = IMP_R, fe = t - m.flash, amber = m.hideK * 0.85;
+  const white = clamp(Math.max(m.scare * 0.55, fe < 0.12 ? 1 : fe < 1.1 ? 0.6 * Math.abs(Math.sin(fe * 31)) * (1 - fe / 1.1) : 0), 0, 1);
   const tone = (calm, wh, am) => hexMix(hexMix(calm, wh, white), am, amber);
-  b.save();
-  b.scale(1 + (1 - sq) * 0.6, sq);
-  const radius = R * lerp(1.25, 1.05, reveal);
-  const wash = b.createRadialGradient(0, 0, 0, 0, 0, radius);
-  wash.addColorStop(0, tone('#fff0bf', '#fffdf2', '#e6c385'));
-  wash.addColorStop(lerp(0.35, 0.86, reveal), tone('#f5d387', '#fbe8b8', '#c69a56'));
-  wash.addColorStop(1, 'rgba(239,199,127,0)');
-  b.fillStyle = wash;
-  b.beginPath(); b.arc(0, 0, radius, 0, TAU); b.fill();
-  const fl = m.flare ?? 0.3, rayCol = tone('#f1cf90', '#fff6dc', '#c9a56a');
-  if (reveal > 0) for (let i = 0; i < 18; i++) {   // 光芒：双数的几根平时就有；单数的只有炸开的时候才出来
-    const a = (i + hash(i, D.seed) * 0.6) * TAU / 18, k = i % 2 ? smooth((fl - 0.45) / 0.4) : 1;
-    const al = lerp(0.45, 0.9, fl) * reveal * k; if (al < 0.03 || fl < 0.02) continue;
-    const dx = Math.cos(a), dy = Math.sin(a), r0 = R * 0.95, tip = R * (1 + lerp(0.09, 0.32, fl) * (0.6 + 0.4 * hash(D.seed, i))) + Math.sin(t * 30 + i * 2.3) * 0.5 * fl;
-    ink(b, seg(dx * r0, dy * r0, dx * tip, dy * tip), { col: rayCol, w: lerp(0.6, 0.85, fl), a: al, single: 1, seed: D.seed + i });
+  const base = tone('#f2bd2c', '#ffeaa0', '#b88533'), core = tone('#ffd864', '#fff6d2', '#c9973f'), deep = tone('#e2a423', '#f6d47c', '#9a6c2a'), lite = tone('#f8cc48', '#fff2c0', '#c08d3a');
+  b.save(); b.scale(1 + (1 - sq) * 0.6, sq);
+  const fur = m.fur ?? 0.3, sweep = run * 0.3, fz = R * (0.9 + 0.2 * lerp(0.8, 1.6, fur));
+  const hz = b.createRadialGradient(0, 0, R * 0.8, 0, 0, fz);   // 边上一圈毛茸茸的、没有边的黄
+  hz.addColorStop(0, rgba(base, 0.75)); hz.addColorStop(1, rgba(base, 0));
+  b.fillStyle = hz; b.beginPath(); b.arc(0, 0, fz, 0, TAU); b.fill();
+  const gr = b.createRadialGradient(-R * 0.25, -R * 0.3, R * 0.05, 0, 0, R * 0.92);
+  gr.addColorStop(0, core); gr.addColorStop(0.7, base); gr.addColorStop(1, deep);
+  b.fillStyle = gr; b.beginPath(); b.arc(0, 0, R * 0.9, 0, TAU); b.fill();
+  const cols = [base, lite, deep];
+  b.lineCap = 'round';
+  for (let c = 0; c < 3; c++) {
+    b.strokeStyle = cols[c]; b.lineWidth = c === 2 ? 0.32 : 0.4; b.beginPath();
+    for (const h of IMP_HAIR) {
+      if (h.c !== c) continue;
+      const ca = Math.cos(h.a), sa = Math.sin(h.a), L = R * h.len * lerp(0.8, 1.6, fur) * (1 + 0.1 * Math.sin(t * 5 + h.ph)), tw = h.tw * (1 - fur * 0.6);
+      b.moveTo(ca * R * h.r0, sa * R * h.r0); b.lineTo(ca * R * 0.88 + (Math.cos(h.a + tw) - sweep) * L, sa * R * 0.88 + Math.sin(h.a + tw) * L);
+    }
+    b.stroke();
   }
   b.restore();
 }
-// 腿：光的颜色，一笔弯弯的、两头收尖，末端一个小圆点当脚；亮处暗处一样
-function impLeg(b, lit, x0, y0, x1, y1, bend) {
-  const pts = quadPts([x0, y0], [(x0 + x1) / 2 - bend, (y0 + y1) / 2], [x1, y1], 8);
-  b.fillStyle = '#f4d48a'; b.beginPath(); tube(pts, pts.map((_, i) => lerp(1.7, 0.75, i / 8))).forEach(([x, y], j) => j ? b.lineTo(x, y) : b.moveTo(x, y)); b.closePath(); b.fill();
-  b.beginPath(); b.arc(x1 + 0.6, y1 - 0.4, 1.3, 0, TAU); b.fill();
-}
-function drawImpEyes(b, m, x, y, s, scared) {   // 一双大白眼睛、圆圆的黑眼珠带一点高光（往孩子那边看）；吓坏了眼睛瞪大、眼珠缩小
-  const lx = m.look * 1.1 * s;
-  for (const [ex, ey] of [[x - 3 * s, y], [x + 4.6 * s, y - 0.3 * s]]) {
-    if (m.blink > 0) { b.strokeStyle = 'rgba(40,28,16,0.85)'; b.lineWidth = 0.7; b.lineCap = 'round'; b.beginPath(); b.arc(ex, ey - 1.2 * s, 2.8 * s, Math.PI * 0.2, Math.PI * 0.8); b.stroke(); continue; }
-    const rx = (scared ? 3.9 : 3.5) * s, ry = (scared ? 4.6 : 4.1) * s, pr = (scared ? 1.35 : 2.15) * s, px = ex + lx * 1.2 + 0.3 * s, py = ey + 0.5 * s;
-    b.fillStyle = '#fffdf6'; b.beginPath(); b.ellipse(ex, ey, rx, ry, 0, 0, 7); b.fill();
-    b.strokeStyle = 'rgba(60,40,20,0.7)'; b.lineWidth = 0.6; b.stroke();
-    b.fillStyle = '#120d0a'; b.beginPath(); b.ellipse(px, py, pr, pr * 1.12, 0, 0, 7); b.fill();
-    b.fillStyle = '#ffffff'; b.beginPath(); b.arc(px + pr * 0.38, py - pr * 0.42, pr * 0.36, 0, 7); b.fill();
+// 一双大白眼睛挨着、叠一点，挤在朝前的那一边；黑眼珠平时贴着前沿（往孩子那边看）。吓坏了眼睛瞪大、眼珠缩小、嘴张成一个小圈
+function drawImpEyes(b, m, scared, closed = 0) {
+  const k = scared ? 1.12 : 1, lk = m.look, dark = '#1d1712';
+  b.lineCap = 'round';
+  const EY = [[0.7, -2.4, 3.5 * k, 4.1 * k], [6.9, -1.7, 3.8 * k, 4.4 * k]], fx0 = EY[1][0] - EY[1][2];
+  for (const [ex, ey, rx, ry] of EY) {
+    if (m.blink > 0 || closed) { b.strokeStyle = dark; b.lineWidth = 0.6; b.beginPath(); b.arc(ex, ey - 1.6, 2.8, Math.PI * 0.22, Math.PI * 0.78); b.stroke(); continue; }
+    b.fillStyle = '#fffcf2'; b.beginPath(); b.ellipse(ex, ey, rx, ry, 0, 0, TAU); b.fill();
+    b.strokeStyle = 'rgba(90,60,20,0.45)'; b.lineWidth = 0.45; b.stroke();
+    const pr = scared ? 1.2 : 1.65, side = lk >= 0 ? 0.72 + 0.28 * lk : 0.72 + 1.6 * lk, px = Math.min(ex + (rx - pr - 0.35) * clamp(side, -0.9, 1), ex < fx0 ? fx0 - pr * 0.7 : 1e9);   // 后面那只的眼珠不躲到前面那只后面去
+    b.fillStyle = '#120d09'; b.beginPath(); b.arc(px, ey + 0.4, pr, 0, TAU); b.fill();
   }
+  if (scared && !closed) { b.fillStyle = '#3a1e10'; b.beginPath(); b.ellipse(9.4, 5, 0.9, 1.2, 0, 0, TAU); b.fill(); }
+  else { b.strokeStyle = dark; b.lineWidth = 0.6; b.beginPath(); b.arc(8.4, 4.2, 1.7, Math.PI * 0.12, Math.PI * 0.72); b.stroke(); }   // 一道小小的笑
+}
+// 一条腿：大腿、小腿各 IMP_THIGH，膝盖朝前弯（够不着就伸直），脚尖一小笔。细细的黑铅笔线，亮处暗处一样
+function impLeg(b, hx, hy, fx, fy, seed) {
+  let dx = fx - hx, dy = fy - hy; const d0 = Math.hypot(dx, dy) || 1e-3, L = IMP_THIGH * 2 - 0.3;
+  if (d0 > L) { fx = hx + dx / d0 * L; fy = hy + dy / d0 * L; dx = fx - hx; dy = fy - hy; }
+  const d = Math.min(d0, L), h = Math.sqrt(Math.max(0, IMP_THIGH * IMP_THIGH - d * d / 4)), kx = (hx + fx) / 2 + dy / d * h, ky = (hy + fy) / 2 - dx / d * h;
+  const sx = fx - kx, sy = fy - ky, sl = Math.hypot(sx, sy) || 1;
+  ink(b, [...curvePts([[hx, hy], [kx, ky], [fx, fy, 1]], false, 4), [fx + sy / sl * 2.6, fy - sx / sl * 2.6]], { w: 0.5, col: '#1d1712', a: 1.4, amp: 0.35, taper: 2.5, seed });
+}
+// 跑的时候一只脚在身子底下的哪儿：前一半踩在地上往后蹬，后一半抬起来往后一踢、再甩到前面
+function impStride(s, fast) {
+  const A = fast ? 10 : 6, K = fast ? 8.5 : 3.5;
+  if (s < 0.5) return [A * (1 - 4 * s), 0];
+  const w = (s - 0.5) / 0.5; return [-A + 2 * A * smooth(w), -K * Math.sin(Math.PI * Math.pow(w, 0.6))];
 }
 function drawImp(b, P, lit, k) {
-  const D = IMPS[k], m = V.imps[k], t = V.T, f = m.face, R = IMP_R, scared = m.scare > 0.35;
-  drawImpLamp(b, P, lit, D, m, false);
-  if (inSocket(m)) {   // 缩在灯罩里：闭着眼、手脚收着，从外面看是一团暖光；要出来的时候往下一探、睁眼、伸出小腿
-    const mo = m.morph, g = smooth((mo - 0.45) / 0.55), cy = -impNest(m), shake = m.mode === 'pop' && mo < 0.45 ? Math.sin(t * 55) * 0.6 : 0;
-    b.save(); b.translate(D.home, D.hy); b.scale(f * 1.15, 1.15); b.seedN = D.seed + 650;
-    if (g > 0.02) {
-      for (let i = 0; i < 2; i++) { const sd = i ? 1 : -1, sw = Math.sin(t * 9 + i * 2); impLeg(b, lit, sd * 3.5, cy + R - 2, sd * 4 + sw * g, cy + R - 2 + IMP_LEG * g, sd * 1.5 * g); }   // 两条小腿垂下来晃
-    }
-    b.translate(shake, cy); drawImpBody(b, D, R, 1, m, mo, t);
-    if (mo > 0.12) drawImpEyes(b, { ...m, blink: mo < 0.3 ? 1 : m.blink }, 1.5, 2, 1, true);
+  const D = IMPS[k], m = V.imps[k], t = V.T, f = m.face, scared = m.scare > 0.35, glow = m.I / 0.62;
+  if (inSocket(m)) {   // 缩在灯罩里：从外面看只是灯口露出一点黄绒毛、底下一团光；要出来的时候往下一沉、睁眼、两条腿垂下来晃
+    const mo = m.morph, cy = IMP_NEST[1] + impDrop(f) * smooth(mo), g = smooth((mo - 0.35) / 0.65), shake = m.mode === 'pop' && mo < 0.45 ? Math.sin(t * 55) * 0.6 : 0;
+    impPool(b, D.home, D.hy, (D.up ? 15 : 24) * IMP_S, 0.8 * glow);   // 门厅那只的光只铺在钟顶上
+    b.save(); b.translate(D.lx, D.hy); b.scale(IMP_S, IMP_S); const [rx, ry] = shadeAt(0, LAMP.rim + 7); glowHex(b, rx, ry, 30, '#ffd257', 0.2 * glow); b.restore();
+    drawImpLamp(b, P, lit, D, m, false);
+    b.save(); b.translate(D.lx, D.hy); b.scale(IMP_S, IMP_S);
+    const M = b.getTransform(); b.translate(...LAMP.knob); b.rotate(-LAMP.tilt); b.beginPath(); b.rect(-40, LAMP.rim - 0.5, 80, 80); b.clip(); b.setTransform(M);   // 灯罩里面的那一截看不见
+    b.translate(IMP_NEST[0] + shake, cy); b.scale(f, 1); b.seedN = D.seed + 650;
+    if (g > 0.03) for (let i = 0; i < 2; i++) { const sd = i ? 1 : -1, sw = Math.sin(t * 9 + i * 2) * 1.2 * g; impLeg(b, sd * 2.4, IMP_HIP, sd * 3.2 + sw, IMP_HIP + 12 * g, D.seed + 660 + i); }
+    drawImpBody(b, m, 1, t);
+    drawImpEyes(b, m, true, mo < 0.3);
     b.restore();
     drawImpLamp(b, P, lit, D, m, true);
     return;
   }
-  drawImpLamp(b, P, lit, D, m, true);
-  const p = impPose(m), H = p.H, sq = p.sq;
-  b.save(); b.translate(m.x, m.y); b.scale(f * 1.15, 1.15); b.translate(0, -H); b.rotate(p.lean); b.seedN = D.seed;
-  // 腿：光团底下两笔淡金色的细腿。跑的时候前后甩、往后弯；站着的时候稍微叉开、跟着身子轻轻晃；躲着的时候收起来
+  const p = impPose(m), H = p.H, sq = p.sq, gy0 = m.jump ? impGround(D, m.x) : m.y, hgt = gy0 - (m.y - H * IMP_S);
+  impPool(b, m.x, gy0, (IMP_R * 1.35 + hgt * 0.06) * IMP_S, glow * clamp(1.25 - hgt / 90, 0.2, 1));
+  drawImpLamp(b, P, lit, D, m, false); drawImpLamp(b, P, lit, D, m, true);
+  b.save(); b.translate(m.x, m.y); b.scale(f * IMP_S, IMP_S); b.translate(0, -H); b.rotate(p.lean); b.seedN = D.seed;
+  // 腿：跑的时候一前一后大步甩开；在空中垂着蹬两下；站着的时候稍微叉开；躲着的时候收起来
   if (m.hideK < 0.9) for (let i = 0; i < 2; i++) {
-    const sd = i ? 1 : -1, hx = sd * 3.2, ph = m.ph * TAU + i * Math.PI; let fx, fy, bend;
-    if (m.jump) { fx = hx * 1.4 - 1; fy = 5.5; bend = -2; }
-    else if (m.mode === 'run') { const a = Math.sin(ph) * (m.fast ? 0.8 : 0.5); fx = hx + Math.sin(a) * IMP_LEG; fy = Math.min(H, Math.cos(a) * IMP_LEG - Math.max(0, Math.cos(ph)) * (m.fast ? 3.5 : 1.5)); bend = -Math.cos(ph) * (m.fast ? 2.6 : 1.6); }
-    else { fx = hx * 1.5 + 0.5; fy = H; bend = sd * 1.2 + Math.sin(t * 2.6 + m.x) * 0.4; }
-    impLeg(b, lit, hx, -2, fx, fy, bend);
+    const sd = i ? 1 : -1, hx = sd * 2.4; let fx, fy;
+    if (m.jump) { const u = Math.sin(clamp(m.jump.t, 0, 1) * Math.PI); fx = hx * 1.5 + sd * 2.5 * u; fy = IMP_HIP + 11.5 - 2 * u; }
+    else if (m.mode === 'run') { const [ax, ay] = impStride((m.ph + i * 0.5) % 1, m.fast); fx = hx * 0.3 + ax; fy = H + ay; }
+    else { fx = hx * 1.6 + 0.6; fy = lerp(H, IMP_HIP + 2, m.hideK / 0.9); }
+    impLeg(b, hx, IMP_HIP, fx, fy, D.seed + 10 + i);
   }
-  b.translate(0, -R * sq - 1.5);
-  drawImpBody(b, D, R, sq, m, 1, t);
-  drawImpEyes(b, m, 1.5, 0.8, 1, scared);
+  drawImpBody(b, m, sq, t, m.mode === 'run' ? (m.fast ? 1 : 0.4) : 0);
+  b.scale(1, lerp(1, sq, 0.5)); drawImpEyes(b, m, scared);
   b.restore();
 }
 // ----- 暗处的小东西：衣架鸟（照到了只是挂着的衣架）、爬来爬去的手套（照到了平平地躺着）-----
