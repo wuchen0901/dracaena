@@ -2816,6 +2816,20 @@ function recoil(k) {   // 不敢过去：退两步，缩着发抖，影子的边
   kid.mode = 'recoil'; kid.t = 0; kid.face = -dir; kid.x0 = kid.x; kid.rdir = dir; kid.r = null; kid.onArrive = null; kid.path = [];
   V.fearGate = k; V.fearT = V.T; snd.fear();
 }
+// 被哪个影子吓回来，气泡里就画照亮它要用的东西（2026-11-18 主人玩的时候在楼梯口卡住了：被脏衣服吓回来，不知道要去拿拖鞋卡住浴室的门）
+function gateHint(k) {
+  const s = S;
+  switch (k) {
+    case 'gown': return ['plug'];
+    case 'towel': return ['hamper'];
+    case 'laundry': return s.slipper === 'bed' || s.slipper === 'inv' ? ['slipper'] : null;
+    case 'stand': return s.bulb !== 'lamp' ? ['bulb'] : !hallLit(s) ? ['bolt'] : ['crank'];
+    case 'chair': return s.log !== 'fire' ? ['log'] : ['damper'];
+    case 'sack': return ['chair'];
+    case 'cellar': case 'boiler': return ['candle'];
+  }
+  return null;
+}
 function shakeHead(icons) { kid.mode = 'no'; kid.t = 0; snd.no(); if (icons) say(icons); }
 function say(icons, dur = 1.9) { bubble = { icons, t0: V.T, dur }; }
 function kidUpdate(dt) {
@@ -2852,7 +2866,8 @@ function kidUpdate(dt) {
     kid.x = kid.x0 + kid.rdir * 38 * ease(kid.t / 0.32);
     if (kid.t < 0.32) kid.ph = (kid.ph + 1 - dt * 3.2) % 1;
     kid.fearK = kid.t < 0.12 ? kid.t / 0.12 : kid.t < 0.95 ? 1 : Math.max(0, 1 - (kid.t - 0.95) / 0.3);
-    if (kid.t > 1.25) { kid.mode = 'idle'; kid.fearK = 0; }
+    if (kid.t > 1.05) kid.face = kid.rdir;   // 发完抖回头看一眼来的路（楼梯口：身后关上的浴室门）
+    if (kid.t > 1.25) { kid.mode = 'idle'; kid.fearK = 0; const ic = gateHint(V.fearGate); if (ic) say(ic, 2.6); }
   } else if (kid.mode === 'no') {
     kid.t += dt; kid.shake = Math.sin(kid.t * 24) * 2.8 * Math.max(0, 1 - kid.t / 0.55);
     if (kid.t > 0.55) { kid.mode = 'idle'; kid.shake = 0; }
@@ -3158,7 +3173,7 @@ function drawOverlays(lights) {
     [SOCKET.x, SOCKET.y - 4, 0, !S.plug], [CORD.x, CORD.end + 6, 1.3, !S.bath], [2688, FL.up.gy - 120, 2.1, S.slipper !== 'door'],
     [HTABLE.dx + HTABLE.dw / 2, HTABLE.dy + HTABLE.dh / 2, 0.4, !S.drawer], [HCLOCK.x + 15, HCLOCK.base - 88, 1.9, !S.clock], [HWINCH.x, HWINCH.y, 3.7, S.crank !== 'winch'], [FRONT.x + 14, FRONT.y + 108, 5.1, !S.door],
     [DAMPER.x + 30, DAMPER.y + 16, 2.7, !S.damper], [(SIDE.x0 + SIDE.x1) / 2, SIDE.top + 27, 4.4, !S.side], [FRIDGE.x0 + 17, FRIDGE.top + 100, 0.9, !S.fridge],
-    [HATCH.x1 - 30, FL.down.gy - 4, 3.2, !S.hatch], [FUSEBOX.x, FUSEBOX.y, 1.6, !power(S)],
+    [HATCH.x1 - 30, FL.down.gy - 4, 3.2, !S.hatch], [FUSEBOX.x, FUSEBOX.y, 1.6, !power(S)], [1010, FL.up.gy - 8, 2.4, S.slipper === 'bed'],   // 床边的拖鞋也闪一下
   ];
   for (const [x, y, ph, want] of glints) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (1 - coverage(x, y, lights)));
   if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
