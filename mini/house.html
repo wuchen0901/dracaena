@@ -1795,7 +1795,9 @@ function garbUpdate(dt) {
 }
 function caught(k) {
   if (kid.mode === 'caught') return;
-  kid.mode = 'caught'; kid.drive = false; stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走 kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
+  if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
+  stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走
+  kid.mode = 'caught'; kid.drive = false; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
 }
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
@@ -2609,7 +2611,7 @@ const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, 
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
 function restart() {
   S = { ...START }; bag = []; held = null; won = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
-  V = newView(); kid = newKid(); LT = []; stickLock = null; drags = 0;
+  V = newView(); kid = newKid(); LT = []; stickLock = null; drags = 0; toast = null;
   [camFX, camFY] = camTarget(); camX = camFX; camY = camFY;
 }
 const flying = it => fly.some(f => f.it === it);
@@ -2933,8 +2935,7 @@ function driveRun(dt, u) {
     kid.de = F.i; kid.dd = F.a === tn ? 1 : -1;
   }
 }
-function driveTick(dt) {
-  const u = stickInput(dt);
+function driveTick(dt, u) {
   if (stickLock) { if (u && (stickLock.any || dotUU(u, stickLock) > 0.3)) return; stickLock = null; }   // 被吓回来以后，手不松开（或者不换个方向）就不再往前走
   if (won) return;
   if (kid.mode === 'walk' && !kid.drive) {   // 点了东西正走过去：一拖就不走过去了，听手指的
@@ -2943,6 +2944,63 @@ function driveTick(dt) {
   }
   if (kid.mode === 'idle' && u && !driveStart(u)) return;
   if (kid.mode === 'walk' && kid.drive) driveRun(dt, u);
+}
+// ---------- 推、拉（拖着走的时候）：长按脏衣篓、椅子，孩子走过去把两只袖子搭上去；手指不松开往左右拖，就一起走；松手就放开 ----------
+// 东西停在哪儿就是哪儿；松手时离头不到 15%（脏衣篓离灯绳底下、椅子离冰箱门），再滑一点靠上去，规则里才算推到了
+// 电脑上：走到它跟前，按住 E（或空格）抓住，再按方向键，松开 E 就放开
+const PUSHABLE = {
+  hamper: { T: () => V.hamperT, setT: t => { V.hamperT = t; }, x: () => hamperX(), span: HAMPER.x1 - HAMPER.x0, off: 54, fl: 'up', pushY: () => FL.up.gy - 52, speed: 90 },
+  chair: { T: () => V.chairT, setT: t => { V.chairT = t; }, x: () => chairX(), span: CHAIR.x1 - CHAIR.x0, off: 50, fl: 'down', pushY: () => FL.down.gy - 96, speed: 70 },
+};
+const GRAB_HOLD = 0.28, GRAB_SNAP = 0.85;
+let toast = null, keyGrabTried = false;
+const grabHeld = () => (stick.on && stick.grabbing) || keys.has('grab');
+function grabSide(id) { return kid.x >= PUSHABLE[id].x() ? 1 : -1; }
+function requestGrab(id) {   // 走过去（站在它离孩子近的那一边），到了手指还按着就抓住
+  if (won || !(kid.mode === 'idle' || kid.mode === 'walk')) return;
+  const O = PUSHABLE[id], side = grabSide(id);
+  if (tStart < 0) tStart = V.T;
+  walkTo(O.x() + side * O.off, FL[O.fl].gy, () => { if (grabHeld()) startGrab(id, side); });
+  if (kid.mode === 'walk') kid.auto = true;   // 走过去的路上手指动一动不算拖
+}
+function startGrab(id, side) {
+  kid.mode = 'grab'; kid.grab = { id, side, v: 0, sndT: -1, rel: false, snap: false };
+  kid.face = -side; kid.pushY = PUSHABLE[id].pushY(); kid.pull = false; snd.tap();
+  if (stick.on) { stick.ax = stick.px; stick.ay = stick.py; stick.x0 = stick.px; stick.y0 = stick.py; stick.drag = true; }   // 从手指现在的地方开始算拖
+}
+function grabUpdate(dt, u) {
+  const gr = kid.grab, O = PUSHABLE[gr.id];
+  if (!gr.rel && !grabHeld()) { gr.rel = true; const t = O.T(); if (t > GRAB_SNAP && t < 1) gr.snap = true; }
+  let dir = 0, vmax = O.speed;
+  if (gr.snap) { dir = 1; vmax = O.speed * 1.2; }
+  else if (!gr.rel && kid.pushK > 0.85 && u && Math.abs(u.ux) > 0.35) { dir = Math.sign(u.ux); vmax *= 0.45 + 0.55 * u.m; }
+  gr.v += (dir * vmax - gr.v) * (1 - Math.exp(-dt * 8));
+  const T0 = O.T(), T1 = clamp(T0 + gr.v * dt / O.span, 0, 1), dx = (T1 - T0) * O.span;
+  if ((T1 >= 1 && gr.v > 0) || (T1 <= 0 && gr.v < 0)) { if (Math.abs(gr.v) > 25 && Math.abs(dx) > 1e-4) snd.thump(); gr.v = 0; }   // 推到头了
+  if (gr.snap && T1 >= 1) gr.snap = false;
+  O.setT(T1); kid.x += dx;
+  if (Math.abs(dx) > 1e-4) {
+    kid.pull = Math.sign(dx) === gr.side;   // 往自己这边走是拉（身子往后仰、倒着走）
+    const G = gaitOf(0); kid.ph = (kid.ph + (kid.pull ? -1 : 1) * Math.abs(dx) * G.st / (G.fa + G.fb) * 1.25 + 1) % 1;
+    if (V.T - gr.sndT > 0.3) { gr.sndT = V.T; snd.scrape(); }
+  }
+  if (gr.rel && !gr.snap) { kid.pushK = Math.max(0, kid.pushK - dt / 0.2); if (kid.pushK <= 0) grabEnd(); }
+  else kid.pushK = Math.min(1, kid.pushK + dt / 0.22);
+}
+function grabEnd() {   // 松手：东西在头上就算推到了，不在就算没有（规则只认这两种）
+  const gr = kid.grab, O = PUSHABLE[gr.id];
+  kid.mode = 'idle'; kid.grab = null; kid.pushK = 0; kid.pull = false;
+  const want = O.T() >= 0.999 ? 1 : 0;
+  if (want !== S[gr.id]) commit(act(S, gr.id, null));
+}
+function grabTick(dt) {   // 每一帧：长按够久了就去抓；按住 E 也一样
+  if (stick.on && !stick.drag && !stick.grabbing && stick.spot && V.T - stick.t0 > GRAB_HOLD) { stick.grabbing = true; requestGrab(stick.spot); }
+  if (keys.has('grab') && !keyGrabTried) {
+    keyGrabTried = true;
+    let best = null;
+    for (const id in PUSHABLE) { const O = PUSHABLE[id], d = Math.abs(kid.x - O.x() - grabSide(id) * O.off); if (Math.abs(kid.y - FL[O.fl].gy) < 2 && kid.kind === 'floor' && d < 140 && (!best || d < best.d)) best = { id, d }; }
+    if (best) requestGrab(best.id);
+  }
 }
 function startReach(o) { kid.mode = 'reach'; kid.r = { t: 0, k: 0, hit: false, used: false, tx: o.hx, ty: o.hy, ...o }; }
 function startPush(o) { kid.mode = 'push'; kid.pushY = o.pushY; kid.pull = !!o.pull; kid.push = { t: 0, x0: kid.x, sndT: -1, ...o }; }
@@ -2974,9 +3032,10 @@ function gateHint(k) {
 function shakeHead(icons) { kid.mode = 'no'; kid.t = 0; snd.no(); if (icons) say(icons); }
 function say(icons, dur = 1.9) { bubble = { icons, t0: V.T, dur }; }
 function kidUpdate(dt) {
-  const T = V.T;
-  if (DRAG) driveTick(dt);
+  const T = V.T, u = DRAG ? stickInput(dt) : null;
+  if (DRAG) { grabTick(dt); driveTick(dt, u); }
   if (kid.mode === 'walk') { if (!kid.drive) kidWalk(dt); }
+  else if (kid.mode === 'grab') grabUpdate(dt, u);
   else if (kid.mode === 'reach') {   // 伸手：伸出去 →（拧一会儿）→ 碰到 → 停一下 → 收回来
     const r = kid.r, EXT = 0.2, RET = 0.24, tHit = EXT + (r.pre || 0), tEnd = tHit + (r.hold == null ? 0.14 : r.hold);
     r.t += dt;
@@ -3032,7 +3091,7 @@ function kidUpdate(dt) {
   kid.blink -= dt; kid.blinkT -= dt;   // 眨眼
   if (kid.blinkT < 0) { kid.blink = 0.12; kid.blinkT = 2.2 + hash(Math.floor(T * 10), 1.7) * 3.2; }
   const pushing = kid.mode === 'push' && kid.push && kid.push.t > 0.22 && kid.push.t < 0.22 + kid.push.dur;
-  const moving = (kid.mode === 'walk' && kid.kind !== 'ladder') || kid.mode === 'exit' || pushing || (kid.mode === 'recoil' && kid.t < 0.32);
+  const moving = (kid.mode === 'walk' && kid.kind !== 'ladder') || kid.mode === 'exit' || pushing || (kid.mode === 'grab' && Math.abs(kid.grab.v) > 4) || (kid.mode === 'recoil' && kid.t < 0.32);
   kid.walk += ((moving ? 1 : 0) - kid.walk) * (1 - Math.exp(-dt * (moving ? 16 : 10)));
   if (kid.mode !== 'walk') kid.gait += (0 - kid.gait) * (1 - Math.exp(-dt * 8));
 }
@@ -3085,6 +3144,11 @@ function tapWorld(wx, wy) {
   if (tStart < 0) tStart = V.T;
   taps++;
   held = null;
+  if (DRAG && sp && PUSHABLE[sp.id]) {   // 拖着走的时候，点一下脏衣篓、椅子不会自己推：走过去摸一下，告诉你要按住
+    const O = PUSHABLE[sp.id], side = grabSide(sp.id);
+    toast = { text: '按住它不放，孩子把手搭上去，再往左右拖', t0: V.T, dur: 3.2 };
+    return walkTo(O.x() + side * O.off, FL[O.fl].gy, () => { kid.face = -side; startReach({ hx: O.x() + side * (O.off - 24), hy: O.pushY(), onHit: () => snd.tap() }); });
+  }
   if (sp) return use(sp, h);
   if (hatchTap) return walkTo(LADDER_X + 50, FL.cel.gy);   // 点开着的地窖口：下去
   if (!roomAt(wx, wy)) return;
@@ -3119,7 +3183,8 @@ function perform(sp, h, r) {
   switch (sp.id) {
     case 'plug': o.pre = 0.3; o.drive = rr => { if (!rr.hit) V.plugT = ease(clamp(rr.t / 0.45, 0, 1)); }; break;
     case 'hamper':   // 推脏衣篓：推到灯绳底下，或者推回去
-      return startPush({ what: 'hamper', x1: ev === 'pushIn' ? HAMPER.x1 - 54 : HAMPER.x0 + 54, dur: 2.2, pushY: gy - 52, drive: e => { V.hamperT = ev === 'pushIn' ? e : 1 - e; }, after: () => commit(r) });
+      { const t0 = V.hamperT, t1 = ev === 'pushIn' ? 1 : 0;   // 从现在的地方推（拖着走的时候它可能停在半路上）
+        return startPush({ what: 'hamper', x1: kid.x + (t1 - t0) * (HAMPER.x1 - HAMPER.x0), dur: 2.2 * Math.max(0.3, Math.abs(t1 - t0)), pushY: gy - 52, drive: e => { V.hamperT = lerp(t0, t1, e); }, after: () => commit(r) }); }
     case 'cord':     // 跳上脏衣篓，拉一下灯绳，跳下来
       return hopTo(HAMPER.x1, HAMPER.h + 6, () => startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
         drive: rr => { V.cordPull = rr.hit ? rr.k : 0; rr.tx = CORD.x + V.cordSwing * 34; rr.ty = rr.hy + V.cordPull * 18; },
@@ -3131,7 +3196,8 @@ function perform(sp, h, r) {
     case 'fire': if (ev === 'lightCandle') { o.candle = true; o.item = null; o.hx = 2262; o.hy = 952; o.pre = 0.55; o.hold = 0.2; } break;
     case 'damper': o.pre = 0.15; break;
     case 'chair':    // 椅子：拉到冰箱门边上顶着，或者推回去
-      return startPush({ what: 'chair', x1: ev === 'chairIn' ? kid.x + (CHAIR.x1 - CHAIR.x0) : kid.x - (CHAIR.x1 - CHAIR.x0), dur: 1.1, pull: ev === 'chairIn', pushY: dn - 96, drive: e => { V.chairT = ev === 'chairIn' ? e : 1 - e; }, after: () => commit(r) });
+      { const t0 = V.chairT, t1 = ev === 'chairIn' ? 1 : 0;
+        return startPush({ what: 'chair', x1: kid.x + (t1 - t0) * (CHAIR.x1 - CHAIR.x0), dur: 1.1 * Math.max(0.4, Math.abs(t1 - t0)), pull: ev === 'chairIn', pushY: dn - 96, drive: e => { V.chairT = lerp(t0, t1, e); }, after: () => commit(r) }); }
     case 'fridge': o.pre = 0.12; break;
     case 'hatch': o.pre = 0.25; o.hold = 0.25; break;
     case 'fusebox':  // 换保险丝要两只手：先转身把蜡烛放在旁边的小搁板上，再打开盒子把保险丝拧进去
@@ -3185,6 +3251,7 @@ function hint() {
   const m = r.path[0]; hints++;
   ring = { id: m.spot, t0: V.T };
   if (m.held) say([m.held, '>'], 2.8);
+  if (DRAG && PUSHABLE[m.spot]) toast = { text: '按住它不放，孩子把手搭上去，再往左右拖', t0: V.T, dur: 3.4 };
 }
 
 // ---------- 每一帧 ----------
@@ -3202,8 +3269,8 @@ function tick(dt) {
   // 东西慢慢动到规则说的样子
   V.drawer = approach(V.drawer, S.drawer, dt / 0.28); V.clock = approach(V.clock, S.clock, dt / 0.36); V.door = approach(V.door, S.door, dt);
   V.side = approach(V.side, S.side, dt / 0.28); V.damperT = approach(V.damperT, S.damper, dt / 0.3); V.hatch = approach(V.hatch, S.hatch, dt / 0.55);
-  if (!(kid.push && kid.push.what === 'hamper')) V.hamperT = approach(V.hamperT, S.hamper, dt / 1.5);
-  if (!(kid.push && kid.push.what === 'chair')) V.chairT = approach(V.chairT, S.chair, dt);
+  if (!DRAG && !(kid.push && kid.push.what === 'hamper')) V.hamperT = approach(V.hamperT, S.hamper, dt / 1.5);
+  if (!DRAG && !(kid.push && kid.push.what === 'chair')) V.chairT = approach(V.chairT, S.chair, dt);
   const fp = T - V.fridgePulse < 0.35;   // 没顶住的冰箱门：开一下又自己关上
   V.fridge = approach(V.fridge, S.fridge ? 1 : fp ? 0.7 : 0, dt / (S.fridge || fp ? 0.3 : 0.2));
   const passing = kid.mode === 'walk' && kid.y < FL.up.fr && Math.abs(kid.x - 2700) < 46;   // 浴室的门：走过的时候推开一点，自己又关上
@@ -3393,6 +3460,11 @@ function drawUI() {
     const full = DRAG ? '按住往左右拖着走，松手就停，楼梯、梯子跟前往上下拖。点东西就去用它。' : '点哪儿走到哪儿。捡到的东西在下面：点一下拿在手里，再点要用的地方。';
     g.fillText(g.measureText(full).width <= maxW ? full : DRAG ? '按住拖着走，松手就停。点东西去用它。' : '点哪儿走到哪儿。东西点一下拿起来，再点要用的地方。', W / 2, by);
   }
+  if (toast && T - toast.t0 < toast.dur && !won) {   // 一句话的提示（点了脏衣篓、椅子：要按住）
+    const a = clamp((T - toast.t0) / 0.2, 0, 1) * clamp((toast.dur - (T - toast.t0)) / 0.5, 0, 1);
+    g.fillStyle = css(C.lamp, 0.92 * a); g.font = `${small ? 13 : 16}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(toast.text, W / 2, by + (small ? 26 : 34));
+  }
   // 提示的圈不在画面里：在画面边上指过去
   if (ring) {
     const sp = spots().find(s => s.id === ring.id);
@@ -3442,14 +3514,15 @@ cv.addEventListener('pointerdown', e => {
   if (si >= 0) { const it = bag[si]; held = it && !flying(it) && held !== it ? it : null; if (held) snd.pick(); return; }   // 物品栏：点一下拿在手里，再点一下放回去
   if (!DRAG) return tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
   if (stick.id !== null) return;   // 第二根手指不管
-  Object.assign(stick, { id: e.pointerId, on: true, drag: false, ax: e.clientX, ay: e.clientY, px: e.clientX, py: e.clientY, x0: e.clientX, y0: e.clientY });
+  const sp = spotAt(camX + e.clientX / Z, camY + e.clientY / Z);
+  Object.assign(stick, { id: e.pointerId, on: true, drag: false, ax: e.clientX, ay: e.clientY, px: e.clientX, py: e.clientY, x0: e.clientX, y0: e.clientY, t0: V.T, spot: sp && PUSHABLE[sp.id] ? sp.id : null, grabbing: false });
   try { cv.setPointerCapture(e.pointerId); } catch (err) {}
 });
 // 拖着走：按下去没怎么动就松开，是点了一下（点东西）；拖出 12 像素就是拖着走
 function stickEnd(e, cancel) {
   if (stick.id !== e.pointerId) return;
-  const tapped = !stick.drag && !cancel;
-  stick.id = null; stick.on = false; stick.drag = false;
+  const tapped = !stick.drag && !cancel && !stick.grabbing;
+  stick.id = null; stick.on = false; stick.drag = false; stick.grabbing = false;
   if (tapped && !won) tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
 }
 cv.addEventListener('pointerup', e => stickEnd(e, false));
@@ -3474,9 +3547,9 @@ addEventListener('keydown', e => {
   else if (k === 'escape') held = null;
   else if (DRAG && MOVE_KEYS[k]) { keys.add(MOVE_KEYS[k]); e.preventDefault(); }
 });
-const MOVE_KEYS = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down' };
-addEventListener('keyup', e => { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m) keys.delete(m); });
-addEventListener('blur', () => { keys.clear(); stick.id = null; stick.on = false; stick.drag = false; });
+const MOVE_KEYS = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down', e: 'grab', ' ': 'grab' };
+addEventListener('keyup', e => { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m) keys.delete(m); if (m === 'grab') keyGrabTried = false; });
+addEventListener('blur', () => { keys.clear(); keyGrabTried = false; stick.id = null; stick.on = false; stick.drag = false; stick.grabbing = false; });
 
 // ---------- 开始 ----------
 layout(); restart();
