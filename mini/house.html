@@ -15,21 +15,23 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
 <!-- 规则：“东西在哪儿、点了什么会怎样、哪个影子敢过去”都在这一段，不碰页面。mini/tools/check.mjs 直接拿这一段去搜：解得开、没有死路 -->
 <script id="core">
 // 一栋夜里的房子：楼上卧室 → 浴室 → 楼梯 → 门厅（楼下停电）→ 客厅 → 厨房 → 地下室（来电）→ 回到门厅出门。
-// （2026-11-18 起，“影子”是灌了墨的空衣服，“蜡烛”candle 是一罐萤火虫，lit 是烤暖了；衣服会追人在页面里，不在规则里）
+// （2026-11-18 起，“影子”是灌了墨的空衣服，“蜡烛”candle 是一个玻璃罐，lit 是里面抓到了萤火虫；衣服会追人在页面里，不在规则里）
+// （2026-11-18 晚上主人说萤火虫烤暖了才亮没听说过，改成抓萤火虫：几只萤火虫困在厨房窗玻璃上，够不着；冰箱里的蜂蜜放到窗下台面上，它们飞下来吃，拿罐子一扣就抓住了）
 // 规则只管“东西在哪儿、灯开没开、哪个影子敢过去”；孩子走到哪儿不算在里面：隔着影子的地方走不到，别的都走得到。
-const ITEMS = ['slipper', 'log', 'fuse', 'candle', 'bulb', 'crank', 'key'];
+const ITEMS = ['slipper', 'log', 'fuse', 'candle', 'honey', 'bulb', 'crank', 'key'];
 const START = {
   plug: 0, slipper: 'bed',                                  // 卧室：床头灯的插头插没插上；拖鞋在床边 / 身上 / 卡在浴室门底下（door）
   hamper: 0, bath: 0,                                       // 浴室：脏衣篓推到灯绳底下没有；灯开没开
   log: 'basket', damper: 0, side: 0, fuse: 'side',          // 客厅：柴在筐里 / 身上 / 壁炉里（fire）；风门开没开；抽屉开没开；保险丝在抽屉里 / 身上 / 保险丝盒里（box）
-  chair: 0, fridge: 0, candle: 'shelf', lit: 0, hatch: 0,   // 厨房：椅子顶没顶住冰箱门；冰箱门开没开；蜡烛在架子上 / 身上 / 放在保险丝盒旁边（box）；点着没有；地窖口开没开
+  chair: 0, fridge: 0, candle: 'shelf', lit: 0, hatch: 0,   // 厨房：椅子顶没顶住冰箱门；冰箱门开没开；罐子在架子上 / 身上 / 放在保险丝盒旁边（box）；抓到萤火虫没有；地窖口开没开
+  honey: 'fridge',                                          // 蜂蜜在冰箱里 / 身上 / 放在窗下的台面上（sill）
   drawer: 0, bulb: 'drawer', clock: 0, crank: 'clock', lamp: 0, key: 'stand', door: 0, out: 0,   // 门厅：和一屏的门厅一样
 };
 const has = (s, it) => s[it] === 'inv';
 const power = s => s.fuse === 'box';                        // 楼下来电了
 const fireOn = s => s.log === 'fire' && s.damper === 1;     // 壁炉的火稳住了（有柴、风门开着）
 const hallLit = s => s.bulb === 'lamp' && power(s);         // 门厅的吊灯亮着
-const candleLight = s => s.lit === 1 && s.candle === 'inv'; // 手里举着点着的蜡烛
+const candleLight = s => s.lit === 1 && s.candle === 'inv'; // 手里拎着一罐萤火虫
 // 影子：照到了才敢过去。地窖口也算一道：底下一点光都没有，不举着蜡烛（或者没来电）不敢下去
 const GATES = {
   gown: s => s.plug === 1,                                  // 卧室门边：睡袍
@@ -55,18 +57,19 @@ const SPOT_ZONE = {
   hamper: 'bath', cord: 'bath', bathdoor: 'landing',
   hdrawer: 'hall', hbulb: 'hall', hclock: 'hall', hcrank: 'hall', hlamp: 'hall', winch: 'hall', stand: 'exit', door: 'exit',
   basket: 'parlour', fire: 'parlour', damper: 'parlour',
-  side: 'back', fuse: 'back', chair: 'back', fridge: 'back',
-  shelf: 'pantry', hatch: 'pantry',
+  side: 'back', fuse: 'back', chair: 'back', fridge: 'back', honey: 'back',
+  shelf: 'pantry', flies: 'pantry', hatch: 'pantry',
   fusebox: 'fusebox',
 };
 const SPOTS = Object.keys(SPOT_ZONE);
 // 点一下 spot（手里拿着 held，没拿是 null）。成了返回 { s, ev }，不成返回 { fail }：
 //   far 走不到（隔着影子），no 这样用不行，look 只是看看，其余的 fail 是告诉玩家差什么
 function act(s, spot, held, R = reach(s)) {
-  const n = { ...s }, ok = (...ev) => ({ s: n, ev }), no = fail => ({ fail });
+  const no = fail => ({ fail });
   if (s.out) return no('done');
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE[spot])) return no('far');
+  const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 卧室
     case 'plug': if (held) return no('no'); if (s.plug) return no('look'); n.plug = 1; return ok('plugIn');
@@ -103,7 +106,6 @@ function act(s, spot, held, R = reach(s)) {
     case 'basket': if (held || s.log !== 'basket') return no('no'); n.log = 'inv'; return ok('take:log');
     case 'fire':
       if (held === 'log') { n.log = 'fire'; return ok('logIn'); }
-      if (held === 'candle') { if (!fireOn(s)) return no('weakFire'); if (s.lit) return no('look'); n.lit = 1; return ok('lightCandle'); }
       if (held) return no('no');
       return no(s.log !== 'fire' ? 'needLog' : s.damper ? 'look' : 'smoky');
     case 'damper': if (held) return no('no'); n.damper = 1 - s.damper; return ok(n.damper ? 'damperOpen' : 'damperShut');
@@ -113,6 +115,14 @@ function act(s, spot, held, R = reach(s)) {
     case 'chair': if (held) return no('no'); n.chair = 1 - s.chair; if (!n.chair) n.fridge = 0; return ok(n.chair ? 'chairIn' : 'chairOut');
     case 'fridge': if (held) return no('no'); if (!s.chair) return no('fridgeShuts'); n.fridge = 1 - s.fridge; return ok(n.fridge ? 'fridgeOpen' : 'fridgeShut');
     case 'shelf': if (held || s.candle !== 'shelf') return no('no'); n.candle = 'inv'; return ok('take:candle');
+    case 'honey': if (held || !s.fridge || s.honey !== 'fridge') return no('no'); n.honey = 'inv'; return ok('take:honey');
+    // 窗玻璃上的萤火虫：够不着，伸手、拿罐子去扣都飞散；台面上放了蜂蜜，它们飞下来吃，这时候拿罐子一扣
+    case 'flies':
+      if (s.lit) return no('look');
+      if (held === 'honey') { n.honey = 'sill'; return ok('honeyDown'); }
+      if (held === 'candle') { if (s.honey !== 'sill') return no('flee'); n.lit = 1; return ok('catch'); }
+      if (held) return no('no');
+      return no(s.honey === 'sill' ? 'needJar' : 'flee');
     case 'hatch': if (held) return no('no'); n.hatch = 1 - s.hatch; return ok(n.hatch ? 'hatchOpen' : 'hatchShut');
     // 地下室：换保险丝要两只手，蜡烛先放在旁边的架子上
     case 'fusebox':
@@ -123,7 +133,10 @@ function act(s, spot, held, R = reach(s)) {
   return no('no');
 }
 const KEYS = Object.keys(START);
-const skey = s => KEYS.map(k => s[k]).join(',');
+// 每一项能是哪几个值（没写的都是 0 / 1）。搜的时候一个局面编成一个数（每一项三选一，按三进制拼起来），比拼字符串快得多
+const VALUES = { slipper: ['bed', 'inv', 'door'], log: ['basket', 'inv', 'fire'], fuse: ['side', 'inv', 'box'], candle: ['shelf', 'inv', 'box'], honey: ['fridge', 'inv', 'sill'], bulb: ['drawer', 'inv', 'lamp'], crank: ['clock', 'inv', 'winch'], key: ['stand', 'inv', 'used'] };
+const VIDX = KEYS.map(k => new Map((VALUES[k] || [0, 1]).map((v, i) => [v, i])));
+const skey = s => { let n = 0; for (let i = 0; i < KEYS.length; i++) n = n * 3 + VIDX[i].get(s[KEYS[i]]); return n; };
 function moves(s) {
   const out = [], R = reach(s), hand = [null, ...ITEMS.filter(it => has(s, it))];
   for (const spot of SPOTS) { if (!R.has(SPOT_ZONE[spot])) continue; for (const held of hand) { const r = act(s, spot, held, R); if (r.s) out.push({ spot, held, s: r.s }); } }
@@ -131,25 +144,24 @@ function moves(s) {
 }
 // 从 from 开始一层一层往外搜：最短的点法、搜到几个局面；full 的时候搜完整个局面、再数几个死路（从它出发再也走不出去）
 function solve(from = START, allow = () => true, full = false) {
-  const k0 = skey(from), prev = new Map([[k0, null]]), all = new Map([[k0, from]]), q = [from];
+  const k0 = skey(from), prev = new Map([[k0, null]]), q = [from], qk = [k0];   // prev：从哪个局面、点了什么过来的
   let goal = null;
   for (let h = 0; h < q.length; h++) {
-    const s = q[h];
-    if (s.out) { if (!goal) goal = skey(s); if (!full) break; continue; }
+    const s = q[h], ks = qk[h];
+    if (s.out) { if (goal == null) goal = ks; if (!full) break; continue; }
     for (const m of moves(s)) {
       if (!allow(m)) continue;
       const k = skey(m.s); if (prev.has(k)) continue;
-      prev.set(k, [skey(s), m]); all.set(k, m.s); q.push(m.s);
+      prev.set(k, [ks, m.spot, m.held]); q.push(m.s); qk.push(k);
     }
   }
   const path = [];
-  for (let k = goal; k && prev.get(k); k = prev.get(k)[0]) path.unshift({ spot: prev.get(k)[1].spot, held: prev.get(k)[1].held });
-  if (!full) return { path: goal ? path : null, states: all.size, dead: -1 };
+  for (let k = goal; k != null && prev.get(k); k = prev.get(k)[0]) { const [, spot, held] = prev.get(k); path.unshift({ spot, held }); }
+  if (!full) return { path: goal != null ? path : null, states: prev.size, dead: -1 };
   const canWin = new Set(); let grew = true;
-  for (const [k, s] of all) if (s.out) canWin.add(k);
-  const succ = new Map(); for (const [k, s] of all) succ.set(k, s.out ? [] : moves(s).filter(allow).map(m => skey(m.s)));
-  while (grew) { grew = false; for (const [k] of all) { if (canWin.has(k)) continue; if (succ.get(k).some(x => canWin.has(x))) { canWin.add(k); grew = true; } } }
-  return { path: goal ? path : null, states: all.size, dead: all.size - canWin.size };
+  const succ = new Map(); q.forEach((s, i) => { if (s.out) canWin.add(qk[i]); succ.set(qk[i], s.out ? [] : moves(s).filter(allow).map(m => skey(m.s))); });
+  while (grew) { grew = false; for (const k of qk) { if (canWin.has(k)) continue; if (succ.get(k).some(x => canWin.has(x))) { canWin.add(k); grew = true; } } }
+  return { path: goal != null ? path : null, states: prev.size, dead: prev.size - canWin.size };
 }
 </script>
 
@@ -974,6 +986,7 @@ function paintLiving(b, r, P, lit) {
 }
 
 // ---------- 厨房（楼下，左）----------
+const HONEY_FR = { x: 1283, y: 900 }, HONEY_AT = { x: 784, y: 880 };   // 蜂蜜：冰箱中间那一格上；放下来以后在窗下台面上
 const FRIDGE = { x0: 1192, x1: 1332, top: 770 }, KTABLE = { x0: 830, x1: 1040, top: 888 }, SHELF = { x0: 196, x1: 360, y: 862 }, CHAIR = { x0: 1085, x1: 1158 };
 function paintKitchen(b, r, P, lit) {
   const lc = lit ? P.ink : DARK.ink, gy = r.gy;
@@ -1051,7 +1064,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.bath || vis.hall) drawBathDoor(b, P, lit);
   if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawImp(b, P, lit, 'hall'); drawFear(b, P, lit, 'stand'); }
   if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawFlameImps(b, P, lit); drawCritters(b, P, lit, 'living'); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
-  if (vis.kitchen) { drawShelf(b, P, lit); drawFridge(b, P, lit); drawChair(b, P, lit); drawCritters(b, P, lit, 'kitchen'); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
+  if (vis.kitchen) { if (S.honey === 'sill') drawHoney(b, P, lit, HONEY_AT.x, HONEY_AT.y, true, 250600); drawShelf(b, P, lit); drawFridge(b, P, lit); drawChair(b, P, lit); drawCritters(b, P, lit, 'kitchen'); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
   if (vis.kitchen || vis.cellar) drawHatch(b, P, lit);
   if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawCritters(b, P, lit, 'cellar'); drawFear(b, P, lit, 'boiler'); if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) drawCandle(b, P, lit, CSHELF.cx, CSHELF.y, S.lit, 250500); }
   drawKid(b, P, lit);
@@ -1078,7 +1091,24 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
     part(b, roundPts(-s * 0.45, -s * 0.13, s * 0.9, s * 0.26, s * 0.1), P.logC, { w: 0.9, tex: 0, lc }); part(b, arcPts(s * 0.42, 0, s * 0.08, s * 0.13, 0, TAU, 10), P.logEnd, { w: 0.6, tex: 0, lc });
   } else if (name === 'slipper') { drawSlipper(b, P, lit, 0, s * 0.2, seed + 5, s / 40); }
   else if (name === 'candle') { b.restore(); drawCandle(b, P, lit, x, y + s * 0.4, S.lit, seed + 7, s / 40); return; }
+  else if (name === 'honey') { b.restore(); drawHoney(b, P, lit, x, y + s * 0.4, false, seed + 7, s / 34); return; }
   b.restore();
+}
+// 一小罐蜂蜜：矮胖的陶罐，琥珀色，口上蒙一块布、拿绳子扎着。open：布揭了，蜂蜜从罐口淌下来一点，插着一根木头蜂蜜棒
+function drawHoney(b, P, lit, x, y, open, seed, k = 1) {
+  const lc = lcOf(P, lit), W = ([u, v]) => [x + u * k, y + v * k]; b.seedN = seed;
+  const amber = lit ? '#c98a2a' : '#3e3626', hi = lit ? '#e8b450' : '#4a4230', cloth = lit ? '#ece2c8' : '#3c4664';
+  part(b, [...arcPts(0, -11, 13, 11, Math.PI * 0.82, Math.PI * 2.18, 16), [8, 0], [-8, 0]].map(W), amber, { w: 0.8, tex: 0, lc });   // 罐身
+  part(b, roundPts(-8, -24, 16, 4, 1.5).map(W), amber, { w: 0.7, tex: 0, lc });                                                     // 罐口
+  part(b, arcPts(-4, -13, 3.2, 5.5, 0, TAU, 10).map(W), hi, { w: 0, tex: 0, lc });                                                  // 亮的一块
+  if (!open) {
+    part(b, [[-10, -24], [10, -24], [12, -19], [7, -20.5], [0, -19.5], [-7, -20.5], [-12, -19]].map(W), cloth, { w: 0.7, tex: 0, lc });   // 蒙着的布
+    part(b, [[-10, -24], [-7, -29], [0, -30.5], [7, -29], [10, -24]].map(W), cloth, { w: 0.7, tex: 0, lc });
+    ink(b, [[-9.5, -22], [9.5, -22]].map(W), { w: 0.9, col: lit ? '#8a5a32' : '#2a2430', taper: 0 });   // 扎着的绳子
+  } else {
+    part(b, [[-6, -24], [-5, -19], [-4.2, -14], [-3.2, -19], [-2, -24]].map(W), hi, { w: 0.5, tex: 0, lc });   // 淌下来的一道蜂蜜
+    ink(b, [[3, -22], [9, -40]].map(W), { w: 2.2 * k, col: P.wood, taper: 0, a: 1 / b.pen.a }); part(b, arcPts(9.6, -42, 3, 3.6, 0, TAU, 10).map(W), P.woodHi, { w: 0.6, tex: 0, lc });   // 蜂蜜棒
+  }
 }
 // 一只拖鞋（2026-11-18：侧面的一只、斜着从上往下看的一只，主人都说不像拖鞋；画了三种让主人挑，先挑了兔子拖鞋，又改成了这一种）：
 // 侧面，厚厚的平鞋底，后跟是空的、露出浅色的鞋垫；前面一个胖胖的紫色鞋面，鞋口一圈毛茸茸的翻边，鞋头顶上一个大毛线绒球（和孩子帽子上的一样）。
@@ -1096,13 +1126,13 @@ function drawSlipper(b, P, lit, x, y, seed, k = 1) {
   part(b, Array.from({ length: 22 }, (_, i) => { const t = i / 22 * TAU, rr = r * (1 + 0.06 * Math.sin(i * 3.1 + 1.3)); return [px + Math.cos(t) * rr, py + Math.sin(t) * rr * 0.92]; }), lit ? '#f1e9d6' : '#3e4866', { w: 0.7, tex: 0, lc });
   ink(b, arcPts(px + r * 0.15, py + r * 0.1, r * 0.6, r * 0.55, 0.2, 1.8, 8), { w: 0.5, col: lit ? '#c9bea6' : '#2a3350', taper: 2 });
 }
-function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 一罐萤火虫（规则里还叫 candle）：冻僵了是暗的，在火边烤暖了才亮
+function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 玻璃罐（规则里还叫 candle）：一开始是空的；抓到萤火虫（on）以后，里面五只一闪一闪地飞
   const lc = lcOf(P, lit), w = 20 * k, h = 26 * k; b.seedN = seed;
-  fillPts(b, roundPts(x - w / 2, y - h, w, h, 4 * k), on ? (lit ? 'rgba(225,240,190,0.42)' : 'rgba(170,190,150,0.36)') : (lit ? 'rgba(200,210,215,0.3)' : 'rgba(110,125,150,0.3)'));
+  fillPts(b, roundPts(x - w / 2, y - h, w, h, 4 * k), on ? (lit ? 'rgba(225,240,190,0.42)' : 'rgba(170,190,150,0.36)') : (lit ? 'rgba(200,215,225,0.22)' : 'rgba(110,125,150,0.22)'));
   ink(b, [...roundPts(x - w / 2, y - h, w, h, 4 * k), [x - w / 2, y - h + 4 * k]], { w: 0.7, col: lc, taper: 0, single: 1 });
   part(b, rectPts(x - w / 2 - 1, y - h - 5 * k, w + 2, 5 * k), P.brass, { w: 0.6, tex: 0, lc });
   ink(b, quadPts([x - w / 2, y - h - 4 * k], [x, y - h - 16 * k], [x + w / 2, y - h - 4 * k], 8), { w: 0.6, col: lc, taper: 0 });
-  V.flies.pts.forEach((p, i) => {   // 萤火虫：暖的时候在罐子里飞、一闪一闪；冻僵了挤在罐底，暗的
+  if (on) V.flies.pts.forEach((p, i) => {   // 萤火虫：在罐子里飞、一闪一闪
     if (V.flies.out && V.flies.out.i === i) return;
     const fx = x + p.u * k, fy = y + p.v * k, bl = on ? 0.75 + 0.25 * Math.sin(V.T * 6 + i * 1.7) : 0;
     if (on) { const gl = b.createRadialGradient(fx, fy, 0, fx, fy, 4.5 * k); gl.addColorStop(0, `rgba(230,255,150,${0.55 * bl})`); gl.addColorStop(1, 'rgba(230,255,150,0)'); b.fillStyle = gl; b.beginPath(); b.arc(fx, fy, 4.5 * k, 0, 7); b.fill(); }
@@ -1262,7 +1292,7 @@ function drawFridge(b, P, lit) {   // 冰箱门：开着的时候里面亮着灯
   if (o > 0.01) {
     fillPts(b, rectPts(x0 + 10, top + 14, x1 - x0 - 20, gy - top - 22), lit ? P.fridgeIn : '#2a3349');
     for (const y of [top + 70, top + 130]) ink(b, seg(x0 + 12, y, x1 - 12, y), { w: 0.7, col: lc, taper: 0, seed: 250210 + y });
-    part(b, roundPts(x0 + 20, top + 36, 40, 34, 6), P.jar, { w: 0.7, tex: 0, lc }); part(b, roundPts(x0 + 74, top + 98, 30, 32, 5), P.toy, { w: 0.7, tex: 0, lc }); part(b, roundPts(x0 + 26, top + 150, 60, 40, 8), P.cup, { w: 0.7, tex: 0, lc });
+    part(b, roundPts(x0 + 20, top + 36, 40, 34, 6), P.jar, { w: 0.7, tex: 0, lc }); if (S.honey === 'fridge') drawHoney(b, P, lit, HONEY_FR.x, HONEY_FR.y, false, 250220); part(b, roundPts(x0 + 26, top + 150, 60, 40, 8), P.cup, { w: 0.7, tex: 0, lc });
   }
   const dw = (x1 - x0) * Math.cos(o * 1.3), dx = x0 - (x1 - x0 - dw) * 0.15 * o;   // 门往左边转开
   part(b, roundPts(dx - (o > 0.5 ? (x1 - x0) * 0.25 * o : 0), top, Math.max(8, dw), gy + 6 - top, 16), P.fridge, { w: 1.2, tex: 0.3, lc, seed: 250300 });
@@ -1370,6 +1400,7 @@ const LIGHTS = [
   { id: 'klamp', off: 0.4, up: 0.78, at: () => ({ x: 700, y: ROOMS.kitchen.top + 94, R: 660, I: V.li.power, clip: roomClip('kitchen') }) },
   { id: 'llamp', off: 0.4, up: 0.78, at: () => ({ x: 2050, y: ROOMS.living.top + 94, R: 660, I: V.li.power, clip: roomClip('living') }) },
   ...['bedlamp', 'bath', 'hall', 'klamp', 'llamp', 'cellar'].map(k => ({ id: 'bug', off: 0, up: 0, at: () => { const m = V.bugs[k]; if (m.mode === 'in') return null; return { x: m.x, y: m.y, R: 70, I: 0.3, clip: roomClip(BUGS[k].room) }; } })),   // 飞出来的灯虫、钻出来的萤火虫：光很弱（0.3），不碰规则
+  { id: 'bug', off: 0, up: 0, at: () => { if (S.lit) return null; const P = V.swarm.pts, x = P.reduce((a, p) => a + p.x, 0) / P.length, y = P.reduce((a, p) => a + p.y, 0) / P.length; return { x, y, R: 90, I: 0.22, clip: roomClip('kitchen') }; } },   // 窗上的萤火虫：一点点光，不碰规则
   { id: 'bug', off: 0, up: 0, at: () => { const o = V.flies.out; if (!o) return null; const r = roomAt(o.x, o.y) || roomAt(kid.x, kid.y); return r ? { x: o.x, y: o.y, R: 55, I: 0.3, clip: roomClip(r.id) } : null; } },
   ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
   // 灯崽：缩在灯罩里的时候光从灯口往下、往前照（灯罩挡着，上面不亮）；跑出来的时候是围着它的一团光，跟着它走。两种之间 0.3 秒换过去
@@ -2450,8 +2481,9 @@ function drawFlameImps(b, P, lit) {
 // 飞出来的小光都很弱（亮度 0.3）：照到哪儿都不到规则里任何一个数（衣服塌下去要 0.55、停住 0.5、孩子算“在光里”0.45），所以不碰规则。
 // · 灯虫（BUGS）：六盏灯的灯泡里各住一只。灯灭着缩在灯泡里睡；灯一亮醒过来，扑扇翅膀、看着孩子。隔一会儿飞出来绕着灯转；孩子在这间屋子里，
 //   它常常好奇地飞下来，绕着孩子的头看一看，再飞回灯泡。它不在的时候灯泡里是空的（灯照样亮）。
-// · 萤火虫（V.flies）：罐子里五只。冻僵了在罐底挤成一堆、打哆嗦；烤暖了在罐子里飞。孩子走动，它们被晃到一边；靠近壁炉，都贴到朝火那边；
-//   醒着的衣服靠近，吓得挤到另一边、闪得快。拎在手里平静的时候，隔一会儿有一只从盖子的小孔钻出来，绕着孩子的头飞一圈再钻回去。被门厅的冷风一吹，打着哆嗦掉到罐底。
+// · 萤火虫：没抓到的时候（V.swarm）五只困在厨房窗玻璃上，一闪一闪；台面上有蜂蜜就飞下来吃；一伸手就往上飞散。
+//   抓进罐子以后（V.flies）在罐子里飞。孩子走动，它们被晃到一边；靠近壁炉，都贴到朝火那边；醒着的衣服靠近，吓得挤到另一边、闪得快。
+//   拎在手里平静的时候，隔一会儿有一只从盖子的小孔钻出来，绕着孩子的头飞一圈再钻回去。（原来是冻僵了要在壁炉边烤暖、被门厅的风一吹又暗下去，2026-11-18 改掉了）
 const BUGS = {
   bedlamp: { room: 'bedroom', pos: () => [BEDLAMP.x, BEDLAMP.y + 7], on: () => S.plug === 1, s: 0.9, seed: 451000, oy: -40 },
   bath: { room: 'bath', pos: () => [BATHLAMP.x, BATHLAMP.y + 4], on: () => S.bath === 1, s: 1, seed: 452000, oy: 40 },
@@ -2462,6 +2494,7 @@ const BUGS = {
 };
 const BUG_KEYS = Object.keys(BUGS);
 const newBugs = () => Object.fromEntries(BUG_KEYS.map(k => [k, { mode: 'in', x: 0, y: 0, vx: 0, vy: 0, face: 1, t0: 0, dur: 0, next: 6 + hash(BUGS[k].seed, 1) * 10, curious: 0 }]));
+const newSwarm = () => ({ pts: [0, 1, 2, 3, 4].map(i => ({ x: 690 + i * 22, y: 520 + (i % 3) * 50, vx: 0, vy: 0, face: 1 })), scare: -10, catchT: -10 });
 const newFlies = () => ({ pts: [0, 1, 2, 3, 4].map(i => ({ u: -4 + i * 2, v: -6, vu: 0, vv: 0, tu: 0, tv: -12, tt: 0 })), jx: null, jy: 0, jvx: 0, out: null, next: 10 });
 // 罐子在哪儿（世界坐标，罐底中间）和多大
 function jarAt() {
@@ -2493,7 +2526,18 @@ function bugUpdate(dt) {
     flyToward(m, tx, ty, dt, m.mode === 'back' ? 9 : 5, B.seed, T);
     const [x0, y0, x1, y1] = roomClip(B.room); m.x = clamp(m.x, x0 + 8, x1 - 8); m.y = clamp(m.y, y0 + 8, FL[ROOMS[B.room].fl].gy - 12);
   }
-  // 萤火虫
+  // 还没抓到的萤火虫：困在厨房窗玻璃上，上上下下地撞；台面上有蜂蜜，就飞下来围着蜂蜜罐吃；伸手过去就往上飞散
+  if (!S.lit) {
+    const W = V.swarm, sill = S.honey === 'sill', scared = T - W.scare < 2.2;
+    W.pts.forEach((o, i) => {
+      let tx, ty;
+      if (sill && !scared) { tx = HONEY_AT.x + Math.cos(T * 1.3 + i * 1.9) * (8 + i * 3); ty = HONEY_AT.y - 30 + Math.sin(T * 2.1 + i * 2.3) * 7 - (i % 2) * 8; }
+      else { tx = 730 + Math.cos(T * 0.7 + i * 1.3) * 62; ty = 560 + Math.sin(T * 1.1 + i * 2.1) * 72 - (scared ? 40 : 0); }
+      flyToward(o, tx, ty, dt, scared ? 10 : sill ? 6 : 3, 600 + i * 7, T);
+      o.x = clamp(o.x, 640, 980); o.y = clamp(o.y, 450, 900);
+    });
+  }
+  // 罐子里的萤火虫
   const F = V.flies, J = jarAt();
   if (!J) { F.jx = null; F.out = null; return; }
   const [jx, jy, jk] = J, jvx = F.jx == null ? 0 : (jx - F.jx) / Math.max(dt, 1e-3), jax = (jvx - F.jvx) / Math.max(dt, 1e-3); F.jx = jx; F.jy = jy; F.jvx = jvx;
@@ -2540,6 +2584,10 @@ function drawFlyers() {
   const t = V.T;
   for (const k of BUG_KEYS) { const m = V.bugs[k]; if (m.mode !== 'in' && inView(m.x, m.y, 30)) drawFlyer(g, m.x, m.y, BUGS[k].s * 2.1, t, m.face, BUGS[k].seed, '255,226,150'); }
   const o = V.flies.out; if (o && inView(o.x, o.y, 30)) drawFlyer(g, o.x, o.y, 1.9, t, o.face, 77, '214,255,140');
+  if (!S.lit) V.swarm.pts.forEach((p, i) => {   // 窗上的萤火虫：一闪一闪，暗下去的时候几乎看不见
+    if (!inView(p.x, p.y, 30)) return;
+    const bl = Math.max(0, Math.sin(t * (1.6 + i * 0.23) + i * 2.4)); g.save(); g.globalAlpha *= 0.3 + 0.7 * bl * bl; drawFlyer(g, p.x, p.y, 1.6, t, p.face, 600 + i, '214,255,140'); g.restore();
+  });
 }
 // ----- 暗处的小东西：衣架鸟（照到了只是挂着的衣架）-----
 // （以前地上还有爬来爬去的手套，2026-11-18 主人说留到别的关卡当有攻击力的东西，拿掉了，画法存在 design/crawling-glove.md）
@@ -2596,6 +2644,8 @@ for (const [k, fn] of Object.entries({
   log: t => { tone(110, t, 0.14, 0.1, 'sine', 60); noise(t, 0.22, 0.07, 500, 1); for (let i = 0; i < 4; i++) noise(t + 0.2 + i * 0.09 + Math.random() * 0.05, 0.03, 0.04, 3000, 2); },
   crackle: t => noise(t, 0.025, 0.02 + Math.random() * 0.03, 2400 + Math.random() * 1500, 2),
   ignite: t => { noise(t, 0.35, 0.07, 1500, 0.8, 'highpass'); tone(600, t, 0.3, 0.02, 'sine', 900); },
+  flutter: t => { for (let i = 0; i < 6; i++) noise(t + i * 0.035, 0.03, 0.03, 3200 + i * 260, 3); },   // 萤火虫扑棱棱飞散
+  catchFlies: t => [880, 1175, 1568].forEach((f, i) => tone(f, t + 0.08 + i * 0.08, 0.6, 0.022)),     // 扣住了：叮叮叮
   blow: t => { noise(t, 0.45, 0.06, 700, 0.7); tone(300, t + 0.05, 0.3, 0.015, 'sine', 180); },
   clank: t => { tone(240, t, 0.15, 0.07, 'square', 170); tone(480, t + 0.02, 0.22, 0.03, 'triangle'); },
   fridge: t => { noise(t, 0.12, 0.07, 420, 1); tone(58, t + 0.1, 1.1, 0.035, 'sawtooth', 58); },
@@ -2623,7 +2673,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10, progT: 0,   // progT：最后一次做成一件事的时候（卡住多久了）
-  imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
+  imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -2641,7 +2691,7 @@ const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 // 物品栏、气泡、捡起来飞过去的那一下：画成它在屋子里的样子（2026-11-18 主人说：地上是什么样，物品栏里就是什么样）。
 // 照 sceneItem 在灯下的颜色先画一张大的（世界里的大小，一个单位 ICON_R 个像素），量出画了的那一块，用的时候等比缩到格子里。
 // 萤火虫罐子里的萤火虫会动、会亮，每一帧重画；别的画一次就放着
-const ICON_SIZE = { bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, candle: 40 }, ICON_R = 4, ICON_PAD = 70;
+const ICON_SIZE = { bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, candle: 40, honey: 34 }, ICON_R = 4, ICON_PAD = 70;
 const iconCache = {};
 function iconCanvas(it) {
   const live = it === 'candle', key = it + (live ? '' : ''), e = iconCache[key] || (iconCache[key] = { c: mk(ICON_PAD * 2 * ICON_R, ICON_PAD * 2 * ICON_R), box: null, at: -1 });
@@ -3141,7 +3191,10 @@ function spots() {
   // 厨房
   const cx = chairX();
   add('chair', [cx - 34, dn - 200, cx + 36, dn + 6], cx + 50, 'down', -1, [cx + 22, dn - 96]);
+  if (S.fridge && S.honey === 'fridge') add('honey', [HONEY_FR.x - 18, HONEY_FR.y - 36, HONEY_FR.x + 18, HONEY_FR.y + 4], 1312, 'down', -1, [HONEY_FR.x, HONEY_FR.y - 14]);
   add('fridge', [FRIDGE.x0, FRIDGE.top, FRIDGE.x1, dn + 6], 1230, 'down', -1, [1208, 872]);
+  if (!S.lit) { if (S.honey === 'sill') add('flies', [HONEY_AT.x - 46, HONEY_AT.y - 70, HONEY_AT.x + 36, HONEY_AT.y + 6], 830, 'down', -1, [HONEY_AT.x, HONEY_AT.y - 12]);
+    else add('flies', [650, 470, 810, HONEY_AT.y + 4], 830, 'down', -1, [HONEY_AT.x, HONEY_AT.y - 8]); }
   if (S.candle === 'shelf') add('shelf', [314, 798, 362, 870], 348, 'down', -1, [338, 858]);
   if (S.hatch) add('hatch', [236, 868, 292, 1004], 292, 'down', -1, [262, 928]);
   else add('hatch', [124, 952, 258, 1012], 262, 'down', -1, [244, 988]);
@@ -3212,7 +3265,11 @@ function perform(sp, h, r) {
     else if (f === 'nopower') o.onHit = bub(['bolt'], () => { V.swayV += 0.05; snd.tap(); });
     else if (f === 'nocrank') o.onHit = bub(['crank'], () => { V.crankA += 0.3; snd.no(); });
     else if (f === 'locked') o.onHit = bub(['key'], () => snd.locked());
-    else if (f === 'weakFire') { o.candle = h === 'candle'; o.item = null; o.hy -= 14; o.onHit = bub([S.log !== 'fire' ? 'log' : 'damper'], () => snd.no()); }
+    else if (f === 'flee' || f === 'needJar') {   // 去抓萤火虫：一伸手它们就往上飞散。差什么画在气泡里（蜂蜜 / 罐子）
+      const W = V.swarm.pts; if (h === 'candle') { o.candle = true; o.item = null; }
+      o.hx = f === 'flee' ? 744 : HONEY_AT.x; o.hy = f === 'flee' ? FL.down.gy - 196 : HONEY_AT.y - 24; o.pre = 0.35;
+      o.onHit = bub([f === 'flee' ? 'honey' : 'candle'], () => { V.swarm.scare = V.T; W.forEach(p => { p.vy -= 120; p.vx += (p.x - o.hx) * 2; }); snd.flutter(); });
+    }
     else if (f === 'needLog') o.onHit = bub(['log'], () => snd.tap());
     else if (f === 'smoky') { o.onHit = () => { snd.cough(); puff(FIRE.x, FIRE.mantel + 60, C.ink, 14); say(['damper']); }; o.after = () => { kid.mode = 'cough'; kid.t = 0; }; }
     else if (f === 'fridgeShuts') o.onHit = bub(['chair'], () => { V.fridgePulse = V.T; snd.fridge(); });
@@ -3236,7 +3293,10 @@ function perform(sp, h, r) {
     case 'hlamp': if (ev === 'bulbIn' || ev === 'bulbInDark') { o.pre = 0.75; o.wiggle = true; o.hold = 0.45; snd.screw(); } break;
     case 'winch': o.crank = true; o.hold = 3.0; break;
     case 'door': o.pre = 0.3; o.hold = 0.35; o.after = exitSeq; break;
-    case 'fire': if (ev === 'lightCandle') { o.candle = true; o.item = null; o.hx = 2262; o.hy = 952; o.pre = 0.55; o.hold = 0.2; } break;
+    case 'flies':
+      if (ev === 'honeyDown') { o.hx = HONEY_AT.x; o.hy = HONEY_AT.y - 6; o.pre = 0.3; }
+      else { o.candle = true; o.item = null; o.hx = HONEY_AT.x; o.hy = HONEY_AT.y - 22; o.pre = 0.55; o.hold = 0.35; }   // 拿罐子从上往下一扣
+      break;
     case 'damper': o.pre = 0.15; break;
     case 'chair':    // 椅子：拉到冰箱门边上顶着，或者推回去
       { const t0 = V.chairT, t1 = ev === 'chairIn' ? 1 : 0;
@@ -3273,7 +3333,8 @@ function commit(r) {
       case 'crankOn': drop('crank'); snd.latch(); break;
       case 'unlock': drop('key'); snd.unlock(); break;
       case 'logIn': drop('log'); snd.log(); break;
-      case 'lightCandle': snd.ignite(); break;
+      case 'honeyDown': drop('honey'); snd.thump(); break;
+      case 'catch': V.swarm.catchT = V.T; puff(HONEY_AT.x, HONEY_AT.y - 24, [214, 255, 140], 10); snd.latch(); snd.catchFlies(); break;
       case 'damperOpen': case 'damperShut': snd.clank(); break;
       case 'fridgeOpen': snd.fridge(); break;
       case 'fridgeShut': snd.thump(); break;
@@ -3346,10 +3407,7 @@ function tick(dt) {
   garbUpdate(dt);
   if ((kid.mode === 'idle' || kid.mode === 'walk') && kid.kind === 'floor' && coverage(kid.x, kid.y - 80, LT) > 0.6) V.safe = { x: kid.x, y: kid.y };
   if (T - saveT > 1 && kid.mode !== 'caught') { saveT = T; writeSave(); }
-  // 门厅里有风（前门底下钻进来的）：拎着萤火虫走进门厅，它们冷得又暗下去了（要回壁炉边烤暖）
-  if (S.lit && S.candle === 'inv' && !V.candleDown && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 1 && kid.x > 2745) {
-    S = { ...S, lit: 0 }; V.blowT = T; const hd = kidHand(); if (hd) puff(hd.x, hd.y - 40, C.moon, 8); snd.blow(); say(['fire'], 1.8);
-  }
+
   const inMoon = kid.kind === 'floor' && MOONS.some(([a, b, f]) => Math.abs(kid.y - kid.standY - FL[f].gy) < 2 && kid.x > a && kid.x < b);
   kid.moon += ((inMoon ? 1 : 0) - kid.moon) * (1 - Math.exp(-dt * 6));
   const n = Math.floor(T); if (n !== V.tickN) { V.tickN = n; if (inView(HCLOCK.x, HCLOCK.base - 180, 60)) snd.tick(n % 2); }
@@ -3662,8 +3720,8 @@ function placeKid(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.m
 // 走出前门、再来一遍（R）就清掉。自动试玩、截图（?auto ?paused ?noui ?nosave）不读也不写
 const SAVE_KEY = 'house.save.v1', SAVE_ON = !['auto', 'paused', 'noui', 'nosave'].some(k => qs.has(k));
 let saveLast = null, saveT = -10;
-// 东西能在的地方（别的都是 0 / 1）。规则里没有死路（check.mjs 查过），所以每一项对得上就走得出去
-const SAVE_VALS = { slipper: ['bed', 'inv', 'door'], log: ['basket', 'inv', 'fire'], fuse: ['side', 'inv', 'box'], candle: ['shelf', 'inv', 'box'], bulb: ['drawer', 'inv', 'lamp'], crank: ['clock', 'inv', 'winch'], key: ['stand', 'inv', 'used'] };
+// 每一项能是哪几个值（规则里的 VALUES）。规则里没有死路（check.mjs 查过），所以每一项对得上就走得出去
+const SAVE_VALS = VALUES;
 function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches }; }
 function writeSave() {
   if (!SAVE_ON || won || S.out || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记
