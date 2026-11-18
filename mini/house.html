@@ -2074,6 +2074,10 @@ function impGlobe(m) {
   if (inSocket(m)) return [D.home, D.hy + (IMP_NEST[1] + impDrop(m.face) * smooth(m.morph)) * IMP_S];
   return [m.x, m.y - impPose(m).H * IMP_S];
 }
+// 开场带路（2026-11-18 主人挑的：卧室左边那盏台灯原来只是摆设）：开场一会儿，卧室的灯崽从台灯里钻出来，走到床边插头旁边坐下，
+// 隔一会儿原地蹦一下，用自己的光照着地上的插头；孩子走到它跟前（110 以内）或者插头插上了，它就照平常那样吓一跳跑开，以后不再带路。
+// 不出字。它的光照不到睡袍（GUIDE_X 离睡袍的头 700 多，光只有 180）
+const GUIDE_X = 556, GUIDE_AT = 2.2;
 function impUpdate(dt) {
   const T = V.T;
   for (const k of IMP_KEYS) {
@@ -2096,11 +2100,14 @@ function impUpdate(dt) {
     }
     // 谁在吓它：同一层、同一间屋子地上的孩子；醒着在追人的衣服
     let th = null, td = 1e9;
-    if (kidHere) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
+    if (k === 'bed' && (m.guide === 1 || m.guide === 2) && (S.plug || (m.guide === 2 && kidHere && Math.abs(kid.x - m.x) < 110))) m.guide = 3;   // 带完了
+    const guiding = k === 'bed' && (m.guide === 1 || m.guide === 2);
+    if (kidHere && !guiding) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
     for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl !== D.fl || o.rise < 0.9 || o.hunt < 0.3) continue; const d = Math.abs(o.x - m.x); if (d < 260 && d < td) { th = o.x; td = d; } }
     const fleeEnd = dir => { let end = dir > 0 ? D.range[1] : D.range[0]; if (D.hide != null && m.mode !== 'hide' && Math.sign(D.hide - m.x) === dir && Math.abs(D.hide - th) > 230) end = D.hide; return end; };
     // 从灯罩底下跳出来：门厅的从座钟顶上跳到地上，卧室的跳到旁边的地上（往后跳要跳过底座）
     const hopOut = (dir, tx, fast) => { m.face = dir; m.mode = 'air'; m.jump = { x0: D.home, y0: D.hy - impSock(dir), x1: clamp(D.home + dir * (D.up ? 120 : dir > 0 ? 30 : 48), D.range[0], D.range[1]), y1: gy, h: D.up ? 50 : 22, dur: D.up ? 0.6 : 0.4, t: 0, then: 'run' }; m.tx = tx; m.fast = fast; };
+    if (k === 'bed' && !m.guide && !S.plug && T > GUIDE_AT && m.mode === 'bulb' && m.morph < 0.01 && th === null) { m.guide = 1; m.mode = 'pop'; m.then = GUIDE_X; m.flash = T; if (inView(D.home, D.hy, 80)) snd.squeak(); }   // 开场：出来带路
     if (m.mode === 'bulb' || m.mode === 'pop') {
       if (th !== null && m.mode === 'bulb') { m.mode = 'pop'; m.then = 'flee'; m.flash = T; m.scare = 1; if (inView(D.home, D.hy, 80)) snd.squeak(); }
       else if (m.mode === 'bulb' && m.morph < 0.01) {
@@ -2130,7 +2137,7 @@ function impUpdate(dt) {
     } else m.calm += dt;
     // 走、跑
     if (m.mode === 'run') {
-      const d = m.tx - m.x, vt = m.fast ? 290 : 70;
+      const d = m.tx - m.x, vt = m.fast ? 290 : guiding ? 140 : 70;
       m.v = approach(m.v, vt, dt * 1500);
       const st = Math.min(Math.abs(d), m.v * dt), L = m.fast ? 36 : 20, p0 = m.ph;
       if (Math.abs(d) > 0.5) m.face = Math.sign(d);
@@ -2142,8 +2149,12 @@ function impUpdate(dt) {
         else if (m.goHome) {   // 到了台灯旁边：跳回灯罩底下
           m.goHome = 0; m.face = Math.sign(D.home - m.x) || 1;
           m.jump = { x0: m.x, y0: m.y, x1: D.home, y1: D.hy - impSock(m.face), h: D.up ? 40 : 24, dur: D.up ? 0.65 : 0.45, t: 0, then: 'bulb' };
-        } else m.mode = 'sit';
+        } else { m.mode = 'sit'; if (guiding && Math.abs(m.x - GUIDE_X) < 1) { m.guide = 2; m.face = 1; m.nudge = T + 1.2; } }
       }
+      continue;
+    }
+    if (guiding) {   // 坐在插头旁边：朝着插头，隔一会儿原地蹦一下
+      if (m.guide === 2 && T > m.nudge) { m.nudge = T + 2.4 + hash(D.seed, Math.floor(T)) * 1.2; m.face = 1; m.jump = { x0: m.x, y0: m.y, x1: m.x, y1: gy, h: 16, dur: 0.32, t: 0, then: 'sit' }; }
       continue;
     }
     if (m.calm > 3.5 && !(kidHere && Math.abs(kid.x - D.home) < 300)) {   // 没人吓它了，慢慢走回台灯
