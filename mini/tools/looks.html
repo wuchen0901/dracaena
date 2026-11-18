@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>灯下 · 画法对比</title>
+<title>灯下 · 画法和主角</title>
 <style>
   html { background: #0d0e11; color: #d9d6cf; font: 15px/1.6 "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","WenQuanYi Zen Hei",sans-serif; }
   body { margin: 0; padding: 28px 24px 60px; }
@@ -14,16 +14,21 @@
   figure { margin: 0; }
   canvas { display: block; width: 100%; height: auto; background: #000; }
   figcaption { margin-top: 6px; color: #a9adb5; font-size: 13px; }
+  .heroes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  nav a { color: #e7c98a; margin-right: 1.2em; }
+  nav a.on { color: #fff; font-weight: 700; text-decoration: none; }
   body.one { padding: 0; overflow: hidden; }
+  @media (max-width: 900px) { .heroes { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 760px) { .row { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body>
 <script>
 'use strict';
-// 《灯下》第一关的几种画法，并排看。只是画面，不能玩。
+// 《灯下》第一关定下来的画法（2026-11-18），和主角的三个候选。只是画面，不能玩。
 // 地图、陈设、各样东西的位置和大小都是从 ../lamplight.html 抄来的，所以这里画成什么样，搬回游戏里就是什么样。
-// 网址参数：?one=a|b 只画一张（1280×800）；lit=0|1 灯关 / 灯开；px、py 主角站在哪一格；mx 影子在哪一列；dpr=2 画两倍大。
+// 网址参数见最下面“页面”那一段。
 
 const W = 1280, H = 800, S = 96, BOT = 96;
 const MAP = ['############', '#.....a....#', '#P1......x.E', '############'];
@@ -47,35 +52,20 @@ const HOUSE_TOP = 0.7, CHIMNEY = 0.47, BURY = 0.55, FEET = S * 0.07, FLOORH = S 
 const houseL = 0.6 * S, houseR = (LW + 0.15) * S, groundY = (LH - BURY) * S;
 const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","WenQuanYi Zen Hei",sans-serif';
 
-// ---------- 两种画法 ----------
-// 两种都是：手画的线（抖、粗细不匀、角上出头），颜色压得很灰，纸有颗粒；暗处是冷的、只有轮廓，灯下才是暖的、有细节。
-const A = {
-  tag: 'A', title: '钢笔线 + 淡彩',
-  ext: 'night', roofH: 0.72, cam: { x: (houseL + houseR) / 2 - W / 2, y: groundY - (H - BOT) },
-  pen: { w: 1.25, amp: 0.85, a: 0.95, double: 0 }, dens: 1, grain: 0.8,
-  lit: { ink: '#1c1510', wall: '#a9a08c', stripe: '#958b76', motif: '#7d5847', cornice: '#857a66', panel: '#6c7060', rail: '#858a76', skirt: '#474a3e',
+// ---------- 画法（2026-11-18 定的）----------
+// 铅笔线（软、抖、两道叠着，排线多），每样东西留一点自己的颜色、都压得很灰，房子外面是夜景。
+// 暗处是冷的、只有轮廓，灯下才是暖的、有细节。
+const LOOK = {
+  cam: { x: (houseL + houseR) / 2 - W / 2, y: groundY - (H - BOT) }, roofH: 0.72,
+  pen: { w: 1.4, amp: 1.2, a: 0.66, double: 1 }, dens: 1.5, grain: 1,
+  lit: { ink: '#2a2420', wall: '#a9a08c', stripe: '#958b76', motif: '#7d5847', cornice: '#857a66', panel: '#6c7060', rail: '#858a76', skirt: '#474a3e',
     floor: '#806a50', front: '#54432f', frame: '#8f7c52', canvas: '#c9c0a7', wood: '#5f4332', woodHi: '#876a4f', brass: '#b99c5e', rug: '#73443c', rugLine: '#c2b08e',
-    stone: '#8e8773', wire: '#3a2c22', box: '#4d3d2e', hood: '#dfd5bf', hood2: '#bcb198', cloth: '#4b5263', boot: '#3a2a20', skin: '#d3af96', hair: '#261d17',
-    shade: '#7b6236', sky: '#8296c0', hill: '#6d7a5a', sea: '#6f8290', flower: '#8e4a40', hi: '#fff3d6' },
-  dark: { ink: '#03040a', hi: '#b4c0e4', page: '#06080d', sky0: '#090d1a', sky1: '#2a3657', mass: '#090b11', roof: '#0b0e17', ground: '#05070b',
+    stone: '#8e8773', wire: '#3a2c22', box: '#4d3d2e', shade: '#7b6236', sky: '#8296c0', hill: '#6d7a5a', sea: '#6f8290', flower: '#8e4a40', hi: '#fff3d6' },
+  dark: { ink: '#03040a', hi: '#b4c0e4', sky0: '#090d1a', sky1: '#2a3657', mass: '#090b11', roof: '#0b0e17', ground: '#05070b',
     wall: '#141a2a', stripe: '#0f141f', cornice: '#0e121c', panel: '#10141e', rail: '#1a2233', skirt: '#0a0d15', floor: '#1a2233', front: '#0b0e16',
     frame: '#283249', canvas: '#171d2d', rug: '#12151f', rugLine: '#232b3f', stone: '#2c3753', wire: '#222a3c', box: '#2d3854',
-    hood: '#7783a1', hood2: '#586382', cloth: '#272e41', boot: '#0d1017', skin: '#68738f', hair: '#090b12', shade: '#33313a', moon: '#cdd9f6',
-    glass0: '#4c5f8e', glass1: '#2c3a5c', out0: '#46598a', out1: '#bccaee', far: '#5a6ea0', path: '#cdd9f6', attic: '#11151f', junk: '#191e2b' },
+    shade: '#33313a', moon: '#cdd9f6', glass0: '#4c5f8e', glass1: '#2c3a5c', out0: '#46598a', out1: '#bccaee', far: '#5a6ea0', path: '#cdd9f6' },
 };
-// B：和 A 比，线换成铅笔（软、两道叠着、更抖），排线多一倍；颜色只留一个调子；房子外面不画夜景，整栋楼剖开浮在黑里，看得见阁楼和地基。
-const B = {
-  tag: 'B', title: '铅笔线 + 一个调子',
-  ext: 'section', roofH: 1.45, cam: { x: (houseL + houseR) / 2 - W / 2, y: -213 },
-  pen: { w: 1.4, amp: 1.2, a: 0.66, double: 1 }, dens: 1.5, grain: 1,
-  lit: { ...A.lit, ink: '#2a2420', wall: '#aa9c85', stripe: '#948670', motif: '#7b6c5a', cornice: '#857865', panel: '#7b705f', rail: '#8f836f', skirt: '#4f463a',
-    floor: '#7c6b56', front: '#4e4336', frame: '#8d7f66', canvas: '#c4b9a2', wood: '#5c4b3b', woodHi: '#806c57', brass: '#ad996e', rug: '#6f5b4d', rugLine: '#b9ab90',
-    stone: '#8a8273', wire: '#3d342c', box: '#51463a', hood: '#d8cfbd', hood2: '#b4aa96', cloth: '#56514f', boot: '#362c25', skin: '#c9b19d', hair: '#231c18',
-    shade: '#746247', sky: '#8a8f99', hill: '#7b7566', sea: '#7d7f80', flower: '#7a5a4e' },
-  dark: { ...A.dark, page: '#07080b', mass: '#0a0b10', wall: '#15181f', stripe: '#101319', cornice: '#0e1016', panel: '#111319', rail: '#1c2029', skirt: '#0a0c11', floor: '#1c2029', front: '#0c0d12',
-    frame: '#2a2f3c', canvas: '#181b23', rug: '#131519', rugLine: '#252934', wire: '#242833', box: '#30364a', hood: '#7c8597', hood2: '#5c6478', cloth: '#2a2e3a', skin: '#6e7688' },
-};
-const LOOKS = { a: A, b: B };
 
 // ---------- 手：抖的线、排线、不匀的颜色 ----------
 function rnd(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -208,11 +198,6 @@ function glow(ctx, x, y, rad, col, a) { const g = ctx.createRadialGradient(x, y,
 // ---------- 房子外面 ----------
 function paintPage(ctx, L) {
   const P = L.dark, hz = H - BOT;
-  if (L.ext === 'section') {   // 黑纸，房子周围稍微亮一点点
-    ctx.fillStyle = P.page; ctx.fillRect(0, 0, W, H);
-    const g = ctx.createRadialGradient(W / 2, 360, 120, W / 2, 360, 720); g.addColorStop(0, 'rgba(30,34,46,0.75)'); g.addColorStop(1, 'rgba(30,34,46,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    texture(ctx, TEX.blot, 0.5); return;
-  }
   const gr = ctx.createLinearGradient(0, 0, 0, hz); gr.addColorStop(0, P.sky0); gr.addColorStop(1, P.sky1); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
   texture(ctx, TEX.blot, 0.4);
   ctx.seedN = 100;   // 天：长长的斜排线
@@ -251,14 +236,6 @@ function paintTree(ctx, L) {   // 房子后面一棵枯树，比天再深一点
 }
 function paintGround(ctx, L) {   // 地面，盖住房子埋在土里的那一截。屏幕坐标
   const P = L.dark, gy = groundY - L.cam.y, r = rnd(61);
-  if (L.ext === 'section') {
-    for (const [x0, x1] of [[houseL - L.cam.x, -40], [houseR - L.cam.x, W + 40]]) {   // 只画两边伸出去的一小段地面线，越远越淡
-      const n = 9, dir = Math.sign(x1 - x0), len = Math.min(Math.abs(x1 - x0), 330);
-      for (let i = 0; i < n; i++) ink(ctx, seg(x0 + dir * len * i / n, gy + (r() - 0.5) * 1.5, x0 + dir * len * (i + 1) / n, gy + (r() - 0.5) * 1.5), { col: P.hi, a: 0.3 * (1 - i / n), w: 0.9, taper: 0 });
-      for (let i = 0; i < 26; i++) { const t = r(), tx = x0 + dir * len * t, th = 3 + r() * 8; ink(ctx, seg(tx, gy, tx + (r() - 0.5) * 5, gy - th), { col: P.hi, a: 0.26 * (1 - t), w: 0.7, taper: 5 }); }
-    }
-    return;
-  }
   ctx.fillStyle = P.ground; ctx.fillRect(0, gy, W, H - gy); ctx.seedN = 300;
   hatch(ctx, c => c.rect(0, gy + 2, W, H - gy), [0, gy, W, H - gy], { ang: -0.5, gap: 6, a: 0.07, w: 0.8, len: 40, breaks: 40, col: P.hi });
   ink(ctx, seg(0, gy, W, gy), { col: P.hi, a: 0.16, w: 0.9, taper: 0, amp: 1.4 });
@@ -271,10 +248,10 @@ function paintGround(ctx, L) {   // 地面，盖住房子埋在土里的那一�
 // ---------- 房子的壳 ----------
 function paintShell(ctx, L) {
   const P = L.dark, Lx = houseL, Rx = houseR, T0 = HOUSE_TOP * S, Bm = LH * S, ridge = T0 - L.roofH * S, inset = Math.min(1.7 * S, (Rx - Lx) * 0.22);
-  const cx = Lx + (Rx - Lx) * 0.7, cw = 0.44 * S, D = L.dens, sec = L.ext === 'section';
+  const cx = Lx + (Rx - Lx) * 0.7, cw = 0.44 * S, D = L.dens;
   ctx.seedN = 1000;
   const roof = [[Lx - 0.42 * S, T0], [Lx + inset, ridge], [Rx - inset, ridge], [Rx + 0.42 * S, T0]];
-  const chim = rectPts(cx - cw / 2, ridge - (CHIMNEY - 0.05) * S, cw, sec ? T0 - ridge + (CHIMNEY - 0.05) * S : 0.9 * S), cap = rectPts(cx - cw / 2 - 0.05 * S, ridge - CHIMNEY * S, cw + 0.1 * S, 0.09 * S);
+  const chim = rectPts(cx - cw / 2, ridge - (CHIMNEY - 0.05) * S, cw, 0.9 * S), cap = rectPts(cx - cw / 2 - 0.05 * S, ridge - CHIMNEY * S, cw + 0.1 * S, 0.09 * S);
   const bricks = (x0, y0, w, h, sd) => {   // 砖：一行行横缝，竖缝错开
     const r = rnd(sd); ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
     for (let y = y0 + 7, i = 0; y < y0 + h; y += 7.5, i++) {
@@ -283,66 +260,27 @@ function paintShell(ctx, L) {
     }
     ctx.restore();
   };
-  if (!sec) {   // 合着的屋顶：一行行瓦，朝月亮的那一边有一道亮边
-    fillPts(ctx, chim, P.mass); fillPts(ctx, cap, P.mass); bricks(chim[0][0], chim[0][1], cw, 0.9 * S, 1100);
-    ink(ctx, seg(chim[0][0], chim[0][1], chim[0][0], ridge), { col: P.hi, a: 0.3, w: 0.9, taper: 0 }); ink(ctx, seg(cap[0][0], cap[0][1], cap[1][0], cap[1][1]), { col: P.hi, a: 0.2, w: 0.8, taper: 0 });
-    fillPts(ctx, roof, P.roof); ctx.save(); ctx.beginPath(); roof.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.clip(); texture(ctx, TEX.blot2, 0.5);
-    const rows = 6, rh = (T0 - ridge) / rows;
-    for (let i = 1; i <= rows; i++) {
-      const y = ridge + rh * i, e = (inset + 0.42 * S) * i / rows, xa = Lx + inset - e, xb = Rx - inset + e;
-      ink(ctx, seg(xa, y, xb, y), { col: P.hi, a: 0.1, w: 0.8, taper: 0, amp: 1.2 });
-      for (let x = xa + (i % 2) * 10 + 4, j = 0; x < xb; x += 20, j++) ink(ctx, seg(x + 2, y - rh, x, y), { col: P.hi, a: 0.055, w: 0.7, taper: 0, seed: 1300 + i * 100 + j });
-    }
-    hatch(ctx, c => c.rect(Lx, ridge, Rx - Lx, T0 - ridge), [Lx - 60, ridge, Rx - Lx + 120, T0 - ridge], { ang: -0.9, gap: 5, a: 0.5, w: 0.7, len: 18, col: '#000000' });
-    ctx.restore();
-    ink(ctx, [roof[0], roof[1], roof[2]], { col: P.hi, a: 0.42, w: 1, taper: 0, amp: 1.2 }); ink(ctx, [roof[2], roof[3]], { col: P.hi, a: 0.12, w: 0.9, taper: 0 });
-    fillPts(ctx, rectPts(Lx - 0.46 * S, T0 - 0.02 * S, Rx - Lx + 0.92 * S, 0.1 * S), P.mass);
-    ink(ctx, seg(Lx - 0.46 * S, T0 - 0.02 * S, Rx + 0.46 * S, T0 - 0.02 * S), { col: P.hi, a: 0.12, w: 0.7, taper: 0 });
-  } else {      // 剖开的屋顶：看得见阁楼
-    fillPts(ctx, chim, P.mass); fillPts(ctx, cap, P.mass);
-    fillPts(ctx, roof, P.mass);
-    const t = 11, void_ = [[Lx + 16, T0 - 1], [Lx + inset + 7, ridge + t], [Rx - inset - 7, ridge + t], [Rx - 16, T0 - 1]];
-    ctx.save(); ctx.beginPath(); roof.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.clip();
-    hatch(ctx, c => c.rect(Lx - 60, ridge, Rx - Lx + 120, T0 - ridge), [Lx - 60, ridge, Rx - Lx + 120, T0 - ridge], { ang: -0.785, gap: 3.4, a: 0.2, w: 0.6, len: 120, breaks: 3, col: P.hi });
-    ctx.restore();
-    fillPts(ctx, void_, P.attic); ctx.save(); ctx.beginPath(); void_.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.clip(); texture(ctx, TEX.blot2, 0.6);
-    // 阁楼里：柱子、横梁、堆着的旧东西。都只比黑亮一点点，朝上的边有一道冷的亮线
-    const beam = (x0, y0, x1, y1, w, sd) => { const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy), nx = -dy / d * w / 2, ny = dx / d * w / 2; fillPts(ctx, [[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]], P.mass); ink(ctx, seg(x0 - nx, y0 - ny, x1 - nx, y1 - ny), { col: P.hi, a: 0.16, w: 0.7, taper: 0, seed: sd }); ink(ctx, seg(x0 + nx, y0 + ny, x1 + nx, y1 + ny), { col: '#000000', a: 0.9, w: 0.9, taper: 0, seed: sd + 1 }); };
-    const cy = ridge + 50;
-    beam(Lx + inset * 0.62, cy, Rx - inset * 0.62, cy, 8, 1401);
-    for (const [px, i] of [[Lx + inset + 60, 0], [(Lx + Rx) / 2, 1], [Rx - inset - 60, 2]]) beam(px, T0 - 1, px, ridge + t, 9, 1410 + i * 3);
-    beam(Lx + inset + 60, cy, Lx + inset - 30, T0 - 1, 6, 1420); beam(Rx - inset - 60, cy, Rx - inset + 30, T0 - 1, 6, 1423);
-    const junk = (pts, sd) => { fillPts(ctx, pts, P.junk); ink(ctx, [...pts, pts[0]], { col: '#000000', a: 0.9, w: 0.9, taper: 0, seed: sd }); };
-    const fy = T0 - 1, top = (x0, x1, y, sd) => ink(ctx, seg(x0, y, x1, y), { col: P.hi, a: 0.3, w: 0.7, taper: 0, seed: sd });
-    junk([[392, fy], [392, fy - 22], ...arcPts(431, fy - 22, 39, 12, Math.PI, Math.PI * 2, 10), [470, fy]], 1440); top(398, 464, fy - 33, 1441); ink(ctx, seg(392, fy - 22, 470, fy - 22), { col: '#000000', a: 0.8, w: 0.7, taper: 0, seed: 1442 });   // 一口箱子
-    junk(rectPts(690, fy - 30, 44, 30), 1445); top(691, 733, fy - 30, 1446); junk(rectPts(698, fy - 54, 30, 24), 1447); top(699, 727, fy - 54, 1448); junk(rectPts(738, fy - 20, 30, 20), 1449); top(739, 767, fy - 20, 1450);   // 几只木箱
-    ink(ctx, seg(540, cy + 4, 540, cy + 22), { col: P.hi, a: 0.14, w: 0.6, taper: 0, seed: 1455 });   // 梁上挂着一只鸟笼
-    junk([...arcPts(540, cy + 36, 13, 14, Math.PI, Math.PI * 2, 10), [553, cy + 58], [527, cy + 58]], 1456); for (let i = -2; i <= 2; i++) ink(ctx, seg(540 + i * 5, cy + 24, 540 + i * 5, cy + 58), { col: P.hi, a: 0.12, w: 0.5, taper: 0, seed: 1460 + i });
-    junk([[940, fy], [962, fy - 62], [974, fy - 60], [958, fy]], 1470); ink(ctx, seg(962, fy - 62, 974, fy - 60), { col: P.hi, a: 0.2, w: 0.7, taper: 0, seed: 1471 });   // 靠着一卷地毯
-    for (let i = 1; i <= 4; i++) ink(ctx, arcPts(Lx + 30, T0 - 6, i * 13, i * 9, -Math.PI * 0.42, -0.1, 8), { col: P.hi, a: 0.09, w: 0.5, taper: 0, seed: 1480 + i });   // 角上的蜘蛛网
-    for (let i = 0; i < 4; i++) ink(ctx, seg(Lx + 30, T0 - 6, Lx + 30 + Math.cos(-0.15 - i * 0.37) * 56, T0 - 6 + Math.sin(-0.15 - i * 0.37) * 40), { col: P.hi, a: 0.08, w: 0.5, taper: 0, seed: 1490 + i });
-    ctx.restore();
-    fillPts(ctx, rectPts(cx - cw / 2, ridge + t, cw, T0 - ridge - t), '#0d1018'); bricks(chim[0][0], chim[0][1], cw, T0 - chim[0][1], 1100);   // 烟囱穿过阁楼
-    ink(ctx, seg(chim[0][0], chim[0][1], chim[0][0], T0), { col: P.hi, a: 0.22, w: 0.8, taper: 0 }); ink(ctx, seg(chim[1][0], chim[1][1], chim[1][0], T0), { col: '#000000', a: 0.9, w: 0.9, taper: 0 });
-    ink(ctx, seg(cap[0][0], cap[0][1], cap[1][0], cap[1][1]), { col: P.hi, a: 0.3, w: 0.9, taper: 0 });
-    ink(ctx, [...void_, void_[0]], { col: '#000000', a: 1 / ctx.pen.a, w: 1.5, taper: 0 });
-    ink(ctx, [roof[0], roof[1], roof[2], roof[3]], { col: P.hi, a: 0.62, w: 1.15, taper: 0, amp: 1.2 });
+  // 屋顶：一行行瓦，朝月亮的那一边有一道亮边
+  fillPts(ctx, chim, P.mass); fillPts(ctx, cap, P.mass); bricks(chim[0][0], chim[0][1], cw, 0.9 * S, 1100);
+  ink(ctx, seg(chim[0][0], chim[0][1], chim[0][0], ridge), { col: P.hi, a: 0.3, w: 0.9, taper: 0 }); ink(ctx, seg(cap[0][0], cap[0][1], cap[1][0], cap[1][1]), { col: P.hi, a: 0.2, w: 0.8, taper: 0 });
+  fillPts(ctx, roof, P.roof); ctx.save(); ctx.beginPath(); roof.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.clip(); texture(ctx, TEX.blot2, 0.5);
+  const rows = 6, rh = (T0 - ridge) / rows;
+  for (let i = 1; i <= rows; i++) {
+    const y = ridge + rh * i, e = (inset + 0.42 * S) * i / rows, xa = Lx + inset - e, xb = Rx - inset + e;
+    ink(ctx, seg(xa, y, xb, y), { col: P.hi, a: 0.1, w: 0.8, taper: 0, amp: 1.2 });
+    for (let x = xa + (i % 2) * 10 + 4, j = 0; x < xb; x += 20, j++) ink(ctx, seg(x + 2, y - rh, x, y), { col: P.hi, a: 0.055, w: 0.7, taper: 0, seed: 1300 + i * 100 + j });
   }
+  hatch(ctx, c => c.rect(Lx, ridge, Rx - Lx, T0 - ridge), [Lx - 60, ridge, Rx - Lx + 120, T0 - ridge], { ang: -0.9, gap: 5, a: 0.5, w: 0.7, len: 18, col: '#000000' });
+  ctx.restore();
+  ink(ctx, [roof[0], roof[1], roof[2]], { col: P.hi, a: 0.42, w: 1, taper: 0, amp: 1.2 }); ink(ctx, [roof[2], roof[3]], { col: P.hi, a: 0.12, w: 0.9, taper: 0 });
+  fillPts(ctx, rectPts(Lx - 0.46 * S, T0 - 0.02 * S, Rx - Lx + 0.92 * S, 0.1 * S), P.mass);
+  ink(ctx, seg(Lx - 0.46 * S, T0 - 0.02 * S, Rx + 0.46 * S, T0 - 0.02 * S), { col: P.hi, a: 0.12, w: 0.7, taper: 0 });
   // 墙体和楼板：剖到的地方打斜排线
   fillPts(ctx, rectPts(Lx, T0, Rx - Lx, Bm - T0), P.mass);
   ctx.save(); ctx.beginPath(); ctx.rect(Lx, T0, Rx - Lx, Bm - T0); ctx.clip(); texture(ctx, TEX.blot2, 0.5);
-  hatch(ctx, c => c.rect(Lx, T0, Rx - Lx, Bm - T0), [Lx, T0, Rx - Lx, Bm - T0], { ang: -0.785, gap: 3.4, a: sec ? 0.17 : 0.13, w: 0.6, len: 170, breaks: 3, col: P.hi });
-  if (sec) {
-    const r = rnd(1500);
-    for (let x = S * 0.35; x < Rx; x += S * 0.5) { const j = rectPts(x - 5, T0 + 6, 10, S - T0 - 9); fillPts(ctx, j, '#12151d'); ink(ctx, [...j, j[0]], { col: '#000000', a: 1, w: 0.8, taper: 0, seed: 1510 + (x | 0) }); ink(ctx, seg(x - 5, T0 + 6, x + 5, T0 + 6), { col: P.hi, a: 0.18, w: 0.6, taper: 0, seed: 1600 + (x | 0) }); }   // 楼板里一根根搁栅的头
-    bricks(Lx, T0, S - Lx, Bm - T0, 1700);
-    const y0 = 3 * S + FLOORH + FRONTH + 3;   // 地基：两行大小不一的石头，再往下是土，慢慢黑下去
-    for (let row = 0; row < 2; row++) for (let x = Lx + (row ? -14 : 0); x < Rx;) { const w = 34 + r() * 40, st = roundPts(x + 1.5, y0 + row * 25, w - 3, 22, 5 + r() * 4); fillPts(ctx, st, ['#141822', '#1a1f2c', '#10131b'][(r() * 3) | 0]); ink(ctx, [...st, st[0]], { col: '#000000', a: 1, w: 0.9, taper: 0, seed: 1800 + row * 100 + (x | 0) }); ink(ctx, seg(x + 7, y0 + row * 25 + 1.5, x + w - 7, y0 + row * 25 + 1.5), { col: P.hi, a: 0.2, w: 0.6, taper: 0, seed: 1900 + row * 100 + (x | 0) }); x += w; }
-    const g = ctx.createLinearGradient(0, y0 + 44, 0, Bm); g.addColorStop(0, 'rgba(7,8,11,0)'); g.addColorStop(1, 'rgba(7,8,11,1)'); ctx.fillStyle = g; ctx.fillRect(Lx - 2, y0 + 44, Rx - Lx + 4, Bm - y0 - 44);
-  }
+  hatch(ctx, c => c.rect(Lx, T0, Rx - Lx, Bm - T0), [Lx, T0, Rx - Lx, Bm - T0], { ang: -0.785, gap: 3.4, a: 0.13, w: 0.6, len: 170, breaks: 3, col: P.hi });
   ctx.restore();
-  if (sec) { ink(ctx, seg(Lx, T0, Lx, 3 * S + 70), { col: P.hi, a: 0.5, w: 1, taper: 30 }); ink(ctx, seg(Rx, T0, Rx, 3 * S + 70), { col: P.hi, a: 0.3, w: 0.9, taper: 30 }); ink(ctx, seg(Lx - 0.42 * S, T0, Rx + 0.42 * S, T0), { col: '#000000', a: 1, w: 1.2, taper: 0 }); }
-  else ink(ctx, seg(Lx, T0 + 0.08 * S, Lx, Bm), { col: P.hi, a: 0.16, w: 0.8, taper: 0 });
+  ink(ctx, seg(Lx, T0 + 0.08 * S, Lx, Bm), { col: P.hi, a: 0.16, w: 0.8, taper: 0 });
 }
 
 // ---------- 屋子里面 ----------
@@ -622,37 +560,154 @@ function drawWardrobe(ctx, L, m) {
   part(ctx, rectPts(x0 - 2.5 * k, y0, w + 5 * k, 5 * k), P.woodHi, { w: 1.2, tex: 0.3 });
   ink(ctx, seg(x0 - 2 * k, y0 + 1.6, x0 + w + 2 * k, y0 + 1.6), { col: P.hi, a: 0.55, w: 0.9, taper: 0, single: 1 });
 }
-// 主角：乱头发、米白卫衣、长裤、靴子。暗处冷而浅，走进灯下才有颜色
-function drawPlayer(ctx, L, st) {
-  const lit = litCell(st.px, st.py), P = lit ? L.lit : L.dark, k = S / 64, f = st.face ?? 1, x = (st.px + 0.5) * S, base = (st.py + 1) * S + FEET;
-  const top = base - 32 * k, hem = base - 15.5 * k, ln = f * 0.9 * k, hx = x + f * 1.6 * k, hy = top - 5 * k, dir = lit ? Math.sign(LAMP.c - st.px) : 0, R = 7 * k;
-  ctx.pen = { ...L.pen, col: lit ? L.lit.ink : L.dark.ink, a: Math.min(1, L.pen.a + 0.1) }; ctx.seedN = 9000;
+// ---------- 主角（2026-11-18 从头重新设计，三个候选）----------
+// 都是半夜在家里走的小孩，比一格矮一些（家具一格高，人踩上去脚落在顶上）。铅笔描边，颜色留一点、压得很灰。
+// 暗处：颜色按原来的深浅换成偏冷的浅色（浅的布料在暗处也最亮），只剩轮廓和眼睛；走进灯下才有颜色。
+// 坐标：u 朝脸那一边、v 朝上，单位是 k（一格的 1/64），原点在两脚中间的地上。
+const hexRGB = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const hexMix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+const coldOf = h => { const [r, g, b] = hexRGB(h); return hexMix('#2b3450', '#c3cce2', 0.3 + 0.62 * (0.299 * r + 0.587 * g + 0.114 * b) / 255); };
+const HEROES = {
+  cap: { name: '睡帽', note: '长长的毛线睡帽往后耷拉，帽尖一个绒球；过膝的条纹睡衣，细腿，一双厚毛袜。', draw: drawCap,
+    col: { skin: '#d9b59b', blush: '#c98270', hair: '#3b2c22', shirt: '#d6cdb3', shirt2: '#b7ad93', stripe: '#8a9ba3', cap: '#963f35', capBand: '#d6cdb3', pom: '#e0d7bf', sock: '#8e7b4c', sock2: '#76663f', eye: '#f3eee1', pupil: '#16110d' } },
+  coat: { name: '大衣', note: '裹在一件大一号的旧大衣里，袖子盖过手，领子竖到鼻子；毛线帽压到眉毛，只露出一双眼睛和冻红的鼻头。', draw: drawCoat,
+    col: { coat: '#8a6b3d', coat2: '#4e3c22', collar: '#795d33', button: '#3a2a1f', hat: '#596a5c', hat2: '#4a594d', lining: '#d9cfb6', hair: '#3b2c22', boot: '#3b2b21', bootHi: '#7d6a55', skin: '#d9b59b', nose: '#c47e6d', eye: '#f3eee1', pupil: '#16110d' } },
+  quilt: { name: '被子', note: '把一床拼布被子从头顶披下来，一只手在胸前攥着，被角拖在身后的地上；露出脸、一绺头发和一双条纹袜。', draw: drawQuilt,
+    col: { quilt: '#8c5a48', q2: '#ae9561', q3: '#7a876a', q4: '#c9bb9b', q5: '#687c88', bind: '#5a4334', skin: '#d9b59b', blush: '#c98270', hair: '#3b2c22', sock: '#d6cdb3', sockStripe: '#7c8f9c', eye: '#f3eee1', pupil: '#16110d' } },
+};
+// 画一个主角。lit 不给就按规则看这一格亮不亮
+function drawHero(ctx, L, st, lit = litCell(st.px, st.py)) {
+  const h = HEROES[st.hero] || HEROES.cap, k = S / 64, f = st.face ?? 1, x = (st.px + 0.5) * S, base = (st.py + 1) * S + FEET;
+  const P = lit ? h.col : Object.fromEntries(Object.entries(h.col).map(([n, v]) => [n, n === 'pupil' ? '#0b0d14' : coldOf(v)]));
+  const T = pts => pts.map(([u, v]) => [x + f * u * k, base - v * k]);
+  const path = pts => { ctx.beginPath(); T(pts).forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.closePath(); };
+  const o = {
+    ctx, P, T, k, lit,
+    E: (cu, cv, ru, rv, n = 18) => { const p = []; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; p.push([cu + Math.cos(a) * ru, cv + Math.sin(a) * rv]); } return p; },
+    Q: (...pp) => { const out = [pp[0]]; for (let i = 0; i + 2 < pp.length; i += 2) out.push(...quadPts(pp[i], pp[i + 1], pp[i + 2], 8).slice(1)); return out; },   // 一串二次曲线：起点、控制点、终点、控制点、终点……
+    fill: (pts, col, opt = {}) => part(ctx, T(pts), col, { w: 0.95, tex: 0.25, rim: 0.18, ...opt }),
+    line: (pts, opt = {}) => ink(ctx, T(pts), { w: 0.8, taper: 3, single: 1, ...opt }),
+    clipTo: (pts, fn) => { ctx.save(); path(pts); ctx.clip(); fn(); ctx.restore(); },
+    shade: (pts, u0, u1, opt = {}) => {   // 在一块东西里、背光那一边打排线
+      const vs = pts.map(q => q[1]), [[ax, ay], [bx, by]] = T([[u0, Math.min(...vs)], [u1, Math.max(...vs)]]), rx = Math.min(ax, bx), ry = Math.min(ay, by), rw = Math.abs(bx - ax), rh = Math.abs(by - ay);
+      ctx.save(); path(pts); ctx.clip(); hatch(ctx, c => c.rect(rx, ry, rw, rh), [rx, ry, rw, rh], { ang: -1.0, gap: 2.1, a: 0.45, w: 0.6, len: 9, breaks: 3, ...opt }); ctx.restore();
+    },
+  };
+  ctx.pen = { ...L.pen, col: lit ? L.lit.ink : L.dark.ink, a: Math.min(1, L.pen.a + 0.18) }; ctx.seedN = 9000;
+  const dir = lit ? Math.sign(LAMP.c - st.px) : 0;   // 脚下的影子，往背灯的那一边拖
   if (lit) hatch(ctx, c => c.ellipse(x - dir * 6 * k, base + 1, 12 * k, 3 * k, 0, 0, 7), [x - 40, base - 6, 80, 12], { ang: -0.25, gap: 2.2, a: 0.7, w: 0.8, len: 16 });
   else { ctx.fillStyle = 'rgba(3,4,10,0.4)'; ctx.beginPath(); ctx.ellipse(x, base + 0.5 * k, 10 * k, 3 * k, 0, 0, 7); ctx.fill(); }
-  for (const s of [-1, 1]) {   // 腿和靴子，先画远的那条
-    const hipX = x + s * 2.5 * k, footX = hipX + s * 0.7 * k - f * 0.3 * k, lw = 2.4 * k;
-    part(ctx, [[hipX - lw, hem - 2 * k], [hipX + lw, hem - 2 * k], [footX + lw * 0.85, base - 3.8 * k], [footX - lw * 0.85, base - 3.8 * k]], P.cloth, { w: 0.9, tex: 0.3, rim: 0.3 });
-    if (s * f < 0) { ctx.fillStyle = rgba(ctx.pen.col, 0.28); ctx.fillRect(hipX - lw, hem - 2 * k, lw * 2, 13.5 * k); }   // 远的那条腿暗一点
-    const bt = roundPts(footX - 3 * k + f * 0.9 * k, base - 4.8 * k, 6.8 * k, 4.8 * k, 1.9 * k);
-    part(ctx, bt, P.boot, { w: 0.9, tex: 0 }); ink(ctx, seg(footX - 2.6 * k + f * 0.9 * k, base - 1.3 * k, footX + 3.4 * k + f * 0.9 * k, base - 1.3 * k), { w: 0.6, a: 0.8, col: lit ? P.hi : L.dark.hi, taper: 2, single: 1 });
-  }
-  part(ctx, arcPts(x - f * 4.4 * k + ln, top + 2.4 * k, 4 * k, 3 * k, 0, Math.PI * 2, 12), P.hood2, { w: 0.9, tex: 0.2 });   // 堆在脖子后面的帽兜
-  const body = [...arcPts(x - 1.6 * k + ln, top + 5 * k, 5 * k, 5 * k, Math.PI, Math.PI * 1.5, 5), ...arcPts(x + 1.6 * k + ln, top + 5 * k, 5 * k, 5 * k, -Math.PI / 2, 0, 5), [x + 6.9 * k, hem - 1.5], [x + 6.1 * k, hem], [x - 6.1 * k, hem], [x - 6.9 * k, hem - 1.5]];
-  part(ctx, body, P.hood, { w: 1.05, tex: 0.3, rim: 0.22 });
-  ink(ctx, seg(x - 6.4 * k, hem - 2.6 * k, x + 6.4 * k, hem - 2.6 * k), { w: 0.7, a: 0.7, taper: 3, single: 1 });   // 下摆的罗纹
-  ink(ctx, quadPts([x + f * 1.2 * k, hem - 7.6 * k], [x + f * 3.6 * k, hem - 5.4 * k], [x + f * 5.9 * k, hem - 7.2 * k], 6), { w: 0.6, a: 0.65, single: 1 });   // 口袋
-  for (const d of [1.1, 2.6]) ink(ctx, seg(x + f * d * k + ln, top + 1.6 * k, x + f * (d + 0.3) * k + ln * 0.6, top + 6.4 * k + d * k * 0.5), { w: 0.6, a: 0.75, taper: 2, single: 1 });   // 两根帽绳
-  const sx = x - f * 2.4 * k + ln, sy = top + 4 * k, ax = x - f * 3 * k, ay = top + 14 * k;   // 近的那只手臂
-  part(ctx, [[sx - 2.2 * k, sy], [sx + 2.2 * k, sy], [ax + 2.1 * k, ay], [ax - 2.1 * k, ay]], P.hood2, { w: 0.9, tex: 0.2 });
-  part(ctx, arcPts(ax, ay + 1.7 * k, 2 * k, 2 * k, 0, Math.PI * 2, 8), P.skin, { w: 0.7, tex: 0 });
-  part(ctx, arcPts(hx, hy, R, R * 1.04, 0, Math.PI * 2, 18), P.skin, { w: 1, tex: 0.2, rim: 0.2 });   // 头
-  const HP = [[5.2, -4.2], [7.6, -2.6], [6.6, -6.4], [3.4, -9.9], [1.4, -7.7], [-1.8, -10.6], [-3.6, -8], [-7.6, -9], [-7, -4.8], [-9.8, -2.6], [-7.3, 0.4], [-8.6, 4.2], [-5, 3.4], [-3.6, 0.6], [-0.8, -2.6], [2.8, -3.4]].map(([a, b]) => [hx + f * a * k * 0.95, hy + b * k * 0.95]);
-  part(ctx, HP, P.hair, { w: 0.9, tex: 0, wob: 0.4 });
-  const r = rnd(95);   // 头发里再绕几笔乱线，再有几根翘出去
-  for (let n = 0; n < 3; n++) { const pts = []; for (let i = 0; i < 7; i++) pts.push([hx + f * (-7 + r() * 12.5) * k, hy + (-9.3 + r() * 7.2) * k]); ink(ctx, pts, { w: 0.8, col: P.hair, a: 1, amp: 0.3, single: 1 }); }
-  for (const [a0, len] of [[-2.2, 4.2], [-1.75, 5], [-1.2, 3.6], [-2.75, 3.4]]) ink(ctx, quadPts([hx + f * Math.cos(a0) * R * 0.95, hy + Math.sin(a0) * R * 0.95], [hx + f * Math.cos(a0 - 0.12) * (R + len * k * 0.6), hy + Math.sin(a0 - 0.12) * (R + len * k * 0.6)], [hx + f * Math.cos(a0 - 0.3) * (R + len * k), hy + Math.sin(a0 - 0.3) * (R + len * k)], 5), { w: 0.75, col: P.hair, a: 1, taper: 5, single: 1 });
-  ctx.fillStyle = P.hair; ctx.beginPath(); ctx.ellipse(hx + f * 3.7 * k, hy + 0.7 * k, 0.95 * k, 1.35 * k, 0, 0, 7); ctx.fill();   // 眼睛
-  if (!lit) ink(ctx, arcPts(hx, hy, R, R, f > 0 ? -1.2 : -2.6, f > 0 ? 0.5 : -1.1 - 1.7, 6), { col: L.dark.hi, a: 0.3, w: 0.8, single: 1 });
+  h.draw(o);
+}
+// 一 · 睡帽：一只大眼睛，圆鼻头；后脑勺的头发翘出来
+function drawCap(o) {
+  const { P, E, Q, fill, line, clipTo, shade, lit } = o;
+  fill([[-2.7, 11], [-0.6, 11], [-0.8, 3.2], [-2.5, 3.2]], P.skin, { w: 0.8, tex: 0, rim: 0 });   // 腿和毛袜：先远后近
+  fill(E(-0.9, 2.3, 3.7, 2.4), P.sock2, { w: 0.85, tex: 0.2, rim: 0 });
+  line(Q([-3.5, 3.9], [-0.9, 4.9], [1.7, 3.9]), { w: 0.55, a: 0.7 });
+  fill([[1.3, 11], [3.4, 11], [3.2, 3.2], [1.5, 3.2]], P.skin, { w: 0.8, tex: 0, rim: 0 });
+  fill(E(3.5, 2.3, 4.1, 2.5), P.sock, { w: 0.9, tex: 0.2, rim: 0 });
+  line(Q([0.6, 4.0], [3.5, 5.0], [6.4, 3.9]), { w: 0.55, a: 0.7 });
+  const shirt = Q([-5.4, 25.4], [0, 27.8], [5.4, 25.4], [7.6, 18], [9.0, 10.2], [0.3, 8.4], [-9.4, 10.6], [-7.7, 18.4], [-5.4, 25.4]);   // 睡衣：过膝，往下张开一点；竖条纹
+  fill(shirt, P.shirt, { w: 1.05, tex: 0.3 });
+  clipTo(shirt, () => { for (const t of [-0.64, -0.22, 0.2, 0.62]) line([[t * 5.6, 27], [t * 9.6, 8.6]], { col: P.stripe, w: 0.75, a: lit ? 0.75 : 0.45, taper: 0 }); });
+  shade(shirt, -10, -3.6);
+  line(Q([-9.0, 11.8], [0.2, 10.0], [8.7, 11.5]), { w: 0.55, a: 0.55 });
+  line(Q([-2.8, 25.6], [0.2, 23.4], [3.4, 25.6]), { w: 0.75, a: 0.9 });   // 领口
+  for (const v of [21.6, 18.4]) fill(E(4.2 + (25 - v) * 0.12, v, 0.65, 0.65, 10), P.shirt2, { w: 0.5, tex: 0, rim: 0, wob: 0.1 });   // 两颗小扣子
+  const sleeve = Q([-0.8, 23.8], [1.6, 25.0], [3.2, 24.0], [5.6, 19.0], [6.9, 14.2], [5.0, 12.6], [2.6, 13.2], [1.0, 18.6], [-0.8, 23.8]);   // 近的那只袖子和手
+  fill(sleeve, P.shirt, { w: 0.95, tex: 0.25 });
+  shade(sleeve, -2, 2.2, { gap: 2.4 });
+  fill(E(5.4, 12.0, 1.9, 2.0, 12), P.skin, { w: 0.8, tex: 0, rim: 0, wob: 0.2 });
+  fill(E(1.4, 33.8, 8.0, 8.3, 24), P.skin, { w: 1.05, tex: 0.15, rim: 0.12 });   // 头
+  fill([[-0.8, 37.4], [-7.2, 37.0], [-9.2, 33.2], [-7.6, 33.8], [-8.8, 30.2], [-6.4, 32.0], [-6.2, 28.8], [-4.4, 31.8], [-3.2, 29.6], [-2.4, 32.8], [-1.2, 31.8], [-0.6, 34.6]], P.hair, { w: 0.8, tex: 0, rim: 0, wob: 0.3 });   // 后脑勺的头发从帽子底下翘出来
+  const cap = Q([8.2, 38.4], [7.6, 46.0], [1.0, 47.6], [-6.8, 47.8], [-11.0, 42.8], [-13.6, 39.0], [-14.9, 34.4]).concat(Q([-13.0, 33.8], [-11.0, 37.8], [-7.4, 38.4]));   // 睡帽
+  fill(cap, P.cap, { w: 1.05, tex: 0.35 });
+  clipTo(cap, () => { for (const [a, c, b] of [[[-5.4, 48.4], [-6.6, 43.0], [-4.6, 37.8]], [[-11.0, 43.4], [-11.4, 40.2], [-8.8, 37.8]], [[-14.0, 37.8], [-13.8, 36.2], [-12.2, 35.0]]]) line(Q(a, c, b), { col: P.capBand, w: 1.5, a: 1, taper: 0 }); });
+  shade(cap, -16, -5.5, { gap: 2.2 });
+  const band = Q([-8.6, 36.2], [0.2, 34.8], [8.8, 36.8]).concat(Q([8.6, 39.8], [0.2, 38.8], [-8.4, 39.8]));   // 卷起来的帽边
+  fill(band, P.capBand, { w: 1.0, tex: 0.25 });
+  for (let u = -7.4; u < 8.2; u += 1.5) line([[u, 35.9 + Math.abs(u) * 0.05], [u + 0.2, 39.3]], { w: 0.5, a: 0.5, taper: 0 });
+  fill(E(-14.3, 32.6, 3.0, 2.8, 16), P.pom, { w: 0.9, tex: 0.2, rim: 0, wob: 0.7 });   // 绒球
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; line([[-14.3 + Math.cos(a) * 2.6, 32.6 + Math.sin(a) * 2.4], [-14.3 + Math.cos(a) * 3.6, 32.6 + Math.sin(a) * 3.4]], { w: 0.5, a: 0.6, taper: 0 }); }
+  fill(E(4.8, 33.2, 2.4, 2.9, 16), P.eye, { w: 0.75, tex: 0, rim: 0, wob: 0.2 });   // 脸
+  fill(E(5.5, 32.9, 1.3, 1.55, 12), P.pupil, { line: 0, tex: 0, rim: 0, wob: 0.1 });
+  fill(E(6.0, 33.7, 0.45, 0.5, 8), P.eye, { line: 0, tex: 0, rim: 0, wob: 0 });
+  line(Q([2.2, 35.0], [4.8, 36.8], [7.4, 35.2]), { w: 0.95 });
+  fill(E(9.6, 31.4, 1.35, 1.2, 12), P.skin, { w: 0.75, tex: 0, rim: 0, wob: 0.2 });
+  line(Q([5.8, 28.6], [6.8, 28.1], [7.8, 28.6]), { w: 0.6, a: 0.85 });
+  if (lit) fill(E(3.8, 30.0, 1.9, 1.1, 12), P.blush, { line: 0, tex: 0, rim: 0, fa: 0.45, wob: 0.2 });
+}
+// 二 · 大衣：只露出眼睛那一条，领子竖到鼻子，帽子压到眉毛
+function drawCoat(o) {
+  const { P, E, Q, fill, line, shade } = o;
+  fill(Q([-3.6, 0.2], [-1.0, -0.4], [1.8, 0.3], [2.2, 2.6], [0.8, 3.9]).concat([[-3.0, 3.9], [-3.8, 2.0]]), P.boot, { w: 0.9, tex: 0, rim: 0 });   // 两只靴子
+  fill(Q([1.0, 0.2], [3.8, -0.4], [6.9, 0.4], [7.3, 2.8], [5.8, 4.1]).concat([[1.6, 4.1], [0.8, 2.0]]), P.boot, { w: 0.95, tex: 0, rim: 0 });
+  line([[4.0, 0.9], [6.6, 1.2]], { col: P.bootHi, w: 0.6, a: 0.9, taper: 2 });
+  const coat = Q([-6.2, 24.4], [0.2, 26.6], [6.6, 24.4], [8.6, 14.0], [10.0, 3.8], [0.2, 2.4], [-9.8, 4.0], [-8.8, 14.4], [-6.2, 24.4]);   // 大一号的大衣，下摆到脚踝
+  fill(coat, P.coat, { w: 1.1, tex: 0.35 });
+  shade(coat, -11, -4.4, { gap: 2.2 });
+  line(Q([-9.4, 6.0], [0.2, 4.6], [9.7, 5.8]), { w: 0.55, a: 0.55 });
+  line(Q([-1.6, 12.0], [1.4, 11.4], [4.4, 12.0]), { w: 0.75, a: 0.9 }); line([[-1.4, 12.0], [-1.1, 7.6]], { w: 0.6, a: 0.7 }); line([[4.2, 12.0], [4.0, 7.6]], { w: 0.6, a: 0.7 });   // 口袋
+  for (const [u, v] of [[5.9, 19.8], [6.6, 14.0], [7.3, 8.4]]) fill(E(u, v, 1.25, 1.25, 12), P.button, { w: 0.7, tex: 0, rim: 0, wob: 0.15 });   // 扣子
+  const sleeve = Q([-2.2, 23.0], [0.6, 25.0], [3.0, 24.0], [6.0, 17.6], [7.6, 11.0], [5.4, 8.8], [2.2, 9.6], [1.0, 16.4], [-2.2, 23.0]);   // 袖子长得盖住手
+  fill(sleeve, P.coat, { w: 1.0, tex: 0.3 });
+  shade(sleeve, -3, 1.4, { gap: 2.4 });
+  fill(E(4.9, 9.4, 2.5, 0.95, 14), P.coat2, { w: 0.7, tex: 0, rim: 0, wob: 0.2 });
+  line(Q([2.0, 12.2], [4.6, 13.2], [7.2, 12.6]), { w: 0.65, a: 0.8 });
+  fill(E(1.6, 33.0, 7.6, 7.8, 24), P.skin, { w: 1.0, tex: 0.15, rim: 0.1 });   // 头
+  fill([[0.6, 34.6], [-8.2, 34.0], [-9.0, 30.0], [-7.4, 31.2], [-7.6, 28.0], [-5.4, 30.4], [-4.6, 27.6], [-3.2, 30.6], [-1.6, 29.4], [-0.6, 32.0]], P.hair, { w: 0.8, tex: 0, rim: 0, wob: 0.3 });   // 后脑勺的头发
+  fill(E(4.0, 31.6, 2.2, 2.6, 16), P.eye, { w: 0.75, tex: 0, rim: 0, wob: 0.2 });   // 一双眼睛，远的那只窄一些
+  fill(E(7.5, 31.7, 1.55, 2.4, 14), P.eye, { w: 0.7, tex: 0, rim: 0, wob: 0.2 });
+  fill(E(4.7, 31.4, 1.2, 1.45, 12), P.pupil, { line: 0, tex: 0, rim: 0, wob: 0.1 });
+  fill(E(8.0, 31.5, 0.9, 1.3, 12), P.pupil, { line: 0, tex: 0, rim: 0, wob: 0.1 });
+  for (const [u, v] of [[5.2, 32.2], [8.4, 32.2]]) fill(E(u, v, 0.4, 0.45, 8), P.eye, { line: 0, tex: 0, rim: 0, wob: 0 });
+  const collar = Q([-6.8, 22.4], [-7.4, 25.6], [-6.6, 28.4], [0.6, 30.0], [7.6, 28.8], [8.4, 26.0], [7.8, 23.4], [0.4, 21.6], [-6.8, 22.4]);   // 竖起来的领子
+  fill(collar, P.collar, { w: 1.05, tex: 0.3 });
+  shade(collar, -8, -3, { gap: 2.2 });
+  line(Q([-6.0, 26.8], [0.6, 28.0], [7.0, 27.2]), { w: 0.55, a: 0.55 });
+  const hat = Q([-8.9, 32.6], [-9.8, 45.2], [1.2, 45.6], [10.6, 45.4], [9.9, 34.2], [0.8, 34.0], [-8.9, 32.6]);   // 毛线帽
+  fill(hat, P.hat, { w: 1.1, tex: 0.35 });
+  shade(hat, -10.5, -3.5, { gap: 2.2 });
+  for (const t of [-0.5, 0, 0.5]) line(Q([t * 8 + 1, 37.4], [t * 9.6 + 1, 42.4], [t * 4 + 1, 45.0]), { w: 0.5, a: 0.35 });
+  const cuff = Q([-8.9, 32.6], [0.8, 34.0], [9.9, 34.2]).concat(Q([10.1, 37.0], [0.8, 36.8], [-9.0, 35.6]));
+  fill(cuff, P.hat2, { w: 0.9, tex: 0.25 });
+  for (let u = -8; u < 9.6; u += 1.4) line([[u, 33.5 + u * 0.06], [u + 0.15, 36.3 + u * 0.03]], { w: 0.5, a: 0.55, taper: 0 });
+  fill(E(1.0, 45.9, 2.9, 2.6, 16), P.lining, { w: 0.9, tex: 0.3, rim: 0.15, wob: 0.7 });   // 绒球
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; line([[1.0 + Math.cos(a) * 2.5, 45.9 + Math.sin(a) * 2.2], [1.0 + Math.cos(a) * 3.5, 45.9 + Math.sin(a) * 3.2]], { w: 0.5, a: 0.6, taper: 0 }); }
+  fill(E(9.6, 29.6, 1.6, 1.35, 12), P.nose, { w: 0.8, tex: 0, rim: 0, wob: 0.2 });   // 冻红的鼻头从领子上冒出来
+}
+// 三 · 被子：拼布被子从头顶披下来，被角拖在身后
+function drawQuilt(o) {
+  const { ctx, P, T, E, Q, fill, line, shade, lit } = o;
+  fill(E(0.4, 1.5, 3.1, 1.7, 14), P.sock, { w: 0.85, tex: 0.15, rim: 0 });   // 一双条纹袜
+  fill(E(4.6, 1.6, 3.5, 1.9, 14), P.sock, { w: 0.9, tex: 0.15, rim: 0 });
+  for (const [u0, u1, v] of [[-1.8, 2.0, 2.4], [2.2, 6.8, 2.6], [2.6, 7.4, 1.1]]) line([[u0, v], [u1, v + 0.2]], { col: P.sockStripe, w: 0.85, a: 1, taper: 0 });
+  fill(E(3.0, 33.4, 7.4, 7.6, 24), P.skin, { w: 1.0, tex: 0.15, rim: 0.1 });   // 头（被子盖住后脑勺）
+  const quilt = Q([7.2, 40.6], [6.4, 46.6], [-1.0, 46.4], [-6.8, 45.8], [-8.6, 41.6], [-10.6, 36.0], [-10.8, 30.4], [-12.4, 16.0], [-15.2, 6.6], [-17.6, 2.2], [-23.0, 0.8], [-14.0, -0.4], [-7.6, 0.4], [-4.6, 0.6], [-3.4, 3.0], [1.6, 5.8], [6.6, 5.4], [8.2, 10.4], [8.0, 15.2])
+    .concat(Q([8.6, 19.0], [8.4, 22.6], [6.4, 24.8], [0.2, 28.0], [-0.4, 34.0], [0.6, 40.4], [7.2, 40.6]));
+  const tp = T(quilt), r = rnd(4711), cols = [P.quilt, P.q2, P.q3, P.q4, P.q5], ang = -0.12, cs = Math.cos(ang), sn = Math.sin(ang), cell = 6.2;
+  const rot = ([u, v]) => [u * cs - v * sn - 2, u * sn + v * cs + 0.5];
+  ctx.save(); ctx.beginPath(); tp.forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.closePath(); ctx.clip();
+  for (let i = -6; i < 4; i++) for (let j = -1; j < 9; j++) fillPts(ctx, T([[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]].map(([a, b]) => rot([a * cell, b * cell]))), cols[(r() * cols.length) | 0]);   // 一块块拼布
+  texture(ctx, TEX.blot2, 0.4);
+  for (let i = -6; i <= 4; i++) line([rot([i * cell, -cell]), rot([i * cell, 9 * cell])], { w: 0.6, a: 0.55, taper: 0 });
+  for (let j = -1; j <= 9; j++) line([rot([-6 * cell, j * cell]), rot([4 * cell, j * cell])], { w: 0.6, a: 0.55, taper: 0 });
+  shade(quilt, -24, -5.5, { gap: 2.1, a: 0.5 });
+  for (const pts of [[[-6.0, 40.0], [-8.8, 24.0], [-12.6, 4.0]], [[-2.4, 30.0], [-3.6, 16.0], [-4.8, 4.0]], [[3.4, 24.0], [4.6, 14.0], [3.2, 5.6]]]) line(Q(...pts), { w: 0.7, a: 0.5, taper: 8 });   // 褶子
+  ctx.restore();
+  ink(ctx, [...tp, tp[0]], { col: P.bind, w: 2.0, taper: 0, a: 1, single: 1, amp: 0.5 });   // 包边
+  ink(ctx, [...tp, tp[0]], { w: 1.1, taper: 0 });
+  for (const [a, b, c] of [[[1.0, 39.4], [3.2, 38.2], [4.6, 36.0]], [[2.8, 40.2], [5.0, 39.2], [6.4, 37.0]], [[4.6, 40.6], [6.6, 40.0], [8.0, 38.2]]]) line(quadPts(a, b, c, 6), { col: P.hair, w: 1.5, a: 1, taper: 6 });   // 一绺头发
+  fill(E(6.2, 33.8, 2.2, 2.7, 16), P.eye, { w: 0.75, tex: 0, rim: 0, wob: 0.2 });   // 脸
+  fill(E(6.9, 33.5, 1.2, 1.45, 12), P.pupil, { line: 0, tex: 0, rim: 0, wob: 0.1 });
+  fill(E(7.4, 34.3, 0.42, 0.48, 8), P.eye, { line: 0, tex: 0, rim: 0, wob: 0 });
+  line(Q([3.8, 35.4], [6.2, 37.2], [8.6, 35.6]), { w: 0.95 });
+  fill(E(10.4, 31.4, 1.25, 1.15, 12), P.skin, { w: 0.75, tex: 0, rim: 0, wob: 0.2 });
+  line(Q([7.2, 28.6], [8.2, 28.0], [9.0, 28.5]), { w: 0.6, a: 0.85 });
+  if (lit) fill(E(5.2, 30.2, 1.8, 1.0, 12), P.blush, { line: 0, tex: 0, rim: 0, fa: 0.45, wob: 0.2 });
+  fill(E(8.9, 18.2, 2.1, 1.9, 14), P.skin, { w: 0.85, tex: 0, rim: 0, wob: 0.2 });   // 一只手在胸前攥着被子
+  line([[8.0, 19.2], [9.9, 19.0]], { w: 0.5, a: 0.7 }); line([[7.9, 18.0], [9.9, 17.8]], { w: 0.5, a: 0.7 });
 }
 
 // ---------- 光 ----------
@@ -686,14 +741,14 @@ function inLight(g, L, dpr, fn) {
 }
 
 // ---------- 一张画 ----------
-// st：{ lamp: 灯开没开, px, py: 主角在哪一格, mx: 影子在哪一列 }
-function render(key, st, dpr = 1) {
+// st：{ lamp: 灯开没开, px, py: 主角在哪一格, mx: 影子在哪一列, hero: 哪个主角 }
+function render(st, dpr = 1) {
   buildTex();
-  const L = LOOKS[key], [out, g] = mk(dpr), blit = (ctx, cv) => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(cv, 0, 0); ctx.restore(); };
+  const L = LOOK, [out, g] = mk(dpr), blit = (ctx, cv) => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(cv, 0, 0); ctx.restore(); };
   const world = ctx => ctx.translate(-L.cam.x, -L.cam.y);
   g.pen = { ...L.pen, col: L.dark.ink }; paintPage(g, L);
   g.save(); world(g);
-  if (L.ext === 'night') paintTree(g, L);
+  paintTree(g, L);
   const [dk, d] = mk(dpr); world(d); d.pen = { ...L.pen, col: L.dark.ink }; paintShell(d, L); paintRoom(d, L, L.dark, false);
   const [lt, l] = mk(dpr); world(l); l.pen = { ...L.pen, col: L.lit.ink }; paintRoom(l, L, L.lit, true);
   // 亮的那一层：离灯越远越暗一点，整体偏一点暖
@@ -709,7 +764,7 @@ function render(key, st, dpr = 1) {
   drawLever(g, L, st);
   const mon = { x: st.mx, y: 2, face: -1, sees: !st.lamp || !litCell(st.mx, 2) };
   if (st.lamp && litCell(mon.x, mon.y)) inLight(g, L, dpr, x => drawWardrobe(x, L, mon)); else drawLurker(g, L, mon);
-  if (st.lamp && litCell(st.px, st.py)) inLight(g, L, dpr, x => drawPlayer(x, L, st)); else drawPlayer(g, L, st);
+  if (st.lamp && litCell(st.px, st.py)) inLight(g, L, dpr, x => drawHero(x, L, st, true)); else drawHero(g, L, st, false);
   drawLamp(g, L, st); drawLight(g, L, st);
   g.save(); g.globalCompositeOperation = 'lighter'; glow(g, 11.5 * S, 2.55 * S, S * 1.25, L.dark.moon, 0.16); g.restore();   // 出口那一圈冷光
   g.restore();
@@ -725,22 +780,46 @@ function render(key, st, dpr = 1) {
 }
 
 // ---------- 页面 ----------
+// 不带参数：主角三个候选的大图（灯下、暗处），和整关的画面（灯关 / 灯开）；?hero=cap|coat|quilt 换整关画面里的主角。
+// ?one=1：只画一张整关的画（1280×800）。lit=1 开灯；px、py 主角站在哪一格；mx 影子在哪一列；hero 选主角；dpr=2 画两倍大。
+// ?solo=lit|dark：只画一个主角的大图，背景是素的。hero 选主角；zoom 放大几倍（默认 5）。
 const q = new URLSearchParams(location.search);
-const state = lit => ({ lamp: !!lit, px: lit ? 2 : 1, py: 2, mx: lit ? 8 : 9, face: 1 });
+const state = lit => ({ lamp: !!lit, px: lit ? 5 : 1, py: 2, mx: lit ? 8 : 9, face: 1, hero: q.get('hero') || 'cap' });
+function solo(hero, lit, Z) {
+  buildTex();
+  const w = 74, h = 86, cv = document.createElement('canvas'); cv.width = w * Z; cv.height = h * Z;
+  const x = cv.getContext('2d'); x.dpr = Z; x.seedN = 0; x.scale(Z, Z);
+  x.fillStyle = lit ? '#cdc1a4' : '#171c29'; x.fillRect(0, 0, w, h);
+  const st = { px: 5, py: 2, face: 1, hero };
+  x.translate(w * 0.6 - (st.px + 0.5) * S, h - 6 - ((st.py + 1) * S + FEET));
+  drawHero(x, LOOK, st, lit);
+  return cv;
+}
 if (q.get('one')) {
   const lit = q.get('lit') === '1', st = state(lit), dpr = +(q.get('dpr') || 1);
   if (q.has('px')) st.px = +q.get('px'); if (q.has('py')) st.py = +q.get('py'); if (q.has('mx')) st.mx = +q.get('mx'); if (q.has('face')) st.face = +q.get('face');
   document.body.className = 'one';
-  const cv = render(q.get('one'), st, dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.appendChild(cv);
+  const cv = render(st, dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.appendChild(cv);
+} else if (q.get('solo')) {
+  document.body.className = 'one';
+  const cv = solo(q.get('hero') || 'cap', q.get('solo') === 'lit', +(q.get('zoom') || 5)); cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px'; document.body.appendChild(cv);
 } else {
   const dpr = Math.min(2, window.devicePixelRatio || 1), add = (tag, text, parent = document.body) => { const e = document.createElement(tag); if (text) e.textContent = text; parent.appendChild(e); return e; };
-  add('h1', '《灯下》第一关 · 两种手绘的画法');
-  add('p', '都是用代码画的，和游戏里是同一关、同一个位置。左边灯没开，右边拉了拉杆。只是画面，不能玩。');
-  for (const key of ['a', 'b']) {
-    const L = LOOKS[key]; add('h2', `${L.tag} · ${L.title}`);
-    const row = add('div'); row.className = 'row';
-    for (const lit of [0, 1]) { const f = add('figure', '', row); f.appendChild(render(key, state(lit), dpr)); add('figcaption', lit ? '拉了拉杆：灯照到的地方才是暖的、有细节，影子在光里是一只衣柜' : '灯还没开：屋里只有冷的轮廓，影子在暗处睁着眼', f); }
+  add('h1', '《灯下》第一关 · 定下来的画法和主角的三个候选');
+  add('p', '铅笔线，每样东西留一点颜色、都压得很灰，房子外面是夜景。主角从头重新设计了三个。都是用代码画的，只是画面，不能玩。');
+  add('h2', '主角的三个候选（放大四倍；左边在灯下，右边在暗处）');
+  const heroes = add('div'); heroes.className = 'heroes';
+  for (const [key, h] of Object.entries(HEROES)) {
+    const f = add('figure', '', heroes), pair = add('div', '', f); pair.className = 'pair';
+    pair.appendChild(solo(key, true, 4)); pair.appendChild(solo(key, false, 4));
+    add('figcaption', `${h.name}：${h.note}`, f);
   }
+  const cur = HEROES[q.get('hero')] ? q.get('hero') : 'cap';
+  add('h2', `整关的画面（主角：${HEROES[cur].name}）`);
+  const nav = add('nav');
+  for (const [key, h] of Object.entries(HEROES)) { const a = add('a', h.name, nav); a.href = '?hero=' + key; if (key === cur) a.className = 'on'; }
+  const row = add('div'); row.className = 'row';
+  for (const lit of [0, 1]) { const f = add('figure', '', row); f.appendChild(render(state(lit), dpr)); add('figcaption', lit ? '拉了拉杆：主角走到灯下，灯照到的地方才是暖的、有细节，影子在光里是一只衣柜' : '灯还没开：主角站在窗前的月光里，屋里只有冷的轮廓，影子在暗处睁着眼', f); }
 }
 </script>
 </body>

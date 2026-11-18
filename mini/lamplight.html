@@ -384,6 +384,8 @@ function act(a) {
   const now = performance.now() / 1000;
   pView.fx = pView.x; pView.fy = pView.y; pView.t = 0; pView.t0 = now;
   if (a === 'L') pView.face = -1; if (a === 'R') pView.face = 1;
+  pView.hz = a === 'L' || a === 'R';
+  if (r.ev.includes('lever')) pView.pullT = now;
   if (r.ev.includes('step') || r.ev.includes('climb')) pView.walk++;
   mView.forEach((v, i) => { v.fx = v.x; v.fy = v.y; const m = cur.mons[i]; if (m.x !== before.mons[i].x) v.face = Math.sign(m.x - before.mons[i].x); });
   // 声音
@@ -419,7 +421,7 @@ function restart() {
 }
 function snapViews() {
   const now = performance.now() / 1000;
-  pView.fx = pView.x; pView.fy = pView.y; pView.t = 0; pView.t0 = now;
+  pView.fx = pView.x; pView.fy = pView.y; pView.t = 0; pView.t0 = now; pView.hz = false; pView.pullT = null;
   mView.forEach(v => { v.fx = v.x; v.fy = v.y; });
   snapLamps();
 }
@@ -802,7 +804,7 @@ function frame() {
 
   drawHardware(lit);
   cur.mons.forEach((m, i) => drawMonster(m, mView[i], now, lurkerSees(lv, cur, m, lit) && status === 'play'));
-  drawPlayer(now);
+  drawPlayer(now, lit);
 
   // 灯（画在最上面）
   lv.lamps.forEach((l, i) => {
@@ -901,26 +903,14 @@ function drawHardware(lit) {
   }
 }
 
-// 主角：照主游戏那个孩子画（generated_images/concept-inside-style-10.png）—— 乱头发、米白连帽衫（帽子垂在脑后）、长裤、大靴子，
-// 不画五官，四个头高左右。暗处是一个偏冷的浅色剪影，走到灯下才有颜色，灯在哪边哪边亮。
-// 先画在一张小画布上（kidC），整个人一起上光、一起变淡，叠着的地方不会透出接缝。
-// 下面的形状都以一格的 1/64 为单位：脚底是 0，往上是负的，往前是正的（朝左的时候整个翻过来）。
-// 点的第三个值是 1 的地方是尖角（发梢、衣角），别的地方连成圆滑的线。
-const KID = {
-  body: [[-2.6, -35.4], [2.4, -35.6], [5, -33.6], [5.9, -29], [6.3, -23.5], [6.6, -19.8], [5.8, -18.8], [-5.3, -18.8], [-6.2, -19.8], [-6, -24.5], [-5.6, -30.5], [-4.6, -34]],
-  hood: [[-0.6, -36.5], [-4.2, -36.9], [-6.8, -35.3], [-7.5, -32.4], [-6.7, -29.8], [-5.1, -29.1], [-4.4, -31.2], [-2.8, -34]],
-  hoodIn: [[-1.4, -36.2], [-4.2, -36.5], [-6.3, -35.2], [-4.3, -34.6], [-2.4, -34.9]],
-  head: [[0.4, -48.4], [4.4, -47], [6.3, -44.2], [6.5, -42.6], [7.6, -40.7, 1], [6.5, -40], [6.6, -38.8], [6, -37.3], [4.2, -36.3], [1, -36.5], [-2.4, -37.4], [-4.8, -39.8], [-5.5, -43], [-4.2, -46.8]],
-  // 头发：盖住头顶和后脑勺的一块，边上再长出一撮一撮的（每撮 [根 x, 根 y, 朝向（度，0 朝前、90 朝下）, 长, 宽]）
-  hair: [[6.7, -44.4], [6.5, -46.6], [4.8, -48.8], [1.6, -49.9], [-2, -49.6], [-4.8, -47.8], [-6.2, -44.6], [-6, -41.2], [-4.6, -38.8], [-3.2, -38.2],
-    [-1.6, -39.8], [-0.6, -42.4], [1, -43], [2.6, -42.2], [3.6, -43.8], [5.2, -43.6]],
-  boot: [[-2.6, -1.6], [1.4, -1.9], [4.2, -0.4], [5.4, 1.6], [5, 3.6, 1], [-2.9, 3.6, 1], [-3.3, 1]],
-  // 背面（爬梯子）
-  back: [[-3, -35.6], [3, -35.6], [5.6, -33.8], [6.4, -28.5], [6.7, -19.8], [5.8, -18.8], [-5.8, -18.8], [-6.7, -19.8], [-6.4, -28.5], [-5.6, -33.8]],
-  backHood: [[-4.6, -36], [4.6, -36], [4.4, -31.4], [2.6, -27.8], [0, -26.9], [-2.6, -27.8], [-4.4, -31.4]],
-  backHair: [[0, -49.8], [3.6, -49], [5.9, -46.4], [6.5, -42.8], [5.9, -39.6], [3.6, -37.8], [0, -37.4], [-3.6, -37.8], [-5.9, -39.6], [-6.5, -42.8], [-5.9, -46.4], [-3.6, -49]],
-  backBoot: [[-2.5, -1.4], [2.5, -1.4], [2.8, 1.5], [2.6, 3.6, 1], [-2.6, 3.6, 1], [-2.8, 1.5]],
-};
+// 主角：一个半夜醒过来的小孩，披着自己的毯子穿过这栋房子。
+//   · 西瓜头（齐刘海盖住眼睛），一身旧睡衣，脚上一双大毛袜。毯子披在肩上，两只手在胸前攥着，后面拖在地上，走起来跟在后面。
+//   · 这一套画法不画眼睛：脸上只看得出刘海下面的鼻尖、脸蛋和下巴。
+//   · 暗处是一个偏冷的浅色剪影（暗处最亮的东西），走进灯下才看得出毯子的燕麦色、格纹和下摆的一道红。
+//   · 被影子盯上会发抖；被抓住就蹲下去，把毯子整个蒙到头上；拉拉杆时跳起来、伸一只手去够。
+// 整个人先画在一张小画布上（kidC），再一起上光、一起变淡，叠着的地方不会透出接缝。
+// 坐标以一格的 1/64 为单位：脚底是 0，往上是负的，往前是正的（朝左的时候整个翻过来）。
+// 点的第三个值是 1 的地方是尖角（毯子角、发梢），别处连成圆滑的线。
 function blob(pts) {
   const p = new Path2D(), n = pts.length, at = i => pts[(i + n) % n];
   p.moveTo(pts[0][0], pts[0][1]);
@@ -930,27 +920,6 @@ function blob(pts) {
   }
   p.closePath(); return p;
 }
-const TUFTS = {
-  hair: [[5.2, -45.4, 38, 4, 3.6], [3.2, -44.8, 74, 2.5, 2.8], [1.8, -43.2, 96, 2, 2], [4.2, -48.4, -28, 2.1, 3.6], [0.8, -49.8, -70, 2.7, 3.4], [-2.6, -49.2, -116, 3.3, 3.4],
-    [-5.2, -46.8, -152, 2.3, 3.6], [-6, -43.4, 176, 2.1, 3.4], [-5.4, -40.4, 136, 3.1, 3], [-3.4, -38.8, 108, 2.4, 2.8]],
-  backHair: [[0.6, -49.4, -84, 2, 3.8], [3.8, -48.2, -48, 2.2, 3.6], [-3, -48.6, -122, 2.2, 3.6], [6, -44.6, -10, 2, 3.4], [-5.8, -45.2, -168, 2, 3.4], [5.4, -40, 50, 2.2, 3.2],
-    [-5.6, -40.4, 128, 2.2, 3.2], [2.6, -38, 88, 2, 3], [-2, -38, 96, 2.2, 3]],
-};
-function tuft([bx, by, deg, len, wid]) {   // 一撮头发：叶子形，两边鼓，尖朝外
-  const p = new Path2D(), a = deg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), px = -sa * wid / 2, py = ca * wid / 2;
-  const tx = bx + ca * len, ty = by + sa * len, mx = bx + ca * len * 0.42, my = by + sa * len * 0.42;
-  p.moveTo(bx - px, by - py); p.quadraticCurveTo(mx - px * 1.15, my - py * 1.15, tx, ty); p.quadraticCurveTo(mx + px * 1.15, my + py * 1.15, bx + px, by + py); p.closePath();
-  return p;
-}
-const KP = {}; for (const n in KID) KP[n] = blob(KID[n]);
-for (const n in TUFTS) KP[n] = [KP[n], ...TUFTS[n].map(tuft)];   // 头发是几块拼起来的：一块一块填，叠着的地方不会抵消成洞
-// 两套颜色：暗处（冷的，只有深浅，连帽衫最亮、头发最深）和灯下
-const KIDC = {
-  dark: { hood: mix(C.dusk, C.moon, 0.6), hood2: mix(C.dusk, C.moon, 0.42), hoodIn: mix(C.dusk, C.moon, 0.18), skin: mix(C.dusk, C.moon, 0.47), skin2: mix(C.dusk, C.moon, 0.32),
-    hair: mix(C.mass, C.room, 0.5), cloth: mix(C.room, C.dusk, 0.8), cloth2: mix(C.room, C.dusk, 0.4), boot: mix(C.mass, C.room, 0.6), sole: C.mass },
-  lit: { hood: C.cream, hood2: shade(C.cream, 0.2), hoodIn: shade(C.cream, 0.5), skin: mix(C.skin, C.cream, 0.15), skin2: shade(mix(C.skin, C.cream, 0.15), 0.2),
-    hair: shade(C.wood, 0.85), cloth: C.cloth, cloth2: shade(C.cloth, 0.3), boot: shade(C.wood, 0.66), sole: shade(C.wood, 0.86) },
-};
 // 两节的反解：从 a 伸到 b，dir = ±1 是关节往哪边弯，够不着就伸直。返回 [关节 x, 关节 y, 末端 x, 末端 y]
 function ik(ax, ay, bx, by, l1, l2, dir) {
   let dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 0.001;
@@ -959,112 +928,155 @@ function ik(ax, ay, bx, by, l1, l2, dir) {
   const a = Math.atan2(dy, dx), t = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1)) * dir;
   return [ax + Math.cos(a + t) * l1, ay + Math.sin(a + t) * l1, ax + dx, ay + dy];
 }
-let kidC = null, kb = null, kidV = [0, 1];   // kidV：最后照着主角的那盏灯从哪个方向照过来（离开灯的时候慢慢暗下去，方向不跳）
-function drawPlayer(now) {
+const lerp = (a, b, t) => a + (b - a) * t;
+const KIDP = {
+  sock: blob([[-2, -1.3], [1.2, -1.5], [3.5, -0.5], [4.8, 1.3], [4.4, 3, 1], [-2.3, 3, 1], [-2.7, 0.8]]),       // 毛袜，脚踝在 0,0
+  sockB: blob([[-2.3, -1.2], [2.3, -1.2], [2.6, 1.4], [2.3, 3, 1], [-2.3, 3, 1], [-2.6, 1.4]]),                // 毛袜，从后面看
+  body: blob([[-3.2, -30], [2.8, -30.2], [5, -28], [5.9, -23], [6, -17.8], [5, -15.2], [-4.2, -15.2], [-4.8, -18], [-4.6, -25], [-4.2, -28.6]]),   // 睡衣
+  head: blob([[1.2, -44.4], [6, -42.6], [8.2, -39], [8.5, -36.6], [9.3, -34.8, 1], [8.3, -34], [8.3, -32.6], [7.1, -30.4], [4.2, -29.3], [0.6, -29.5], [-3.4, -31.4], [-6.4, -35.6], [-6.4, -40], [-3.6, -43.6]]),
+  // 西瓜头：盖住头顶、后脑和眼睛，齐刘海的边上有几个小尖
+  hair: blob([[9, -36.6, 1], [8.8, -40.4], [6.6, -43.9], [2.6, -45.6], [-1.6, -45.4], [-5.3, -43.4], [-7.4, -39.6], [-7.8, -35.4], [-6.9, -31.6, 1], [-5.6, -32.2], [-4.6, -30.6, 1],
+    [-3.4, -32.4], [-2.4, -35.2], [-0.4, -36.6], [1.4, -36.1, 1], [3, -37.1], [4.6, -36, 1], [6, -37.2], [7.4, -35.9, 1], [8, -37]]),
+  hairB: blob([[0, -45.6], [4.4, -44.6], [7.4, -41.4], [8.2, -37], [7.4, -32.2, 1], [5.2, -32.6], [3.4, -30.8, 1], [1.4, -32.4], [0, -30.6, 1], [-1.4, -32.4], [-3.4, -30.8, 1], [-5.2, -32.6], [-7.4, -32.2, 1], [-8.2, -37], [-7.4, -41.4], [-4.4, -44.6]]),
+};
+const KBLAN = mix(C.cream, C.wood, 0.2), KPJ = mix(C.cloth, C.moon, 0.3), KSOCK = mix(C.wood, C.cream, 0.42), KSKIN = shade(mix(C.skin, C.wood, 0.12), 0.08);
+// 两套颜色：暗处（冷的，只有深浅；毯子最亮，头发最深）和灯下
+const KIDC = {
+  dark: { blanket: mix(C.dusk, C.moon, 0.6), fold: mix(C.dusk, C.moon, 0.44), patch: mix(C.dusk, C.moon, 0.56), border: mix(C.dusk, C.moon, 0.5), under: mix(C.dusk, C.moon, 0.32),
+    skin: mix(C.dusk, C.moon, 0.46), cheek: mix(C.dusk, C.moon, 0.42), hair: mix(C.mass, C.room, 0.55), pj: mix(C.dusk, C.moon, 0.3), pj2: mix(C.room, C.dusk, 0.6), sock: mix(C.dusk, C.moon, 0.4), sole: mix(C.dusk, C.moon, 0.22) },
+  lit: { blanket: KBLAN, fold: shade(KBLAN, 0.24), patch: mix(KBLAN, C.panel, 0.16), border: mix(C.rug, C.cream, 0.3), under: shade(KBLAN, 0.42),
+    skin: KSKIN, cheek: mix(KSKIN, C.rug, 0.16), hair: shade(C.wood, 0.72), pj: KPJ, pj2: shade(KPJ, 0.3), sock: KSOCK, sole: shade(KSOCK, 0.35) },
+};
+let kidC = null, kb = null, kidV = [0, 1];   // kidV：最后照着主角的那盏灯从哪个方向照过来（离开灯的时候顺着这个方向慢慢暗下去）
+function drawPlayer(now, lit) {
   const k = S / 64, f = pView.face, x = (pView.x + 0.5) * S, base = (pView.y + 1) * S + FEET;
   const moving = pView.fx !== cur.px || pView.fy !== cur.py, vert = pView.fy !== cur.py;
   const ph = moving ? clamp((now - pView.t0) / 0.14, 0, 1) : 0, s = Math.sin(ph * Math.PI);
-  const climbing = vert || ('Hg'.includes(T(lv, cur.px, cur.py)) && !moving);
+  const dead = status === 'dead', climbing = !dead && (vert || ('Hg'.includes(T(lv, cur.px, cur.py)) && !moving));
   let a = 1;
-  if (status === 'dead') a = Math.max(0.15, 1 - (now - statusT) * 1.2);
+  if (dead) a = Math.max(0.15, 1 - (now - statusT) * 1.2);
   if (status === 'win') a = Math.max(0, 1 - (now - statusT - 0.2) * 1.5);
   if (a <= 0.003) return;
-  const fear = status === 'dead' ? ease((now - statusT) / 0.18) : 0;   // 被抓住：缩起来，两只手挡在脸前
+  const fear = dead ? ease((now - statusT) / 0.22) : 0;
+  const seen = status === 'play' && cur.mons.some(m => lurkerSees(lv, cur, m, lit));
+  const te = now - (pView.t0 || -9);                                     // 上一步开始到现在多久
+  const pu = pView.pullT == null ? 1 : clamp((now - pView.pullT) / 0.55, 0, 1);
+  const reach = pu < 0.3 ? ease(pu / 0.3) : pu < 0.5 ? 1 : 1 - ease((pu - 0.5) / 0.5);   // 拉拉杆：跳起来够，停一下，落回来
+  const shiver = (seen ? 0.4 : 0) + fear * 0.5, jx = Math.sin(now * 71) * shiver;
+  const drag = pView.hz && te < 1.5 ? -3 * Math.min(1, te / 0.14) * Math.exp(-Math.max(0, te - 0.14) * 6) : 0;   // 拖在地上的毯子角跟在后面，走完了再慢慢跟上来
+
   // 脚下的影子：在灯下往背灯的那一边拖
   const lp = lampOver(cur.px, cur.py), dir = lp ? Math.sign(lp.c - cur.px) : 0;
   const perched = cur.mons.some(m => m.x === cur.px && m.y === cur.py + 1) && !moving;   // 站在家具顶上
   g.fillStyle = css(C.mass, 0.3 + 0.2 * pLit); g.beginPath();
-  if (perched) g.ellipse(x, base + 0.3 * k, 8 * k, 1.6 * k, 0, 0, 7); else g.ellipse(x - dir * 5 * k * pLit, base + 0.5 * k, 10 * k + 3 * k * pLit, 3 * k, 0, 0, 7);
+  if (perched) g.ellipse(x - f * 2 * k, base + 0.3 * k, 11 * k, 1.6 * k, 0, 0, 7); else g.ellipse(x - f * 3 * k - dir * 5 * k * pLit, base + 0.5 * k, (13 - reach * 4) * k + 3 * k * pLit, 3 * k, 0, 0, 7);
   g.fill();
 
-  const W2 = 40 * k, H2 = 66 * k, ox = Math.round((x - W2 / 2) * DPR) / DPR, oy = Math.round((base - 58 * k) * DPR) / DPR;
+  const W2 = 48 * k, H2 = 66 * k, ox = Math.round((x - W2 / 2) * DPR) / DPR, oy = Math.round((base - 58 * k) * DPR) / DPR;
   if (!kidC || kidC.width < Math.ceil(W2 * DPR) || kidC.height < Math.ceil(H2 * DPR)) [kidC, kb] = mk(W2 + 2, H2 + 2);
   const b = kb, col = {};
   for (const n in KIDC.dark) col[n] = css(mix(KIDC.dark[n], KIDC.lit[n], pLit));
   b.setTransform(DPR, 0, 0, DPR, 0, 0); b.clearRect(0, 0, kidC.width, kidC.height);
-  b.save(); b.translate(x - ox, base - oy); b.scale(climbing ? k : f * k, k);
+  b.save(); b.translate(x - ox + jx * k, base - oy); b.scale(climbing ? k : f * k, k);
   b.lineCap = 'round'; b.lineJoin = 'round';
-  const fill = (p, c) => { b.fillStyle = c; for (const q of Array.isArray(p) ? p : [p]) b.fill(q); };
-  const seg = (x0, y0, x1, y1, w, c) => { b.strokeStyle = c; b.lineWidth = w; b.beginPath(); b.moveTo(x0, y0); b.lineTo(x1, y1); b.stroke(); };
-  const boot = (p, ax, ay, rot) => {
+  const fill = (p, c) => { b.fillStyle = c; b.fill(p); };
+  const seg = (pts, w, c) => { b.strokeStyle = c; b.lineWidth = w; b.beginPath(); pts.forEach(([px, py], i) => b[i ? 'lineTo' : 'moveTo'](px, py)); b.stroke(); };
+  const sock = (p, ax, ay, rot) => {
     b.save(); b.translate(ax, ay); b.rotate(rot);
-    fill(p, col.boot); b.save(); b.clip(p); b.fillStyle = col.sole; b.fillRect(-6, 2.5, 12, 2); b.restore();
-    b.restore();
+    fill(p, col.sock); b.save(); b.clip(p); b.fillStyle = col.sole; b.fillRect(-6, 2, 12, 2); b.restore(); b.restore();
   };
-  const leg = (hx, hy, kx, ky, ax, ay, c) => { seg(hx, hy, kx, ky, 4.8, c); seg(kx, ky, ax, ay, 4.1, c); seg(ax, ay - 0.6, ax, ay - 0.2, 4.9, c); };
-  const arm = (sx, sy, ex, ey, hx, hy, c, hand) => {
-    seg(sx, sy, ex, ey, 4.3, c); seg(ex, ey, hx, hy, 3.9, c);
-    const ux = (hx - ex) / 6.8, uy = (hy - ey) / 6.8;   // 袖口：小臂最后一截深一点
-    seg(hx - ux * 1.2, hy - uy * 1.2, hx - ux * 0.4, hy - uy * 0.4, 4.1, col.hood2);
-    b.fillStyle = hand; b.beginPath(); b.ellipse(hx + ux * 1.3, hy + uy * 1.3, 1.6, 1.9, Math.atan2(-ux, uy), 0, 7); b.fill();
+  // 毯子上的东西（都裁在毯子里面）：淡淡的格纹、背光的一边、几道褶子、下摆的一道红
+  const cloth = (p, folds, border, x0, x1) => {
+    b.save(); b.clip(p);
+    b.fillStyle = col.patch; for (let i = -3; i < 3; i++) b.fillRect(i * 7.6 + 2.2, -50, 1.1, 52); for (let j = -7; j < 1; j++) b.fillRect(-30, j * 7.6 + 1.5, 60, 1.1);
+    const gr = b.createLinearGradient(x0, 0, x1, 0); gr.addColorStop(0, col.fold); gr.addColorStop(1, css(C.mass, 0));
+    b.globalAlpha = 0.55; b.fillStyle = gr; b.fillRect(-30, -60, 60, 70);
+    b.globalAlpha = 0.7; for (const q of folds) seg(q, 1.1, col.fold); b.globalAlpha = 1;
+    seg(border, 1.4, col.border);
+    b.restore();
   };
 
   if (!climbing) {
-    const lead = pView.walk % 2 ? 1 : -1;   // 这一步迈的是近的那条腿（1）还是远的那条（-1）
-    const bob = moving ? s * 1.3 : Math.sin(now * 2.2) * 0.25, hipY = -20.6 - bob + fear * 3.2;
-    const lean = (moving ? s * 0.07 : 0) - fear * 0.16;
-    const legs = [-1, 1].map(sd => {
-      const fwd = sd === lead ? 1 : -1, fx = sd * 1.1 + fwd * s * 6.4 - fear * 2.2, fy = -3.6 - (fwd > 0 ? s * 2.6 : s * 0.9);
-      const q = ik(sd * 0.5, hipY, fx, fy, 9.2, 8.8, -1);
-      return { hx: sd * 0.5, kx: q[0], ky: q[1], ax: q[2], ay: q[3], rot: moving ? (fwd > 0 ? -0.22 * s : 0.26 * s) : 0 };
+    const lead = pView.walk % 2 ? 1 : -1, hop = reach * 2.6;                // 这一步先迈哪条腿；拉拉杆时跳多高
+    const bob = (moving ? s * 1.1 : Math.sin(now * 2.2) * 0.3) * (1 - fear), U = bob + hop;
+    const sink = fear * 9;                                                // 被抓住：蹲下去
+    const hipY = -16 - U + sink;
+    b.save(); b.globalAlpha = 1 - fear;   // 被抓住的时候，原来的样子淡下去，换成蒙着毯子的一团
+    // 腿和毛袜：远的那条先画，深一号
+    [-1, 1].forEach(sd => {
+      const fwd = sd === lead ? 1 : -1, fx = sd * 1.1 + fwd * s * 5 + fear * 2.4 - reach * sd * 0.8, fy = -3 - (fwd > 0 ? s * 2.2 : s * 0.6) - hop * 0.9;
+      const q = ik(sd * 0.5, hipY, fx, fy, 6.8, 6.6, -1), c = sd > 0 ? col.pj : col.pj2;
+      seg([[sd * 0.5, hipY], [q[0], q[1]]], 4.2, c); seg([[q[0], q[1]], [q[2], q[3]]], 3.8, c);
+      sock(KIDP.sock, q[2], q[3], moving ? (fwd > 0 ? -0.2 * s : 0.24 * s) : 0.45 * reach);
     });
-    const arms = [-1, 1].map(sd => {   // 手臂和同一边的腿反着摆
-      let an = 0.06 - (sd === lead ? 1 : -1) * s * 0.45, bend = 0.2 + s * 0.25;
-      an += ((sd > 0 ? 2.25 : 1.9) - an) * fear; bend += ((sd > 0 ? 1.55 : 1.75) - bend) * fear;
-      const sx = sd > 0 ? 0.6 : -0.6, sy = -32.2, ex = sx + Math.sin(an) * 7.4, ey = sy + Math.cos(an) * 7.4;
-      return { sx, sy, ex, ey, hx: ex + Math.sin(an + bend) * 6.8, hy: ey + Math.cos(an + bend) * 6.8 };
-    });
-    const torso = () => { b.translate(0, hipY); b.rotate(lean); b.translate(0, 20.6); };
-    // 远的那只手臂、远的腿：深一号
-    b.save(); torso(); const A = arms[0]; arm(A.sx, A.sy, A.ex, A.ey, A.hx, A.hy, col.hood2, col.skin2); b.restore();
-    legs.forEach((l, i) => { const c = i ? col.cloth : col.cloth2; leg(l.hx, hipY, l.kx, l.ky, l.ax, l.ay, c); boot(KP.boot, l.ax, l.ay, l.rot); });
-    b.save(); torso();
-    fill(KP.body, col.hood);
-    b.save(); b.clip(KP.body); b.fillStyle = col.hood2; b.fillRect(-8, -21, 16, 3); b.fillRect(-8, -36, 2.8, 17); b.restore();   // 下摆的罗纹、背上背光的一条
-    fill(KP.hood, col.hood2); fill(KP.hoodIn, col.hoodIn);
-    seg(-0.8, -37.4, 1.8, -34.8, 3.6, col.skin2);               // 脖子
-    fill(KP.head, col.skin);
-    b.save(); b.clip(KP.head); b.translate(-0.4, 1.4); fill(KP.hair, col.skin2); b.restore();   // 头发落在额头上的影子
-    b.fillStyle = col.skin2; b.beginPath(); b.ellipse(0.5, -40.6, 1.3, 1.7, 0.15, 0, 7); b.fill();   // 耳朵
-    fill(KP.hair, col.hair);
-    // 近的那只手臂：先在衣服上压一道影子，再画袖子
-    const N = arms[1];
-    b.save(); b.clip(KP.body); b.globalAlpha = 0.8; seg(N.sx, N.sy, N.ex, N.ey, 6.2, col.hood2); seg(N.ex, N.ey, N.hx, N.hy, 5.8, col.hood2); b.restore();
-    arm(N.sx, N.sy, N.ex, N.ey, N.hx, N.hy, col.hood, col.skin);
-    b.restore();
+    // 上半身（睡衣、头）跟着上下颠；被抓住时往前缩
+    b.save(); b.translate(0, -U + sink); b.translate(0, -16); b.rotate((moving ? s * 0.06 : 0) + fear * 0.35); b.translate(0, 16);
+    fill(KIDP.body, col.pj);
+    // 远的那只手（在毯子里面，只露一点）
+    const tr = drag;
+    // 毯子：披在肩上，前面从胸口斜着落到脚后跟，后面拖在地上
+    const D = y => y + U - sink;   // 毯子下面贴着地的那几个点不跟着颠
+    const hem = [[-11.8 + tr, D(-4)], [-16 + tr * 1.6, D(-0.2), 1], [-8.4, D(0)], [-4.2, D(-0.6), 1]];
+    const pts = [[5.8, -28.6], [2.4, -31.2], [-2.6, -31.8], [-6.2, -29.8], [-8.2, -22], [-9.8, -12], ...hem, [-2.2, -5], [0.6, -11], [3, -17.6], [5, -23.6]];
+    const P = blob(pts);
+    fill(P, col.blanket);
+    cloth(P, [[[-3.6, -29], [-6, -18], [-7.6, -6]], [[0, -27], [-1.4, -16], [-2.6, -6]]],
+      [...hem.slice(1).map(([px, py]) => [px, py - 1.6]), [-2.6, -5.4], [0, -10.6], [2.4, -17], [4.4, -23]], -10, 0);
+    seg([[5.8, -28.4], [3.2, -18], [-0.2, -8.4]], 1.4, col.under);   // 毯子的前边翻过来，看得见一道里子
+    // 手：在胸口攥着毯子；拉拉杆时伸上去
+    const rest = [5.8, -26.8], tgt = [1.6, -50 + U - sink];   // tgt：拉杆底座的下沿（上半身挪过，要折回来）
+    const q = ik(1.4, -28.4, lerp(rest[0], tgt[0], reach), lerp(rest[1], tgt[1], reach), 7.8, 7.8, 1), hx = q[2], hy = q[3];
+    b.fillStyle = col.cheek; b.beginPath(); b.ellipse(4.8, -27.8, 1.7, 1.6, 0, 0, 7); b.fill();   // 远的那只手
+    if (reach < 0.02) { b.fillStyle = col.skin; b.beginPath(); b.ellipse(hx, hy, 2, 1.9, 0, 0, 7); b.fill(); }
+    // 头：脸蛋、鼻尖、下巴，齐刘海盖住眼睛
+    fill(KIDP.head, col.skin);
+    b.save(); b.clip(KIDP.head); b.fillStyle = col.cheek; b.beginPath(); b.ellipse(6, -32.6, 2, 1.5, 0, 0, 7); b.fill(); b.translate(-0.3, 1.3); fill(KIDP.hair, col.cheek); b.restore();   // 脸蛋、刘海落在脸上的影子
+    fill(KIDP.hair, col.hair);
+    if (reach >= 0.02) {   // 伸上去的那只手臂在脸前面
+      seg([[1.4, -28.4], [q[0], q[1]], [hx, hy]], 3.6, col.pj);
+      b.fillStyle = col.skin; b.beginPath(); b.ellipse(hx, hy, 2, 1.9, 0, 0, 7); b.fill();
+    }
+    b.restore(); b.restore();
+    // 被抓住：毯子整个蒙到头上，缩成一团，只露出两只毛袜的脚尖
+    if (fear > 0.01) {
+      b.save(); b.globalAlpha = fear;
+      const L = blob([[9.4, -0.3], [10, -8], [8, -17], [2.4, -23.4], [-4.4, -22.6], [-9.6, -14], [-11.8 + tr, -4], [-16 + tr * 1.6, -0.2, 1], [-8.4, 0]]);
+      fill(L, col.blanket); cloth(L, [[[1.6, -21.6], [-1.6, -11], [-3, -1]], [[6.4, -16], [5.6, -7], [5, -1]]], [[-16, -1.8], [-8.4, -1.6], [9.6, -1.8]], -10, 2);
+      sock(KIDP.sock, 8.2, -3, 0.1);
+      b.restore();
+    }
   } else {
-    // 爬梯子：背对着我们，一边的手在上、另一边的脚在上；爬的时候两边换过来
-    const sd1 = pView.walk % 2 ? 1 : -1, u = vert ? ease(ph) : 1, lift = vert ? s * 1.2 : 0;
-    const pose = sd => ({ lh: [-13.4, sd > 0 ? -35.5 : -42], rh: [13.4, sd > 0 ? -42 : -35.5], lf: sd > 0 ? 1 : 0, rf: sd > 0 ? 0 : 1 });
-    const p0 = pose(-sd1), p1 = pose(sd1), L = (a0, a1) => a0 + (a1 - a0) * u;
-    const hipY = -20.6 - lift;
+    // 爬梯子：背对着我们。一边的手在上、另一边的脚踩高一点；每爬一格两边换过来
+    const sd1 = pView.walk % 2 ? 1 : -1, u = vert ? ease(ph) : 1, lift = vert ? s * 1.2 : 0, L = (a0, a1) => a0 + (a1 - a0) * u;
+    const upOf = sd => L(sd === -sd1 ? 1 : 0, sd === sd1 ? 1 : 0);      // 这一边的脚抬起来有几成（和同一边的手反着）
+    const hipY = -16 - lift;
     [-1, 1].forEach(sd => {
-      const up = L(sd < 0 ? p0.lf : p0.rf, sd < 0 ? p1.lf : p1.rf);   // 这只脚踩在高一级的横档上有几成
-      const ax = sd * 3.4, ay = -3.6 - up * 12.5, kx = sd * (3.4 + up * 0.8), ky = hipY + 8.6 - up * 9.2;   // 抬起来的那条腿：膝盖往前顶，从后面看只露出小腿
-      leg(sd * 2.6, hipY, kx, ky, ax, ay, col.cloth);
-      boot(KP.backBoot, ax, ay, 0);
+      const up = upOf(sd), ax = sd * 3, ay = -3 - up * 8.5, kx = sd * (3.4 + up * 0.8), ky = hipY + 6.4 - up * 7.6;
+      seg([[sd * 2.2, hipY], [kx, ky]], 4.2, col.pj); seg([[kx, ky], [ax, ay]], 3.8, col.pj);
+      sock(KIDP.sockB, ax, ay, 0);
     });
-    fill(KP.back, col.hood);
-    b.save(); b.clip(KP.back); b.fillStyle = col.hood2; b.fillRect(-8, -21, 16, 3); b.restore();
-    fill(KP.backHood, col.hood2); seg(0, -35.6, 0, -29, 0.9, col.hoodIn);
-    [-1, 1].forEach(sd => {
-      const h = sd < 0 ? [L(p0.lh[0], p1.lh[0]), L(p0.lh[1], p1.lh[1])] : [L(p0.rh[0], p1.rh[0]), L(p0.rh[1], p1.rh[1])];
-      const sx = sd * 5.2, sy = -32.4 - lift, q = ik(sx, sy, h[0], h[1], 7.4, 6.8, sd);
-      arm(sx, sy, q[0], q[1], q[2], q[3], col.hood, col.skin);
+    [-1, 1].forEach(sd => {   // 手臂从毯子底下伸出来，抓着扶手
+      const hy = L(sd === -sd1 ? -33 : -40, sd === sd1 ? -33 : -40), sx = sd * 4.6, sy = -28.6 - lift, q = ik(sx, sy, sd * 13.4, hy, 7, 7, sd);
+      seg([[sx, sy], [q[0], q[1]], [q[2], q[3]]], 3.6, col.pj);
+      b.fillStyle = col.skin; b.beginPath(); b.ellipse(q[2], q[3] - 0.4, 2, 2, 0, 0, 7); b.fill();
     });
-    seg(0, -37.6, 0, -35, 4.2, col.skin2);
-    b.fillStyle = col.skin2; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(sd * 6.6, -41.2, 1.3, 1.8, 0, 0, 7); b.fill(); }
-    fill(KP.backHair, col.hair);
+    const uL = upOf(-1), uR = upOf(1);
+    const hem = [[8.6 + uR, -10 - uR * 3 - lift], [4.6, -6.6 - lift], [0, -2.6 - lift, 1], [-4.6, -6.6 - lift], [-8.6 - uL, -10 - uL * 3 - lift]];
+    const pts = [[0, -32.4 - lift], [-4.4, -31.6 - lift], [-7.4, -29 - lift], [-8.2, -22 - lift], [-8.8 - uL, -14.5 - lift], ...hem.slice().reverse(), [8.8 + uR, -14.5 - lift], [8.2, -22 - lift], [7.4, -29 - lift], [4.4, -31.6 - lift]];
+    const P = blob(pts);
+    fill(P, col.blanket);
+    cloth(P, [[[-3, -30 - lift], [-4.2, -18 - lift], [-4.6, -7 - lift]], [[3, -30 - lift], [4.2, -18 - lift], [4.6, -7 - lift]]], hem.map(([px, py]) => [px, py - 1.6]), -9, 9);
+    b.save(); b.translate(0, -lift); fill(KIDP.hairB, col.hair); b.restore();   // 后脑勺：整个是头发
   }
   b.restore();
 
   // 上光：上亮下暗；在灯下再按灯的方向，朝灯的一边亮、背灯的一边暗
   b.setTransform(DPR, 0, 0, DPR, 0, 0); b.globalCompositeOperation = 'source-atop';
-  const cx = x - ox, cy = base - oy - 26 * k;
-  let gr = b.createLinearGradient(0, cy - 26 * k, 0, base - oy);
+  const cx = x - ox, cy = base - oy - 24 * k;
+  let gr = b.createLinearGradient(0, cy - 24 * k, 0, base - oy);
   gr.addColorStop(0, css(mix(C.moon, C.hot, pLit), 0.08)); gr.addColorStop(0.55, css(C.mass, 0)); gr.addColorStop(1, css(C.mass, 0.24));
   b.fillStyle = gr; b.fillRect(0, 0, W2 + 2, H2 + 2);
-  if (lp) { const vx = (x - (lp.c + 0.5) * S), vy = (base - 26 * k - (lp.r + 0.37) * S), d = Math.hypot(vx, vy) || 1; kidV = [vx / d, vy / d]; }
+  if (lp) { const vx = x - (lp.c + 0.5) * S, vy = base - 24 * k - (lp.r + 0.37) * S, d = Math.hypot(vx, vy) || 1; kidV = [vx / d, vy / d]; }
   if (pLit > 0.01) {
     const R = 18 * k;
     gr = b.createLinearGradient(cx - kidV[0] * R, cy - kidV[1] * R, cx + kidV[0] * R, cy + kidV[1] * R);
