@@ -407,6 +407,8 @@ for (const [k, fn] of Object.entries({
   unlock: t => { tone(1200, t, 0.03, 0.06, 'square', 600); tone(160, t + 0.12, 0.1, 0.1, 'sine', 90); for (let i = 0; i < 3; i++) tone(180 + i * 22, t + 0.3 + i * 0.22, 0.26, 0.035, 'sawtooth', 150 + i * 30); },
   win: t => [392, 493.9, 587.3, 784].forEach((f, i) => { tone(f, t + i * 0.11, 1.8, 0.07, 'triangle'); tone(f / 2, t + i * 0.11, 1.8, 0.03); }),
   tick: (t, i) => tone(i ? 1500 : 1900, t, 0.02, 0.01, 'square', i ? 900 : 1100),
+  pip: t => { noise(t, 0.07, 0.03, 1400, 2); tone(700, t, 0.06, 0.012, 'sawtooth', 420); },   // 火苗崽咳嗽
+  fizz: t => { noise(t, 0.25, 0.04, 3000, 0.8, 'highpass'); tone(300, t, 0.2, 0.02, 'sine', 700); },   // 火苗崽扎回火里
   squeak: t => { tone(1700, t, 0.1, 0.035, 'triangle', 2700); tone(2500, t + 0.07, 0.12, 0.022, 'triangle', 1600); },   // 灯崽吓了一跳
   patter: (t, fast) => tone(2300 + Math.random() * 900, t, 0.014, fast ? 0.012 : 0.007, 'square', 1500),   // 灯崽的小铜脚
   hop: t => { tone(900, t, 0.04, 0.02, 'triangle', 1400); noise(t, 0.03, 0.02, 3200, 3); },
@@ -1047,7 +1049,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.bath) { drawBathLamp(b, P, lit); drawCord(b, P, lit); drawHamper(b, P, lit); drawCritters(b, P, lit, 'bath'); drawFear(b, P, lit, 'towel'); }
   if (vis.bath || vis.hall) drawBathDoor(b, P, lit);
   if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawImp(b, P, lit, 'hall'); drawFear(b, P, lit, 'stand'); }
-  if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawCritters(b, P, lit, 'living'); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
+  if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawFlameImps(b, P, lit); drawCritters(b, P, lit, 'living'); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
   if (vis.kitchen) { drawShelf(b, P, lit); drawFridge(b, P, lit); drawChair(b, P, lit); drawCritters(b, P, lit, 'kitchen'); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
   if (vis.kitchen || vis.cellar) drawHatch(b, P, lit);
   if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawCritters(b, P, lit, 'cellar'); drawFear(b, P, lit, 'boiler'); if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) drawCandle(b, P, lit, CSHELF.cx, CSHELF.y, S.lit, 250500); }
@@ -1207,7 +1209,6 @@ function drawFire(b, P, lit) {
     }
     b.globalAlpha = 1;
   }
-  { const ey = gy - 16 - 12 * lv, blink = Math.sin(T * 0.9 + 1) > 0.97 ? 0.2 : 1, er = 1.8 + lv * 0.9; b.fillStyle = lit ? '#fff4c0' : '#ffd890'; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x - 4 + sd * (7 + lv * 2), ey, er, er * 1.3 * blink, 0, 0, 7); b.fill(); } }   // 炉火里住着的小东西：两只眼睛，火越大眼睛越大
   if (V.smoke > 0.02) {   // 风门关着：烟从炉口往屋里冒
     for (let i = 0; i < 8; i++) { const ph = (T * 0.25 + i / 8) % 1, sx = x + Math.sin(T + i) * 20 - ph * 60, sy = FIRE.mantel + 50 - ph * 160; b.fillStyle = rgba(lit ? '#5a5248' : '#1a2030', V.smoke * 0.5 * Math.sin(ph * Math.PI)); b.beginPath(); b.arc(sx, sy, 20 + ph * 40, 0, 7); b.fill(); }
   }
@@ -1340,6 +1341,7 @@ const LIGHTS = [
   { id: 'cbulb', off: 0.3, up: 0.5, at: () => ({ x: CBULB.x, y: CBULB.y, R: 780, I: V.li.power, clip: roomClip('cellar') }) },
   { id: 'klamp', off: 0.4, up: 0.78, at: () => ({ x: 700, y: ROOMS.kitchen.top + 94, R: 660, I: V.li.power, clip: roomClip('kitchen') }) },
   { id: 'llamp', off: 0.4, up: 0.78, at: () => ({ x: 2050, y: ROOMS.living.top + 94, R: 660, I: V.li.power, clip: roomClip('living') }) },
+  ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
   ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I: m.I, clip: roomClip(IMPS[k].room) }; } })),   // 灯崽：平时是灯座里的灯泡，变成小精灵跑出来的时候光跟着它走
 ];
 // 蜡烛在哪儿：孩子手里（点着），或者放在保险丝盒旁边
@@ -1460,6 +1462,7 @@ function drawLightGlows(lights) {
     g.translate(a.x, a.y); g.rotate(-(a.rot || 0)); g.drawImage(im.glow, -a.R, (L.off - 1) * a.R, 2 * a.R, 2 * a.R); g.restore();
     if (L.id === 'spill') continue;
     const core = L.id === 'candle' ? 0.6 : L.id === 'fire' ? 0.5 : 0.9;
+    if (L.id === 'fimp') { glowAt(a.x, a.y, 34, C.amber, 0.1 * I); continue; }
     if (L.id === 'imp') { glowAt(a.x, a.y, 40, C.lamp, 0.07 * I); glowAt(a.x, a.y, 12, C.hot, 0.35 * I); continue; }   // 灯崽：只在灯泡上亮一点，不把它的手脚冲淡
     glowAt(a.x, a.y, Math.min(150, a.R * 0.4), C.lamp, 0.26 * I); glowAt(a.x, a.y, L.id === 'fire' ? 60 : 24, C.hot, core * I);
     if (L.id === 'hall' || L.id === 'bath') for (let j = 0; j < 2; j++) {   // 绕着灯泡飞的两只蛾子
@@ -2178,9 +2181,9 @@ function drawImpBody(b, D, R, sq, m, reveal = 1, t = V.T) {
   b.restore();
 }
 // 腿：光的颜色，一笔弯弯的、两头收尖，末端一个小圆点当脚；亮处暗处一样
-function impLeg(b, lit, x0, y0, x1, y1, bend) {
+function impLeg(b, lit, x0, y0, x1, y1, bend, col = '#f4d48a') {
   const pts = quadPts([x0, y0], [(x0 + x1) / 2 - bend, (y0 + y1) / 2], [x1, y1], 8);
-  b.fillStyle = '#f4d48a'; b.beginPath(); tube(pts, pts.map((_, i) => lerp(1.7, 0.75, i / 8))).forEach(([x, y], j) => j ? b.lineTo(x, y) : b.moveTo(x, y)); b.closePath(); b.fill();
+  b.fillStyle = col; b.beginPath(); tube(pts, pts.map((_, i) => lerp(1.7, 0.75, i / 8))).forEach(([x, y], j) => j ? b.lineTo(x, y) : b.moveTo(x, y)); b.closePath(); b.fill();
   b.beginPath(); b.arc(x1 + 0.6, y1 - 0.4, 1.3, 0, TAU); b.fill();
 }
 function drawImpEyes(b, m, x, y, s, scared) {   // 一双大白眼睛、圆圆的黑眼珠带一点高光（往孩子那边看）；吓坏了眼睛瞪大、眼珠缩小
@@ -2224,6 +2227,120 @@ function drawImp(b, P, lit, k) {
   drawImpBody(b, D, R, sq, m, 1, t);
   drawImpEyes(b, m, 1.5, 0.8, 1, scared);
   b.restore();
+}
+// ----- 火苗崽：住在壁炉火里的两只小火苗 -----
+// 主人 2026-11-18：“继续设计火焰，能不能也设计成可以自己跑掉的小精灵？” 壁炉的火要照到扶手椅（规则：放柴、开风门），整团火不能走，
+// 所以跑的是住在火里的两只小火苗（一大一小）。它们和灯崽是一家：没有边的一团光、一双白眼睛、两条光颜色的细腿；身子是一滴火（底下圆、上面一个跳动的尖）。
+// · 没放柴：缩在炭火里睡觉，两块一呼一吸的炭，闭着眼；孩子走近了偷偷睁一只眼。
+// · 放了柴、风门关着（冒烟）：呛醒了，一边咳一边从壁炉里跳出来，坐在壁炉右边的地上咳嗽、回头看着壁炉——告诉玩家火喘不上气。孩子走过来会往旁边蹦开。
+// · 开了风门：烟散了，它们高兴地蹦两下，跑回去扎进火里，火旺起来；之后它们就是火苗里的两张脸，跟着火跳。
+// · 火烧得好的时候，隔一会儿会有一只自己溜出来，在炉前跑一圈（拖着火星）再跳回去；孩子一靠近，它赶紧逃回火里。
+// 跑出来的时候身上的光小（120），只在壁炉右边那一片（2200–2650），照不到扶手椅，不碰规则。
+const FLAMES = [{ dx: -14, s: 1, seed: 441000, sit: 2405 }, { dx: 20, s: 0.75, seed: 442000, sit: 2605 }];   // sit：冒烟的时候坐在哪儿咳嗽（柴筐两边）
+const FLAME_RANGE = [2200, 2650];
+const newFlames = () => FLAMES.map(F => ({ x: FIRE.x + F.dx, y: FL.down.gy - 16, mode: 'sleep', face: 1, ph: 0, v: 0, tx: 0, fast: 0, jump: null, coughT: 0, cough: 0, cheer: -10, nextOut: 14 + hash(F.seed, 1) * 10, blink: 0, blinkT: 2 + hash(F.seed, 2) * 3, look: 0, scare: 0, back: 0, sparkT: 0 }));
+const flameHome = F => [FIRE.x + F.dx, FL.down.gy - 16];
+function flameUpdate(dt) {
+  const T = V.T, gy = FL.down.gy, logIn = S.log === 'fire', smoky = V.smoke > 0.4, burning = logIn && !smoky && V.fireLv > 1.3;
+  const kidHere = kid.kind === 'floor' && Math.abs(kid.y - gy) < 4 && kid.x > ROOMS.living.x0 && kid.x < ROOMS.living.x1 && kid.mode !== 'caught';
+  V.flames.forEach((m, i) => {
+    const F = FLAMES[i], [hx, hy] = flameHome(F);
+    m.blinkT -= dt; if (m.blinkT < 0) { m.blink = 0.13; m.blinkT = 2 + hash(T, F.seed) * 3; } m.blink = Math.max(0, m.blink - dt);
+    m.look = approach(m.look, kidHere ? Math.sign(kid.x - m.x) * m.face : 0, dt * 5);
+    m.cough = Math.max(0, m.cough - dt * 3);
+    if (m.jump) {
+      const j = m.jump; j.t += dt / j.dur; const u = Math.min(1, j.t);
+      m.x = lerp(j.x0, j.x1, u); m.y = lerp(j.y0, j.y1, u) - j.h * 4 * u * (1 - u);
+      if (u >= 1) { m.jump = null; m.y = j.y1; m.mode = j.then; if (j.then === 'in' && inView(hx, hy, 80)) { snd.fizz(); for (let k = 0; k < 6; k++) parts.push({ x: hx, y: hy - 20, vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 50, life: 0.4 + Math.random() * 0.3, col: C.amber, s: 1.2 + Math.random() }); } }
+      return;
+    }
+    const out = (tx, fast) => { m.face = 1; m.mode = 'run'; m.jump = { x0: m.x, y0: m.y, x1: FIRE.box1 + 30 + i * 12, y1: gy, h: 34, dur: 0.5, t: 0, then: 'run' }; m.tx = tx; m.fast = fast; };
+    const goIn = () => { m.back = 1; m.mode = 'run'; m.tx = FIRE.box1 + 30 + i * 12; };
+    if (!logIn) { m.mode = 'sleep'; m.x = hx; m.y = hy; return; }
+    if (m.mode === 'sleep') { m.mode = 'in'; m.x = hx; m.y = hy; }
+    if (m.mode === 'in') {
+      m.x = hx; m.y = hy;
+      if (smoky) { if (T - (m.wakeT ?? -10) > 2) m.wakeT = T; if (T - m.wakeT > 0.5 + i * 0.35) { m.cough = 1; if (inView(hx, hy, 80)) snd.pip(); out(F.sit, 1); } return; }
+      if (burning) { m.nextOut -= dt; if (m.nextOut < 0) { m.nextOut = 14 + hash(F.seed, Math.floor(T)) * 12; if (!(kidHere && Math.abs(kid.x - FIRE.x) < 300)) out(lerp(2420, 2640, hash(F.seed + 5, Math.floor(T))), 0); } }
+      return;
+    }
+    // 在外面
+    if (smoky) {
+      m.back = 0;
+      if (m.mode === 'sit' || (m.mode === 'run' && !m.fast)) { if (m.tx !== F.sit) { m.mode = 'run'; m.tx = F.sit; m.fast = 1; } }
+      if (m.mode === 'sit') {   // 坐着咳嗽、回头看壁炉；孩子走过来往旁边蹦开
+        m.face = -1; m.coughT -= dt; if (m.coughT < 0) { m.coughT = 1 + hash(T, F.seed) * 1.2; m.cough = 1; if (inView(m.x, m.y, 80)) snd.pip(); parts.push({ x: m.x - 8, y: m.y - 22 * F.s, vx: -18, vy: -10, life: 0.6, col: [120, 112, 100], s: 2.2 }); }
+        if (kidHere && Math.abs(kid.x - m.x) < 70 && kid.mode === 'walk') { const d = Math.sign(m.x - kid.x) || 1, x1 = clamp(m.x + d * 90, FLAME_RANGE[0] + 150, FLAME_RANGE[1]); if (Math.abs(x1 - m.x) > 20) m.jump = { x0: m.x, y0: m.y, x1, y1: gy, h: 26, dur: 0.4, t: 0, then: 'sit' }; else m.jump = { x0: m.x, y0: m.y, x1: clamp(kid.x - d * 90, FLAME_RANGE[0] + 150, FLAME_RANGE[1]), y1: gy, h: 160, dur: 0.6, t: 0, then: 'sit' }; }
+      }
+    } else if (!m.back) {
+      if (burning && m.mode === 'sit') { m.cheer = T; m.mode = 'cheer'; }
+      if (m.mode === 'cheer' && T - m.cheer > 0.9 + i * 0.2) goIn();
+      if (m.mode === 'sit' && !burning) { /* 等着 */ }
+      if (kidHere && Math.abs(kid.x - m.x) < 160 && m.mode !== 'cheer') { goIn(); m.fast = 1; }   // 孩子来了，逃回火里
+    }
+    if (m.mode === 'run') {
+      const d = m.tx - m.x, vt = m.fast ? 240 : 110; m.v = approach(m.v, vt, dt * 1200);
+      const st = Math.min(Math.abs(d), m.v * dt), p0 = m.ph; if (Math.abs(d) > 0.5) m.face = Math.sign(d);
+      m.x += Math.sign(d) * st; m.ph = (m.ph + st / (m.fast ? 26 : 18)) % 1;
+      if (Math.floor(p0 * 2) !== Math.floor(m.ph * 2) && inView(m.x, m.y, 60)) snd.patter(m.fast);
+      m.sparkT -= dt; if (m.sparkT < 0 && st > 0) { m.sparkT = 0.07; parts.push({ x: m.x - m.face * 4, y: m.y - 26 * F.s, vx: -m.face * 20 + (Math.random() - 0.5) * 20, vy: -20 - Math.random() * 20, life: 0.35 + Math.random() * 0.25, col: C.amber, s: 0.9 + Math.random() * 0.8 }); }
+      if (Math.abs(m.tx - m.x) < 0.5) {
+        m.v = 0;
+        if (m.back) { m.back = 0; m.face = -1; m.jump = { x0: m.x, y0: m.y, x1: hx, y1: hy, h: 30, dur: 0.45, t: 0, then: 'in' }; }
+        else if (smoky) m.mode = 'sit';
+        else { m.mode = 'sit'; m.backT = T + 1.2 + hash(F.seed, T) * 1.5; }
+      }
+    }
+    if (m.mode === 'sit' && !smoky && m.backT && T > m.backT) { m.backT = 0; goIn(); }   // 溜出来玩够了，回火里
+  });
+}
+// 一滴火：底下圆、上面一个跳动的尖（原点在底下中间）。外面橙、里面黄、芯发白，没有边；外面一圈淡淡的光
+function drawFlameBody(b, s, t, seed, lean, sq, dim) {
+  const r = 9 * s, h = (21 + Math.sin(t * 9 + seed) * 2.5 + Math.sin(t * 15.3 + seed * 2) * 1.5) * s * (2 - sq), sw = (Math.sin(t * 5.2 + seed) * 2.6 - lean * 9) * s, cy = -r * sq;
+  const shape = (k, dy) => { const rr = r * k, hh = h * k, y0 = cy + dy; b.beginPath(); b.moveTo(rr, y0); b.arc(0, y0, rr, 0, Math.PI, false); b.bezierCurveTo(-rr, y0 - rr * 0.9, sw * k - rr * 0.35, y0 - hh * 0.55, sw * k, y0 - hh); b.bezierCurveTo(sw * k + rr * 0.35, y0 - hh * 0.55, rr, y0 - rr * 0.9, rr, y0); b.closePath(); };
+  const halo = b.createRadialGradient(0, cy, r * 0.5, 0, cy, r * 2.2); halo.addColorStop(0, `rgba(255,170,80,${dim ? 0.15 : 0.35})`); halo.addColorStop(1, 'rgba(255,170,80,0)');
+  b.fillStyle = halo; b.beginPath(); b.arc(0, cy, r * 2.2, 0, TAU); b.fill();
+  b.fillStyle = dim ? '#a8482a' : '#ee7a32'; shape(1, 0); b.fill();
+  b.fillStyle = dim ? '#d0843e' : '#ffc062'; shape(0.68, r * 0.25); b.fill();
+  b.fillStyle = dim ? '#e8b070' : '#fff1c8'; b.beginPath(); b.ellipse(0, cy + r * 0.3, r * 0.38, r * 0.3, 0, 0, TAU); b.fill();
+}
+function drawFlameImps(b, P, lit) {
+  const t = V.T, gy = FL.down.gy, smoky = V.smoke > 0.4;
+  V.flames.forEach((m, i) => {
+    const F = FLAMES[i], s = F.s, seed = F.seed;
+    b.save(); b.translate(m.x, m.y); b.scale(m.face * 1.15, 1.15);
+    if (m.mode === 'sleep') {   // 炭火里睡着：一块一呼一吸的炭，闭着眼；孩子走近了偷偷睁一只眼
+      const br = 0.5 + 0.5 * Math.sin(t * 1.6 + i * 2), k = s * 0.9;
+      b.fillStyle = lit ? '#c0552c' : '#6a2c1a'; b.beginPath(); b.ellipse(0, -5 * k, 9 * k, (5.5 + br * 0.6) * k, 0, 0, TAU); b.fill();
+      b.fillStyle = `rgba(255,150,70,${0.25 + br * 0.35})`; b.beginPath(); b.ellipse(-1 * k, -5.5 * k, 5 * k, 2.8 * k, 0, 0, TAU); b.fill();
+      const peek = Math.abs(m.look) > 0.5 && Math.sin(t * 0.7 + i) > 0.3;
+      drawImpEyes(b, { ...m, blink: 1 }, 0.5 * k, -5.5 * k, 0.6 * k, false);
+      if (peek) { b.save(); b.beginPath(); b.rect(-10, -12, 30, 6.5); b.clip(); drawImpEyes(b, { ...m, blink: 0 }, 0.5 * k, -5.5 * k, 0.6 * k, false); b.restore(); }
+      b.restore(); return;
+    }
+    if (m.mode === 'in') {   // 在火里：火苗里的一张脸，跟着火一起长大、跳
+      const lv = V.fireLv, k = s * (0.85 + 0.38 * lv), bob = Math.abs(Math.sin(t * 6 + i * 1.7)) * 2;
+      b.translate(0, -bob); drawFlameBody(b, k, t, seed, 0, 1, false);
+      drawImpEyes(b, m, 1.5 * k, -9 * k, 0.6 * k + 0.12, false);
+      b.restore(); return;
+    }
+    // 跑出来了：一滴火，两条细腿
+    const run = m.mode === 'run', air = !!m.jump, cheer = m.mode === 'cheer', bob = run ? Math.abs(Math.cos(m.ph * TAU)) * (m.fast ? 2.2 : 1.2) : cheer ? Math.abs(Math.sin((t - m.cheer) * 9)) * 9 : 0;
+    const H = air ? 5 : (run ? 7 : 6.5) * s + bob, lean = run ? (m.fast ? 0.35 : 0.15) : 0, sq = 1 - m.cough * 0.22 + (cheer ? Math.sin((t - m.cheer) * 18) * 0.06 : 0);
+    const L = 7.5 * s, hipY = -H + 1.5;   // 原点在脚底；腿从火滴底下伸出来
+    if (!air) for (let j = 0; j < 2; j++) {
+      const sd = j ? 1 : -1, hx = sd * 2.5 * s, ph = m.ph * TAU + j * Math.PI; let fx, fy, bend;
+      if (run) { const a = Math.sin(ph) * (m.fast ? 0.8 : 0.5); fx = hx + Math.sin(a) * L; fy = -Math.max(0, Math.cos(ph)) * 2.2; bend = -Math.cos(ph) * 1.4; }
+      else { fx = hx * 1.6 + 0.5; fy = cheer ? -bob * 0.85 : 0; bend = sd; }   // 高兴得蹦起来的时候脚也离地
+      impLeg(b, lit, hx, hipY, fx, fy, bend, '#f0a050');
+    }
+    b.translate(0, -H); b.rotate(lean * 0.4);
+    drawFlameBody(b, s, t, seed, lean, sq, false);
+    const sm = smoky && !run && !air;
+    drawImpEyes(b, { ...m, blink: m.cough > 0.5 ? 1 : m.blink, scare: m.fast ? 1 : 0 }, 1.5 * s, -9 * s * sq, 0.62 * s + 0.12, !!m.fast || cheer);
+    if (sm && m.cough > 0.3) { b.fillStyle = 'rgba(60,30,20,0.8)'; b.beginPath(); b.ellipse(5.5 * s, -4.5 * s, 1.3 * s, 1.6 * s * m.cough, 0, 0, TAU); b.fill(); }   // 咳嗽：张着嘴
+    b.restore();
+  });
 }
 // ----- 暗处的小东西：衣架鸟（照到了只是挂着的衣架）、爬来爬去的手套（照到了平平地躺着）-----
 const PERCH = { bedroom: [[600, -10, 1]], bath: [[2150, -168, 1], [2440, -168, -1]], hall: [[3150, 369, -1], [3040, 759, 1], [3750, 557, -1]], living: [[1600, 446, 1]], kitchen: [[460, 430, 1], [930, 430, -1]], cellar: [[700, 1156, 1], [1900, 1156, -1]] };
@@ -2325,7 +2442,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10,
-  imps: newImps(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
+  imps: newImps(), flames: newFlames(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -2804,7 +2921,7 @@ function tick(dt) {
   V.smoke = approach(V.smoke, S.log === 'fire' && !S.damper ? 1 : 0, dt * 0.5);
   if (fl > 0.4 && inView(FIRE.x, FIRE.mantel, 200) && Math.random() < dt * 5 * fl) snd.crackle();
   // 衣服：光照到就塌下去；暗处立起来、追人。孩子站在灯光里的时候记下这个地方（被抓住了回到这儿）
-  impUpdate(dt);
+  impUpdate(dt); flameUpdate(dt);
   LT = activeLights();
   garbUpdate(dt);
   if ((kid.mode === 'idle' || kid.mode === 'walk') && kid.kind === 'floor' && coverage(kid.x, kid.y - 80, LT) > 0.6) V.safe = { x: kid.x, y: kid.y };
