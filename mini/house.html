@@ -1059,7 +1059,7 @@ const ROOM_PAINT = { bedroom: paintBedroom, bath: paintBath, hall: paintHall, li
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
 function drawDynamic(b, lit, vis) {
   const P = lit ? LIT : DARK;
-  if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawCritters(b, P, lit, 'bedroom'); drawImp(b, P, lit, 'bed'); drawFear(b, P, lit, 'gown'); }
+  if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawCritters(b, P, lit, 'bedroom'); drawFear(b, P, lit, 'gown'); }
   if (vis.bath) { drawBathLamp(b, P, lit); drawCord(b, P, lit); drawHamper(b, P, lit); drawCritters(b, P, lit, 'bath'); drawFear(b, P, lit, 'towel'); }
   if (vis.bath || vis.hall) drawBathDoor(b, P, lit);
   if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawImp(b, P, lit, 'hall'); drawFear(b, P, lit, 'stand'); }
@@ -1404,8 +1404,8 @@ const LIGHTS = [
   { id: 'bug', off: 0, up: 0, at: () => { const o = V.flies.out; if (!o) return null; const r = roomAt(o.x, o.y) || roomAt(kid.x, kid.y); return r ? { x: o.x, y: o.y, R: 55, I: 0.3, clip: roomClip(r.id) } : null; } },
   ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
   // 灯崽：缩在灯罩里的时候光从灯口往下、往前照（灯罩挡着，上面不亮）；跑出来的时候是围着它的一团光，跟着它走。两种之间 0.3 秒换过去
-  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0.3, up: 0.85, at: () => { const m = V.imps[k], D = IMPS[k], I = m.I * Math.min(1, 2 * m.sockL); if (I < 0.005) return null; const [rx, ry] = shadeAt(0, LAMP.rim); return { x: D.lx + rx * IMP_S, y: D.hy + ry * IMP_S, R: D.R, I, rot: LAMP.tilt, clip: roomClip(D.room) }; } })),
-  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I, clip: roomClip(IMPS[k].room) }; } })),
+  ...['hall'].map(k => ({ id: 'imp', off: 0.3, up: 0.85, at: () => { const m = V.imps[k], D = IMPS[k], I = m.I * Math.min(1, 2 * m.sockL); if (I < 0.005) return null; const [rx, ry] = shadeAt(0, LAMP.rim); return { x: D.lx + rx * IMP_S, y: D.hy + ry * IMP_S, R: D.R, I, rot: LAMP.tilt, clip: roomClip(D.room) }; } })),
+  ...['hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I, clip: roomClip(IMPS[k].room) }; } })),
 ];
 // 蜡烛在哪儿：孩子手里（点着），或者放在保险丝盒旁边
 function candlePos() {
@@ -2102,7 +2102,6 @@ function drawBulbBug(b, x, y, on, t, s = 1, key) {   // 灯泡里住着的灯虫
 // 要出来的时候往下一沉，眼睛露到灯口外面，两条腿垂下来晃，然后跳下来跑。它一走台灯就黑了。脚底下的地上一直有一小片黄光（像影子，可是亮的）。
 // 心情看绒毛和颜色：吓到的时候一下子变淡变亮、闪几下，绒毛炸开变长（毛竖起来），平静下来慢慢收回；躲着的时候绒毛贴着身子、暗暗的琥珀色。
 const IMPS = {
-  bed: { room: 'bedroom', fl: 'up', lx: 118, hy: FL.up.gy, up: 0, range: [80, 600], hide: null, R: 180, seed: 432000 },
   hall: { room: 'hall', fl: 'down', lx: HCLOCK.x - 12, hy: HCLOCK.base - 241, up: 1, range: [2950, 3770], hide: 3712, R: 200, seed: 433000 },
 };
 const IMP_KEYS = Object.keys(IMPS);
@@ -2129,10 +2128,7 @@ function impGlobe(m) {
   if (inSocket(m)) return [D.home, D.hy + (IMP_NEST[1] + impDrop(m.face) * smooth(m.morph)) * IMP_S];
   return [m.x, m.y - impPose(m).H * IMP_S];
 }
-// 开场带路（2026-11-18 主人挑的：卧室左边那盏台灯原来只是摆设）：开场一会儿，卧室的灯崽从台灯里钻出来，走到床边插头旁边坐下，
-// 隔一会儿原地蹦一下，用自己的光照着地上的插头；孩子走到它跟前（110 以内）或者插头插上了，它就照平常那样吓一跳跑开，以后不再带路。
-// 不出字。它的光照不到睡袍（GUIDE_X 离睡袍的头 700 多，光只有 180）
-const GUIDE_X = 556, GUIDE_AT = 2.2;
+// 卧室墙角那盏台灯和里面的灯崽（开场带路去插头的那只）2026-11-18 主人说去掉了，只剩门厅座钟顶上的那只
 function impUpdate(dt) {
   const T = V.T;
   for (const k of IMP_KEYS) {
@@ -2155,14 +2151,11 @@ function impUpdate(dt) {
     }
     // 谁在吓它：同一层、同一间屋子地上的孩子；醒着在追人的衣服
     let th = null, td = 1e9;
-    if (k === 'bed' && (m.guide === 1 || m.guide === 2) && (S.plug || (m.guide === 2 && kidHere && Math.abs(kid.x - m.x) < 110))) m.guide = 3;   // 带完了
-    const guiding = k === 'bed' && (m.guide === 1 || m.guide === 2);
-    if (kidHere && !guiding) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
+    if (kidHere) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
     for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl !== D.fl || o.rise < 0.9 || o.hunt < 0.3) continue; const d = Math.abs(o.x - m.x); if (d < 260 && d < td) { th = o.x; td = d; } }
     const fleeEnd = dir => { let end = dir > 0 ? D.range[1] : D.range[0]; if (D.hide != null && m.mode !== 'hide' && Math.sign(D.hide - m.x) === dir && Math.abs(D.hide - th) > 230) end = D.hide; return end; };
     // 从灯罩底下跳出来：门厅的从座钟顶上跳到地上，卧室的跳到旁边的地上（往后跳要跳过底座）
     const hopOut = (dir, tx, fast) => { m.face = dir; m.mode = 'air'; m.jump = { x0: D.home, y0: D.hy - impSock(dir), x1: clamp(D.home + dir * (D.up ? 120 : dir > 0 ? 30 : 48), D.range[0], D.range[1]), y1: gy, h: D.up ? 50 : 22, dur: D.up ? 0.6 : 0.4, t: 0, then: 'run' }; m.tx = tx; m.fast = fast; };
-    if (k === 'bed' && !m.guide && !S.plug && T > GUIDE_AT && m.mode === 'bulb' && m.morph < 0.01 && th === null) { m.guide = 1; m.mode = 'pop'; m.then = GUIDE_X; m.flash = T; if (inView(D.home, D.hy, 80)) snd.squeak(); }   // 开场：出来带路
     if (m.mode === 'bulb' || m.mode === 'pop') {
       if (th !== null && m.mode === 'bulb') { m.mode = 'pop'; m.then = 'flee'; m.flash = T; m.scare = 1; if (inView(D.home, D.hy, 80)) snd.squeak(); }
       else if (m.mode === 'bulb' && m.morph < 0.01) {
@@ -2192,7 +2185,7 @@ function impUpdate(dt) {
     } else m.calm += dt;
     // 走、跑
     if (m.mode === 'run') {
-      const d = m.tx - m.x, vt = m.fast ? 290 : guiding ? 140 : 70;
+      const d = m.tx - m.x, vt = m.fast ? 290 : 70;
       m.v = approach(m.v, vt, dt * 1500);
       const st = Math.min(Math.abs(d), m.v * dt), L = m.fast ? 36 : 20, p0 = m.ph;
       if (Math.abs(d) > 0.5) m.face = Math.sign(d);
@@ -2204,12 +2197,8 @@ function impUpdate(dt) {
         else if (m.goHome) {   // 到了台灯旁边：跳回灯罩底下
           m.goHome = 0; m.face = Math.sign(D.home - m.x) || 1;
           m.jump = { x0: m.x, y0: m.y, x1: D.home, y1: D.hy - impSock(m.face), h: D.up ? 40 : 24, dur: D.up ? 0.65 : 0.45, t: 0, then: 'bulb' };
-        } else { m.mode = 'sit'; if (guiding && Math.abs(m.x - GUIDE_X) < 1) { m.guide = 2; m.face = 1; m.nudge = T + 1.2; } }
+        } else m.mode = 'sit';
       }
-      continue;
-    }
-    if (guiding) {   // 坐在插头旁边：朝着插头，隔一会儿原地蹦一下
-      if (m.guide === 2 && T > m.nudge) { m.nudge = T + 2.4 + hash(D.seed, Math.floor(T)) * 1.2; m.face = 1; m.jump = { x0: m.x, y0: m.y, x1: m.x, y1: gy, h: 16, dur: 0.32, t: 0, then: 'sit' }; }
       continue;
     }
     if (m.calm > 3.5 && !(kidHere && Math.abs(kid.x - D.home) < 300)) {   // 没人吓它了，慢慢走回台灯
