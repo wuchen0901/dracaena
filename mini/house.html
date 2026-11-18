@@ -1079,24 +1079,18 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
   else if (name === 'candle') { b.restore(); drawCandle(b, P, lit, x, y + s * 0.4, S.lit, seed + 7, s / 40); return; }
   b.restore();
 }
-// 一只拖鞋（2026-11-18 主人说侧面的拖鞋不像拖鞋）：斜着从上往下看的一只家居拖鞋 —— 一块脚形的鞋底（看得见厚度和浅色的鞋垫，后跟是空的），
-// 前半截一个鼓起来的鞋面，鞋口一圈毛茸茸的翻边。y 是鞋底着地的那条线（鞋底前沿），k 是大小
+// 一只兔子拖鞋（2026-11-18：侧面的一只、斜着从上往下看的一只，主人都说不像拖鞋；画了三种让主人挑，挑了兔子拖鞋）：
+// 侧面，厚厚的平鞋底，后跟是空的、露出浅色的鞋垫；鞋头是一个毛绒的兔子脑袋 —— 两只往后趴的长耳朵（里面粉的）、一只黑眼睛、粉鼻子。
+// y 是鞋底着地的那条线，k 是大小（k = 1 的时候长 50 左右）
 function drawSlipper(b, P, lit, x, y, seed, k = 1) {
-  const lc = lcOf(P, lit); b.seedN = seed;
-  const L = 21 * k, D = 12 * k, T = 2.4 * k, H = 4.5 * k, cy = y - D - T;   // 半长、鞋底半宽（透视压扁以后）、鞋底厚、鞋面高；鞋底面的中心
-  const rim = (t, dy = 0) => { const c = Math.cos(t); return [x + L * c, cy + dy + D * Math.sin(t) * (0.8 + 0.2 * c)]; };   // 脚形：后跟窄一点、圆的，前掌宽
-  const ring = (t0, t1, dy, n) => Array.from({ length: n + 1 }, (_, i) => rim(t0 + (t1 - t0) * i / n, dy));
-  part(b, ring(0, TAU, T, 36), lit ? '#4a3d33' : '#141928', { w: 0.8, tex: 0, lc });   // 鞋底的侧面
-  part(b, ring(0, TAU, 0, 36), lit ? '#d6cbb0' : '#2c3550', { w: 0.8, tex: 0, lc });   // 鞋垫（后跟这一半露在外面）
-  const A = 1.72, near = rim(A), far = rim(-A), back = [x - L * 0.3, cy + 0.5 * k];   // 鞋面盖住前面一大半；鞋口是一道往后鼓的弧
-  const mouth = dy => quadPts([near[0], near[1] + dy], [back[0], back[1] + dy], [far[0], far[1] + dy], 12);
-  const upper = dy => [...ring(-A, A, dy, 20), ...mouth(dy)];
-  part(b, upper(0), lit ? '#5a4e60' : '#151a2b', { w: 0.8, tex: 0, lc });   // 鞋面靠我们这一侧（看得见厚度）
-  part(b, upper(-H), P.blanket, { w: 0.9, tex: 0, lc });                      // 鞋面顶上
-  part(b, [...ring(-1.1, 0.35, -H - 0.4 * k, 10).map(([px, py]) => [lerp(px, x + L * 0.25, 0.28), lerp(py, cy - H, 0.28)]), [x + L * 0.05, cy - H - D * 0.15]], P.blanketHi, { w: 0, tex: 0, lc });   // 鼓起来的地方亮一点
-  // 鞋口一圈毛茸茸的翻边：沿着鞋口的弧，一道浅色的粗边，往后那一沿一个个小鼓包
-  const m = mouth(-H * 0.6), fur = m.map(([px, py], i) => [px - 2.4 * k * (1 + 0.4 * Math.abs(Math.sin(i * 1.7))) * Math.sin(Math.PI * (0.08 + 0.84 * i / (m.length - 1))), py]).concat(m.slice().reverse().map(([px, py], j) => [px + 1.2 * k * Math.sin(Math.PI * (0.08 + 0.84 * (m.length - 1 - j) / (m.length - 1))), py]));
-  part(b, fur, lit ? '#efe6d2' : '#3c4664', { w: 0.7, tex: 0, lc });
+  const lc = lcOf(P, lit), W = ([u, v]) => [x + u * k, y + v * k], wh = lit ? '#ece3cf' : '#36405c', pk = lit ? '#d9a2a0' : '#3a3a58'; b.seedN = seed;
+  part(b, [[-24, -1.5], [-23.5, -6], [0, -5.5], [22, -5.5], [26, -3.5], [25, 0], [-22, 0.2]].map(W), lit ? '#5a4636' : '#141928', { w: 0.9, tex: 0, lc });   // 厚鞋底
+  part(b, [[-23.5, -6], [-3, -5.5], [-3, -8.5], [-22.5, -8.8]].map(W), lit ? '#e2d6bb' : '#2c3550', { w: 0.7, tex: 0, lc });   // 后跟里的鞋垫
+  for (const [dx, dy] of [[0, 0], [3, 1.5]])   // 两只耳朵：远的那只粉的、近的那只白的
+    part(b, cubPts([6 + dx, -17 + dy], [-2 + dx, -26 + dy], [-14 + dx, -24 + dy], [-12 + dx, -18 + dy], 10).concat(cubPts([-12 + dx, -18 + dy], [-6 + dx, -16 + dy], [2 + dx, -14 + dy], [6 + dx, -15 + dy], 6)).map(W), dx ? wh : pk, { w: 0.7, tex: 0, lc });
+  part(b, cubPts([-3, -5.5], [-4, -22], [20, -23], [26, -5], 18).map(W), wh, { w: 0.9, tex: 0, lc });   // 毛绒的兔子脑袋（鞋面）
+  part(b, arcPts(...W([12, -13]), 1.6 * k, 1.9 * k, 0, TAU, 10), lit ? '#2a2018' : '#0c0f18', { w: 0, tex: 0, lc });   // 眼睛
+  part(b, arcPts(...W([24.5, -8]), 1.8 * k, 1.4 * k, 0, TAU, 10), pk, { w: 0.5, tex: 0, lc });   // 鼻子
 }
 function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 一罐萤火虫（规则里还叫 candle）：冻僵了是暗的，在火边烤暖了才亮
   const lc = lcOf(P, lit), w = 20 * k, h = 26 * k; b.seedN = seed;
