@@ -1268,14 +1268,24 @@ function drawFridge(b, P, lit) {   // 冰箱门：开着的时候里面亮着灯
   part(b, roundPts(dx - (o > 0.5 ? (x1 - x0) * 0.25 * o : 0), top, Math.max(8, dw), gy + 6 - top, 16), P.fridge, { w: 1.2, tex: 0.3, lc, seed: 250300 });
   if (o < 0.5) { part(b, roundPts(x0 + 12, top + 70, 10, 60, 4), P.iron, { w: 0.8, tex: 0, lc, seed: 250310 }); }
 }
-function drawHatch(b, P, lit) {   // 地窖口：盖子的合页在右边，开着的时候立起来、往右靠一点；洞一直通到地下室，看得见梯子
-  const lc = lcOf(P, lit), F = FL.down, gy = F.gy, o = smooth(V.hatch), bot = ROOMS.cellar.top + 2; b.seedN = 251000;
+// 地窖口：盖子的合页在右边，开着的时候立起来、往右靠一点。
+// 洞只开在地板面上（2026-11-18 主人说别把整架梯子露出来，梯子顶上应该还是地面）：从洞口往里看，后壁一截楼板的断面，
+// 梯子顶和地面齐平，往下没进黑里；地板的切面、两层之间那一段照旧是实的，梯子再往下要到地下室里才看得见
+const HOLE = { y0: FL.down.gy - 24, y1: FL.down.gy + 30 };
+function drawHatch(b, P, lit) {
+  const lc = lcOf(P, lit), F = FL.down, gy = F.gy, o = smooth(V.hatch); b.seedN = 251000;
   if (o > 0.02) {
-    fillPts(b, rectPts(HATCH.x0, F.wb + 8, HATCH.x1 - HATCH.x0, bot - F.wb - 8), DARK.ink);
-    const gr = b.createLinearGradient(0, F.wb, 0, bot); gr.addColorStop(0, rgba(DARK.mass, 0)); gr.addColorStop(1, rgba('#000000', 0.6)); b.fillStyle = gr; b.fillRect(HATCH.x0, F.wb + 8, HATCH.x1 - HATCH.x0, bot - F.wb - 8);
-    for (const x of [HATCH.x - 30, HATCH.x + 30]) part(b, rectPts(x - 4, F.wb + 14, 8, bot - F.wb - 12), P.woodHi, { w: 0.8, tex: 0, lc, seed: 251010 + x });
-    for (let y = LADDER_Y0; y < bot; y += 46) part(b, rectPts(HATCH.x - 30, y, 60, 7), P.woodHi, { w: 0.8, tex: 0, lc, seed: 251020 + y });
-    ink(b, seg(HATCH.x0, F.wb + 8, HATCH.x0, F.fr), { w: 1, col: lc, taper: 0, seed: 251030 }); ink(b, seg(HATCH.x1, F.wb + 8, HATCH.x1, F.fr), { w: 1, col: lc, taper: 0, seed: 251031 });
+    const { y0, y1 } = HOLE, x0 = HATCH.x0, x1 = HATCH.x1, w = x1 - x0;
+    b.save(); b.beginPath(); b.rect(x0, y0, w, y1 - y0); b.clip();
+    fillPts(b, rectPts(x0, y0, w, y1 - y0), DARK.ink);
+    part(b, rectPts(x0, y0, w, 12), P.woodLo, { w: 0.6, tex: 0, lc, seed: 251005 });   // 洞的后壁：楼板的断面
+    const gr = b.createLinearGradient(0, y0 + 12, 0, y1); gr.addColorStop(0, rgba('#000000', 0.15)); gr.addColorStop(1, rgba('#000000', 0.7)); b.fillStyle = gr; b.fillRect(x0, y0 + 12, w, y1 - y0 - 12);
+    for (const x of [HATCH.x - 30, HATCH.x + 30]) part(b, rectPts(x - 4, gy - 2, 8, y1 - gy + 8), P.woodHi, { w: 0.8, tex: 0, lc, seed: 251010 + x });   // 梯子顶：和地面齐平
+    part(b, rectPts(HATCH.x - 30, gy + 14, 60, 7), P.woodHi, { w: 0.8, tex: 0, lc, seed: 251020 });
+    const sh = b.createLinearGradient(0, gy, 0, y1); sh.addColorStop(0, rgba('#000000', 0)); sh.addColorStop(1, rgba('#000000', 0.55)); b.fillStyle = sh; b.fillRect(x0, gy, w, y1 - gy);   // 越往下越黑
+    b.restore();
+    ink(b, [[x0, y0], [x1, y0]], { w: 1, col: lc, taper: 0, seed: 251030 }); ink(b, [[x0, y1], [x1, y1]], { w: 1.1, col: lc, taper: 0, seed: 251031 });
+    ink(b, seg(x0, y0, x0, y1), { w: 0.8, col: lc, taper: 0, seed: 251032 }); ink(b, seg(x1, y0, x1, y1), { w: 0.8, col: lc, taper: 0, seed: 251033 });
   }
   const a = o * 1.72, len = HATCH.x1 - HATCH.x0, hx = HATCH.x1, ex = hx - Math.cos(a) * len, ey = gy - Math.sin(a) * len, nx = -Math.sin(a) * 14, ny = -Math.cos(a) * 14;
   part(b, [[hx, gy], [ex, ey], [ex - nx, ey - ny], [hx - nx, gy - ny]], P.woodHi, { w: 1, tex: 0, lc, seed: 251100 });
@@ -1729,7 +1739,9 @@ function drawKidBack(b, P0, lit) {
   const P = kidCols(lit), lc = lit ? LIT.ink : DARK.ink, cyc = kid.climbPh * 2, n = Math.floor(cyc), u = ease(cyc - n), sd1 = n % 2 ? 1 : -1;
   const L = (a0, a1) => a0 + (a1 - a0) * u, upOf = sd => L(sd === -sd1 ? 1 : 0, sd === sd1 ? 1 : 0);
   const Y = pts => pts.map(([a, v]) => backPt(a, v));
-  b.save(); const ga = b.globalAlpha; b.globalAlpha = ga * kid.alpha;
+  b.save();
+  { const top = HOLE.y1, bot = ROOMS.cellar.top; b.beginPath(); b.rect(kid.x - 400, kid.y - 600, 800, top - (kid.y - 600)); b.rect(kid.x - 400, bot, 800, kid.y + 600 - bot); b.clip(); }   // 钻过楼板的时候，楼板挡住的那一截不画
+  const ga = b.globalAlpha; b.globalAlpha = ga * kid.alpha;
   const pen0 = b.pen; b.pen = { ...PEN, col: lc, a: Math.min(1, PEN.a + 0.08) }; b.seedN = 38000;
   const fill = (pts, col, o) => part(b, pts, col, { w: 1, tex: 0, wob: 0.6, ...o });
   const line = (pts, o) => ink(b, pts, { w: 0.7, taper: 3, single: 1, ...o });
