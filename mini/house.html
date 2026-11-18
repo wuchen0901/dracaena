@@ -1207,10 +1207,41 @@ function drawFire(b, P, lit) {
     }
     b.globalAlpha = 1;
   }
-  { const ey = gy - 16 - 12 * lv, blink = Math.sin(T * 0.9 + 1) > 0.97 ? 0.2 : 1, er = 1.8 + lv * 0.9; b.fillStyle = lit ? '#fff4c0' : '#ffd890'; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x - 4 + sd * (7 + lv * 2), ey, er, er * 1.3 * blink, 0, 0, 7); b.fill(); } }   // 炉火里住着的小东西：两只眼睛，火越大眼睛越大
+  drawFireSprite(b, lit, gy);
   if (V.smoke > 0.02) {   // 风门关着：烟从炉口往屋里冒
     for (let i = 0; i < 8; i++) { const ph = (T * 0.25 + i / 8) % 1, sx = x + Math.sin(T + i) * 20 - ph * 60, sy = FIRE.mantel + 50 - ph * 160; b.fillStyle = rgba(lit ? '#5a5248' : '#1a2030', V.smoke * 0.5 * Math.sin(ph * Math.PI)); b.beginPath(); b.arc(sx, sy, 20 + ph * 40, 0, 7); b.fill(); }
   }
+}
+// 火精灵从柴堆跳到炉前石板，来回跑一趟，再跳回炭火。
+function drawFireSprite(b, lit, gy) {
+  const phase = V.fireTrip % 10;
+  const u = clamp((phase - 3) / 5, 0, 1);
+  const away = Math.sin(Math.PI * u);
+  const side = Math.floor(V.fireTrip / 10) % 2 ? -1 : 1;
+  const x = FIRE.x + side * away * 144;
+  const foot = gy - lerp(18, 6, smooth(away * 3));
+  const hop = Math.sin(Math.PI * clamp(Math.min(u, 1 - u) * 8, 0, 1)) * 19;
+  const stride = Math.sin(away * 29) * smooth(away * 6);
+  const awake = smooth(V.fireLv);
+  b.save();
+  b.translate(x, foot);
+  b.fillStyle = rgba('#f6ae63', 0.25 * away);
+  b.beginPath(); b.ellipse(0, 1, 19, 2.6, 0, 0, TAU); b.fill();
+  b.translate(0, -hop - 2 * Math.abs(stride));
+  b.scale(side * (u > 0.5 ? -1 : 1), 1);
+  if (away > 0.01) for (const sd of [-1, 1]) {
+    impLeg(b, lit, sd * 3, -7, sd * (3 + stride * 6), -Math.max(0, sd * stride) * 3, sd * stride * 2);
+  }
+  b.translate(0, -lerp(2, 11, awake));
+  b.scale(lerp(0.65, 1, awake), lerp(0.42, 1, awake));
+  const tip = Math.sin(V.T * 7) * 2 - 7 * away;
+  const flame = curvePts([[-9, 5], [-10, -3], [-7, -12], [-5, -8],
+    [tip, -22], [5, -10], [8, -13], [10, -3], [9, 5], [0, 9]], true, 4);
+  fillPts(b, flame, lit ? '#ed9953' : '#d68246');
+  ink(b, [...flame, flame[0]], { col: '#ab6843', a: 0.55, w: 0.75, seed: 240150 });
+  fillPts(b, curvePts([[-6, 4], [-5, -3], [-2, -1], [2, -10], [5, -2], [6, 4], [0, 7]], true, 4), '#ffda91');
+  drawImpEyes(b, { look: away, blink: Math.sin(V.T * 1.7) > 0.99 }, 0.5, 0, 0.82, false);
+  b.restore();
 }
 function drawDamper(b, P, lit) {   // 风门的把手：炉口上面伸出来的一根小铁杆，开了往上翘
   const lc = lcOf(P, lit), a = lerp(0.5, -0.5, smooth(V.damperT)); b.seedN = 240300;
@@ -2321,7 +2352,7 @@ const FEAR_KEYS = GARB_KEYS;
 const newView = () => ({
   T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10 }, candleI: 0,
   bdoor: 0, bdoorPulse: -10, lampH: 0, sway: 0.008, swayV: 0, crankA: 0.7, ratT: 0,
-  fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
+  fireTrip: 0, fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10,
@@ -2797,6 +2828,8 @@ function tick(dt) {
   V.li.candle = V.candleI * (0.93 + 0.07 * Math.sin(T * 17) * Math.sin(T * 5.3));
   // 壁炉：只有炭火 → 有柴、风门关着（烟大，火一会儿大一会儿小）→ 风门开了（火稳住，照得到扶手椅）
   const lv = fireLevel(); V.fireLv = approach(V.fireLv, lv, dt * 0.7);
+  if (lv && V.fireLv > 0.8) V.fireTrip += dt * (lv === 2 ? 1.15 : 1);
+  else V.fireTrip = 0;
   const fl = V.fireLv, wob = Math.sin(T * 9.1) * Math.sin(T * 3.7 + 1) * Math.sin(T * 1.3);
   V.fireFlick = 1 + wob * (fl > 0.5 && fl < 1.6 ? 0.28 : 0.06);
   V.fireR = (fl < 1 ? lerp(150, 300, fl) : lerp(300, 680, fl - 1)) * (0.95 + 0.05 * V.fireFlick);
