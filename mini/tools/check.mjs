@@ -57,4 +57,15 @@ try {
   console.log(`  ${ok ? 'ok ' : 'BAD'}  最少点 ${s.path ? s.path.length : '-'} 下  局面 ${s.states} 个  死路 ${s.dead} 个  ${s.path ? s.path.map(m => (m.held ? m.held + '→' : '') + m.spot).join(' ') : ''}${skip.length ? '  (不点 ' + skip.join('、') + ' 也能走出去)' : ''}`);
 } catch (e) { if (e.code !== 'ENOENT') throw e; }
 
+try {
+  const { START, solve } = core('house.html', ['START', 'solve']);
+  console.log('夜里的房子');
+  const s = solve(START, () => true, true);
+  // 解法里点到的每一处，少点哪一处都应该走不出去（不然就是有捷径）
+  const skip = s.path ? [...new Set(s.path.map(m => m.spot))].filter(id => solve(START, m => m.spot !== id).path) : [];
+  const ok = !!s.path && s.dead === 0 && !skip.length;
+  if (!ok) bad++;
+  console.log(`  ${ok ? 'ok ' : 'BAD'}  最少点 ${s.path ? s.path.length : '-'} 下  局面 ${s.states} 个  死路 ${s.dead} 个  ${s.path ? s.path.map(m => (m.held ? m.held + '→' : '') + m.spot).join(' ') : ''}${skip.length ? '  (不点 ' + skip.join('、') + ' 也能走出去)' : ''}`);
+} catch (e) { if (e.code !== 'ENOENT') throw e; }
+
 process.exit(bad ? 1 : 0);
