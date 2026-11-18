@@ -2056,7 +2056,7 @@ function impPose(m) {
 const inSocket = m => m.mode === 'bulb' || m.mode === 'pop';
 // 光从哪儿出来：在灯座里是灯泡（或者正在变的那团）的中心，跑出来了是毛团的中心
 // 在灯罩里：毛团中心离台灯底多高（探出来的时候往下沉一点，眼睛露到灯罩外面）
-const impNest = m => IMP_CUP + IMP_R * 0.75 - 7 * smooth(Math.min(1, m.morph * 2));
+const impNest = m => IMP_CUP + IMP_R - 8 * smooth(Math.min(1, m.morph * 2));
 function impGlobe(m) {
   const D = IMPS[m.k];
   if (inSocket(m)) return [D.home, D.hy - impNest(m) * 1.15];
@@ -2153,29 +2153,25 @@ function drawImpLamp(b, P, lit, D, m, front) {
   }
   b.restore();
 }
-// 一团毛（原点在毛团中心）：和灯泡玻璃一个颜色，软软的；边上两圈小绒团（外面那圈半透明，边就是毛茸茸的，不是一根根刺），飘几缕弯弯的细毛
-function drawFluff(b, D, R, sq, dim, t) {
-  const r = rnd(D.seed + 700), N = 30;
-  const gr = b.createRadialGradient(-2.5, -3, 0.5, 0, 0, R + 3);
-  gr.addColorStop(0, dim ? '#f6edd2' : '#fffdf4'); gr.addColorStop(0.55, dim ? '#eee0b0' : '#fff3c8'); gr.addColorStop(1, dim ? '#d9c28a' : '#f3dca0');
-  const ring = (n, rr0, c0, c1, ph) => { const o = []; for (let j = 0; j < n; j++) { const a = (j + ph) / n * TAU + (r() - 0.5) * 0.15, rr = rr0 + Math.sin(t * 2.2 + j * 1.9) * 0.3, cr = c0 + r() * (c1 - c0); o.push([Math.cos(a) * rr, Math.sin(a) * rr * sq, cr, a]); } return o; };
-  const outer = ring(N, R + 0.6, 1.7, 2.5, 0.5), inner = ring(N, R - 1.4, 2.6, 3.5, 0);
-  b.fillStyle = gr; const ga = b.globalAlpha;
-  b.globalAlpha = ga * 0.55; for (const [x, y, cr] of outer) { b.beginPath(); b.arc(x, y, cr, 0, 7); b.fill(); }   // 外面一圈半透明的绒
-  b.globalAlpha = ga; b.beginPath(); b.ellipse(0, 0, R - 1.2, (R - 1.2) * sq, 0, 0, 7); b.fill();
-  for (const [x, y, cr] of inner) { b.beginPath(); b.arc(x, y, cr, 0, 7); b.fill(); }
-  b.lineCap = 'round'; b.lineWidth = 0.5; b.strokeStyle = dim ? 'rgba(150,118,60,0.35)' : 'rgba(184,144,74,0.32)'; b.beginPath();   // 绒团外沿淡淡的一圈铅笔
-  for (const [x, y, cr, a] of inner) { b.moveTo(x + Math.cos(a - 0.9) * cr, y + Math.sin(a - 0.9) * cr); b.arc(x, y, cr, a - 0.9, a + 0.9); }
-  b.stroke();
-  b.strokeStyle = 'rgba(255,250,232,0.75)'; b.lineWidth = 0.45; b.beginPath();   // 几缕弯弯的细毛
-  for (let j = 0; j < 14; j++) {
-    const a = (j + r() * 0.6) / 14 * TAU, r0 = R + 1, r1 = R + 2.6 + r() * 1.2, c = 0.25 + Math.sin(t * 1.8 + j) * 0.06, x0 = Math.cos(a) * r0, y0 = Math.sin(a) * r0 * sq;
-    b.moveTo(x0, y0); b.quadraticCurveTo(Math.cos(a + c * 0.4) * (r1 + 0.6), Math.sin(a + c * 0.4) * (r1 + 0.6) * sq, Math.cos(a + c) * r1, Math.sin(a + c) * r1 * sq);
-  }
-  b.stroke();
-  b.strokeStyle = 'rgba(214,176,104,0.22)'; b.lineWidth = 0.5; b.beginPath();   // 身上顺着长的几道绒毛
-  for (let j = 0; j < 9; j++) { const a = r() * TAU, rr = R * (0.45 + r() * 0.35), x = Math.cos(a) * rr, y = Math.sin(a) * rr * sq; b.moveTo(x, y); b.quadraticCurveTo(x + Math.cos(a + 0.5) * 1.6, y + Math.sin(a + 0.5) * 1.6, x + Math.cos(a + 0.2) * 3, y + Math.sin(a + 0.2) * 3); }
-  b.stroke();
+// 身子（原点在身子中心）：就是一只灯泡的玻璃——上面圆、底下收窄。外面一道铅笔轮廓、一圈很淡的光晕，里面中间偏下一团暖光（像灯丝在亮）。
+// 在台灯里收窄的那头插在灯口上，它就是那只灯泡；没有毛，软乎乎靠压扁、拉长
+function impBodyPts(R, sq) {
+  const w = 1 + (1 - sq) * 0.6;   // 压扁的时候往两边胖一点
+  return curvePts([[0, -R], [R * 0.72, -R * 0.72], [R, -R * 0.05], [R * 0.8, R * 0.62], [R * 0.38, R * 1.02], [0, R * 1.1], [-R * 0.38, R * 1.02], [-R * 0.8, R * 0.62], [-R, -R * 0.05], [-R * 0.72, -R * 0.72]].map(([x, y]) => [x * w, y * sq]), true, 4);
+}
+function drawImpBody(b, D, R, sq, dim, t) {
+  const pts = impBodyPts(R, sq), ga = b.globalAlpha;
+  const halo = b.createRadialGradient(0, 0, R * 0.7, 0, 0, R + 6);   // 一圈很淡的光晕
+  halo.addColorStop(0, 'rgba(255,240,196,0.45)'); halo.addColorStop(1, 'rgba(255,240,196,0)');
+  b.globalAlpha = ga * (dim ? 0.4 : 1); b.fillStyle = halo; b.beginPath(); b.arc(0, 0, R + 6, 0, 7); b.fill(); b.globalAlpha = ga;
+  const gr = b.createRadialGradient(-R * 0.3, -R * 0.4, 0.5, 0, 0, R * 1.15);
+  gr.addColorStop(0, dim ? '#f6efd8' : '#fffef8'); gr.addColorStop(0.55, dim ? '#efe1b6' : '#fff2c6'); gr.addColorStop(1, dim ? '#dcc58e' : '#f5d998');
+  b.fillStyle = gr; b.beginPath(); pts.forEach(([x, y], j) => j ? b.lineTo(x, y) : b.moveTo(x, y)); b.closePath(); b.fill();
+  const core = b.createRadialGradient(0, R * 0.35, 0, 0, R * 0.35, R * 0.55);   // 里面一团暖光
+  core.addColorStop(0, `rgba(255,200,120,${dim ? 0.25 : 0.5 + 0.08 * Math.sin(t * 3 + D.seed)})`); core.addColorStop(1, 'rgba(255,200,120,0)');
+  b.fillStyle = core; b.beginPath(); b.arc(0, R * 0.35, R * 0.55, 0, 7); b.fill();
+  fillPts(b, arcPts(-R * 0.42, -R * 0.42 * sq, R * 0.16, R * 0.3, 0, TAU, 10).map(([x, y]) => { const c = Math.cos(0.6), sn = Math.sin(0.6), dx = x + R * 0.42, dy = y + R * 0.42 * sq; return [-R * 0.42 + dx * c - dy * sn, -R * 0.42 * sq + dx * sn + dy * c]; }), '#ffffff', 0.7);   // 玻璃上的高光
+  ink(b, [...pts, pts[0]], { w: 0.55, col: dim ? '#8e7444' : '#a8833f', a: 1.1, taper: 0, amp: 0.25, seed: D.seed + 30 });
 }
 // 手脚：一根弯弯的软线（bend 是中间往哪边鼓、鼓多少），头上一个圆圆的小手、小脚；白的，外面描一圈淡淡的边，免得在亮墙上看不见
 function impLimb(b, lit, x0, y0, x1, y1, bend, w, dot) {
@@ -2209,7 +2205,7 @@ function drawImp(b, P, lit, k) {
       for (let i = 0; i < 2; i++) { const sd = i ? 1 : -1, sw = Math.sin(t * 9 + i * 2); leg(sd * 3.5, cy + R - 2, sd * 4 + sw * g, cy + R - 2 + IMP_LEG * g, sd * 1.5 * g); }   // 两条小腿垂下来晃
       for (let i = 0; i < 2; i++) { const sd = i ? 1 : -1, a = 2 + Math.sin(t * 22 + i * Math.PI) * 0.45; arm(sd * (R - 1.5), cy, sd * (R - 1.5) + sd * Math.sin(a) * IMP_ARM * g, cy + Math.cos(a) * IMP_ARM * g, -sd * 2.5 * Math.cos(t * 22 + i * Math.PI) * g); }
     }
-    b.translate(shake, cy); drawFluff(b, D, R, 1, false, t);
+    b.translate(shake, cy); drawImpBody(b, D, R, 1, false, t);
     if (mo > 0.12) drawImpEyes(b, { ...m, blink: mo < 0.3 ? 1 : m.blink }, 1.5, 2, 1, true);
     b.restore();
     drawImpLamp(b, P, lit, D, m, true);
@@ -2237,8 +2233,8 @@ function drawImp(b, P, lit, k) {
     else { a = 0.45 + Math.sin(t * 2.6 + m.x + i) * 0.08; bend = -sd * 1.6; }
     arm(sx, sy, sx + sd * Math.sin(a) * IMP_ARM, sy + Math.cos(a) * IMP_ARM, bend);
   }
-  b.translate(0, -R * sq);
-  drawFluff(b, D, R, sq, m.hideK > 0.5, t);
+  b.translate(0, -R * sq - 1.5);
+  drawImpBody(b, D, R, sq, m.hideK > 0.5, t);
   drawImpEyes(b, m, 1.5, 0.8, 1, scared);
   b.restore();
 }
