@@ -115,13 +115,13 @@ const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const shade = (c, t) => mix(c, C.mass, t);   // 压暗
 const tint = (c, t) => mix(c, C.hot, t);     // 提亮
 
-// 画面：手绘 A（钢笔线 + 淡彩），和 mini/tools/looks.html 的 A 是同一种画法、同一套颜色。
-//   · 线是一笔笔画的：左右慢慢晃，粗细不匀，两头收细；方框是四笔，四个角不对齐、线头出头。
+// 画面：和《灯下》2026-11-18 定下来的画法一样（mini/tools/looks.html 的 LOOK）：铅笔线，每样东西留一点自己的颜色、都压得很灰。
+//   · 线是一笔笔画的：左右慢慢晃，粗细不匀，两头收细，每一笔两道叠着；方框是四笔，四个角不对齐、线头出头。排线多。
 //   · 颜色压得很灰，不正好贴着线，边上积一点深的；整张画上盖一层纸的颗粒。
 //   · 暗处冷、只有轮廓和排线；灯照到的地方暖、有颜色和细节。灯光没有形状：由亮到暗是排线一层层加密，没有边。
-// 两套颜色的名字一一对应。looks.html 里没有的东西（座钟、大衣、窗帘……）照着它的调子配
+// 两套颜色的名字一一对应，颜色照 looks.html；那边没有的东西（座钟、大衣、窗帘……）照着它的调子配
 const LIT = {
-  ink: '#1c1510', hi: '#fff3d6',
+  ink: '#2a2420', hi: '#fff3d6',
   wall: '#a9a08c', stripe: '#958b76', motif: '#7d5847', frieze: '#9b917c', cornice: '#857a66', rail2: '#6e5a44',
   panel: '#6c7060', rail: '#858a76', skirt: '#474a3e',
   floor: '#806a50', front: '#54432f',
@@ -156,10 +156,11 @@ const hexRGB = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >>
 const rgba = (h, a) => { const [r, gg, bb] = hexRGB(h); return `rgba(${r},${gg},${bb},${a})`; };
 const hexMix = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
 
-// ---------- 手：抖的线、排线、不匀的颜色（照 mini/tools/looks.html）----------
+// ---------- 手：铅笔线、排线、不匀的颜色（照 mini/tools/looks.html）----------
 // 单位都是画面单位（这一屏 1600 × 900）。每个画布上挂着 pen（笔：粗细、晃多少、浓淡、颜色）、seedN（下一笔用哪个种子）和 base（纸纹对齐用的变换）。
 // 会动的东西每一帧都重画：每一样开头都把 seedN 设成固定的数，同一笔每一帧用同一个种子，线就不会跳
-const PEN = { w: 1.7, amp: 1.1, a: 0.95 };
+const PEN = { w: 1.9, amp: 1.55, a: 0.66, double: 1 };   // 铅笔：软、抖、淡，每一笔两道叠着
+const HD = 1.5;                                          // 排线的密度：阴影里的排线比钢笔那一版密一倍半
 function rnd(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const nzCache = new Map();
 function nz(seed) {   // 一维的平滑噪声
@@ -195,20 +196,24 @@ function resample(pts, step) {
 // 一笔：沿着 pts 走，左右慢慢地晃，粗细跟着变，两头收细。画出来是一条窄窄的面，不是等宽的线
 function ink(ctx, pts, o = {}) {
   const seed = o.seed ?? ++ctx.seedN; if (o.skip) return;
-  const P = ctx.pen, w0 = (o.w ?? 1) * P.w, amp = (o.amp ?? 1) * P.amp, R = resample(pts, 3.5), n = R.length; if (n < 2) return;
-  const Ln = R[n - 1][2], N1 = nz(seed), N2 = nz(seed + 101), N3 = nz(seed + 211), tl = o.taper ?? 11, env = Math.min(1, Ln / 40), lf = [], rt = [];
-  for (let i = 0; i < n; i++) {
-    const a = R[Math.max(0, i - 1)], b = R[Math.min(n - 1, i + 1)], p = R[i];
-    let tx = b[0] - a[0], ty = b[1] - a[1]; const d = Math.hypot(tx, ty) || 1; tx /= d; ty /= d;
-    const s = p[2], off = amp * env * ((N1(s / 60 + 3) - 0.5) * 2.2 + (N2(s / 14) - 0.5) * 0.5);
-    const e = Math.min(s, Ln - s), tp = tl ? 0.3 + 0.7 * smooth(e / tl) : 1, w = w0 * (0.7 + 0.6 * N3(s / 40 + 7)) * tp * (o.prof ? o.prof(s / Ln) : 1);
-    const cx = p[0] - ty * off, cy = p[1] + tx * off;
-    lf.push(cx - ty * w / 2, cy + tx * w / 2); rt.push(cx + ty * w / 2, cy - tx * w / 2);
-  }
-  ctx.beginPath(); ctx.moveTo(lf[0], lf[1]);
-  for (let i = 2; i < lf.length; i += 2) ctx.lineTo(lf[i], lf[i + 1]);
-  for (let i = rt.length - 2; i >= 0; i -= 2) ctx.lineTo(rt[i], rt[i + 1]);
-  ctx.closePath(); ctx.fillStyle = o.col ?? P.col; const ga = ctx.globalAlpha; ctx.globalAlpha = ga * clamp((o.a ?? 1) * P.a, 0, 1); ctx.fill(); ctx.globalAlpha = ga;
+  const P = ctx.pen, R = resample(pts, 3.5), n = R.length; if (n < 2) return;
+  const one = (sd, wk, ak) => {
+    const w0 = (o.w ?? 1) * P.w * wk, amp = (o.amp ?? 1) * P.amp;
+    const Ln = R[n - 1][2], N1 = nz(sd), N2 = nz(sd + 101), N3 = nz(sd + 211), tl = o.taper ?? 11, env = Math.min(1, Ln / 40), lf = [], rt = [];
+    for (let i = 0; i < n; i++) {
+      const a = R[Math.max(0, i - 1)], b = R[Math.min(n - 1, i + 1)], p = R[i];
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const d = Math.hypot(tx, ty) || 1; tx /= d; ty /= d;
+      const s = p[2], off = amp * env * ((N1(s / 60 + 3) - 0.5) * 2.2 + (N2(s / 14) - 0.5) * 0.5);
+      const e = Math.min(s, Ln - s), tp = tl ? 0.3 + 0.7 * smooth(e / tl) : 1, w = w0 * (0.7 + 0.6 * N3(s / 40 + 7)) * tp * (o.prof ? o.prof(s / Ln) : 1);
+      const cx = p[0] - ty * off, cy = p[1] + tx * off;
+      lf.push(cx - ty * w / 2, cy + tx * w / 2); rt.push(cx + ty * w / 2, cy - tx * w / 2);
+    }
+    ctx.beginPath(); ctx.moveTo(lf[0], lf[1]);
+    for (let i = 2; i < lf.length; i += 2) ctx.lineTo(lf[i], lf[i + 1]);
+    for (let i = rt.length - 2; i >= 0; i -= 2) ctx.lineTo(rt[i], rt[i + 1]);
+    ctx.closePath(); ctx.fillStyle = o.col ?? P.col; const ga = ctx.globalAlpha; ctx.globalAlpha = ga * clamp((o.a ?? 1) * P.a * ak, 0, 1); ctx.fill(); ctx.globalAlpha = ga;
+  };
+  one(seed, 1, 1); if (P.double && !o.single) one(seed + 503, 0.8, 0.6);   // 铅笔：第二道细一点、淡一点，晃法不一样
 }
 // 四笔画成的方框：四个角不对齐，线头出头
 function box(ctx, x, y, w, h, o = {}) {
@@ -429,6 +434,7 @@ function paintWall(b, P, lit) {
     }
     b.globalAlpha = 1;
   }
+  if (lit) { b.seedN = 5290; hatch(b, k => k.rect(RL, CEIL, RR - RL, WB - CEIL), [RL, CEIL, RR - RL, WB - CEIL], { ang: -1.35, gap: 9.5, a: 0.1, w: 0.6, len: 40, breaks: 40 }); }   // 铅笔：墙面上再轻轻扫一层
   // 挂画线上面一条素墙、挂画线、天花板线
   b.fillStyle = P.frieze; b.fillRect(RL, CEIL, RR - RL, 62); b.fillStyle = P.rail2; b.fillRect(RL, CEIL + 62, RR - RL, 5); b.fillStyle = P.cornice; b.fillRect(RL, CEIL, RR - RL, 13);
   b.seedN = 5300;
@@ -439,6 +445,9 @@ function paintWall(b, P, lit) {
   b.fillStyle = P.panel; b.fillRect(RL, wy, RR - RL, WB - wy); texture(b, TEX.blot, 0.5); texture(b, TEX.blot2, 0.35);
   b.fillStyle = P.rail; b.fillRect(RL, wy, RR - RL, 7); b.fillStyle = P.skirt; b.fillRect(RL, WB - 16, RR - RL, 16);
   b.restore();
+  b.seedN = 5900; const r0 = rnd(59);   // 墙上两道裂缝、楼上漏下来的一块水渍
+  for (const [sx, n, dir] of [[548, 9, 0.5], [1236, 7, -0.4]]) { const pts = [[sx, CEIL + 13]]; for (let i = 0; i < n; i++) { const l = pts[pts.length - 1]; pts.push([l[0] + dir * (5 + r0() * 12) + (r0() - 0.5) * 11, l[1] + 11 + r0() * 14]); } ink(b, pts, { w: 0.7, a: lit ? 0.6 : 0.9, amp: 0.4, single: 1 }); }
+  b.save(); b.clip(blob(arcPts(1112, CEIL + 34, 82, 34, 0, TAU, 18), 591, 6)); b.fillStyle = rgba(P.ink, lit ? 0.12 : 0.3); b.fillRect(1020, CEIL, 190, 80); b.restore();
   b.seedN = 5400;
   ink(b, seg(RL, wy, RR, wy), { w: 1.2, taper: 0 }); ink(b, seg(RL, wy + 7, RR, wy + 7), { w: 0.7, a: 0.6, taper: 0 }); ink(b, seg(RL, WB - 16, RR, WB - 16), { w: 0.8, a: 0.7, taper: 0 });
   for (let i = 0; i < 14; i++) { const bx = RL + i * 100 + 10; box(b, bx, wy + 22, 80, 96, { w: 0.85, a: lit ? 0.75 : 0.9 }); box(b, bx + 6, wy + 28, 68, 84, { w: 0.55, a: 0.35, j: 0.8, over: 0, skip: !lit }); }
@@ -457,13 +466,13 @@ function paintCorners(b, lit) {   // 墙角、天花板底下暗一些：先罩�
   const sa = lit ? 0.26 : 0.4, ha = lit ? 0.32 : 0.55;
   b.seedN = 5600;
   b.fillStyle = fade(0, CEIL, 0, CEIL + 120, sa); b.fillRect(RL, CEIL, RR - RL, 120);
-  hatch(b, k => k.rect(RL, CEIL, RR - RL, 70), [RL, CEIL, RR - RL, 70], { ang: -1.2, gap: 6, a: ha * 0.8, w: 0.7, len: 22 });
-  hatch(b, k => k.rect(RL, CEIL, RR - RL, 30), [RL, CEIL, RR - RL, 30], { ang: -0.3, gap: 5, a: ha * 0.7, w: 0.7, len: 26 });
+  hatch(b, k => k.rect(RL, CEIL, RR - RL, 70), [RL, CEIL, RR - RL, 70], { ang: -1.2, gap: 6 / HD, a: ha * 0.8, w: 0.7, len: 22 });
+  hatch(b, k => k.rect(RL, CEIL, RR - RL, 30), [RL, CEIL, RR - RL, 30], { ang: -0.3, gap: 5 / HD, a: ha * 0.7, w: 0.7, len: 26 });
   for (const s of [-1, 1]) {
     const x0 = s < 0 ? RL : RR - 110, xn = s < 0 ? RL : RR - 40;
     b.fillStyle = s < 0 ? fade(RL, 0, RL + 120, 0, sa) : fade(RR, 0, RR - 120, 0, sa); b.fillRect(s < 0 ? RL : RR - 120, CEIL, 120, WB - CEIL);
-    hatch(b, k => k.rect(x0, CEIL, 110, WB - CEIL), [x0, CEIL, 110, WB - CEIL], { ang: -1.1, gap: 6, a: ha * 0.7, w: 0.7, len: 28 });
-    hatch(b, k => k.rect(xn, CEIL, 40, WB - CEIL), [xn, CEIL, 40, WB - CEIL], { ang: 0.6, gap: 5.5, a: ha * 0.65, w: 0.7, len: 18 });
+    hatch(b, k => k.rect(x0, CEIL, 110, WB - CEIL), [x0, CEIL, 110, WB - CEIL], { ang: -1.1, gap: 6 / HD, a: ha * 0.7, w: 0.7, len: 28 });
+    hatch(b, k => k.rect(xn, CEIL, 40, WB - CEIL), [xn, CEIL, 40, WB - CEIL], { ang: 0.6, gap: 5.5 / HD, a: ha * 0.65, w: 0.7, len: 18 });
   }
 }
 function paintPicture(b, P, lit, d) {   // 墙上的画：每幅都挂得有点歪。画的是什么，照到了才看得见
@@ -553,7 +562,7 @@ function paintDrapes(b, P, lit) {   // 两边的窗帘：用带子系在腰上�
     b.seedN = 6510 + (s + 1) * 30;
     part(b, pts, P.drape, { w: 1.1, tex: 0.5, lc });
     b.save(); b.beginPath(); b.rect(s < 0 ? ox - 30 : (ex + ox) / 2, top, 60, bot - top); b.clip();   // 外面那半边背光，打排线
-    hatch(b, k => { pts.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)); }, [Math.min(ex, ox) - 30, top, 100, bot - top], { ang: s < 0 ? -1.3 : 1.3, gap: 6, a: lit ? 0.3 : 0.5, w: 0.7, len: 30 });
+    hatch(b, k => { pts.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)); }, [Math.min(ex, ox) - 30, top, 100, bot - top], { ang: s < 0 ? -1.3 : 1.3, gap: 6 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 30 });
     b.restore();
     ink(b, inner, { col: P.drapeHi, a: lit ? 0.9 : 0.75, w: 1.2 });
     for (const k of [0.3, 0.55, 0.8]) {   // 褶子
@@ -568,7 +577,7 @@ function paintRadiator(b, P, lit) {   // 窗下的暖气片
   const lc = lit ? P.ink : DARK.ink; b.seedN = 6600;
   for (let i = 0; i < 9; i++) part(b, roundPts(WIN.x + 8 + i * 18.5, 602, 14, 88, 6), P.radiator, { w: 0.8, tex: 0.25, lc, rim: 0.25 });
   part(b, rectPts(WIN.x + 4, 612, WIN.w - 8, 5), P.radiator, { w: 0.7, tex: 0, lc }); part(b, rectPts(WIN.x + 4, 672, WIN.w - 8, 5), P.radiator, { w: 0.7, tex: 0, lc });
-  hatch(b, k => k.rect(WIN.x + 4, 602, WIN.w - 8, 88), [WIN.x, 600, WIN.w, 92], { ang: -1.0, gap: 5, a: lit ? 0.25 : 0.45, w: 0.6, len: 14 });
+  hatch(b, k => k.rect(WIN.x + 4, 602, WIN.w - 8, 88), [WIN.x, 600, WIN.w, 92], { ang: -1.0, gap: 5 / HD, a: lit ? 0.25 : 0.45, w: 0.6, len: 14 });
   ink(b, seg(WIN.x + 2, 690, WIN.x + 2, WB), { w: 1.4, col: P.wire, taper: 0 }); ink(b, seg(WIN.x + WIN.w - 2, 690, WIN.x + WIN.w - 2, WB), { w: 1.4, col: P.wire, taper: 0 });   // 两根管子
 }
 function paintRope(b, P, lit) {   // 升降灯的绳子：从绞盘上去，过两个滑轮到灯的正上方。看绳子就知道绞盘管的是哪盏灯
@@ -620,7 +629,7 @@ function paintFloor(b, P, lit) {   // 地板：一条看得见面的木板，人
   const r = rnd(701);
   for (let i = 0; i < rows.length - 1; i++) for (let x = RL + r() * 120; x < RR; x += 150 + r() * 140) ink(b, seg(x, rows[i] + 1, x - 1.5, rows[i + 1] - 1), { w: 0.7, a: lit ? 0.6 : 0.7, taper: 0, col: lc });
   b.seedN = 7300;
-  hatch(b, k => k.rect(RL, WB, RR - RL, 24), [RL, WB, RR - RL, 24], { ang: -0.25, gap: 5, a: lit ? 0.25 : 0.45, w: 0.7, len: 30 });   // 墙脚的阴影
+  hatch(b, k => k.rect(RL, WB, RR - RL, 24), [RL, WB, RR - RL, 24], { ang: -0.25, gap: 5 / HD, a: lit ? 0.25 : 0.45, w: 0.7, len: 30 });   // 墙脚的阴影
   ink(b, seg(RL, WB, RR, WB), { w: 1.4, taper: 0, col: lc });
   ink(b, seg(RL, FF - 2, RR, FF - 2), { w: 0.9, a: lit ? 0.5 : 0.45, col: lit ? P.hi : DARK.hi, taper: 0 });   // 板沿上一道亮线
   ink(b, seg(RL, FF, RR, FF), { w: 1.6, taper: 0, col: lc }); ink(b, seg(RL, FF + FRONT, RR, FF + FRONT), { w: 1.1, a: 0.9, taper: 0, col: lc });
@@ -648,7 +657,7 @@ function paintClock(b, P, lit) {   // 座钟（钟肚子上的小门、钟摆是
   part(b, rectPts(x - 36, B - 228, 72, 82), P.wood, { w: 1.1, tex: 0.4, lc });    // 钟头
   part(b, [[x - 40, B - 228], [x - 33, B - 241], [x + 33, B - 241], [x + 40, B - 228]], P.woodHi, { w: 1.1, tex: 0.3, lc });   // 顶
   part(b, rectPts(x - 38, B - 150, 76, 6), P.woodHi, { w: 0.9, tex: 0, lc }); part(b, rectPts(x - 31, B - 34, 62, 5), P.woodHi, { w: 0.8, tex: 0, lc });
-  hatch(b, k => k.rect(x + 14, B - 228, 22, 198), [x + 10, B - 230, 30, 200], { ang: -1.0, gap: 4.5, a: lit ? 0.35 : 0.6, w: 0.7, len: 16 });   // 背窗的那一边打排线
+  hatch(b, k => k.rect(x + 14, B - 228, 22, 198), [x + 10, B - 230, 30, 200], { ang: -1.0, gap: 4.5 / HD, a: lit ? 0.35 : 0.6, w: 0.7, len: 16 });   // 背窗的那一边打排线
   part(b, arcPts(x, B - 187, 28, 28, 0, TAU, 24), P.dial, { w: 1, tex: 0.2, lc });   // 钟面
   for (let i = 0; i < 12; i++) { const a = i * TAU / 12; ink(b, seg(x + Math.cos(a) * 21, B - 187 + Math.sin(a) * 21, x + Math.cos(a) * 25, B - 187 + Math.sin(a) * 25), { w: 0.7, taper: 0, col: lc }); }
   ink(b, seg(x, B - 187, x - 9, B - 196), { w: 1.6, taper: 4, col: lc }); ink(b, seg(x, B - 187, x - 3.5, B - 207), { w: 1.1, taper: 4, col: lc });   // 快到午夜
@@ -662,7 +671,7 @@ function paintTable(b, P, lit) {   // 靠墙的条桌（抽屉是会动的，画
   for (const lx of [x0 + 7, x1 - 7]) part(b, tube([[lx, top + 46], [lx, base]], [10, 7.5]), P.wood, { w: 1, tex: 0.3, lc });   // 前腿：上粗下细
   part(b, rectPts(x0, top + 8, x1 - x0, 40), P.wood, { w: 1.1, tex: 0.4, lc });   // 望板
   part(b, rectPts(x0 - 8, top, x1 - x0 + 16, 9), P.woodHi, { w: 1.1, tex: 0.3, lc });   // 桌面
-  hatch(b, k => k.rect(x0, top + 9, x1 - x0, 40), [x0, top + 9, x1 - x0, 40], { ang: -0.95, gap: 5, a: lit ? 0.2 : 0.4, w: 0.6, len: 14 });
+  hatch(b, k => k.rect(x0, top + 9, x1 - x0, 40), [x0, top + 9, x1 - x0, 40], { ang: -0.95, gap: 5 / HD, a: lit ? 0.2 : 0.4, w: 0.6, len: 14 });
   if (!lit) ink(b, seg(x0 - 8, top + 1, x1 + 8, top + 1), { col: DARK.hi, a: 0.3, w: 0.8, taper: 0 });
   const vx = x0 + 32, tips = [[-26, -128], [-9, -150], [8, -136], [24, -118], [-2, -112]]; b.seedN = 7750;   // 花瓶，插着几根干枝
   for (const [tx, ty] of tips) ink(b, quadPts([vx, top - 40], [vx + tx * 0.25, top - 40 + (ty + 40) * 0.6], [vx + tx, top + ty], 8), { w: 0.9, col: P.twig, a: 1 });
@@ -929,7 +938,7 @@ function drawStand(b, P, lit) {
   const coat = [[cx - 14, top], ...quadPts([cx - 14, top], [cx - 24, top + 6], [cx - 24, top + 20], 5).slice(1), [cx - 29, B - 34], [cx + 33, B - 34], [cx + 27, top + 20], ...quadPts([cx + 27, top + 20], [cx + 26, top + 6], [cx + 14, top], 5).slice(1)];
   part(b, coat, P.coat, { w: 1.1, tex: 0.45, lc, seed: 34050 });
   b.save(); b.beginPath(); b.rect(cx + 4, top - 10, 60, B - top); b.clip();   // 背灯的那半边打排线
-  hatch(b, k => coat.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [cx, top, 40, B - 34 - top], { ang: -1.15, gap: 4.6, a: lit ? 0.45 : 0.6, w: 0.7, len: 20, seed: 34055 });
+  hatch(b, k => coat.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [cx, top, 40, B - 34 - top], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.45 : 0.6, w: 0.7, len: 20, seed: 34055 });
   b.restore();
   part(b, [[cx + 14, top + 12], ...quadPts([cx + 14, top + 12], [cx + 34, top + 46], [cx + 33, top + 104], 8).slice(1), [cx + 21, top + 104], [cx + 12, top + 20]], P.coatLo, { w: 0.9, tex: 0.3, lc, seed: 34060 });   // 右袖
   ink(b, seg(cx + 1, top + 26, cx + 2, B - 36), { w: 0.8, a: 0.8, col: lc, seed: 34070 });   // 前襟
@@ -1322,7 +1331,7 @@ function render() {
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(litMasked, ox, oy); g.setTransform(K, 0, 0, K, ox, oy);
   } else lightKey = '';
   drawOverlays(I, L);
-  texture(g, TEX.fine, 0.7, 'overlay'); texture(g, TEX.mott, 0.4, 'overlay');   // 纸的颗粒
+  texture(g, TEX.fine, 0.9, 'overlay'); texture(g, TEX.mott, 0.5, 'overlay');   // 纸的颗粒
   // 四周压暗
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.78);
