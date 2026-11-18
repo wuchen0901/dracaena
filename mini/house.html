@@ -2953,7 +2953,7 @@ function driveTick(dt, u) {
     if (u.uy > 0.6 || Math.abs(u.ux) > 0.5) hopOffBox(Math.abs(u.ux) > 0.5 ? Math.sign(u.ux) : 0);
     return;
   }
-  if (kid.mode === 'idle' && u && u.uy < -0.6 && nearBox()) return climbBox();   // 在脏衣篓旁边往上拖：跳上去
+  if (kid.mode === 'idle' && u && u.uy < -0.6 && nearBox() && u.ux * Math.sign(hamperX() - kid.x) > -0.3) { stickLock = { ...u }; return climbBox(); }   // 在脏衣篓旁边往上拖：跳上去（往上、往它那边斜着拖才算；站在它右边往右上拖是往右走）。站上去以后手指先松开或者换个方向，才会跳下来
   if (kid.mode === 'idle' && u && !driveStart(u)) return;
   if (kid.mode === 'walk' && kid.drive) driveRun(dt, u);
 }
@@ -3159,7 +3159,14 @@ function spots() {
   add('fusebox', [2284, 1394, 2376, 1490], 2314, 'cel', 1, [2330, 1450]);
   return out;
 }
-const spotAt = (wx, wy) => spots().find(s => wx >= s.r[0] - 6 && wx <= s.r[2] + 6 && wy >= s.r[1] - 6 && wy <= s.r[3] + 6);
+// 点到了哪样东西：点在它的框里，或者离框不到 SPOT_PAD 个屏幕像素（2026-11-18 主人说地上的拖鞋这些小东西点半天点不到：手机上画面缩得小，一只拖鞋只有指尖那么大）。
+// 几样都够得着就挑离得最近的；都点在框里就照 spots() 的顺序挑前面的
+const SPOT_PAD = 24;
+function spotAt(wx, wy) {
+  const pad = Math.max(6, SPOT_PAD / Z); let best = null, bd = Infinity;
+  for (const s of spots()) { const d = Math.hypot(Math.max(s.r[0] - wx, 0, wx - s.r[2]), Math.max(s.r[1] - wy, 0, wy - s.r[3])); if (d <= pad && d < bd) { bd = d; best = s; } }
+  return best;
+}
 // 孩子走到 (x, y) 要走多远：不到 REACH 才算在跟前（同一间屋子里几步路；别的楼层、隔着半间屋子都不算）
 const REACH = 240;
 function withinReach(x, y) {
@@ -3646,7 +3653,7 @@ window.__house = {
     render();
   },
   // 把孩子放到某处（给截图用）
-  put(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.mode = 'idle'; kid.path = []; const q = nearestOnPaths(x, y); enterKind({ kind: EDGES[q.e].kind, y }); [camFX, camFY] = camTarget(); render(); },
+  put(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.mode = 'idle'; kid.path = []; kid.onBox = null; kid.standY = 0; const q = nearestOnPaths(x, y); enterKind({ kind: EDGES[q.e].kind, y }); [camFX, camFY] = camTarget(); render(); },
 };
 </script>
 </body>
