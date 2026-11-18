@@ -3015,7 +3015,12 @@ function nearPushable() {
   for (const id in PUSHABLE) { const O = PUSHABLE[id], d = Math.abs(kid.x - O.x() - grabSide(id) * O.off); if (Math.abs(kid.y - FL[O.fl].gy) < 2 && d < GRAB_NEAR && (!best || d < best.d)) best = { id, d }; }
   return best ? best.id : null;
 }
-function startReach(o) { kid.mode = 'reach'; kid.r = { t: 0, k: 0, hit: false, used: false, tx: o.hx, ty: o.hy, ...o }; }
+// 伸手：要够的东西在背后（比如站在脏衣篓上、灯绳在身后），先转过身来、停一下再伸手，不反着手去够（2026-11-18 主人说背着手拉灯绳太诡异）
+function startReach(o) {
+  const dx = o.hx - kid.x, turn = Math.abs(dx) > 14 && Math.sign(dx) !== kid.face && kid.kind !== 'ladder';
+  if (turn) kid.face = Math.sign(dx);
+  kid.mode = 'reach'; kid.r = { t: turn ? -0.2 : 0, k: 0, hit: false, used: false, tx: o.hx, ty: o.hy, ...o };
+}
 function startPush(o) { kid.mode = 'push'; kid.pushY = o.pushY; kid.pull = !!o.pull; kid.push = { t: 0, x0: kid.x, sndT: -1, ...o }; }
 function hopTo(x1, s1, after) { kid.mode = 'hop'; kid.hop = { t: 0, dur: 0.42, x0: kid.x, x1, s0: kid.standY, s1, after }; }
 // 站到脏衣篓上（拖着走的时候）：在它旁边往上拖、按 ↑，或者点它，就跳上去站着；往下、往左右拖就跳下来。站在上面点灯绳，伸手一拉，人还站在上面
