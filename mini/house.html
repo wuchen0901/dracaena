@@ -1806,7 +1806,7 @@ function garbUpdate(dt) {
 }
 function caught(k) {
   if (kid.mode === 'caught') return;
-  if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
+  if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.snap && O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
   stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走
   kid.mode = 'caught'; kid.drive = false; kid.onBox = null; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
@@ -2953,9 +2953,15 @@ function driveTick(dt, u) {
 // 东西停在哪儿就是哪儿；松手时离头不到 15%（脏衣篓离灯绳底下、椅子离冰箱门），再滑一点靠上去，规则里才算推到了
 // 电脑上：走到它跟前，按住 E（或空格）抓住，再按方向键，松开 E 就放开
 const PUSHABLE = {
-  hamper: { T: () => V.hamperT, setT: t => { V.hamperT = t; }, x: () => hamperX(), span: HAMPER.x1 - HAMPER.x0, off: 54, fl: 'up', pushY: () => FL.up.gy - 52, speed: 90 },
-  chair: { T: () => V.chairT, setT: t => { V.chairT = t; }, x: () => chairX(), span: CHAIR.x1 - CHAIR.x0, off: 50, fl: 'down', pushY: () => FL.down.gy - 96, speed: 70 },
+  // 脏衣篓（2026-11-18 主人说只能在起点和灯绳底下之间推太机械、太明显）：往左推得过起点，一直到浴室门边；往右推得过灯绳，一直到浴缸边。
+  // 不往灯绳底下吸：离灯绳不到 HAMPER_ON 就算推到了（站上去够得着灯绳）
+  hamper: { T: () => V.hamperT, setT: t => { V.hamperT = t; }, x: () => hamperX(), span: HAMPER.x1 - HAMPER.x0, off: 54, fl: 'up', pushY: () => FL.up.gy - 52, speed: 90,
+    tMin: (1470 - HAMPER.x0) / (HAMPER.x1 - HAMPER.x0), tMax: (2050 - HAMPER.x0) / (HAMPER.x1 - HAMPER.x0), on: () => Math.abs(hamperX() - CORD.x) <= HAMPER_ON, snap: false },
+  // 椅子：右边是冰箱门、左边是桌子，本来就推不过去；松手时离冰箱门不到 15% 再滑一点靠上去
+  chair: { T: () => V.chairT, setT: t => { V.chairT = t; }, x: () => chairX(), span: CHAIR.x1 - CHAIR.x0, off: 50, fl: 'down', pushY: () => FL.down.gy - 96, speed: 70,
+    tMin: 0, tMax: 1, on: () => V.chairT >= 0.999, snap: true },
 };
+const HAMPER_ON = 28;
 const GRAB_HOLD = 0.28, GRAB_SNAP = 0.85, GRAB_NEAR = 90;   // 怎么推不出字告诉（2026-11-18 主人说那行字有点傻），靠玩家自己试出来
 let keyGrabTried = false;
 const grabHeld = () => (stick.on && stick.grabbing) || keys.has('grab');
@@ -2974,13 +2980,13 @@ function startGrab(id, side) {
 }
 function grabUpdate(dt, u) {
   const gr = kid.grab, O = PUSHABLE[gr.id];
-  if (!gr.rel && !grabHeld()) { gr.rel = true; const t = O.T(); if (t > GRAB_SNAP && t < 1) gr.snap = true; }
+  if (!gr.rel && !grabHeld()) { gr.rel = true; const t = O.T(); if (O.snap && t > GRAB_SNAP && t < 1) gr.snap = true; }
   let dir = 0, vmax = O.speed;
   if (gr.snap) { dir = 1; vmax = O.speed * 1.2; }
   else if (!gr.rel && kid.pushK > 0.85 && u && Math.abs(u.ux) > 0.35) { dir = Math.sign(u.ux); vmax *= 0.45 + 0.55 * u.m; }
   gr.v += (dir * vmax - gr.v) * (1 - Math.exp(-dt * 8));
-  const T0 = O.T(), T1 = clamp(T0 + gr.v * dt / O.span, 0, 1), dx = (T1 - T0) * O.span;
-  if ((T1 >= 1 && gr.v > 0) || (T1 <= 0 && gr.v < 0)) { if (Math.abs(gr.v) > 25 && Math.abs(dx) > 1e-4) snd.thump(); gr.v = 0; }   // 推到头了
+  const T0 = O.T(), T1 = clamp(T0 + gr.v * dt / O.span, O.tMin, O.tMax), dx = (T1 - T0) * O.span;
+  if ((T1 >= O.tMax && gr.v > 0) || (T1 <= O.tMin && gr.v < 0)) { if (Math.abs(gr.v) > 25 && Math.abs(dx) > 1e-4) snd.thump(); gr.v = 0; }   // 推到头了
   if (gr.snap && T1 >= 1) gr.snap = false;
   O.setT(T1); kid.x += dx;
   if (Math.abs(dx) > 1e-4) {
@@ -2991,10 +2997,10 @@ function grabUpdate(dt, u) {
   if (gr.rel && !gr.snap) { kid.pushK = Math.max(0, kid.pushK - dt / 0.2); if (kid.pushK <= 0) grabEnd(); }
   else kid.pushK = Math.min(1, kid.pushK + dt / 0.22);
 }
-function grabEnd() {   // 松手：东西在头上就算推到了，不在就算没有（规则只认这两种）
+function grabEnd() {   // 松手：东西在地方上就算推到了（脏衣篓在灯绳底下附近、椅子靠着冰箱门），不在就算没有（规则只认这两种）
   const gr = kid.grab, O = PUSHABLE[gr.id];
   kid.mode = 'idle'; kid.grab = null; kid.pushK = 0; kid.pull = false;
-  const want = O.T() >= 0.999 ? 1 : 0;
+  const want = O.on() ? 1 : 0;
   if (want !== S[gr.id]) commit(act(S, gr.id, null));
 }
 function grabTick(dt) {   // 每一帧：长按够久了就去抓；按住 E 也一样
@@ -3228,9 +3234,9 @@ function perform(sp, h, r) {
     case 'cord':     // 跳上脏衣篓，拉一下灯绳，跳下来（已经站在上面了：伸手拉一下，还站着）
       if (kid.onBox) return startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
         drive: rr => { V.cordPull = rr.hit ? rr.k : 0; rr.tx = CORD.x + V.cordSwing * 34; rr.ty = rr.hy + V.cordPull * 18; }, onHit: () => commit(r) });
-      return hopTo(HAMPER.x1, HAMPER.h + 6, () => startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
+      return hopTo(hamperX(), HAMPER.h + 6, () => startReach({ hx: CORD.x, hy: CORD.end + 6, pre: 0.12, hold: 0.22,
         drive: rr => { V.cordPull = rr.hit ? rr.k : 0; rr.tx = CORD.x + V.cordSwing * 34; rr.ty = rr.hy + V.cordPull * 18; },
-        onHit: () => commit(r), after: () => hopTo(HAMPER.x1 - 50, 0) }));
+        onHit: () => commit(r), after: () => hopTo(hamperX() - 50, 0) }));
     case 'bathdoor': V.bdoorPulse = V.T; break;   // 先把门推开，再塞拖鞋 / 拿拖鞋
     case 'hlamp': if (ev === 'bulbIn' || ev === 'bulbInDark') { o.pre = 0.75; o.wiggle = true; o.hold = 0.45; snd.screw(); } break;
     case 'winch': o.crank = true; o.hold = 3.0; break;
