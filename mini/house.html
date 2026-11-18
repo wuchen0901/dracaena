@@ -84,9 +84,10 @@ function act(s, spot, held, R = reach(s)) {
       if (s.slipper === 'door') { n.slipper = 'inv'; return ok('take:slipper', 'unwedge'); }
       return no('swingsShut');
     // 门厅
-    case 'hdrawer': if (held) return no('no'); n.drawer = 1 - s.drawer; return ok(n.drawer ? 'drawerOpen' : 'drawerShut');
+    // 抽屉、钟门、柜子、冰箱开了就开着，再点不会关上（2026-11-18 主人说常常想拿里面的东西，结果把它又关上了；关上也没有用）
+    case 'hdrawer': if (held) return no('no'); if (s.drawer) return no('look'); n.drawer = 1; return ok('drawerOpen');
     case 'hbulb': if (held || !s.drawer || s.bulb !== 'drawer') return no('no'); n.bulb = 'inv'; return ok('take:bulb');
-    case 'hclock': if (held) return no('no'); n.clock = 1 - s.clock; return ok(n.clock ? 'clockOpen' : 'clockShut');
+    case 'hclock': if (held) return no('no'); if (s.clock) return no('look'); n.clock = 1; return ok('clockOpen');
     case 'hcrank': if (held || !s.clock || s.crank !== 'clock') return no('no'); n.crank = 'inv'; return ok('take:crank');
     case 'hlamp':
       if (held === 'bulb') { if (s.lamp) return no('high'); n.bulb = 'lamp'; return ok(power(s) ? 'bulbIn' : 'bulbInDark'); }
@@ -109,11 +110,11 @@ function act(s, spot, held, R = reach(s)) {
       if (held) return no('no');
       return no(s.log !== 'fire' ? 'needLog' : s.damper ? 'look' : 'smoky');
     case 'damper': if (held) return no('no'); n.damper = 1 - s.damper; return ok(n.damper ? 'damperOpen' : 'damperShut');
-    case 'side': if (held) return no('no'); n.side = 1 - s.side; return ok(n.side ? 'sideOpen' : 'sideShut');
+    case 'side': if (held) return no('no'); if (s.side) return no('look'); n.side = 1; return ok('sideOpen');
     case 'fuse': if (held || !s.side || s.fuse !== 'side') return no('no'); n.fuse = 'inv'; return ok('take:fuse');
     // 厨房
     case 'chair': if (held) return no('no'); n.chair = 1 - s.chair; if (!n.chair) n.fridge = 0; return ok(n.chair ? 'chairIn' : 'chairOut');
-    case 'fridge': if (held) return no('no'); if (!s.chair) return no('fridgeShuts'); n.fridge = 1 - s.fridge; return ok(n.fridge ? 'fridgeOpen' : 'fridgeShut');
+    case 'fridge': if (held) return no('no'); if (!s.chair) return no('fridgeShuts'); if (s.fridge) return no('look'); n.fridge = 1; return ok('fridgeOpen');   // 椅子顶着的门关不上；椅子拉开了门才关
     case 'shelf': if (held || s.candle !== 'shelf') return no('no'); n.candle = 'inv'; return ok('take:candle');
     case 'honey': if (held || !s.fridge || s.honey !== 'fridge') return no('no'); n.honey = 'inv'; return ok('take:honey');
     // 窗玻璃上的萤火虫：够不着，伸手、拿罐子去扣都飞散；台面上放了蜂蜜，它们飞下来吃，这时候拿罐子一扣
@@ -3149,9 +3150,12 @@ function kidUpdate(dt) {
 }
 
 // ---------- 点一下 ----------
-// 能点的地方。r 是点得到的范围（世界坐标），stand 是孩子站到哪儿去够，face 朝哪边，hand 手伸到哪儿。排在前面的先算
+// 能点的地方。r 是它在哪儿（世界坐标，提示的圈圈着它），stand 是孩子站到哪儿去够，face 朝哪边，hand 手伸到哪儿。排在前面的先算
+// hit 是点得到的范围（不给就是 r）：抽屉、钟门、柜子、冰箱开着、东西还在里面的时候，点在它们身上哪儿都算点那样东西
+// （2026-11-18 主人说常常想拿里面的东西，结果点到抽屉上把它又关上了）；开着、空了就不算能点的东西
 function spots() {
-  const out = [], up = FL.up.gy, dn = FL.down.gy, add = (id, r, sx, fl, face, hand) => out.push({ id, r, stand: { x: sx, y: FL[fl].gy }, face, hand });
+  const out = [], up = FL.up.gy, dn = FL.down.gy, add = (id, r, sx, fl, face, hand, hit) => out.push({ id, r, hit: hit ? [Math.min(r[0], hit[0]), Math.min(r[1], hit[1]), Math.max(r[2], hit[2]), Math.max(r[3], hit[3])] : r, stand: { x: sx, y: FL[fl].gy }, face, hand });
+  const DRAWER_R = [3660, 880, 3760, 932], CLOCK_R = [3444, 736, 3516, 970], SIDE_R = [1464, 872, 1646, 946], FRIDGE_R = [FRIDGE.x0, FRIDGE.top, FRIDGE.x1, dn + 6];
   // 卧室
   if (S.slipper === 'bed') add('slipper', [972, 216, 1046, 252], 988, 'up', 1, [1004, 228]);
   add('plug', [584, 164, 676, 252], 590, 'up', 1, [628, 202]);
@@ -3162,26 +3166,26 @@ function spots() {
   add('hamper', [hx - 44, up - 94, hx + 44, up + 8], S.hamper ? hx + 54 : hx - 54, 'up', S.hamper ? -1 : 1, [hx + (S.hamper ? 30 : -30), up - 52]);
   add('bathdoor', [2672, -30, 2728, up + 8], 2680, 'up', 1, [2698, up - 12]);
   // 门厅（和一屏的门厅一样，整个挪过来）
-  if (S.drawer && S.bulb === 'drawer') add('hbulb', [3704, 870, 3740, 904], 3670, 'down', 1, [3720, 893]);
-  if (S.clock && S.crank === 'clock') add('hcrank', [3474, 864, 3508, 908], 3542, 'down', -1, [3491, 886]);
+  if (S.drawer && S.bulb === 'drawer') add('hbulb', [3704, 870, 3740, 904], 3670, 'down', 1, [3720, 893], DRAWER_R);
+  if (S.clock && S.crank === 'clock') add('hcrank', [3474, 864, 3508, 908], 3542, 'down', -1, [3491, 886], CLOCK_R);
   const ly = hallLampY();
   add('hlamp', [HLAMP.x - 52, ly - 56, HLAMP.x + 52, ly + 14], 3952, 'down', 1, [HLAMP.x, ly + 3]);
   add('winch', [3822, 864, 3878, 932], 3812, 'down', 1, [HWINCH.x, HWINCH.y]);
-  add('hdrawer', [3660, 880, 3760, 932], 3656, 'down', 1, [3710, 904]);
-  add('hclock', [3444, 736, 3516, 970], 3545, 'down', -1, [3496, 882]);
+  if (!S.drawer) add('hdrawer', DRAWER_R, 3656, 'down', 1, [3710, 904]);
+  if (!S.clock) add('hclock', CLOCK_R, 3545, 'down', -1, [3496, 882]);
   add('stand', [HSTAND.x - 52, HSTAND.base - 236, HSTAND.x + 54, HSTAND.base + 8], HSTAND.x - 72, 'down', 1, [HSTAND.x - 26, HSTAND.base - 108]);
   add('door', [FRONT.x - 8, FRONT.fan - 8, FRONT.x + FRONT.w + 8, FL.down.wb + 4], 4359, 'down', 1, [FRONT.x + 14, 874]);
   // 客厅
   if (S.log === 'basket') add('basket', [2420, 912, 2520, 1006], 2510, 'down', -1, [2482, 952]);
   add('damper', [2242, 844, 2316, 900], 2326, 'down', -1, [2294, 884]);
   add('fire', [2178, 900, 2342, 1006], 2294, 'down', -1, [2272, 968]);
-  if (S.side && S.fuse === 'side') add('fuse', [1548, 870, 1598, 918], 1612, 'down', -1, [1572, 902]);
-  add('side', [1464, 872, 1646, 946], 1648, 'down', -1, [1610, 914]);
+  if (S.side && S.fuse === 'side') add('fuse', [1548, 870, 1598, 918], 1612, 'down', -1, [1572, 902], SIDE_R);
+  if (!S.side) add('side', SIDE_R, 1648, 'down', -1, [1610, 914]);
   // 厨房
   const cx = chairX();
   add('chair', [cx - 34, dn - 200, cx + 36, dn + 6], cx + 50, 'down', -1, [cx + 22, dn - 96]);
-  if (S.fridge && S.honey === 'fridge') add('honey', [HONEY_FR.x - 18, HONEY_FR.y - 36, HONEY_FR.x + 18, HONEY_FR.y + 4], 1312, 'down', -1, [HONEY_FR.x, HONEY_FR.y - 14]);
-  add('fridge', [FRIDGE.x0, FRIDGE.top, FRIDGE.x1, dn + 6], 1230, 'down', -1, [1208, 872]);
+  if (S.fridge && S.honey === 'fridge') add('honey', [HONEY_FR.x - 18, HONEY_FR.y - 36, HONEY_FR.x + 18, HONEY_FR.y + 4], 1312, 'down', -1, [HONEY_FR.x, HONEY_FR.y - 14], FRIDGE_R);
+  if (!S.fridge) add('fridge', FRIDGE_R, 1230, 'down', -1, [1208, 872]);
   if (!S.lit) { if (S.honey === 'sill') add('flies', [HONEY_AT.x - 46, HONEY_AT.y - 70, HONEY_AT.x + 36, HONEY_AT.y + 6], 830, 'down', -1, [HONEY_AT.x, HONEY_AT.y - 12]);
     else add('flies', [650, 470, 810, HONEY_AT.y + 4], 830, 'down', -1, [HONEY_AT.x, HONEY_AT.y - 8]); }
   if (S.candle === 'shelf') add('shelf', [314, 798, 362, 870], 348, 'down', -1, [338, 858]);
@@ -3196,7 +3200,7 @@ function spots() {
 const SPOT_PAD = 24;
 function spotAt(wx, wy) {
   const pad = Math.max(6, SPOT_PAD / Z); let best = null, bd = Infinity;
-  for (const s of spots()) { const d = Math.hypot(Math.max(s.r[0] - wx, 0, wx - s.r[2]), Math.max(s.r[1] - wy, 0, wy - s.r[3])); if (d <= pad && d < bd) { bd = d; best = s; } }
+  for (const s of spots()) { const b = s.hit, d = Math.hypot(Math.max(b[0] - wx, 0, wx - b[2]), Math.max(b[1] - wy, 0, wy - b[3])); if (d <= pad && d < bd) { bd = d; best = s; } }
   return best;
 }
 // 孩子走到 (x, y) 要走多远：不到 REACH 才算在跟前（同一间屋子里几步路；别的楼层、隔着半间屋子都不算）
@@ -3315,8 +3319,8 @@ function commit(r) {
       case 'bathOff': snd.click(); break;
       case 'wedge': drop('slipper'); snd.thump(); break;
       case 'unwedge': snd.creak(); break;
-      case 'drawerOpen': case 'drawerShut': case 'sideOpen': case 'sideShut': snd.drawer(); break;
-      case 'clockOpen': case 'clockShut': snd.latch(); break;
+      case 'drawerOpen': case 'sideOpen': snd.drawer(); break;
+      case 'clockOpen': snd.latch(); break;
       case 'bulbIn': drop('bulb'); V.lt0.hall = V.T; V.swayV += 0.06; snd.lightOn(); break;
       case 'bulbInDark': drop('bulb'); V.swayV += 0.06; snd.click(); break;
       case 'crankOn': drop('crank'); snd.latch(); break;
@@ -3326,7 +3330,6 @@ function commit(r) {
       case 'catch': V.swarm.catchT = V.T; puff(HONEY_AT.x, HONEY_AT.y - 24, [214, 255, 140], 10); snd.latch(); snd.catchFlies(); break;
       case 'damperOpen': case 'damperShut': snd.clank(); break;
       case 'fridgeOpen': snd.fridge(); break;
-      case 'fridgeShut': snd.thump(); break;
       case 'hatchOpen': case 'hatchShut': snd.hatch(); break;
       case 'fuseIn': drop('fuse'); snd.screw(); break;
       case 'powerOn': V.lt0.power = V.T; if (S.bulb === 'lamp') V.lt0.hall = V.T; V.candleDown = 0; snd.power(); break;
