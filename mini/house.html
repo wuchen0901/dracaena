@@ -2605,7 +2605,7 @@ const newView = () => ({
   fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
-  fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10,
+  fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10, progT: 0,   // progT：最后一次做成一件事的时候（卡住多久了）
   imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
@@ -3261,7 +3261,7 @@ function perform(sp, h, r) {
   startReach(o);
 }
 function commit(r) {
-  S = r.s;
+  S = r.s; V.progT = V.T;
   if (kid.r) kid.r.used = true;
   for (const ev of r.ev) {
     if (ev.startsWith('take:')) { const it = ev.slice(5), a = kidPose().arms[0]; bag.push(it); fly.push({ it, x0: a.hx, y0: a.hy - 8, t: 0 }); snd.take(); continue; }
@@ -3438,6 +3438,7 @@ function grabKid() {
   return { sx, sy, w, h };
 }
 const inFront = a => a.L.id === 'candle' && S.candle === 'inv' && !V.candleDown;
+const STUCK_T = 120;   // 卡住多少秒，能用的东西才开始闪
 function drawOverlays(lights) {
   const T = V.T, kc = grabKid();
   drawLightGlows(lights.filter(a => !inFront(a)));
@@ -3455,8 +3456,12 @@ function drawOverlays(lights) {
     [DAMPER.x + 30, DAMPER.y + 16, 2.7, !S.damper], [(SIDE.x0 + SIDE.x1) / 2, SIDE.top + 27, 4.4, !S.side], [FRIDGE.x0 + 17, FRIDGE.top + 100, 0.9, !S.fridge],
     [HATCH.x1 - 30, FL.down.gy - 4, 3.2, !S.hatch], [FUSEBOX.x, FUSEBOX.y, 1.6, !power(S)], [1010, FL.up.gy - 8, 2.4, S.slipper === 'bed'],   // 床边的拖鞋也闪一下
   ];
-  for (const [x, y, ph, want] of glints) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (1 - coverage(x, y, lights)));
-  if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
+  // 闪一下的小星星会露出哪儿能用（2026-11-18 主人说一开始不要闪）：做成一件事以后 STUCK_T 秒还没做成下一件，才慢慢开始闪；一做成又停下
+  const stuck = clamp((T - V.progT - STUCK_T) / 4, 0, 1);
+  if (stuck > 0) {
+    for (const [x, y, ph, want] of glints) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (1 - coverage(x, y, lights)));
+    if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
+  }
   g.save(); g.globalCompositeOperation = 'lighter';
   for (const p of parts) { g.fillStyle = css(p.col, Math.min(0.6, p.life)); g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); }
   g.restore();
@@ -3615,7 +3620,7 @@ cv.addEventListener('pointermove', e => {
     if (stick.drag) { const dx = stick.px - stick.ax, dy = stick.py - stick.ay, L = Math.hypot(dx, dy); if (L > STICK_R) { stick.ax = stick.px - dx / L * STICK_R; stick.ay = stick.py - dy / L * STICK_R; } }   // 拖远了，圈跟着手指走：往回拖马上就掉头
   }
   if (!mouse.on) return;
-  const over = ui.some(u => Math.hypot(e.clientX - u.x, e.clientY - u.y) <= u.r) || (!won && (bag[slotAt(e.clientX, e.clientY)] || spotAt(camX + e.clientX / Z, camY + e.clientY / Z)));
+  const over = ui.some(u => Math.hypot(e.clientX - u.x, e.clientY - u.y) <= u.r) || (!won && bag[slotAt(e.clientX, e.clientY)]);   // 画面里能用的东西上面鼠标不变成小手（2026-11-18 主人说会露出马脚）；按钮、物品栏照旧
   cv.style.cursor = over ? 'pointer' : 'default';
 });
 addEventListener('keydown', e => {
