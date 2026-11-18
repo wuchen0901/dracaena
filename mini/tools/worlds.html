@@ -2590,7 +2590,8 @@ window.__house = {
 };
 
 // ---------- 四种世界：给主人挑风格用的效果图（只在 mini/tools/worlds.html 里，游戏本身不用）----------
-// ?world=clothes 空衣服（门厅）、paper 纸上画出来的世界（卧室）、light 光是活的（客厅）、frost 冻住的冬夜（浴室）。
+// ?world=clothes 空衣服（门厅）、paper 纸上画出来的世界（卧室）、light 光是活的（客厅）、frost 冻住的冬夜（浴室）；
+// mixed 是主人挑的 1 和 3 合在一起（门厅）：光是活的、一盏盏在死，光灭了的地方人就不见了，只剩衣服，衣服里灌满了会流的墨。
 // 底子就是《夜里的房子》，每种世界换上自己的怪物、鸟和小动物、黑暗的样子；都按“暗黑恐怖”的程度画
 const WORLD = qs.get('world') || '';
 let SKETCH_NOW = false;
@@ -2599,7 +2600,7 @@ const wPath = (k, pts) => { pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.mo
 const wPoly = (b, pts, col, a = 1) => fillPts(b, pts, col, a);
 
 // ===== 1 空衣服：大人都不见了，只剩下他们的衣服；天一黑，衣服自己走动。照亮了就只是衣服 =====
-function wEmptyCoat(b, P, lit, x, B, f, t) {   // 一件没有人的长大衣，帽子飘在空领口上面，一只袖子伸过来
+function wEmptyCoat(b, P, lit, x, B, f, t, inky) {   // 一件没有人的长大衣，帽子飘在空领口上面，一只袖子伸过来
   const lc = lcOf(P, lit), lean = -0.07 + Math.sin(t * 0.8) * 0.015;
   b.save(); b.translate(x, B); b.scale(f, 1); b.rotate(lean); b.seedN = 410000;
   b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(4, 8, 44, 5, 0, 0, 7); b.fill();   // 飘着，地上只有一点影子
@@ -2618,10 +2619,21 @@ function wEmptyCoat(b, P, lit, x, B, f, t) {   // 一件没有人的长大衣，
   // 领子竖着，领口里面是空的、黑的，两只眼睛在里面
   part(b, [[-19, -150], [-13, -170], [17, -170], [21, -150], [10, -155], [-8, -155]], P.coatLo, { w: 0.9, tex: 0, lc, seed: 410040 });
   fillPts(b, arcPts(1, -161, 13, 5.5, 0, TAU, 14), '#000000');
-  b.fillStyle = lit ? '#f4efe0' : '#ff6a5e'; for (const [ex, ey, r] of [[-4, -161, 1.9], [6, -160.5, 1.5]]) { b.beginPath(); b.ellipse(ex, ey, r, r * 1.25, 0, 0, 7); b.fill(); }
+  if (inky && !lit) {
+    fillPts(b, curvePts([[-14, -163], [0, -168], [16, -163], [18, -150], [12, -138], [4, -150], [-2, -128], [-8, -146], [-14, -150]], true, 4), INK);
+    wInkDrips(b, [[-6, -146, 34], [4, -150, 66], [13, -146, 24]], 416000);
+    for (const [ex, ey, er] of [[-8, -161, 2.3], [0, -157, 3.2], [8, -163, 2.1], [12, -155, 1.6], [3, -146, 1.5]]) { b.fillStyle = '#e9edf6'; b.beginPath(); b.ellipse(ex, ey, er, er * 0.8, 0, 0, 7); b.fill(); b.fillStyle = '#05060a'; b.beginPath(); b.ellipse(ex + er * 0.35, ey + er * 0.1, er * 0.45, er * 0.5, 0, 0, 7); b.fill(); }
+  } else { b.fillStyle = lit ? '#f4efe0' : '#ff6a5e'; for (const [ex, ey, r] of [[-4, -161, 1.9], [6, -160.5, 1.5]]) { b.beginPath(); b.ellipse(ex, ey, r, r * 1.25, 0, 0, 7); b.fill(); } }
   // 近的那只袖子伸过来，袖口空空的
   part(b, tube([[20, -138], [50, -112], [84, -118]], [17, 15, 14]), P.coat, { w: 0.9, tex: 0.3, lc, seed: 410050 });
   part(b, arcPts(87, -118, 3.6, 7.5, 0, TAU, 12), '#000000', { w: 0.6, tex: 0, lc, seed: 410051 });
+  if (inky && !lit) {
+    const tp = cubPts([87, -118], [108, -132 + Math.sin(t * 1.6) * 6], [128, -104], [150, -116 + Math.sin(t * 2.1) * 5], 16);
+    ink(b, tp, { col: INK, w: 8 / b.pen.w, a: 1 / b.pen.a, taper: 0, prof: q => Math.max(0.08, 1 - q * 0.95), amp: 0.5, seed: 416100 });
+    ink(b, tp.slice(1, 9), { col: '#8d9cc4', w: 0.6, a: 0.35, taper: 10, seed: 416101 });
+    wInkDrips(b, [[86, -112, 18], [-31, -55, 26], [-24, -6, 12], [-6, -4, 20], [16, -5, 9], [34, -8, 16]], 416200);
+    b.fillStyle = INK; b.beginPath(); b.ellipse(4, 10, 52, 5, 0, 0, 7); b.fill();
+  }
   wInk(b, [[60, -124], [62, -106]], lc, 0.6, 0.7, 410052);
   // 帽子飘在空领口上面
   b.save(); b.translate(3, -204 + Math.sin(t * 1.3) * 2); b.rotate(-0.14);
@@ -2898,15 +2910,17 @@ function wFrozenBird(b, x, y) {   // 窗台上冻住的麻雀：闭着眼，嘴�
   wIcicle(b, x + 17, y - 16, 10, 2.5, 444200, false);
 }
 
+function wInkDrips(b, pts, seed) { for (const [x, y, len] of pts) { ink(b, seg(x, y, x + 0.5, y + len), { col: INK, w: 3 / b.pen.w, a: 1 / b.pen.a, taper: 0, prof: q => 1 - q * 0.6, seed: seed + Math.round(x * 3 + y) }); b.fillStyle = INK; b.beginPath(); b.ellipse(x + 0.5, y + len + 2.6, 2.8, 3.8, 0, 0, 7); b.fill(); } }
+
 // ---------- 接到房子里 ----------
 const _drawDynamic = drawDynamic, _drawFear = drawFear, _drawOverlays = drawOverlays, _drawCandle = drawCandle, _paintRoomLayer = paintRoomLayer, _paintWindow = paintWindow, _paintMoonlight = paintMoonlight;
 drawFear = (b, P, lit, k) => {
-  if (WORLD === 'clothes' && k === 'stand') return wBareStand(b, P, lit);
+  if ((WORLD === 'clothes' || WORLD === 'mixed') && k === 'stand') return wBareStand(b, P, lit);
   if (WORLD === 'light' && k === 'chair' && !lit) return;
   if (WORLD === 'frost' && k === 'towel' && !lit) return;
   _drawFear(b, P, lit, k);
 };
-drawCandle = (b, P, lit, x, y, on, seed, k = 1) => WORLD === 'light' && seed === 37200 ? wJar(b, P, lit, x, y + 2, seed, k * 1.1) : _drawCandle(b, P, lit, x, y, on, seed, k);
+drawCandle = (b, P, lit, x, y, on, seed, k = 1) => (WORLD === 'light' || WORLD === 'mixed') && seed === 37200 ? wJar(b, P, lit, x, y + 2, seed, k * 1.1) : _drawCandle(b, P, lit, x, y, on, seed, k);
 paintWindow = (b, P, lit, x, y, w, h, seed, o = {}) => SKETCH_NOW ? wSketchWindow(b, P, x, y, w, h, seed, o) : _paintWindow(b, P, lit, x, y, w, h, seed, o);
 paintMoonlight = (...a) => { if (!SKETCH_NOW) _paintMoonlight(...a); };
 paintRoomLayer = (id, lit) => {
@@ -2924,6 +2938,10 @@ if (WORLD === 'light') {   // 落地灯上的鸟、顶灯里的小虫也发光
   LIGHTS.push({ id: 'bird', off: 0.1, up: 0.3, at: () => ({ x: 2602, y: 664, R: 210, I: 0.62 * (0.92 + 0.08 * Math.sin(V.T * 3)), clip: roomClip('living') }) });
   LIGHTS.push({ id: 'lmoth', off: 0.3, up: 0.5, at: () => ({ x: 2050, y: ROOMS.living.top + 96, R: 170, I: 0.3 + 0.15 * Math.abs(Math.sin(V.T * 7.3) * Math.sin(V.T * 2.1)), clip: roomClip('living') }) });
 }
+if (WORLD === 'mixed') {   // 座钟顶上停着一只肚子是灯泡的鸟；吊灯的灯泡里关着一只快死了的小虫
+  LIGHTS.push({ id: 'bird', off: 0.1, up: 0.3, at: () => ({ x: HCLOCK.x + 2, y: HCLOCK.base - 257, R: 190, I: 0.6 * (0.92 + 0.08 * Math.sin(V.T * 3)), clip: [2720, -410, 4480, 1060] }) });
+  LIGHTS.push({ id: 'lmoth', off: 0.3, up: 0.5, at: () => { const q = hallLampPos(); return { x: q.x, y: q.y, R: 110, I: 0.14 + 0.14 * Math.abs(Math.sin(V.T * 7.3) * Math.sin(V.T * 2.1)), clip: [2720, -410, 4480, 1060] }; } });
+}
 drawDynamic = (b, lit, vis) => {
   const P = lit ? LIT : DARK, t = V.T, kh = kidHand() || { x: kid.x, y: kid.y - 100 };
   kidVisible = false; _drawDynamic(b, lit, vis); kidVisible = true;
@@ -2933,6 +2951,23 @@ drawDynamic = (b, lit, vis) => {
     wHangerBird(b, P, lit, 3750, 557, 1.05, -1, 414100, t);
     wGlove(b, P, lit, 3990, 1000, -1, true, t, 415000); wGlove(b, P, lit, 4064, 1004, -1, true, t + 0.5, 415100); wGlove(b, P, lit, 3748, 1003, 1, false, t, 415200);
     wEmptyCoat(b, P, lit, 3930, 992, -1, t);
+  }
+  if (WORLD === 'mixed' && vis.hall) {
+    if (!lit) {   // 墨：从楼梯口的楼板往下滴，从前门底下渗进来，裤子在楼梯上踩出一个个墨脚印，手套爬过的地方拖着墨
+      wInkDrips(b, [[2960, 300, 60], [3010, 300, 110], [3046, 300, 40]], 417000);
+      b.fillStyle = INK; b.beginPath(); b.ellipse(2990, 1002, 70, 5, 0, 0, 7); b.fill();
+      wInkBlob(b, [[4380, 958], [4490, 958], [4486, 980], [4430, 994], [4360, 1004], [4300, 1006], [4340, 990]], [], 417100);
+      for (const [x, y] of [[3240, 669], [3214, 645], [3190, 621 + 24 * 0], [3266, 693]]) { b.fillStyle = INK; b.beginPath(); b.ellipse(x, y - 1, 9, 2.6, 0, 0, 7); b.fill(); }
+      for (const [x0, x1] of [[4000, 4120], [4074, 4200]]) { b.strokeStyle = INK; b.lineWidth = 2.4; b.lineCap = 'round'; b.beginPath(); b.moveTo(x0, 1001); b.quadraticCurveTo((x0 + x1) / 2, 1004, x1, 1002); b.stroke(); }
+    }
+    wDress(b, P, lit, 3060, 470, t); if (!lit) wInkDrips(b, [[3040, 636, 30], [3070, 640, 52], [3096, 634, 22]], 417200);
+    wTrousers(b, P, lit); if (!lit) wInkDrips(b, [[3150, 690, 26], [3166, 690, 14]], 417300);
+    for (const [x, i] of [[3215, 0], [3040, 1]]) wHangerBird(b, P, lit, x, 512 + (3300 - x) / 400 * 380, 1.2, i ? 1 : -1, 414000 + i * 50, t);
+    wHangerBird(b, P, lit, 3750, 557, 1.05, -1, 414100, t);
+    wGlove(b, P, lit, 4030, 1000, -1, true, t, 415000); wGlove(b, P, lit, 4104, 1004, -1, true, t + 0.5, 415100); wGlove(b, P, lit, 3708, 1003, 1, false, t, 415200);
+    wEmptyCoat(b, P, lit, 3975, 992, -1, t, true);
+    wLampBird(b, P, lit, HCLOCK.x + 2, HCLOCK.base - 241, t);
+    const q = hallLampPos(); b.fillStyle = lit ? '#fff4c8' : '#d8dcc0'; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(q.x + sd * 4, q.y - 1, 4, 2.2 + Math.abs(Math.sin(t * 20)) * 1.2, sd * 0.5, 0, 7); b.fill(); }
   }
   if (WORLD === 'paper' && vis.bedroom) {
     if (!lit) { wCrane(b, 304, 84, 1.3, 1, 421000); wCrane(b, 376, 84, 1.1, -1, 421050); }
@@ -2962,6 +2997,10 @@ drawOverlays = lights => {
     glowAt(3934, 831, 22, C.danger, 0.45);
     for (let i = 0; i < 6; i++) { const an = T * (1.3 + hash(i, 4) * 1.4) + i * 2.1, x = 4436 + Math.cos(an) * 40 * (0.5 + hash(i, 7)), y = 726 + Math.sin(an * 1.3) * 22, fl = Math.abs(Math.sin(T * 24 + i * 3)); g.fillStyle = css(C.moon, 0.55); g.beginPath(); g.ellipse(x - 2.4, y, 2.6, 1.6 * (0.4 + fl), -0.5, 0, 7); g.ellipse(x + 2.4, y, 2.6, 1.6 * (0.4 + fl), 0.5, 0, 7); g.fill(); }
   }
+  if (WORLD === 'mixed') {
+    const kh = kidHand(); if (kh) for (let i = 0; i < 9; i++) { const esc = i > 5, an = T * (1.1 + i * 0.13) + i * 1.9, rr = esc ? 60 + i * 26 : 26 + 10 * Math.sin(T + i), x = kh.x + (esc ? rr : Math.cos(an) * rr), y = kh.y - 20 + Math.sin(an * 1.3) * (esc ? 14 : rr * 0.7) - (esc ? i * 6 : 0); glowAt(x, y, 7, [235, 255, 150], esc ? 0.25 : 0.55); }
+    glowAt(3975, 834, 22, [170, 185, 225], 0.2);
+  }
   if (WORLD === 'paper') {
     for (let i = 0; i < 7; i++) { const an = T * (0.9 + hash(i, 3) * 0.8) + i * 1.7, x = 1162 + Math.cos(an) * 60 * (0.5 + hash(i, 5)), y = 66 + Math.sin(an * 1.4) * 30, ro = T * 3 + i; g.save(); g.translate(x, y); g.rotate(ro); g.fillStyle = css([226, 220, 206], 0.85); g.fillRect(-3.5, -2.2, 7, 4.4); g.restore(); }
   }
@@ -2981,6 +3020,7 @@ function worldScene() {
   const put = (patch, x, y, face, cx, cy, fear = 0.35) => { window.__house.set(patch); window.__house.put(x, y, face); kid.fearK = fear; camFX = cx; camFY = cy; LT = activeLights(); render(); };
   const lateHall = { plug: 1, hamper: 1, bath: 1, slipper: 'door', drawer: 1, bulb: 'inv', clock: 1, crank: 'winch', lamp: 1, log: 'fire', damper: 1, side: 1, fuse: 'inv', chair: 1, fridge: 1, candle: 'inv', lit: 1 };
   if (WORLD === 'clothes') put(lateHall, 3640, FL.down.gy, 1, 2940, 255);
+  if (WORLD === 'mixed') put({ ...lateHall, bulb: 'lamp' }, 3600, FL.down.gy, 1, 2940, 255);
   if (WORLD === 'paper') put({ plug: 1 }, 1010, FL.up.gy, -1, -40, -505);
   if (WORLD === 'light') put({ plug: 1, hamper: 1, bath: 1, slipper: 'door', chair: 1, fridge: 1, candle: 'inv', lit: 1 }, 2300, FL.down.gy, -1, 1360, 255);
   if (WORLD === 'frost') put({ candle: 'inv', lit: 1 }, 1960, FL.up.gy, 1, 1380, -505);
