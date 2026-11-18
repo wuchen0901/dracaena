@@ -359,6 +359,7 @@ function tube(pts, ws) {
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
 };
 let muted = store.get('house.mute', false);
 
@@ -2616,7 +2617,8 @@ const newView = () => ({
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
   alpha: 1, lift: 0, scale: 1, blink: 0, blinkT: 2.5, shake: 0, fearK: 0, moon: 1, standY: 0, crouch: 0, pushK: 0, pushY: 0, pull: false, climbPh: 0, x0: 0, rdir: 1, waitFor: 0, after: null, push: null, hop: null });
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
-function restart() {
+function restart(keep) {
+  if (!keep) clearSave();
   S = { ...START }; bag = []; held = null; won = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
   V = newView(); kid = newKid(); LT = []; stickLock = null;
   [camFX, camFY] = camTarget(); camX = camFX; camY = camFY;
@@ -3090,7 +3092,7 @@ function kidUpdate(dt) {
     kid.t += dt; kid.ph = (kid.ph + dt * 1.25) % 1;
     const e = smooth(kid.t / 1.1);
     kid.lift = e * 36; kid.scale = 1 - e * 0.16; kid.alpha = 1 - smooth((kid.t - 0.35) / 0.75);
-    if (kid.t > 1.15) { kid.mode = 'gone'; kid.alpha = 0; won = 1; wonT = T; snd.win(); }
+    if (kid.t > 1.15) { kid.mode = 'gone'; kid.alpha = 0; won = 1; wonT = T; snd.win(); clearSave(); }
   }
   if (kid.mode === 'idle' && kid.crouch > 0) kid.crouch = Math.max(0, kid.crouch - dt * 2.5);
   kid.blink -= dt; kid.blinkT -= dt;   // 眨眼
@@ -3337,6 +3339,7 @@ function tick(dt) {
   LT = activeLights();
   garbUpdate(dt);
   if ((kid.mode === 'idle' || kid.mode === 'walk') && kid.kind === 'floor' && coverage(kid.x, kid.y - 80, LT) > 0.6) V.safe = { x: kid.x, y: kid.y };
+  if (T - saveT > 1 && kid.mode !== 'caught') { saveT = T; writeSave(); }
   // 门厅里有风（前门底下钻进来的）：拎着萤火虫走进门厅，它们冷得又暗下去了（要回壁炉边烤暖）
   if (S.lit && S.candle === 'inv' && !V.candleDown && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 1 && kid.x > 2745) {
     S = { ...S, lit: 0 }; V.blowT = T; const hd = kidHand(); if (hd) puff(hd.x, hd.y - 40, C.moon, 8); snd.blow(); say(['fire'], 1.8);
@@ -3606,7 +3609,7 @@ addEventListener('keyup', e => { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m
 addEventListener('blur', () => { keys.clear(); keyGrabTried = false; stick.id = null; stick.on = false; stick.drag = false; stick.grabbing = false; });
 
 // ---------- 开始 ----------
-layout(); restart();
+layout(); restart(true);   // 存档留着：下面读
 let last = performance.now() / 1000, paused = qs.has('paused');
 function frame() {
   const now = performance.now() / 1000, dt = clamp(now - last, 0, 0.05); last = now;
@@ -3633,17 +3636,60 @@ window.__house = {
   settle(sec = 30, fps = 30) { let i = 0; for (; i < sec * fps; i++) { tick(1 / fps); if (kid.mode === 'idle' && !fly.length) break; } render(); return i / fps; },
   paintAll() { while (paintQ.length) paintIdle(); },
   // 直接摆到某个局面（给截图用）：改规则里的状态，画面上的东西一步到位
-  set(patchS) {
-    S = { ...S, ...patchS }; bag = ITEMS.filter(it => S[it] === 'inv');
-    Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
-    for (const k in V.lt0) V.lt0[k] = -10;
-    V.li.bedlamp = S.plug ? 1 : 0; V.li.bath = S.bath ? 1 : 0; V.li.hall = hallLit(S) ? 1 : 0; V.li.power = power(S) ? 1 : 0; V.candleI = S.lit && (S.candle === 'inv' || S.candle === 'box') ? 1 : 0;
-    tick(0.001); LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = GARB[k].home; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; } V.grace = V.T + 1;
-    render();
-  },
+  set(patchS) { snapTo({ ...S, ...patchS }); V.grace = V.T + 1; render(); },
+  save: writeSave, load: () => { const d = readSave(); return d ? (applySave(d), true) : false; },
   // 把孩子放到某处（给截图用）
-  put(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.mode = 'idle'; kid.path = []; kid.onBox = null; kid.standY = 0; const q = nearestOnPaths(x, y); enterKind({ kind: EDGES[q.e].kind, y }); [camFX, camFY] = camTarget(); render(); },
+  put(x, y, face = 1) { placeKid(x, y, face); render(); },
 };
+// 直接摆到局面 s：规则里的状态换掉，画面上的东西一步到位（门开了几成、灯亮没亮、衣服塌没塌）
+function snapTo(s, b) {
+  S = { ...s }; bag = b || ITEMS.filter(it => S[it] === 'inv');
+  Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
+  for (const k in V.lt0) V.lt0[k] = -10;
+  V.li.bedlamp = S.plug ? 1 : 0; V.li.bath = S.bath ? 1 : 0; V.li.hall = hallLit(S) ? 1 : 0; V.li.power = power(S) ? 1 : 0; V.candleI = S.lit && (S.candle === 'inv' || S.candle === 'box') ? 1 : 0;
+  tick(0.001); LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = GARB[k].home; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; }
+}
+function placeKid(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.mode = 'idle'; kid.path = []; kid.onBox = null; kid.standY = 0; const q = nearestOnPaths(x, y); enterKind({ kind: EDGES[q.e].kind, y }); [camFX, camFY] = camTarget(); camX = camFX; camY = camFY; }
+
+// ---------- 自动存档 ----------
+// 做成一件事、换了一盏灯底下站着，过一会儿记一次：规则里的状态、物品栏、最近一盏照着孩子的灯（重新打开就站在那儿）。
+// 走出前门、再来一遍（R）就清掉。自动试玩、截图（?auto ?paused ?noui ?nosave）不读也不写
+const SAVE_KEY = 'house.save.v1', SAVE_ON = !['auto', 'paused', 'noui', 'nosave'].some(k => qs.has(k));
+let saveLast = null, saveT = -10;
+// 东西能在的地方（别的都是 0 / 1）。规则里没有死路（check.mjs 查过），所以每一项对得上就走得出去
+const SAVE_VALS = { slipper: ['bed', 'inv', 'door'], log: ['basket', 'inv', 'fire'], fuse: ['side', 'inv', 'box'], candle: ['shelf', 'inv', 'box'], bulb: ['drawer', 'inv', 'lamp'], crank: ['clock', 'inv', 'winch'], key: ['stand', 'inv', 'used'] };
+function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches }; }
+function writeSave() {
+  if (!SAVE_ON || won || S.out || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记
+  const j = JSON.stringify(saveData()); if (j === saveLast) return;
+  saveLast = j; try { localStorage.setItem(SAVE_KEY, j); } catch (e) {}
+}
+function clearSave() { saveLast = null; if (SAVE_ON) store.del(SAVE_KEY); }
+// 读出来先查一遍：每一项都是规则里有的值、手里的东西对得上、站的地方在路上；不对就当没有
+function readSave() {
+  if (!SAVE_ON) return null;
+  const d = store.get(SAVE_KEY, null);
+  try {
+    if (!d || typeof d !== 'object' || !d.S || !d.safe) return null;
+    const s = {};
+    for (const k of KEYS) { const v = d.S[k]; if (!(SAVE_VALS[k] || [0, 1]).includes(v)) return null; s[k] = v; }
+    if (s.out) return null;
+    const inv = ITEMS.filter(it => s[it] === 'inv');
+    if (!Array.isArray(d.bag) || d.bag.length !== inv.length || !inv.every(it => d.bag.includes(it))) return null;
+    const { x, y } = d.safe; if (!isFinite(x) || !isFinite(y)) return null;
+    const q = nearestOnPaths(x, y), [px, py] = edgePt(q.e, q.t); if (Math.hypot(px - x, py - y) > 2 || EDGES[q.e].kind !== 'floor') return null;
+    return { S: s, bag: d.bag.slice(), safe: { x: px, y: py }, taps: +d.taps || 0, hints: +d.hints || 0, catches: +d.catches || 0 };
+  } catch (e) { return null; }
+}
+function applySave(d) {
+  snapTo(d.S, d.bag);
+  taps = d.taps; hints = d.hints; V.catches = d.catches; V.safe = { ...d.safe };
+  placeKid(d.safe.x, d.safe.y, 1); V.grace = V.T + 2.5;
+  saveLast = JSON.stringify(saveData());
+}
+addEventListener('pagehide', writeSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) writeSave(); });
+{ const d = readSave(); if (d) applySave(d); }
 </script>
 </body>
 </html>
