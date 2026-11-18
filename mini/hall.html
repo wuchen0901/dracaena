@@ -33,9 +33,10 @@ function act(s, spot, held) {
   if (s.out) return no('done');
   if (held && !has(s, held)) return no('no');
   switch (spot) {
-    case 'drawer': if (held) return no('no'); n.drawer = 1 - s.drawer; return ok(n.drawer ? 'drawerOpen' : 'drawerShut');
+    // 抽屉、钟门开了就开着，再点不会关上（2026-11-18 主人说常常想拿里面的东西，结果把它又关上了；关上也没有用）
+    case 'drawer': if (held) return no('no'); if (s.drawer) return no('look'); n.drawer = 1; return ok('drawerOpen');
     case 'bulb': if (held || !s.drawer || s.bulb !== 'drawer') return no('no'); n.bulb = 'inv'; return ok('take:bulb');
-    case 'clock': if (held) return no('no'); n.clock = 1 - s.clock; return ok(n.clock ? 'clockOpen' : 'clockShut');
+    case 'clock': if (held) return no('no'); if (s.clock) return no('look'); n.clock = 1; return ok('clockOpen');
     case 'crank': if (held || !s.clock || s.crank !== 'clock') return no('no'); n.crank = 'inv'; return ok('take:crank');
     case 'lamp':
       if (held === 'bulb') { if (s.lamp) return no('high'); n.bulb = 'lamp'; return ok('bulbIn'); }
@@ -1270,17 +1271,18 @@ function say(icons, dur = 1.9) { bubble = { icons, t0: V.T, dur }; }
 // 能点的地方。r 是点得到的范围，stand 是孩子站到哪儿去够，hand 是手伸到哪儿。排在前面的先算（抽屉里的灯泡排在抽屉前面）
 function spots() {
   const ly = lampY(), out = [];
-  if (S.drawer && S.bulb === 'drawer') out.push({ id: 'bulb', r: [704, 612, 740, 646], stand: 670, face: 1, hand: [720, 635] });
-  if (S.clock && S.crank === 'clock') out.push({ id: 'crank', r: [474, 606, 508, 650], stand: 542, face: -1, hand: [491, 628] });
+  // hit 是点得到的范围（不给就是 r）：抽屉、钟门开着、东西还在里面的时候，点在它们身上哪儿都算点那样东西（2026-11-18 主人说常常想拿里面的东西，结果把它又关上了）；开着、空了就不算能点的东西
+  if (S.drawer && S.bulb === 'drawer') out.push({ id: 'bulb', r: [704, 612, 740, 646], hit: [660, 612, 760, 674], stand: 670, face: 1, hand: [720, 635] });
+  if (S.clock && S.crank === 'clock') out.push({ id: 'crank', r: [474, 606, 508, 650], hit: [444, 478, 516, 712], stand: 542, face: -1, hand: [491, 628] });
   out.push({ id: 'lamp', r: [LAMP.x - 52, ly - 56, LAMP.x + 52, ly + 14], stand: 952, face: 1, hand: [LAMP.x, ly + 3] });
   out.push({ id: 'winch', r: [822, 606, 878, 674], stand: 812, face: 1, hand: [WINCH.x, WINCH.y] });
-  out.push({ id: 'drawer', r: [660, 622, 760, 674], stand: 656, face: 1, hand: [710, 646] });
-  out.push({ id: 'clock', r: [444, 478, 516, 712], stand: 545, face: -1, hand: [496, 624] });
+  if (!S.drawer) out.push({ id: 'drawer', r: [660, 622, 760, 674], stand: 656, face: 1, hand: [710, 646] });
+  if (!S.clock) out.push({ id: 'clock', r: [444, 478, 516, 712], stand: 545, face: -1, hand: [496, 624] });
   out.push({ id: 'stand', r: [STAND.x - 52, STAND.base - 236, STAND.x + 54, STAND.base + 8], stand: STAND.x - 72, face: 1, hand: [STAND.x - 26, STAND.base - 108] });
   out.push({ id: 'door', r: [DOOR.x - 8, DOOR.fan - 8, DOOR.x + DOOR.w + 8, WB + 4], stand: 1359, face: 1, hand: [DOOR.x + 14, 616] });
   return out;
 }
-const spotAt = (vx, vy) => spots().find(s => vx >= s.r[0] - 6 && vx <= s.r[2] + 6 && vy >= s.r[1] - 6 && vy <= s.r[3] + 6);
+const spotAt = (vx, vy) => spots().find(s => { const b = s.hit || s.r; return vx >= b[0] - 6 && vx <= b[2] + 6 && vy >= b[1] - 6 && vy <= b[3] + 6; });
 function tapWorld(vx, vy) {
   if (won || busy()) return;
   if (tStart < 0) tStart = V.T;
@@ -1314,8 +1316,8 @@ function commit(r) {
   if (kid.r) kid.r.used = true;
   for (const ev of r.ev) {
     if (ev.startsWith('take:')) { const it = ev.slice(5), a = kidPose().arms[0]; bag.push(it); fly.push({ it, x0: a.hx, y0: a.hy - 8, t: 0 }); snd.take(); }
-    else if (ev === 'drawerOpen' || ev === 'drawerShut') snd.drawer();
-    else if (ev === 'clockOpen' || ev === 'clockShut') snd.latch();
+    else if (ev === 'drawerOpen') snd.drawer();
+    else if (ev === 'clockOpen') snd.latch();
     else if (ev === 'bulbIn') { drop('bulb'); V.lampT0 = V.T; V.swayV += 0.06; snd.lightOn(); }
     else if (ev === 'crankOn') { drop('crank'); snd.latch(); }
     else if (ev === 'unlock') { drop('key'); snd.unlock(); }
