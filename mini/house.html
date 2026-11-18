@@ -1056,7 +1056,7 @@ function drawDynamic(b, lit, vis) {
   drawKid(b, P, lit);
 }
 const lcOf = (P, lit) => lit ? P.ink : DARK.ink;
-// 东西：抽屉里、架子上、手里的，都照这一屏的画法画（物品栏里的小图是 drawItem）
+// 东西：抽屉里、架子上、手里的，都照这一屏的画法画（物品栏、气泡里也用它，见 drawScene）
 function sceneItem(b, name, x, y, s, P, lit, seed) {
   const lc = lcOf(P, lit); b.save(); b.translate(x, y); b.seedN = seed;
   if (name === 'bulb') {
@@ -2620,60 +2620,34 @@ function restart() {
 const flying = it => fly.some(f => f.it === it);
 const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 
-// 物品栏、气泡里的小图（不用字）。style：ui 物品栏里的冷色，hot 选中了，ink 气泡里的黑
-const ITEM_COLS = {
-  ui: { glass: mix(C.dusk, C.moon, 0.85), metal: mix(C.dusk, C.moon, 0.72), wood: mix(C.dusk, C.moon, 0.5), hole: C.mass, cloth: mix(C.dusk, C.moon, 0.6), flame: mix(C.lamp, C.hot, 0.4) },
-  hot: { glass: C.hot, metal: C.lamp, wood: shade(C.lamp, 0.25), hole: C.mass, cloth: mix(C.lamp, C.hot, 0.45), flame: C.hot },
-  ink: { glass: C.mass, metal: C.mass, wood: C.mass, hole: C.moon, cloth: C.mass, flame: C.mass },
-};
-function drawItem(b, name, x, y, s, style) {
-  const c = ITEM_COLS[style];
-  b.save(); b.translate(x, y); b.lineCap = 'round'; b.lineJoin = 'round';
-  if (name === 'bulb') {
-    b.fillStyle = css(c.metal); rr(-s * 0.13, s * 0.14, s * 0.26, s * 0.3, s * 0.05, b); b.fill();
-    b.fillStyle = css(c.glass); b.beginPath(); b.arc(0, -s * 0.12, s * 0.3, 0, 7); b.fill();
-    b.beginPath(); b.moveTo(-s * 0.2, s * 0.08); b.lineTo(s * 0.2, s * 0.08); b.lineTo(s * 0.13, s * 0.2); b.lineTo(-s * 0.13, s * 0.2); b.fill();
-    b.strokeStyle = css(c.hole, 0.5); b.lineWidth = Math.max(0.8, s * 0.035); b.beginPath();
-    for (const yy of [0.27, 0.36]) { b.moveTo(-s * 0.13, s * yy); b.lineTo(s * 0.13, s * yy); }
-    b.stroke();
-  } else if (name === 'crank') {
-    b.strokeStyle = css(c.metal); b.lineWidth = s * 0.12; b.beginPath(); b.moveTo(-s * 0.24, s * 0.22); b.lineTo(s * 0.12, -s * 0.2); b.lineTo(s * 0.2, -s * 0.2); b.stroke();
-    b.fillStyle = css(c.metal); b.fillRect(-s * 0.36, s * 0.1, s * 0.24, s * 0.24);
-    b.fillStyle = css(c.hole); b.fillRect(-s * 0.29, s * 0.17, s * 0.1, s * 0.1);
-    b.strokeStyle = css(c.wood); b.lineWidth = s * 0.17; b.beginPath(); b.moveTo(s * 0.24, -s * 0.2); b.lineTo(s * 0.4, -s * 0.2); b.stroke();
-  } else if (name === 'key') {
-    b.strokeStyle = css(c.metal); b.lineWidth = s * 0.1;
-    b.beginPath(); b.arc(0, -s * 0.26, s * 0.15, 0, 7); b.stroke();
-    b.beginPath(); b.moveTo(0, -s * 0.11); b.lineTo(0, s * 0.42); b.moveTo(0, s * 0.24); b.lineTo(s * 0.15, s * 0.24); b.moveTo(0, s * 0.38); b.lineTo(s * 0.18, s * 0.38); b.stroke();
-  } else if (name === 'slipper') {   // 一双拖鞋（从上往下看）：鞋底是脚印的形状，鞋头一道宽宽的鞋面。2026-11-18 主人说原来那个侧面的“看不出来是拖鞋”
-    const sole = k => { b.beginPath(); b.moveTo(0, -k * 0.44); b.bezierCurveTo(k * 0.2, -k * 0.44, k * 0.22, -k * 0.2, k * 0.17, -k * 0.02); b.bezierCurveTo(k * 0.13, k * 0.12, k * 0.17, k * 0.3, k * 0.13, k * 0.38); b.bezierCurveTo(k * 0.08, k * 0.47, -k * 0.08, k * 0.47, -k * 0.13, k * 0.38); b.bezierCurveTo(-k * 0.17, k * 0.3, -k * 0.13, k * 0.12, -k * 0.17, -k * 0.02); b.bezierCurveTo(-k * 0.22, -k * 0.2, -k * 0.2, -k * 0.44, 0, -k * 0.44); b.closePath(); };
-    const line = css(c.cloth), inside = style === 'ink' ? css(C.moon) : css(c.hole);
-    for (const sd of [-1, 1]) {
-      b.save(); b.translate(sd * s * 0.2, sd * s * 0.03); b.rotate(sd * 0.18); const k = s * 0.92;
-      b.strokeStyle = line; b.lineWidth = s * 0.065; sole(k); b.fillStyle = inside; b.fill(); b.stroke();
-      b.fillStyle = line; b.beginPath(); b.moveTo(-k * 0.2, -k * 0.24); b.quadraticCurveTo(0, -k * 0.36, k * 0.2, -k * 0.24); b.lineTo(k * 0.17, -k * 0.02); b.quadraticCurveTo(0, -k * 0.1, -k * 0.17, -k * 0.02); b.closePath(); b.fill();
-      b.restore();
-    }
-  } else if (name === 'log') {      // 一截柴：截面上一圈圈年轮，上面一个小树杈（原来那个像一根管子）
-    b.fillStyle = css(c.wood); rr(-s * 0.42, -s * 0.15, s * 0.8, s * 0.3, s * 0.13, b); b.fill();
-    b.strokeStyle = css(c.wood); b.lineWidth = s * 0.08; b.beginPath(); b.moveTo(-s * 0.12, -s * 0.12); b.lineTo(-s * 0.02, -s * 0.3); b.stroke();   // 小树杈
-    b.fillStyle = css(c.hole); b.beginPath(); b.ellipse(s * 0.36, 0, s * 0.11, s * 0.15, 0, 0, 7); b.fill();   // 截面
-    b.strokeStyle = css(c.wood); b.lineWidth = Math.max(0.8, s * 0.035); b.beginPath(); b.ellipse(s * 0.36, 0, s * 0.11, s * 0.15, 0, 0, 7); b.stroke();
-    b.beginPath(); b.ellipse(s * 0.36, 0, s * 0.055, s * 0.08, 0, 0, 7); b.stroke(); b.fillStyle = css(c.wood); b.beginPath(); b.arc(s * 0.36, 0, s * 0.018, 0, 7); b.fill();   // 年轮
-    b.strokeStyle = css(c.hole, 0.5); b.beginPath(); b.moveTo(-s * 0.32, -s * 0.04); b.lineTo(s * 0.06, -s * 0.04); b.moveTo(-s * 0.22, s * 0.07); b.lineTo(s * 0.16, s * 0.07); b.stroke();   // 树皮
-  } else if (name === 'fuse') {     // 瓷保险丝，两头铜帽
-    b.fillStyle = css(c.glass); rr(-s * 0.12, -s * 0.3, s * 0.24, s * 0.6, s * 0.06, b); b.fill();
-    b.fillStyle = css(c.metal); b.fillRect(-s * 0.15, -s * 0.4, s * 0.3, s * 0.13); b.fillRect(-s * 0.15, s * 0.27, s * 0.3, s * 0.13);
-  } else if (name === 'candle') {   // 一罐萤火虫：烤暖了的话一闪一闪
-    b.strokeStyle = css(c.glass); b.lineWidth = Math.max(1, s * 0.05); rr(-s * 0.22, -s * 0.22, s * 0.44, s * 0.58, s * 0.08, b); b.stroke();
-    b.fillStyle = css(c.metal); b.fillRect(-s * 0.25, -s * 0.34, s * 0.5, s * 0.12);
-    b.beginPath(); b.moveTo(-s * 0.2, -s * 0.34); b.quadraticCurveTo(0, -s * 0.56, s * 0.2, -s * 0.34); b.stroke();
-    b.fillStyle = css(S.lit ? c.flame : c.hole, S.lit ? 1 : 0.6); for (const [u, v] of [[-0.08, 0], [0.09, -0.08], [0.02, 0.16], [-0.1, 0.22], [0.1, 0.14]]) { b.beginPath(); b.arc(u * s, v * s, s * 0.045, 0, 7); b.fill(); }
+// 物品栏、气泡、捡起来飞过去的那一下：画成它在屋子里的样子（2026-11-18 主人说：地上是什么样，物品栏里就是什么样）。
+// 照 sceneItem 在灯下的颜色先画一张大的（世界里的大小，一个单位 ICON_R 个像素），量出画了的那一块，用的时候等比缩到格子里。
+// 萤火虫罐子里的萤火虫会动、会亮，每一帧重画；别的画一次就放着
+const ICON_SIZE = { bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, candle: 40 }, ICON_R = 4, ICON_PAD = 70;
+const iconCache = {};
+function iconCanvas(it) {
+  const live = it === 'candle', key = it + (live ? '' : ''), e = iconCache[key] || (iconCache[key] = { c: mk(ICON_PAD * 2 * ICON_R, ICON_PAD * 2 * ICON_R), box: null, at: -1 });
+  if (e.box && !live) return e;
+  if (live && e.at === V.T && e.lit === S.lit) return e;
+  const b = e.c.getContext('2d'); b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, e.c.width, e.c.height);
+  pen(b, LIT, ICON_R, ICON_PAD * ICON_R, ICON_PAD * ICON_R);
+  sceneItem(b, it, 0, 0, ICON_SIZE[it], LIT, true, 290000 + ITEMS.indexOf(it) * 100);
+  if (!e.box) {   // 量一次画了的那一块（罐子亮不亮大小一样）
+    const d = b.getImageData(0, 0, e.c.width, e.c.height).data, W0 = e.c.width; let x0 = W0, y0 = W0, x1 = -1, y1 = -1;
+    for (let y = 0; y < W0; y++) for (let x = 0; x < W0; x++) if (d[(y * W0 + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    e.box = x1 < 0 ? [0, 0, W0, W0] : [x0 - 2, y0 - 2, x1 + 3, y1 + 3];
   }
-  b.restore();
+  e.at = V.T; e.lit = S.lit;
+  return e;
+}
+// 在 (x, y)（屏幕像素，b 的变换是 DPR）画一样东西，长的那一边是 s；a 是透明度
+function drawScene(b, it, x, y, s, a = 1) {
+  const e = iconCanvas(it), [x0, y0, x1, y1] = e.box, w = x1 - x0, h = y1 - y0, k = s / Math.max(w, h);
+  b.save(); b.globalAlpha *= a; b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'high';
+  b.drawImage(e.c, x0, y0, w, h, x - w * k / 2, y - h * k / 2, w * k, h * k); b.restore();
 }
 function drawIcon(b, name, x, y, s) {
-  if (ITEMS.includes(name)) return drawItem(b, name, x, y, s, 'ink');
+  if (ITEMS.includes(name)) return drawScene(b, name, x, y, s * 0.92);
   const ink = css(C.mass, 0.92), pale = css(C.moon);
   b.save(); b.translate(x, y); b.fillStyle = ink; b.strokeStyle = ink; b.lineCap = 'round'; b.lineJoin = 'round'; b.lineWidth = s * 0.09;
   if (name === '>') {
@@ -3565,10 +3539,10 @@ function drawUI() {
       rr(x - s / 2, y - s / 2, s, s, s * 0.2);
       g.fillStyle = css(sel || hl ? C.lamp : C.moon, sel ? 0.13 : hl ? 0.08 + 0.06 * Math.sin(T * 6) : 0.045); g.fill();
       g.strokeStyle = css(sel || hl ? C.lamp : C.moon, sel ? 0.75 : hl ? 0.6 : it ? 0.28 : 0.12); g.lineWidth = sel ? 2 : 1.4; g.stroke();
-      if (it && !flying(it) && !(kid.r && kid.r.item === it)) drawItem(g, it, x, y + (sel ? Math.sin(T * 5) * 1.5 - 2 : 0), s * 0.64, sel ? 'hot' : 'ui');
+      if (it && !flying(it) && !(kid.r && kid.r.item === it)) drawScene(g, it, x, y + (sel ? Math.sin(T * 5) * 1.5 - 2 : 0), s * 0.74);   // 和屋子里一个样子；拿在手里的那一格靠格子的颜色和上下浮动看出来
     }
-    for (const f of fly) { const i = bag.indexOf(f.it), e = ease(f.t), x0 = (f.x0 - camX) * Z, y0 = (f.y0 - camY) * Z; drawItem(g, f.it, lerp(x0, G.x(i), e), lerp(y0, G.y, e) - Math.sin(Math.PI * f.t) * 70, lerp(24 * Z, G.s * 0.64, e), 'ui'); }
-    if (held && mouse.on) drawItem(g, held, mouse.x + 24, mouse.y + 20, G.s * 0.56, 'hot');   // 拿在手里的东西跟着鼠标
+    for (const f of fly) { const i = bag.indexOf(f.it), e = ease(f.t), x0 = (f.x0 - camX) * Z, y0 = (f.y0 - camY) * Z; drawScene(g, f.it, lerp(x0, G.x(i), e), lerp(y0, G.y, e) - Math.sin(Math.PI * f.t) * 70, lerp(ICON_SIZE[f.it] * 0.8 * Z, G.s * 0.74, e)); }
+    if (held && mouse.on) drawScene(g, held, mouse.x + 24, mouse.y + 20, G.s * 0.6);   // 拿在手里的东西跟着鼠标
   }
   if (stick.on && !stick.drag && !stick.grabbing && !won && nearPushable()) {   // 站在能推的东西旁边按住不动：手指底下一圈慢慢画满，满了就搭上手
     const k = clamp((T - stick.t0) / GRAB_HOLD, 0, 1);
