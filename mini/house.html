@@ -1350,7 +1350,9 @@ const LIGHTS = [
   ...['bedlamp', 'bath', 'hall', 'klamp', 'llamp', 'cellar'].map(k => ({ id: 'bug', off: 0, up: 0, at: () => { const m = V.bugs[k]; if (m.mode === 'in') return null; return { x: m.x, y: m.y, R: 70, I: 0.3, clip: roomClip(BUGS[k].room) }; } })),   // 飞出来的灯虫、钻出来的萤火虫：光很弱（0.3），不碰规则
   { id: 'bug', off: 0, up: 0, at: () => { const o = V.flies.out; if (!o) return null; const r = roomAt(o.x, o.y) || roomAt(kid.x, kid.y); return r ? { x: o.x, y: o.y, R: 55, I: 0.3, clip: roomClip(r.id) } : null; } },
   ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
-  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I: m.I, clip: roomClip(IMPS[k].room) }; } })),   // 灯崽：平时缩在小台灯的灯罩里，跑出来的时候光跟着它走
+  // 灯崽：缩在灯罩里的时候光从灯口往下、往前照（灯罩挡着，上面不亮）；跑出来的时候是围着它的一团光，跟着它走。两种之间 0.3 秒换过去
+  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0.3, up: 0.85, at: () => { const m = V.imps[k], D = IMPS[k], I = m.I * Math.min(1, 2 * m.sockL); if (I < 0.005) return null; const [rx, ry] = shadeAt(0, LAMP.rim); return { x: D.lx + rx * IMP_S, y: D.hy + ry * IMP_S, R: D.R, I, rot: LAMP.tilt, clip: roomClip(D.room) }; } })),
+  ...['bed', 'hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I, clip: roomClip(IMPS[k].room) }; } })),
 ];
 // 蜡烛在哪儿：孩子手里（点着），或者放在保险丝盒旁边
 function candlePos() {
@@ -2055,7 +2057,7 @@ const IMP_NEST = shadeAt(0, LAMP.nest);                                   // 缩
 const impDrop = f => f > 0 ? 13 : 16.5;                                   // 探出来的时候往下沉多少（朝后看的那边灯口低，多沉一点眼睛才露得出来）
 const impSock = f => (-(IMP_NEST[1] + impDrop(f)) - IMP_AIR) * IMP_S;     // 探出来、腿垂着的时候脚离台灯底多高（世界单位）：跳出去、跳回来都从这儿
 for (const k of IMP_KEYS) IMPS[k].home = IMPS[k].lx + IMP_NEST[0] * IMP_S;   // 灯罩底下（毛球）的 x
-const newImps = () => Object.fromEntries(IMP_KEYS.map(k => { const D = IMPS[k]; return [k, { k, x: D.home, y: D.hy, mode: 'bulb', morph: 0, face: 1, ph: 0, v: 0, tx: D.home, fast: 0, jump: null, scare: 0, calm: 0, rest: 0, blink: 0, blinkT: 1 + hash(D.seed, 1) * 3, look: 0, flash: -10, I: 0.62, hideK: 0, fur: 0.3, then: null, goHome: 0 }]; }));
+const newImps = () => Object.fromEntries(IMP_KEYS.map(k => { const D = IMPS[k]; return [k, { k, x: D.home, y: D.hy, mode: 'bulb', morph: 0, face: 1, ph: 0, v: 0, tx: D.home, fast: 0, jump: null, scare: 0, calm: 0, rest: 0, blink: 0, blinkT: 1 + hash(D.seed, 1) * 3, look: 0, flash: -10, I: 0.62, hideK: 0, fur: 0.3, sockL: 1, then: null, goHome: 0 }]; }));
 // 毛球的姿势（台灯的单位）：H 是毛球中心离脚底多高，lean 是身子往前倾多少（翻跟头的时候转一整圈），sq 是压扁几成
 function impPose(m) {
   const t = V.T;
@@ -2079,6 +2081,7 @@ function impUpdate(dt) {
     const room = roomAt(kid.x, kid.y), kidHere = kid.mode !== 'gone' && kid.mode !== 'caught' && kid.kind === 'floor' && Math.abs(kid.y - gy) < 4 && room && room.id === D.room;
     m.look = approach(m.look, kidHere ? Math.sign(kid.x - m.x) * m.face : 0, dt * 5);
     m.hideK = approach(m.hideK, m.mode === 'hide' ? 1 : 0, dt * 4);
+    m.sockL = approach(m.sockL ?? 1, inSocket(m) ? 1 : 0, dt / 0.3);   // 光是灯罩里的样子还是围着它的样子
     const fw = m.mode === 'hide' ? 0 : m.scare > 0.35 ? 1 : 0.3; m.fur = approach(m.fur, fw, dt * (fw > m.fur ? 8 : 1.2));   // 绒毛：吓到一下子炸开，慢慢收回来
     m.morph = approach(m.morph, m.mode === 'bulb' ? 0 : 1, dt / (m.mode === 'bulb' ? 0.6 : 0.4));
     const flashE = T - m.flash;
@@ -2224,26 +2227,30 @@ function drawImpEyes(b, m, x, y, s, scared) {   // 一双大白眼睛、圆圆�
 }
 // 一双大白眼睛挨着、叠一点，挤在朝前的那一边；黑眼珠平时贴着前沿（往孩子那边看）。吓坏了眼睛瞪大、眼珠缩小、嘴张成一个小圈
 function drawImpFace(b, m, scared, closed = 0) {
-  const k = scared ? 1.12 : 1, lk = m.look, dark = '#1d1712';
+  const k = scared ? 1.12 : 1, lk = m.look, dark = '#1d1712', lw = Math.max(0.6, impMinW(b, 1.2)), ms = clamp(2.2 / impPx(b) / 1.7, 1, 1.55);   // 线在屏幕上至少 1.2 像素；画面里小的时候嘴大一点，看得见
   b.lineCap = 'round';
   const EY = [[0.7, -2.4, 3.5 * k, 4.1 * k], [6.9, -1.7, 3.8 * k, 4.4 * k]], fx0 = EY[1][0] - EY[1][2];
   for (const [ex, ey, rx, ry] of EY) {
-    if (m.blink > 0 || closed) { b.strokeStyle = dark; b.lineWidth = 0.6; b.beginPath(); b.arc(ex, ey - 1.6, 2.8, Math.PI * 0.22, Math.PI * 0.78); b.stroke(); continue; }
+    if (m.blink > 0 || closed) { b.strokeStyle = dark; b.lineWidth = lw; b.beginPath(); b.arc(ex, ey - 1.6, 2.8, Math.PI * 0.22, Math.PI * 0.78); b.stroke(); continue; }
     b.fillStyle = '#fffcf2'; b.beginPath(); b.ellipse(ex, ey, rx, ry, 0, 0, TAU); b.fill();
     b.strokeStyle = 'rgba(90,60,20,0.45)'; b.lineWidth = 0.45; b.stroke();
     const pr = scared ? 1.2 : 1.65, side = lk >= 0 ? 0.72 + 0.28 * lk : 0.72 + 1.6 * lk, px = Math.min(ex + (rx - pr - 0.35) * clamp(side, -0.9, 1), ex < fx0 ? fx0 - pr * 0.7 : 1e9);   // 后面那只的眼珠不躲到前面那只后面去
     b.fillStyle = '#120d09'; b.beginPath(); b.arc(px, ey + 0.4, pr, 0, TAU); b.fill();
   }
-  if (scared && !closed) { b.fillStyle = '#3a1e10'; b.beginPath(); b.ellipse(9.4, 5, 0.9, 1.2, 0, 0, TAU); b.fill(); }
-  else { b.strokeStyle = dark; b.lineWidth = 0.6; b.beginPath(); b.arc(8.4, 4.2, 1.7, Math.PI * 0.12, Math.PI * 0.72); b.stroke(); }   // 一道小小的笑
+  if (scared && !closed) { b.fillStyle = '#3a1e10'; b.beginPath(); b.ellipse(9.2, 5 + 0.6 * (ms - 1), 0.9 * ms, 1.2 * ms, 0, 0, TAU); b.fill(); }
+  else { b.strokeStyle = dark; b.lineWidth = lw; b.beginPath(); b.arc(8.3, 4.2, 1.7 * ms, Math.PI * 0.12, Math.PI * 0.72); b.stroke(); }   // 一道小小的笑
 }
+// 现在画布上一个单位在屏幕上多少像素（CSS 像素，算上放大和 DPR）；要在屏幕上有 css 那么粗，这里要画多粗
+const impPx = b => { const T = b.getTransform(); return Math.hypot(T.a, T.b) / DPR; };
+const impMinW = (b, css) => css / impPx(b);
 // 一条腿：大腿、小腿各 IMP_THIGH，膝盖朝前弯（够不着就伸直），脚尖一小笔。细细的黑铅笔线，亮处暗处一样
 function impLegLine(b, hx, hy, fx, fy, seed) {
   let dx = fx - hx, dy = fy - hy; const d0 = Math.hypot(dx, dy) || 1e-3, L = IMP_THIGH * 2 - 0.3;
   if (d0 > L) { fx = hx + dx / d0 * L; fy = hy + dy / d0 * L; dx = fx - hx; dy = fy - hy; }
   const d = Math.min(d0, L), h = Math.sqrt(Math.max(0, IMP_THIGH * IMP_THIGH - d * d / 4)), kx = (hx + fx) / 2 + dy / d * h, ky = (hy + fy) / 2 - dx / d * h;
   const sx = fx - kx, sy = fy - ky, sl = Math.hypot(sx, sy) || 1;
-  ink(b, [...curvePts([[hx, hy], [kx, ky], [fx, fy, 1]], false, 4), [fx + sy / sl * 2.6, fy - sx / sl * 2.6]], { w: 0.5, col: '#1d1712', a: 1.4, amp: 0.35, taper: 2.5, seed });
+  const w = Math.max(0.5, impMinW(b, 1.4) / PEN.w);   // 在屏幕上至少和房子里别的铅笔线一样粗；放大看的时候还是细的
+  ink(b, [...curvePts([[hx, hy], [kx, ky], [fx, fy, 1]], false, 4), [fx + sy / sl * 2.6, fy - sx / sl * 2.6]], { w, col: '#1d1712', a: 1.4, amp: 0.35, taper: 2.5, seed });
 }
 // 跑的时候一只脚在身子底下的哪儿：前一半踩在地上往后蹬，后一半抬起来往后一踢、再甩到前面
 function impStride(s, fast) {
