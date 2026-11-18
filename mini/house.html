@@ -15,6 +15,7 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
 <!-- 规则：“东西在哪儿、点了什么会怎样、哪个影子敢过去”都在这一段，不碰页面。mini/tools/check.mjs 直接拿这一段去搜：解得开、没有死路 -->
 <script id="core">
 // 一栋夜里的房子：楼上卧室 → 浴室 → 楼梯 → 门厅（楼下停电）→ 客厅 → 厨房 → 地下室（来电）→ 回到门厅出门。
+// （2026-11-18 起，“影子”是灌了墨的空衣服，“蜡烛”candle 是一罐萤火虫，lit 是烤暖了；衣服会追人在页面里，不在规则里）
 // 规则只管“东西在哪儿、灯开没开、哪个影子敢过去”；孩子走到哪儿不算在里面：隔着影子的地方走不到，别的都走得到。
 const ITEMS = ['slipper', 'log', 'fuse', 'candle', 'bulb', 'crank', 'key'];
 const START = {
@@ -1039,14 +1040,14 @@ const ROOM_PAINT = { bedroom: paintBedroom, bath: paintBath, hall: paintHall, li
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
 function drawDynamic(b, lit, vis) {
   const P = lit ? LIT : DARK;
-  if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawFear(b, P, lit, 'gown'); }
-  if (vis.bath) { drawBathLamp(b, P, lit); drawCord(b, P, lit); drawHamper(b, P, lit); drawFear(b, P, lit, 'towel'); }
+  if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawCritters(b, P, lit, 'bedroom'); drawFear(b, P, lit, 'gown'); }
+  if (vis.bath) { drawBathLamp(b, P, lit); drawCord(b, P, lit); drawHamper(b, P, lit); drawCritters(b, P, lit, 'bath'); drawFear(b, P, lit, 'towel'); }
   if (vis.bath || vis.hall) drawBathDoor(b, P, lit);
-  if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawFear(b, P, lit, 'stand'); }
-  if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
-  if (vis.kitchen) { drawShelf(b, P, lit); drawFridge(b, P, lit); drawChair(b, P, lit); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
+  if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawLampBird(b, P, lit, HCLOCK.x + 2, HCLOCK.base - 241, V.T); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawFear(b, P, lit, 'stand'); }
+  if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawCritters(b, P, lit, 'living'); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
+  if (vis.kitchen) { drawShelf(b, P, lit); drawFridge(b, P, lit); drawChair(b, P, lit); drawCritters(b, P, lit, 'kitchen'); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
   if (vis.kitchen || vis.cellar) drawHatch(b, P, lit);
-  if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawFear(b, P, lit, 'boiler'); if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) drawCandle(b, P, lit, CSHELF.cx, CSHELF.y, S.lit, 250500); }
+  if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawCritters(b, P, lit, 'cellar'); drawFear(b, P, lit, 'boiler'); if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) drawCandle(b, P, lit, CSHELF.cx, CSHELF.y, S.lit, 250500); }
   drawKid(b, P, lit);
 }
 const lcOf = (P, lit) => lit ? P.ink : DARK.ink;
@@ -1078,13 +1079,16 @@ function drawSlipper(b, P, lit, x, y, seed, k = 1) {   // 一只拖鞋
   part(b, [[x - 22 * k, y], [x - 20 * k, y - 10 * k], ...arcPts(x - 4 * k, y - 10 * k, 16 * k, 9 * k, Math.PI, Math.PI * 2, 8).slice(1), [x + 22 * k, y - 4 * k], [x + 22 * k, y]], P.blanket, { w: 0.9, tex: 0, lc });
   part(b, [[x - 2 * k, y - 10 * k], ...arcPts(x + 8 * k, y - 10 * k, 12 * k, 11 * k, Math.PI, Math.PI * 2, 8).slice(1), [x + 20 * k, y - 4 * k], [x - 2 * k, y - 4 * k]], P.blanketHi, { w: 0.8, tex: 0, lc });
 }
-function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 一截蜡烛插在小烛台上；点着的话有一点火苗（光在灯那边算）
-  const lc = lcOf(P, lit); b.seedN = seed;
-  part(b, arcPts(x, y, 14 * k, 4 * k, 0, TAU, 12), P.brass, { w: 0.8, tex: 0, lc });
-  part(b, roundPts(x - 5 * k, y - 34 * k, 10 * k, 34 * k, 2 * k), P.candle, { w: 0.8, tex: 0, lc });
-  ink(b, seg(x, y - 34 * k, x, y - 39 * k), { w: 0.6, col: lc, taper: 0 });
-  if (on) { const fl = Math.sin(V.T * 21 + seed) * 1.5; b.fillStyle = lit ? '#ffcf7a' : '#ffb35a'; b.beginPath(); b.moveTo(x - 3.5 * k, y - 40 * k); b.quadraticCurveTo(x + fl, y - 58 * k, x + 3.5 * k, y - 40 * k); b.closePath(); b.fill(); }
+function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 一罐萤火虫（规则里还叫 candle）：冻僵了是暗的，在火边烤暖了才亮
+  const lc = lcOf(P, lit), w = 20 * k, h = 26 * k; b.seedN = seed;
+  fillPts(b, roundPts(x - w / 2, y - h, w, h, 4 * k), on ? (lit ? 'rgba(225,240,190,0.42)' : 'rgba(170,190,150,0.36)') : (lit ? 'rgba(200,210,215,0.3)' : 'rgba(110,125,150,0.3)'));
+  ink(b, [...roundPts(x - w / 2, y - h, w, h, 4 * k), [x - w / 2, y - h + 4 * k]], { w: 0.7, col: lc, taper: 0, single: 1 });
+  part(b, rectPts(x - w / 2 - 1, y - h - 5 * k, w + 2, 5 * k), P.brass, { w: 0.6, tex: 0, lc });
+  ink(b, quadPts([x - w / 2, y - h - 4 * k], [x, y - h - 16 * k], [x + w / 2, y - h - 4 * k], 8), { w: 0.6, col: lc, taper: 0 });
+  for (let i = 0; i < 5; i++) { const sp = on ? 1 : 0.12, fx = x + Math.sin(V.T * 1.7 * sp + i * 2.3) * w * 0.3, fy = y - h * 0.45 + Math.cos(V.T * 1.3 * sp + i * 1.9) * h * 0.3; b.fillStyle = on ? '#f5ffb0' : (lit ? '#5a5a48' : '#3a4258'); b.beginPath(); b.arc(fx, fy, 1.5 * k, 0, 7); b.fill(); }
+  ink(b, seg(x - w / 2 + 3, y - h + 5, x - w / 2 + 3, y - 6), { w: 0.6, col: '#ffffff', a: 0.4, taper: 3 });
 }
+
 
 // ----- 卧室 -----
 function drawPlug(b, P, lit) {
@@ -1097,9 +1101,10 @@ function drawBedLamp(b, P, lit) {   // 床头灯的灯罩：插上了是暖的
   const lc = lcOf(P, lit), on = S.plug === 1, x = BEDLAMP.x, y = BEDLAMP.y; b.seedN = 200200;
   part(b, [[x - 20, y - 26], [x + 20, y - 26], [x + 30, y + 4], [x - 30, y + 4]], on && lit ? '#e9c98e' : P.shade, { w: 1, tex: 0, lc });
   if (on) { b.fillStyle = lit ? '#fff3d0' : '#6a5a3a'; b.fillRect(x - 28, y + 2, 56, 3); }
+  drawBulbBug(b, x, y + 7, on, V.T, 0.9);   // 灯罩底下，灯泡里住着的小虫
 }
 // ----- 浴室 -----
-function drawBathLamp(b, P, lit) { const on = S.bath === 1; b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(BATHLAMP.x, BATHLAMP.y + 4, 8, 0, 7); b.fill(); }
+function drawBathLamp(b, P, lit) { const on = S.bath === 1; b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(BATHLAMP.x, BATHLAMP.y + 4, 8, 0, 7); b.fill(); drawBulbBug(b, BATHLAMP.x, BATHLAMP.y + 4, on, V.T); }
 function drawCord(b, P, lit) {   // 灯绳：从天花板垂下来，末端一颗木珠子；被拉的时候晃
   const lc = lcOf(P, lit), sw = V.cordSwing, x = CORD.x, e = CORD.end + V.cordPull * 18; b.seedN = 210000;
   ink(b, quadPts([x, CORD.top], [x + sw * 20, (CORD.top + e) / 2], [x + sw * 34, e], 10), { w: 0.6, col: lc, taper: 0, amp: 0.2 });
@@ -1132,7 +1137,7 @@ function drawHallLamp(b, P, lit) {   // 吊灯：绳子、灯头、灯罩、灯�
   part(b, [[-11, y - 50], [11, y - 50], [47, y - 9], [-47, y - 9]], P.shade, { w: 1.3, tex: 0, lc });
   if (lit) hatch(b, k => { k.moveTo(0, y - 50); k.lineTo(11, y - 50); k.lineTo(47, y - 9); k.lineTo(4, y - 9); }, [0, y - 52, 50, 45], { ang: -1.1, gap: 3.4, a: 0.5, w: 0.8, len: 12, seed: 230550 });
   else ink(b, seg(-11, y - 50, -47, y - 9), { col: DARK.hi, a: 0.3, w: 0.9, taper: 0, seed: 230551 });
-  if (S.bulb === 'lamp') { const on = hallLit(S); b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(0, y, 8, 0, 7); b.fill(); ink(b, arcPts(0, y, 8, 8, -0.2, Math.PI + 0.2, 8), { w: 0.8, a: lit ? 0.5 : 0.9, col: lc, seed: 230560 }); }
+  if (S.bulb === 'lamp') { const on = hallLit(S); b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(0, y, 8, 0, 7); b.fill(); ink(b, arcPts(0, y, 8, 8, -0.2, Math.PI + 0.2, 8), { w: 0.8, a: lit ? 0.5 : 0.9, col: lc, seed: 230560 }); drawBulbBug(b, 0, y, on, V.T); }
   else part(b, rectPts(-5, y - 11, 10, 9), P.iron, { w: 0.8, tex: 0, lc, seed: 230570 });
   b.restore();
 }
@@ -1199,6 +1204,7 @@ function drawFire(b, P, lit) {
     }
     b.globalAlpha = 1;
   }
+  { const ey = gy - 16 - 12 * lv, blink = Math.sin(T * 0.9 + 1) > 0.97 ? 0.2 : 1, er = 1.8 + lv * 0.9; b.fillStyle = lit ? '#fff4c0' : '#ffd890'; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x - 4 + sd * (7 + lv * 2), ey, er, er * 1.3 * blink, 0, 0, 7); b.fill(); } }   // 炉火里住着的小东西：两只眼睛，火越大眼睛越大
   if (V.smoke > 0.02) {   // 风门关着：烟从炉口往屋里冒
     for (let i = 0; i < 8; i++) { const ph = (T * 0.25 + i / 8) % 1, sx = x + Math.sin(T + i) * 20 - ph * 60, sy = FIRE.mantel + 50 - ph * 160; b.fillStyle = rgba(lit ? '#5a5248' : '#1a2030', V.smoke * 0.5 * Math.sin(ph * Math.PI)); b.beginPath(); b.arc(sx, sy, 20 + ph * 40, 0, 7); b.fill(); }
   }
@@ -1218,7 +1224,7 @@ function drawCeilLamp(b, P, lit, x, top, seed) {   // 楼下天花板上的灯�
   const lc = lcOf(P, lit), on = power(S); b.seedN = seed;
   ink(b, seg(x, top, x, top + 60), { w: 1, col: P.wire, taper: 0 });
   part(b, [[x - 10, top + 60], [x + 10, top + 60], [x + 34, top + 90], [x - 34, top + 90]], P.shade, { w: 1, tex: 0, lc });
-  b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(x, top + 94, 7, 0, 7); b.fill();
+  b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#5a6480'; b.beginPath(); b.arc(x, top + 94, 7, 0, 7); b.fill(); drawBulbBug(b, x, top + 94, on, V.T, 0.9);
 }
 // ----- 厨房 -----
 function drawShelf(b, P, lit) { if (S.candle === 'shelf') drawCandle(b, P, lit, SHELF.x1 - 24, SHELF.y, 0, 250000); }
@@ -1255,7 +1261,7 @@ function drawHatch(b, P, lit) {   // 地窖口：盖子的合页在右边，开�
   part(b, arcPts(lerp(hx, ex, 0.85) - nx * 0.5, lerp(gy, ey, 0.85) - ny * 0.5 - 3, 5, 3, 0, TAU, 8), P.iron, { w: 0.6, tex: 0, lc, seed: 251110 });   // 拉环
 }
 // ----- 地下室 -----
-function drawCellarBulb(b, P, lit) { const on = power(S); b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#3a4258'; b.beginPath(); b.arc(CBULB.x, CBULB.y, 8, 0, 7); b.fill(); }
+function drawCellarBulb(b, P, lit) { const on = power(S); b.fillStyle = on ? (lit ? '#fff6dc' : '#6a6a5a') : '#3a4258'; b.beginPath(); b.arc(CBULB.x, CBULB.y, 8, 0, 7); b.fill(); drawBulbBug(b, CBULB.x, CBULB.y, on, V.T, 1.2); }
 function drawFuseBox(b, P, lit) {   // 保险丝盒：铁盒子，换的时候门打开，里面一排瓷座，有一个空着
   const lc = lcOf(P, lit), x = FUSEBOX.x, y = FUSEBOX.y, o = smooth(V.fbox); b.seedN = 252000;
   part(b, rectPts(x - 40, y - 40, 80, 84), P.fusebox, { w: 1.1, tex: 0.3, lc });
@@ -1265,59 +1271,8 @@ function drawFuseBox(b, P, lit) {   // 保险丝盒：铁盒子，换的时候�
   if (o < 0.4) { part(b, roundPts(x + 26 - (80 - dw), y - 4, 8, 16, 3), P.iron, { w: 0.6, tex: 0, lc, seed: 252110 }); ink(b, [[x - 20, y - 20], [x - 6, y - 32], [x - 10, y - 12], [x + 4, y - 24]], { w: 1.1, col: P.brass, taper: 0, seed: 252120 }); }   // 门上画着一道闪电
 }
 
-// ---------- 影子，和照亮以后的样子 ----------
-// 每一个：head 光照到这一点（> 0.55）它就是东西了；eyes 眼睛在哪儿；outline(lean) 影子的轮廓；obj 照亮以后画什么
-const FEARS = {
-  gown: { head: [1330, 52], eyes: [1326, 52], outline: l => sil([[1330, -6], [1352, 6], [1360, 40], [1378, 70], [1390, 150], [1398, 228], [1376, 220], [1360, 232], [1340, 222], [1320, 234], [1300, 222], [1282, 230], [1270, 150], [1282, 70], [1300, 40], [1308, 6]], l, 1330, 230), obj: drawGown },
-  towel: { head: [2335, -90], eyes: [2335, -96], outline: l => sil([[2335, -150], [2358, -140], [2364, -110], [2392, -96], [2412, -20], [2418, 120], [2392, 150], [2370, 140], [2350, 156], [2328, 142], [2306, 154], [2282, 140], [2262, 120], [2270, -20], [2286, -96], [2310, -110], [2312, -140]], l, 2335, 156), obj: drawTowels },
-  laundry: { head: [2875, 196], eyes: [2884, 196], outline: l => sil([[2800, 242], [2804, 220], [2822, 196], [2852, 176], [2878, 164], [2900, 168], [2916, 182], [2922, 204], [2934, 226], [2938, 242]], l, 2870, 242), obj: drawLaundry },
-  chair: { head: [1915, 840], eyes: [1930, 842], outline: l => sil([[1838, 1000], [1834, 900], [1846, 860], [1872, 836], [1896, 806], [1926, 800], [1950, 816], [1956, 848], [1978, 868], [1992, 920], [1990, 1000]], l, 1910, 1000), obj: drawArmchair },
-  sack: { head: [950, 950], eyes: [966, 952], outline: l => sil([[880, 1004], [884, 976], [900, 952], [912, 922], [922, 942], [944, 930], [962, 912], [968, 936], [990, 950], [1006, 976], [1010, 1004]], l, 945, 1004), obj: drawSack },
-  boiler: { head: [1125, 1450], eyes: [1125, 1462], outline: l => sil([[1040, 1594], [1040, 1430], [1056, 1384], [1094, 1360], [1106, 1300], [1144, 1300], [1156, 1360], [1194, 1384], [1210, 1430], [1210, 1594]], l, 1125, 1594), obj: drawBoiler, slits: true },
-  stand: { head: [4180, 801], eyes: [4180, 801], outline: l => standOutline(l), obj: drawCoatStand },
-};
-// 轮廓连成圆滑的曲线，身子随着 lean 轻轻晃（脚底不动）
-function sil(pts, lean, cx, base) { return curvePts(pts.map(([x, y]) => [x + lean * clamp((base - y) / 200, 0, 1), y]), true, 4); }
-function standOutline(lean) {
-  const x = HSTAND.x, B = HSTAND.base + 3, X = v => x + v + lean, out = [[x - 50, B]], add = p => out.push(...p.slice(1));
-  add(cubPts([x - 50, B], [x - 44, B - 64], [x - 40 + lean * 0.4, B - 130], [X(-32), B - 162], 12));
-  add(quadPts([X(-32), B - 162], [X(-30), B - 172], [X(-15), B - 173], 4)); add(quadPts([X(-15), B - 173], [X(-19), B - 190], [X(-15), B - 205], 5));
-  add(quadPts([X(-15), B - 205], [X(-30), B - 206], [X(-29), B - 209], 3)); add(quadPts([X(-29), B - 209], [X(-22), B - 212], [X(-13), B - 212], 3));
-  add(cubPts([X(-13), B - 212], [X(-13), B - 233], [X(13), B - 233], [X(13), B - 212], 8)); add(quadPts([X(13), B - 212], [X(22), B - 212], [X(29), B - 209], 3));
-  add(quadPts([X(29), B - 209], [X(30), B - 206], [X(15), B - 205], 3)); add(quadPts([X(15), B - 205], [X(19), B - 190], [X(16), B - 173], 5));
-  add(quadPts([X(16), B - 173], [X(31), B - 172], [X(34), B - 162], 4)); add(cubPts([X(34), B - 162], [x + 42 + lean * 0.4, B - 130], [x + 46, B - 64], [x + 52, B], 12));
-  return out;
-}
-// 亮的一层里永远画东西；暗的一层里：变过来了画东西（淡入），没变过来画影子
-function drawFear(b, P, lit, k) {
-  const F = FEARS[k], f = V.fig[k];
-  if (lit) return F.obj(b, P, lit);
-  const ga = b.globalAlpha;
-  if (f > 0.01) { b.globalAlpha = ga * f; F.obj(b, P, lit); b.globalAlpha = ga; }
-  if (f < 0.99) drawShadowFig(b, k, 1 - f);
-}
-// 影子：一团涂出来的黑（一道道粗线叠出来，边是毛的），两只不一样大的眼睛。孩子刚被它吓回去的时候，边和眼睛是红的
-function drawShadowFig(b, k, a) {
-  const F = FEARS[k], t = V.T, sees = V.fearGate === k && t - V.fearT < 1.3, blk = '#010205', seed = 260000 + Object.keys(FEARS).indexOf(k) * 1000;
-  const lean = Math.sin(t * 0.7 + seed) * 2.2 - (sees ? 6 * Math.max(0, 1 - (t - V.fearT) / 1.3) * Math.sign(F.head[0] - kid.x) : 0);
-  const rim = sees ? '#ff544e' : '#8f9dc6', pts = F.outline(lean), n = pts.length;
-  let cx = 0, cy = 0, by = -1e9; for (const [x, y] of pts) { cx += x; cy += y; by = Math.max(by, y); } cx /= n; cy /= n;
-  const scaled = s => pts.map(([px, py]) => [cx + (px - cx) * s, cy + (py - cy) * s]);
-  const run = (sp, i0, len) => { const o = []; for (let i = 0; i < len; i++) o.push(sp[(i0 + i) % n]); return o; };
-  b.save(); const ga = b.globalAlpha; b.globalAlpha = ga * a;
-  b.translate(cx, by); b.scale(1 + (1 - a) * 0.2, 1 - (1 - a) * 0.35); b.translate(-cx, -by);
-  const pen0 = b.pen; b.pen = { w: 1.7, amp: 1.1, a: 1, col: blk }; b.seedN = seed;
-  const r = rnd(seed + 1), o1 = scaled(1.03);
-  ink(b, [...o1, o1[0]], { w: 1.1, col: rim, a: sees ? 0.9 : 0.55, amp: 1.4, taper: 0, seed: seed + 2 });
-  for (let j = 0; j < 3; j++) ink(b, run(scaled(1.06 + j * 0.03), Math.floor(r() * n), Math.floor(n * (0.25 + r() * 0.3))), { w: 0.8, col: rim, a: (sees ? 0.55 : 0.36) - j * 0.1, amp: 1.8, taper: 18, seed: seed + 10 + j });
-  fillPts(b, pts, blk);
-  for (let j = 0; j < 16; j++) ink(b, run(scaled(j < 10 ? 0.95 + r() * 0.09 : 0.6 + r() * 0.3), Math.floor(r() * n), Math.floor(n * (0.12 + r() * 0.25))), { w: 1.6 + r() * 2.4, col: blk, amp: 2.6, taper: 16, seed: seed + 100 + j });
-  const [ex, ey] = F.eyes, look = clamp((kid.x - ex) / 260, -1, 1) * 2.6, blink = Math.sin(t * 0.8 + seed) > 0.985 ? 0.15 : 1;
-  b.fillStyle = F.slits ? (sees ? '#ff5a4e' : '#ffb35a') : sees ? '#ff5a4e' : '#dfe6f7';
-  if (F.slits) for (const d of [-14, 14]) { b.beginPath(); b.ellipse(ex + d + look, ey, 7, 2.2 * blink, 0, 0, 7); b.fill(); }   // 锅炉：两条横缝
-  else for (const [d, sy] of [[-6.5, 1], [6, 0.82]]) { b.beginPath(); b.ellipse(ex + d + look, ey + (d > 0 ? 0.8 : 0), 2.6, 3.4 * sy * blink, 0.08, 0, 7); b.fill(); }
-  b.pen = pen0; b.globalAlpha = ga; b.restore();
-}
+// ---------- 衣服照亮以后的样子（在原处）：衣服立起来、追人、塌下去在 i-garb 那一段 ----------
+function drawFear(b, P, lit, k) { drawGarb(b, P, lit, k); }
 function drawGown(b, P, lit) {   // 挂在钩子上的一件睡袍：帽兜、垂下来的袖子、一根腰带
   const lc = lcOf(P, lit), x = HOOK.x; b.seedN = 270000;
   const body = curvePts([[x - 16, 12], [x + 16, 12], [x + 34, 50], [x + 40, 140], [x + 46, 226], [x - 46, 226], [x - 40, 140], [x - 34, 50]], true, 4);
@@ -1342,17 +1297,6 @@ function drawLaundry(b, P, lit) {   // 楼梯口一堆要洗的衣服：一件�
   part(b, curvePts([[2840, 244], [2860, 234], [2880, 240], [2870, 248]], true, 4), P.toy, { w: 0.8, tex: 0, lc });
   hatch(b, k => k.ellipse(2870, 246, 70, 7, 0, 0, 7), [2800, 236, 140, 20], { ang: -0.25, gap: 3, a: lit ? 0.6 : 0.4, w: 0.8, len: 20 });
 }
-function drawArmchair(b, P, lit) {   // 高背的扶手椅，搭着一条毯子
-  const lc = lcOf(P, lit), x = ARM.x, gy = FL.down.gy; b.seedN = 273000;
-  part(b, curvePts([[x - 70, gy + 4], [x - 72, 900], [x - 64, 820], [x - 40, 806], [x - 26, 900], [x + 60, 900], [x + 66, gy + 4]], true, 4), P.chair, { w: 1.1, tex: 0.4, lc });   // 椅背、座
-  part(b, roundPts(x - 30, 900, 110, 26, 10), P.chairHi, { w: 1, tex: 0.3, lc });   // 坐垫
-  part(b, roundPts(x + 40, 880, 34, 70, 12), P.chairHi, { w: 1, tex: 0.3, lc });   // 扶手
-  const th = curvePts([[x - 76, 830], [x - 50, 800], [x - 20, 808], [x - 6, 860], [x + 40, 900], [x + 50, 960], [x + 20, 972], [x - 40, 940], [x - 72, 900]], true, 4);
-  part(b, th, P.throw, { w: 1.1, tex: 0.45, lc });   // 毯子
-  for (let i = 0; i < 4; i++) ink(b, quadPts([x - 60 + i * 18, 812 + i * 6], [x - 30 + i * 22, 880], [x - 20 + i * 24, 950 - i * 4], 8), { w: 0.6, a: 0.5, col: P.throwHi });
-  hatch(b, k => th.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [x - 80, 800, 70, 180], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.6, w: 0.7, len: 16 });
-  for (const lx of [x - 60, x + 56]) part(b, rectPts(lx, gy - 6, 8, 12), P.woodLo, { w: 0.7, tex: 0, lc, seed: 273050 + lx });
-}
 function drawSack(b, P, lit) {   // 桌子底下一袋土豆，口子敞着，滚出来两个
   const lc = lcOf(P, lit); b.seedN = 274000;
   const s = curvePts([[884, 1004], [890, 960], [912, 926], [930, 940], [950, 920], [972, 934], [994, 962], [1006, 1004]], true, 4);
@@ -1374,25 +1318,6 @@ function drawBoiler(b, P, lit) {   // 锅炉：一个铁肚子，炉门上两条
   hatch(b, k => body.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [x + 10, 1360, 80, 240], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.6, w: 0.7, len: 18 });
   part(b, rectPts(x - 60, gy - 6, 30, 12), P.rust, { w: 0.7, tex: 0, lc }); part(b, rectPts(x + 30, gy - 6, 30, 12), P.rust, { w: 0.7, tex: 0, lc });
 }
-function drawCoatStand(b, P, lit) {   // 衣帽架（门厅那一屏的样子）
-  const x = HSTAND.x, B = HSTAND.base, cx = x + 3, top = B - 186, lc = lcOf(P, lit); b.seedN = 276000;
-  if (lit) hatch(b, k => k.ellipse(x + 18, B + 3, 56, 7, 0, 0, 7), [x - 40, B - 6, 120, 18], { ang: -0.25, gap: 3.4, a: 0.65, w: 0.8, len: 24, seed: 276001 });
-  for (const [ex, ey, i] of [[-34, 0, 0], [34, 0, 1], [7, 5, 2]]) part(b, tube(quadPts([x, B - 30], [x + ex * 0.2, B - 6], [x + ex, B + ey], 6), [6, 5.5, 5, 4.5, 4, 3.6, 3.2]), P.wood, { w: 0.8, tex: 0, lc, seed: 276010 + i });
-  part(b, rectPts(x - 3.5, B - 210, 7, 182), P.wood, { w: 0.9, tex: 0, lc, seed: 276020 });
-  for (const s of [-1, 1]) ink(b, quadPts([x, B - 192], [x + s * 15, B - 190], [x + s * 22, B - 202], 8), { w: 1.6, col: P.brass, taper: 3, a: 1 / b.pen.a, seed: 276030 + s });
-  part(b, [[cx - 20, top + 10], ...quadPts([cx - 20, top + 10], [cx - 32, top + 50], [cx - 29, top + 112], 8).slice(1), [cx - 17, top + 112], [cx - 12, top + 14]], P.coatLo, { w: 0.9, tex: 0.3, lc, seed: 276040 });
-  const coat = [[cx - 14, top], ...quadPts([cx - 14, top], [cx - 24, top + 6], [cx - 24, top + 20], 5).slice(1), [cx - 29, B - 34], [cx + 33, B - 34], [cx + 27, top + 20], ...quadPts([cx + 27, top + 20], [cx + 26, top + 6], [cx + 14, top], 5).slice(1)];
-  part(b, coat, P.coat, { w: 1.1, tex: 0.45, lc, seed: 276050 });
-  b.save(); b.beginPath(); b.rect(cx + 4, top - 10, 60, B - top); b.clip();
-  hatch(b, k => coat.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [cx, top, 40, B - 34 - top], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.45 : 0.6, w: 0.7, len: 20, seed: 276055 });
-  b.restore();
-  part(b, [[cx + 14, top + 12], ...quadPts([cx + 14, top + 12], [cx + 34, top + 46], [cx + 33, top + 104], 8).slice(1), [cx + 21, top + 104], [cx + 12, top + 20]], P.coatLo, { w: 0.9, tex: 0.3, lc, seed: 276060 });
-  ink(b, [[cx - 12, top + 2], [cx + 1, top + 28], [cx + 13, top + 2]], { w: 0.8, a: 0.8, col: lc, seed: 276071 });
-  part(b, [[cx - 14, top], [cx + 14, top], [cx + 13, top + 9], [cx - 13, top + 11]], P.scarf, { w: 0.8, tex: 0, lc, seed: 276090 });
-  part(b, [[cx - 13, top + 8], [cx - 4, top + 8], [cx - 1, top + 88], [cx - 11, top + 88]], P.scarf, { w: 0.8, tex: 0.3, lc, seed: 276091 });
-  part(b, roundPts(x + 8, B - 224, 28, 18, 8), P.hat, { w: 0.9, tex: 0, lc, seed: 276120 }); part(b, arcPts(x + 22, B - 206, 24, 4.5, 0, TAU, 16), P.hat, { w: 0.9, tex: 0, lc, seed: 276121 });
-  if (S.key === 'stand') { ink(b, seg(x - 24, B - 202, x - 26, B - 125), { w: 0.6, col: P.wire, taper: 0, seed: 276130 }); sceneItem(b, 'key', x - 26, B - 110, 30, P, lit, 276140); }
-}
 
 // ---------- 灯和光 ----------
 // 每盏灯都没有形状：灯泡附近最亮，往外慢慢暗下去；有灯罩的挡掉往上的光（up）；光出不了自己的屋子（墙挡光，clip）。
@@ -1412,15 +1337,16 @@ const LIGHTS = [
   { id: 'cbulb', off: 0.3, up: 0.5, at: () => ({ x: CBULB.x, y: CBULB.y, R: 780, I: V.li.power, clip: roomClip('cellar') }) },
   { id: 'klamp', off: 0.4, up: 0.78, at: () => ({ x: 700, y: ROOMS.kitchen.top + 94, R: 660, I: V.li.power, clip: roomClip('kitchen') }) },
   { id: 'llamp', off: 0.4, up: 0.78, at: () => ({ x: 2050, y: ROOMS.living.top + 94, R: 660, I: V.li.power, clip: roomClip('living') }) },
+  { id: 'bird', off: 0.1, up: 0.3, at: () => ({ x: HCLOCK.x + 2, y: HCLOCK.base - 257, R: 200, I: 0.62 * (0.93 + 0.07 * Math.sin(V.T * 3)), clip: [2720, -410, 4480, 1060] }) },   // 门厅座钟顶上那只肚子是灯泡的鸟
 ];
 // 蜡烛在哪儿：孩子手里（点着），或者放在保险丝盒旁边
 function candlePos() {
   if (!S.lit) return null;
-  if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) return { x: CSHELF.cx, y: CSHELF.y - 44, clip: roomClip('cellar') };
+  if (S.candle === 'box' || (S.candle === 'inv' && V.candleDown)) return { x: CSHELF.cx, y: CSHELF.y - 14, clip: roomClip('cellar') };
   if (S.candle !== 'inv') return null;
   const h = kidHand(); if (!h) return null;
-  if (kid.kind === 'ladder') return { x: h.x, y: h.y - 40, clip: [ROOMS.kitchen.ix0, ROOMS.kitchen.top, ROOMS.kitchen.ix1, ROOMS.cellar.fr] };   // 在梯子上：厨房、地下室都照得到一点
-  const r = roomAt(h.x, h.y); return { x: h.x, y: h.y - 40, clip: r ? roomClip(r.id) : [h.x - 300, h.y - 300, h.x + 300, h.y + 300] };
+  if (kid.kind === 'ladder') return { x: h.x, y: h.y - 10, clip: [ROOMS.kitchen.ix0, ROOMS.kitchen.top, ROOMS.kitchen.ix1, ROOMS.cellar.fr] };   // 在梯子上：厨房、地下室都照得到一点
+  const r = roomAt(h.x, h.y); return { x: h.x, y: h.y - 10, clip: r ? roomClip(r.id) : [h.x - 300, h.y - 300, h.x + 300, h.y + 300] };
 }
 // 这一帧每盏灯在哪儿、多亮
 function activeLights() { const out = []; for (const L of LIGHTS) { const a = L.at(); if (a && a.I > 0.004) out.push({ ...a, L }); } return out; }
@@ -1807,6 +1733,348 @@ function drawKidBack(b, P0, lit) {
   b.pen = pen0; b.globalAlpha = ga; b.restore();
 }
 
+// ---------- 这个世界：光是活的，衣服是空的 ----------
+// 主人 2026-11-18 定的：光是活的、正在一盏盏死掉；光灭了的地方，人就不见了，只剩衣服，衣服里灌满了会流的墨，夜里自己走（暗黑恐怖，B）。
+// 每个影子是一件空衣服。暗处它立起来醒着；孩子走进它那一片（terr）、又不在光里，它就朝孩子挪过来（比孩子走得慢），碰到孩子就是被抓住了，
+// 孩子回到最近一盏亮着的灯底下（做好的事都还在）。光照到它就停住、塌下去，变回一件普通的衣服（挂在原处，或者掉在地上）；它不会走进光里。
+const INK = '#010205';
+const GARB = {
+  gown: { kind: 'robe', fl: 'up', home: HOOK.x, terr: [720, 1385], speed: 60, h: 214, cols: ['blanketHi', 'blanket'], belt: 1 },
+  towel: { kind: 'robe', fl: 'up', home: 2330, terr: [2010, 2680], speed: 60, h: 226, cols: ['towel2', 'towel'] },
+  laundry: { kind: 'laundry', fl: 'up', home: 2868, terr: [2730, 2935], speed: 40, h: 66 },
+  chair: { kind: 'throw', fl: 'down', home: ARM.x - 12, terr: [1700, 2110], speed: 54, h: 176 },
+  sack: { kind: 'sack', fl: 'down', home: 945, terr: [700, 1180], speed: 46, h: 90 },
+  boiler: { kind: 'overalls', fl: 'cel', home: BOILER.x + 128, terr: [700, 1700], speed: 54, h: 196 },
+  stand: { kind: 'coat', fl: 'down', home: HSTAND.x, terr: [3885, 4470], speed: 62, h: 214 },
+};
+const GARB_KEYS = Object.keys(GARB);
+const newMon = () => Object.fromEntries(GARB_KEYS.map(k => [k, { x: GARB[k].home, rise: 1, want: 1, ph: 0, face: -1, reach: 0, hunt: 0 }]));
+const garbHead = k => { const G = GARB[k], m = V.mon[k]; return [m.x, FL[G.fl].gy - G.h * 0.8]; };
+const pathOf = (k, pts) => { pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.moveTo(x, y)); k.closePath(); };
+// 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
+function garbUpdate(dt) {
+  const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm = T < V.grace || won || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone';
+  let near = 0;
+  for (const k of GARB_KEYS) {
+    const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = fy - G.h * 0.8, lit = coverage(m.x, hy, LT) > 0.55, want = lit ? 0 : 1;
+    if (want !== m.want) { m.want = want; if (inView(m.x, hy, 40)) { puff(m.x, fy - G.h * 0.5, want ? C.ink : C.lamp); (want ? snd.rise : snd.freeze)(); } }
+    m.rise = approach(m.rise, want, dt / (want ? 0.9 : 0.35));
+    V.fig[k] = 1 - m.rise;
+    const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+    const hunting = !calm && m.rise > 0.9 && inTerr && !kidLit;
+    const target = hunting ? kid.x : G.home, d = target - m.x;
+    if (Math.abs(d) > 1.5 && m.rise > 0.9) {
+      const dir = Math.sign(d), nx = m.x + dir * Math.min(Math.abs(d), (hunting ? G.speed : G.speed * 0.6) * dt);
+      if (coverage(nx + dir * 34, hy, LT) < 0.5) { m.ph += Math.abs(nx - m.x) / 60; m.x = clamp(nx, G.terr[0], G.terr[1]); }   // 光的边上停住
+      m.face = dir;
+    }
+    m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5);
+    m.reach = approach(m.reach, hunting && Math.abs(kid.x - m.x) < 170 ? 1 : 0, dt * 3);
+    if (hunting) { m.face = Math.sign(kid.x - m.x) || m.face; near = Math.max(near, 1 - Math.abs(kid.x - m.x) / 400); }
+    if (hunting && Math.abs(kid.x - m.x) < 40) caught(k);
+  }
+  if (near > 0 && T - V.heartT > lerp(0.95, 0.45, near)) { V.heartT = T; snd.heart(); }   // 它追过来的时候，心跳
+}
+function caught(k) {
+  if (kid.mode === 'caught') return;
+  kid.mode = 'caught'; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
+  V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
+}
+function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
+  kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1;
+  for (const k of GARB_KEYS) V.mon[k].x = GARB[k].home;
+  V.grace = V.T + 2.5; [camFX, camFY] = camTarget();
+}
+
+// ----- 墨 -----
+function inkDrips(b, pts, seed) { for (const [x, y, len] of pts) { ink(b, seg(x, y, x + 0.5, y + len), { col: INK, w: 3 / b.pen.w, a: 1 / b.pen.a, taper: 0, prof: q => 1 - q * 0.6, seed: seed + Math.round(x * 3 + y) }); b.fillStyle = INK; b.beginPath(); b.ellipse(x + 0.5, y + len + 2.6, 2.8, 3.8, 0, 0, 7); b.fill(); } }
+function inkTendril(b, x0, y0, x1, y1, t, seed, w = 8) {
+  const pts = cubPts([x0, y0], [lerp(x0, x1, 0.35), y0 - 14 + Math.sin(t * 1.6 + seed) * 6], [lerp(x0, x1, 0.7), y1 + 12], [x1, y1 + Math.sin(t * 2.1 + seed) * 4], 16);
+  ink(b, pts, { col: INK, w: w / b.pen.w, a: 1 / b.pen.a, taper: 0, prof: q => Math.max(0.08, 1 - q * 0.95), amp: 0.5, seed });
+  ink(b, pts.slice(1, 9), { col: '#8d9cc4', w: 0.6, a: 0.35, taper: 10, seed: seed + 1 });
+}
+function inkEyes(b, eyes, hunt) {   // 墨里的眼睛：追人的时候瞳仁缩小、发红
+  for (const [ex, ey, er] of eyes) {
+    b.fillStyle = hunt > 0.5 ? '#f2dcd6' : '#e9edf6'; b.beginPath(); b.ellipse(ex, ey, er, er * 0.8, 0, 0, 7); b.fill();
+    const pr = er * (hunt > 0.5 ? 0.32 : 0.45); b.fillStyle = hunt > 0.5 ? '#7a0c08' : '#05060a'; b.beginPath(); b.ellipse(ex + er * 0.35, ey + er * 0.08, pr, pr * 1.1, 0, 0, 7); b.fill();
+  }
+}
+function inkBlob(b, pts, drips, seed) { const p = curvePts(pts, true, 4); fillPts(b, p, INK); b.seedN = seed; ink(b, [...p, p[0]], { col: '#6f7ca4', w: 0.6, a: 0.3, taper: 0, amp: 0.8, seed: seed + 7 }); inkDrips(b, drips, seed + 20); }
+// 暗的那几张屋子上：墙角、天花板往下滴的墨，衣服睡觉的地方一摊墨（光照到的地方没有：光把墨赶走了）
+const INK_DECOR = {
+  bedroom: { blobs: [[[20, -410], [210, -410], [160, -384], [96, -352], [20, -330]]], drips: [[60, -364, 54], [120, -392, 30], [1290, -400, 44], [1340, -400, 22]], pools: [[1330, 246, 52]] },
+  bath: { blobs: [[[2470, -410], [2680, -410], [2680, -318], [2626, -356], [2546, -384]]], drips: [[2600, -378, 60], [2650, -344, 32], [1500, -400, 30]], pools: [[2330, 246, 48]] },
+  hall: { blobs: [], drips: [[2960, 300, 60], [3010, 300, 110], [3046, 300, 40], [3600, 352, 50], [4300, 352, 80]], pools: [[2990, 1004, 70], [4432, 1004, 64]] },
+  living: { blobs: [[[1420, 350], [1640, 350], [1600, 380], [1540, 400], [1500, 450], [1460, 520], [1420, 560]]], drips: [[1450, 520, 70], [1488, 470, 60], [1530, 410, 46], [2390, 352, 50]], pools: [[1905, 1004, 82]] },
+  kitchen: { blobs: [], drips: [[600, 352, 40], [980, 352, 70], [1200, 352, 30]], pools: [[945, 1004, 62]] },
+  cellar: { blobs: [[[20, 1110], [180, 1110], [140, 1136], [70, 1170], [20, 1190]]], drips: [[500, 1160, 50], [1700, 1160, 80], [2100, 1160, 40]], pools: [[1253, 1594, 58]] },
+};
+function paintInkDecor(b, id) {
+  const D = INK_DECOR[id]; if (!D) return;
+  D.blobs.forEach((pts, i) => inkBlob(b, pts, [], 290000 + i * 37 + id.length * 1000));
+  inkDrips(b, D.drips, 291000 + id.length * 100);
+  for (const [x, y, rx] of D.pools) { b.fillStyle = INK; b.beginPath(); b.ellipse(x, y, rx, 5, 0, 0, 7); b.fill(); ink(b, arcPts(x, y, rx, 5, Math.PI, TAU, 14), { col: '#6f7ca4', w: 0.5, a: 0.3, taper: 0 }); }
+}
+
+// ----- 衣服立起来的样子（只画在暗的那一层）-----
+function inkRobe(b, P, x, fy, f, t, m, G, seed) {   // 带帽兜的长袍（睡袍、浴巾）：帽兜里是一汪墨和几只眼睛，一只袖子伸过来
+  const lc = DARK.ink, c1 = P[G.cols[0]], c2 = P[G.cols[1]], h = G.h, base = -8 - Math.sin(t * 1.6 + seed) * 3, sw = Math.sin(t * 2.2 + seed) * 3 - m.hunt * 6;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(0, 4, 46, 5, 0, 0, 7); b.fill();
+  part(b, tube([[-24, base - h + 64], [-34, base - h + 110], [-30, base - h + 150]], [18, 16, 15]), c2, { w: 0.9, tex: 0, lc });
+  const body = curvePts([[-18, base - h + 46], [22, base - h + 46], [34, base - h + 80], [40, base - 60], [48 + sw * 0.3, base - 2], [26, base + 4], [6, base - 2], [-14, base + 5], [-40, base - 1], [-38, base - 60], [-32, base - h + 80]], true, 4);
+  part(b, body, c1, { w: 1.1, tex: 0.4, lc });
+  hatch(b, k => pathOf(k, body), [-44, base - h + 40, 46, h], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 20 });
+  if (G.belt) { part(b, rectPts(-36, base - h + 120, 74, 8), c2, { w: 0.8, tex: 0, lc }); ink(b, [[10, base - h + 128], [16, base - h + 166], [8, base - h + 176]], { w: 1.4, col: c2, taper: 4 }); }
+  const hood = curvePts([[-26, base - h + 54], [-30, base - h + 20], [-14, base - h - 4], [10, base - h - 2], [28, base - h + 22], [30, base - h + 54]], true, 4);
+  part(b, hood, c2, { w: 1.1, tex: 0.3, lc });
+  fillPts(b, curvePts([[0, base - h + 18], [20, base - h + 16], [26, base - h + 38], [18, base - h + 56], [2, base - h + 52], [-4, base - h + 34]], true, 4), INK);
+  inkEyes(b, [[9, base - h + 31, 2.8], [19, base - h + 33, 2.2], [13, base - h + 43, 1.6]], m.hunt);
+  const rk = m.reach, ex = lerp(30, 58, rk), ey = lerp(base - h + 110, base - h + 84, rk), hx = lerp(34, 96, rk), hy = lerp(base - h + 150, base - h + 92, rk);
+  part(b, tube([[22, base - h + 62], [ex, ey], [hx, hy]], [18, 16, 15]), c1, { w: 0.9, tex: 0.3, lc });
+  part(b, arcPts(hx + 2 * rk, hy + 2, 4 + 2 * rk, 7, 0, TAU, 12), INK, { w: 0.6, tex: 0, lc });
+  if (rk > 0.4) inkTendril(b, hx + 3, hy + 2, hx + 64 * rk, hy + 16, t, seed + 50, 7);
+  inkDrips(b, [[hx, hy + 6, 14 + 6 * Math.sin(t * 2)], [-30, base - h + 156, 16], [-22, base - 2, 10], [8, base - 1, 16], [32, base + 2, 9]], seed + 60);
+  if (!m.hunt) ink(b, [[40, base - 60], [48, base - 4]], { col: DARK.hi, w: 0.8, a: 0.25, taper: 0 });
+  b.restore();
+}
+function inkCoat(b, P, x, fy, f, t, m, seed) {   // 门厅那件长大衣：帽子飘在空领口上面，领口里是墨和五只眼睛，墨从领口、袖口、下摆往下淌
+  const lc = DARK.ink, B = fy - 8, lean = -0.07 * m.hunt + Math.sin(t * 0.8) * 0.015, rk = m.reach;
+  b.save(); b.translate(x, B); b.scale(f, 1); b.rotate(lean); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(4, 12, 44, 5, 0, 0, 7); b.fill();
+  part(b, tube([[-22, -138], [-32, -100], [-31, -62]], [17, 15, 14]), P.coatLo, { w: 0.9, tex: 0, lc });
+  part(b, arcPts(-31, -58, 7, 3, 0, TAU, 12), INK, { w: 0.6, tex: 0, lc });
+  const coat = curvePts([[-16, -152], [16, -152], [30, -138], [33, -80], [42, -10], [22, -3], [4, -9], [-14, -2], [-36, -10], [-31, -80], [-28, -138]], true, 4);
+  part(b, coat, P.coat, { w: 1.1, tex: 0.42, lc });
+  b.save(); b.beginPath(); b.rect(-50, -160, 50, 170); b.clip();
+  hatch(b, k => pathOf(k, coat), [-44, -156, 50, 156], { ang: -1.15, gap: 4.6 / HD, a: 0.6, w: 0.7, len: 20 });
+  b.restore();
+  ink(b, [[6, -148], [9, -8]], { w: 0.8, a: 0.8 });
+  [[-120, 0], [-92, 1], [-64, 2]].forEach(([yy, i]) => part(b, arcPts(13, yy, 2.4, 2.4, 0, TAU, 8), P.brass, { w: 0.5, tex: 0, lc }));
+  part(b, [[-12, -150], [-4, -150], [-2, -76], [-12, -76]], P.scarf, { w: 0.8, tex: 0.3, lc });
+  part(b, [[-19, -150], [-13, -170], [17, -170], [21, -150], [10, -155], [-8, -155]], P.coatLo, { w: 0.9, tex: 0, lc });
+  fillPts(b, curvePts([[-14, -163], [0, -168], [16, -163], [18, -150], [12, -138], [4, -150], [-2, -128], [-8, -146], [-14, -150]], true, 4), INK);
+  inkDrips(b, [[-6, -146, 34], [4, -150, 66], [13, -146, 24]], seed + 10);
+  inkEyes(b, [[-8, -161, 2.3], [0, -157, 3.2], [8, -163, 2.1], [12, -155, 1.6], [3, -146, 1.5]], m.hunt);
+  const ex = lerp(30, 50, rk), ey = lerp(-100, -112, rk), hx = lerp(30, 84, rk), hy = lerp(-62, -118, rk);
+  part(b, tube([[20, -138], [ex, ey], [hx, hy]], [17, 15, 14]), P.coat, { w: 0.9, tex: 0.3, lc });
+  part(b, arcPts(hx + 3 * rk, hy, 3.6 + 1 * rk, 7.5, 0, TAU, 12), INK, { w: 0.6, tex: 0, lc });
+  if (rk > 0.4) inkTendril(b, hx + 3, hy, hx + 66 * rk, hy + 2, t, seed + 50, 8);
+  inkDrips(b, [[hx, hy + 6, 18], [-31, -55, 26], [-24, -6, 12], [-6, -4, 20], [16, -5, 9], [34, -8, 16]], seed + 20);
+  b.save(); b.translate(3, -204 + Math.sin(t * 1.3) * 2); b.rotate(-0.14);
+  part(b, roundPts(-14, -18, 28, 18, 8), P.hat, { w: 0.9, tex: 0, lc }); part(b, arcPts(0, 0, 24, 4.5, 0, TAU, 16), P.hat, { w: 0.9, tex: 0, lc });
+  fillPts(b, rectPts(-14, -7, 28, 3.5), P.scarf, 0.5);
+  b.restore();
+  ink(b, [[33, -80], [42, -12]], { col: DARK.hi, w: 0.8, a: 0.28, taper: 0 });
+  b.restore();
+}
+function inkLaundry(b, P, x, fy, f, t, m, seed) {   // 一堆脏衣服：贴着地爬，衬衫领口里露出眼睛，一只袖子伸过来
+  const lc = DARK.ink, sq = 1 + Math.sin(t * 5 + seed) * 0.06 * (0.3 + m.hunt), rk = m.reach;
+  b.save(); b.translate(x, fy + 2); b.scale(f * sq, 1 / sq); b.seedN = seed;
+  b.fillStyle = INK; b.beginPath(); b.ellipse(-6, 0, 74, 5, 0, 0, 7); b.fill();
+  part(b, curvePts([[-66, 0], [-60, -22], [-32, -44], [4, -50], [38, -40], [60, -16], [64, 0]], true, 4), P.towel2, { w: 1, tex: 0.4, lc });
+  part(b, curvePts([[30, -6], [62, -14], [84, -4], [78, 2], [34, 2]], true, 4), P.cloth, { w: 0.9, tex: 0, lc });
+  part(b, curvePts([[-42, -14], [-28, -54], [2, -66], [24, -56], [20, -30], [-8, -20]], true, 4), P.sheet, { w: 1, tex: 0.3, lc });
+  part(b, curvePts([[-58, -8], [-44, -22], [-34, -14], [-46, -2]], true, 4), P.toy, { w: 0.8, tex: 0, lc });
+  fillPts(b, arcPts(6, -58, 14, 6, 0, TAU, 14), INK);
+  inkEyes(b, [[1, -58, 2.4], [11, -57, 2], [6, -52, 1.3]], m.hunt);
+  const hx = lerp(40, 92, rk), hy = lerp(-20, -40, rk);
+  part(b, tube([[16, -44], [lerp(30, 60, rk), lerp(-30, -50, rk)], [hx, hy]], [14, 12, 11]), P.sheet, { w: 0.9, tex: 0, lc });
+  part(b, arcPts(hx + 2, hy, 3.5, 6, 0, TAU, 12), INK, { w: 0.5, tex: 0, lc });
+  if (rk > 0.4) inkTendril(b, hx + 3, hy, hx + 56 * rk, hy + 20, t, seed + 50, 6);
+  hatch(b, k => pathOf(k, [[-66, 0], [-32, -44], [38, -40], [64, 0]]), [0, -50, 66, 50], { ang: -1.1, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 14 });
+  b.restore();
+}
+function inkSack(b, P, x, fy, f, t, m, seed) {   // 麻袋：一跳一跳的，敞着的口子里是墨和眼睛，墨顺着袋子往下淌
+  const lc = DARK.ink, hop = Math.abs(Math.sin(t * (2.4 + m.hunt * 2.4) + seed)) * 10 * (0.25 + m.hunt), rk = m.reach;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(x, fy + 2, 40 - hop, 5, 0, 0, 7); b.fill();
+  b.save(); b.translate(x, fy - hop); b.scale(f, 1); b.seedN = seed;
+  const s = curvePts([[-34, 0], [-38, -40], [-30, -76], [-14, -88], [6, -80], [22, -90], [34, -74], [38, -36], [34, 0]], true, 4);
+  part(b, s, P.sack, { w: 1.1, tex: 0.45, lc });
+  for (let i = 0; i < 4; i++) ink(b, quadPts([-26 + i * 18, -74], [-22 + i * 19, -40], [-28 + i * 20, -4], 8), { w: 0.6, a: 0.5 });
+  hatch(b, k => pathOf(k, s), [0, -90, 40, 90], { ang: -1.1, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 14 });
+  fillPts(b, arcPts(4, -84, 17, 6, 0, TAU, 12), INK);
+  inkEyes(b, [[-2, -85, 2.6], [9, -84, 2.1], [4, -79, 1.4]], m.hunt);
+  inkDrips(b, [[-10, -80, 40], [14, -82, 58], [24, -78, 22]], seed + 10);
+  if (rk > 0.4) inkTendril(b, 20, -82, 20 + 70 * rk, -50, t, seed + 50, 7);
+  b.restore();
+}
+function inkThrow(b, P, x, fy, f, t, m, seed) {   // 扶手椅上的毯子站了起来：像蒙着毯子的人，可是毯子底下没有人；一个洞里是墨和眼睛
+  const lc = DARK.ink, base = -6 - Math.sin(t * 1.4 + seed) * 4, rk = m.reach;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(0, 4, 50, 5, 0, 0, 7); b.fill();
+  const lift = rk * 30, gh = curvePts([[-50, base], [-48, base - 80], [-36, base - 140], [-10, base - 172], [16, base - 170], [38, base - 142], [50 + lift * 0.3, base - 96 - lift], [60 + lift, base - 64 - lift * 0.5], [52, base], [40, base + 6], [26, base - 2], [12, base + 6], [-4, base - 2], [-20, base + 6], [-36, base - 2]], true, 4);
+  part(b, gh, P.throw, { w: 1.1, tex: 0.45, lc });
+  for (let i = 0; i < 4; i++) ink(b, quadPts([-44, base - 30 - i * 32], [0, base - 22 - i * 34], [46, base - 32 - i * 32], 10), { w: 1.2, col: P.throwHi, a: 0.8, taper: 4 });
+  for (let x2 = -46; x2 < 50; x2 += 7) ink(b, seg(x2, base + 2, x2 + 1, base + 12), { w: 0.6, col: P.throwHi, taper: 0, a: 0.7 });
+  hatch(b, k => pathOf(k, gh), [-50, base - 172, 50, 172], { ang: -1.1, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 18 });
+  fillPts(b, curvePts([[2, base - 150], [22, base - 152], [26, base - 132], [10, base - 124], [0, base - 136]], true, 4), INK);
+  inkEyes(b, [[9, base - 142, 2.6], [19, base - 140, 2.1], [13, base - 132, 1.4]], m.hunt);
+  if (rk > 0.4) inkTendril(b, 58 + lift * 0.6, base - 70 - lift * 0.4, 58 + 70 * rk, base - 50, t, seed + 50, 8);
+  inkDrips(b, [[-30, base + 2, 12], [8, base + 4, 18], [40, base + 4, 10]], seed + 10);
+  b.restore();
+}
+function inkOveralls(b, P, x, fy, f, t, m, seed) {   // 锅炉边上挂着的一套工作服：背带搭在看不见的肩膀上，两条裤腿僵僵地走
+  const lc = DARK.ink, wk = Math.sin(m.ph * Math.PI * 2) * (0.25 + m.hunt * 0.75), rk = m.reach, base = -6;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(0, 4, 40, 5, 0, 0, 7); b.fill();
+  for (const s of [1, -1]) { const lx = s * 12 + wk * s * 10; part(b, tube([[s * 12, base - 96], [s * 12 + wk * s * 5, base - 50], [lx, base - 4]], [24, 22, 22]), s > 0 ? P.cloth : P.cloth2, { w: 0.9, tex: 0.3, lc }); fillPts(b, arcPts(lx, base - 4, 10, 3, 0, TAU, 12), INK); inkDrips(b, [[lx - 4, base - 2, 10], [lx + 5, base - 2, 14]], seed + 30 + s); }
+  part(b, rectPts(-26, base - 116, 52, 24), P.cloth, { w: 1, tex: 0.3, lc });
+  const bib = [[-20, base - 114], [20, base - 114], [18, base - 166], [-18, base - 166]];
+  part(b, bib, P.cloth, { w: 1, tex: 0.35, lc });
+  box(b, -10, base - 150, 20, 18, { w: 0.6, a: 0.7, over: 0 });
+  for (const s of [-1, 1]) { part(b, arcPts(s * 16, base - 164, 3, 3, 0, TAU, 8), P.brass, { w: 0.5, tex: 0, lc }); ink(b, quadPts([s * 16, base - 166], [s * 26, base - 200], [s * 4, base - 206], 8), { w: 2.6, col: P.cloth2, taper: 0, a: 1 / b.pen.a }); }
+  hatch(b, k => pathOf(k, bib), [0, base - 166, 22, 54], { ang: -1.1, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 14 });
+  fillPts(b, arcPts(0, base - 166, 18, 6, 0, TAU, 14), INK);
+  inkEyes(b, [[-5, base - 167, 2.6], [6, base - 166, 2.2], [1, base - 160, 1.4]], m.hunt);
+  inkDrips(b, [[-8, base - 160, 30], [9, base - 162, 18]], seed + 10);
+  if (rk > 0.4) inkTendril(b, 18, base - 140, 18 + 76 * rk, base - 120, t, seed + 50, 8);
+  b.restore();
+}
+// 照亮了、又不在原处：掉在地上的一件衣服
+const HEAP_COLS = { gown: ['blanketHi', 'blanket'], towel: ['towel2', 'towel'], laundry: ['towel2', 'sheet'], chair: ['throw', 'throwHi'], sack: ['sack', 'sackHi'], boiler: ['cloth', 'cloth2'], stand: ['coat', 'coatLo'] };
+function drawGarbHeap(b, P, lit, k, x, fy) {
+  const lc = lcOf(P, lit), [c1, c2] = HEAP_COLS[k]; b.seedN = 282000 + GARB_KEYS.indexOf(k) * 100;
+  const pile = curvePts([[x - 52, fy + 4], [x - 44, fy - 12], [x - 18, fy - 24], [x + 12, fy - 20], [x + 40, fy - 14], [x + 54, fy + 4]], true, 4);
+  part(b, pile, P[c1], { w: 1, tex: 0.4, lc });
+  part(b, curvePts([[x - 10, fy - 18], [x + 18, fy - 30], [x + 30, fy - 16], [x + 6, fy - 8]], true, 4), P[c2], { w: 0.9, tex: 0, lc });
+  ink(b, quadPts([x - 36, fy - 6], [x - 6, fy - 16], [x + 24, fy - 4], 8), { w: 0.6, a: 0.6 });
+  hatch(b, kk => pathOf(kk, pile), [x, fy - 24, 54, 28], { ang: -0.3, gap: 3.4, a: lit ? 0.5 : 0.6, w: 0.7, len: 16 });
+  if (k === 'stand') { part(b, roundPts(x + 30, fy - 16, 26, 14, 6), P.hat, { w: 0.8, tex: 0, lc }); part(b, arcPts(x + 43, fy - 3, 20, 3.5, 0, TAU, 14), P.hat, { w: 0.8, tex: 0, lc }); }
+}
+// 原处的家具（不会走）：空的衣帽架（钥匙挂在上面）、扶手椅、锅炉
+function drawBareStand(b, P, lit) {
+  const x = HSTAND.x, B = HSTAND.base, lc = lcOf(P, lit); b.seedN = 276000;
+  if (lit) hatch(b, k => k.ellipse(x + 18, B + 3, 40, 6, 0, 0, 7), [x - 30, B - 6, 100, 16], { ang: -0.25, gap: 3.4, a: 0.6, w: 0.8, len: 24, seed: 276001 });
+  for (const [ex, ey, i] of [[-34, 0, 0], [34, 0, 1], [7, 5, 2]]) part(b, tube(quadPts([x, B - 30], [x + ex * 0.2, B - 6], [x + ex, B + ey], 6), [6, 5.5, 5, 4.5, 4, 3.6, 3.2]), P.wood, { w: 0.8, tex: 0, lc, seed: 276010 + i });
+  part(b, rectPts(x - 3.5, B - 210, 7, 182), P.wood, { w: 0.9, tex: 0, lc, seed: 276020 });
+  part(b, arcPts(x, B - 213, 5.5, 5.5, 0, TAU, 10), P.woodHi, { w: 0.8, tex: 0, lc, seed: 276021 });
+  for (const s of [-1, 1]) ink(b, quadPts([x, B - 192], [x + s * 15, B - 190], [x + s * 22, B - 202], 8), { w: 1.6, col: P.brass, taper: 3, a: 1 / b.pen.a, seed: 276030 + s });
+  if (S.key === 'stand') { ink(b, seg(x - 24, B - 202, x - 26, B - 125), { w: 0.6, col: P.wire, taper: 0, seed: 276130 }); sceneItem(b, 'key', x - 26, B - 110, 30, P, lit, 276140); }
+}
+function drawStandCoat(b, P, lit) {   // 挂在衣帽架上的大衣和帽子（门厅那一屏的样子）
+  const x = HSTAND.x, B = HSTAND.base, cx = x + 3, top = B - 186, lc = lcOf(P, lit); b.seedN = 276040;
+  part(b, [[cx - 20, top + 10], ...quadPts([cx - 20, top + 10], [cx - 32, top + 50], [cx - 29, top + 112], 8).slice(1), [cx - 17, top + 112], [cx - 12, top + 14]], P.coatLo, { w: 0.9, tex: 0.3, lc, seed: 276040 });
+  const coat = [[cx - 14, top], ...quadPts([cx - 14, top], [cx - 24, top + 6], [cx - 24, top + 20], 5).slice(1), [cx - 29, B - 34], [cx + 33, B - 34], [cx + 27, top + 20], ...quadPts([cx + 27, top + 20], [cx + 26, top + 6], [cx + 14, top], 5).slice(1)];
+  part(b, coat, P.coat, { w: 1.1, tex: 0.45, lc, seed: 276050 });
+  b.save(); b.beginPath(); b.rect(cx + 4, top - 10, 60, B - top); b.clip();
+  hatch(b, k => coat.forEach(([px, py], i) => i ? k.lineTo(px, py) : k.moveTo(px, py)), [cx, top, 40, B - 34 - top], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.45 : 0.6, w: 0.7, len: 20, seed: 276055 });
+  b.restore();
+  part(b, [[cx + 14, top + 12], ...quadPts([cx + 14, top + 12], [cx + 34, top + 46], [cx + 33, top + 104], 8).slice(1), [cx + 21, top + 104], [cx + 12, top + 20]], P.coatLo, { w: 0.9, tex: 0.3, lc, seed: 276060 });
+  ink(b, [[cx - 12, top + 2], [cx + 1, top + 28], [cx + 13, top + 2]], { w: 0.8, a: 0.8, col: lc, seed: 276071 });
+  part(b, [[cx - 14, top], [cx + 14, top], [cx + 13, top + 9], [cx - 13, top + 11]], P.scarf, { w: 0.8, tex: 0, lc, seed: 276090 });
+  part(b, [[cx - 13, top + 8], [cx - 4, top + 8], [cx - 1, top + 88], [cx - 11, top + 88]], P.scarf, { w: 0.8, tex: 0.3, lc, seed: 276091 });
+  part(b, roundPts(x + 8, B - 224, 28, 18, 8), P.hat, { w: 0.9, tex: 0, lc, seed: 276120 }); part(b, arcPts(x + 22, B - 206, 24, 4.5, 0, TAU, 16), P.hat, { w: 0.9, tex: 0, lc, seed: 276121 });
+}
+function drawArmchairBare(b, P, lit) {   // 扶手椅（毯子不在上面的时候）
+  const lc = lcOf(P, lit), x = ARM.x, gy = FL.down.gy; b.seedN = 273000;
+  part(b, curvePts([[x - 70, gy + 4], [x - 72, 900], [x - 64, 820], [x - 40, 806], [x - 26, 900], [x + 60, 900], [x + 66, gy + 4]], true, 4), P.chair, { w: 1.1, tex: 0.4, lc });
+  part(b, roundPts(x - 30, 900, 110, 26, 10), P.chairHi, { w: 1, tex: 0.3, lc });
+  part(b, roundPts(x + 40, 880, 34, 70, 12), P.chairHi, { w: 1, tex: 0.3, lc });
+  for (const lx of [x - 60, x + 56]) part(b, rectPts(lx, gy - 6, 8, 12), P.woodLo, { w: 0.7, tex: 0, lc, seed: 273050 + lx });
+}
+function drawThrowOnChair(b, P, lit) {   // 搭在扶手椅上的毯子
+  const lc = lcOf(P, lit), x = ARM.x; b.seedN = 273100;
+  const th = curvePts([[x - 76, 830], [x - 50, 800], [x - 20, 808], [x - 6, 860], [x + 40, 900], [x + 50, 960], [x + 20, 972], [x - 40, 940], [x - 72, 900]], true, 4);
+  part(b, th, P.throw, { w: 1.1, tex: 0.45, lc });
+  for (let i = 0; i < 4; i++) ink(b, quadPts([x - 60 + i * 18, 812 + i * 6], [x - 30 + i * 22, 880], [x - 20 + i * 24, 950 - i * 4], 8), { w: 0.6, a: 0.5, col: P.throwHi });
+  hatch(b, k => pathOf(k, th), [x - 80, 800, 70, 180], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.6, w: 0.7, len: 16 });
+}
+function drawOverallsHung(b, P, lit) {   // 锅炉边上钉子上挂着的一套工作服
+  const lc = lcOf(P, lit), x = BOILER.x + 128, top = 1372; b.seedN = 275500;
+  ink(b, seg(x, top - 18, x, top - 8), { w: 1.2, col: P.iron, taper: 0 }); part(b, arcPts(x, top - 20, 3, 3, 0, TAU, 8), P.iron, { w: 0.6, tex: 0, lc });
+  for (const s of [-1, 1]) ink(b, quadPts([x + s * 14, top + 26], [x + s * 8, top - 6], [x, top - 12], 8), { w: 2.4, col: P.cloth2, taper: 0, a: 1 / b.pen.a });
+  part(b, [[x - 18, top + 24], [x + 18, top + 24], [x + 20, top + 64], [x - 20, top + 64]], P.cloth, { w: 1, tex: 0.35, lc });
+  for (const s of [-1, 1]) part(b, tube([[x + s * 11, top + 64], [x + s * 12, top + 120], [x + s * 13, top + 176]], [21, 20, 19]), s > 0 ? P.cloth : P.cloth2, { w: 0.9, tex: 0.3, lc });
+  box(b, x - 9, top + 32, 18, 16, { w: 0.6, a: 0.7, over: 0 });
+  hatch(b, k => k.rect(x + 2, top + 24, 22, 152), [x, top + 24, 26, 152], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 14 });
+}
+const GARB_HOME = { gown: drawGown, towel: drawTowels, laundry: drawLaundry, chair: drawThrowOnChair, sack: drawSack, boiler: drawOverallsHung, stand: drawStandCoat };
+// 画一件衣服：家具一直在；照亮了（或者正塌下去）画成普通的衣服；暗处立起来的样子只画在暗的那一层
+function drawGarb(b, P, lit, k) {
+  const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, atHome = Math.abs(m.x - G.home) < 26, t = V.T;
+  if (k === 'chair') drawArmchairBare(b, P, lit);
+  if (k === 'boiler') drawBoiler(b, P, lit);
+  if (k === 'stand') drawBareStand(b, P, lit);
+  const ga = b.globalAlpha, rest = lit ? 1 : 1 - m.rise;
+  if (rest > 0.01) { b.globalAlpha = ga * rest; if (atHome) GARB_HOME[k](b, P, lit); else drawGarbHeap(b, P, lit, k, m.x, fy); b.globalAlpha = ga; }
+  if (lit || m.rise < 0.01) return;
+  const r = smooth(m.rise), f = m.face, seed = 285000 + GARB_KEYS.indexOf(k) * 500;
+  b.save(); b.globalAlpha = ga * r; b.translate(m.x, fy); b.scale(1, 0.3 + 0.7 * r); b.translate(-m.x, -fy);   // 立起来：从一摊往上长
+  if (G.kind === 'robe') inkRobe(b, P, m.x, fy, f, t, m, G, seed);
+  else if (G.kind === 'coat') inkCoat(b, P, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'laundry') inkLaundry(b, P, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'sack') inkSack(b, P, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'throw') inkThrow(b, P, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'overalls') inkOveralls(b, P, m.x, fy, f, t, m, seed);
+  b.restore(); b.globalAlpha = ga;
+}
+// 眼睛在哪儿（叠一层微光用）
+function garbEyes(k) {
+  const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, f = m.face;
+  const off = { robe: [14, -8 - G.h + 34], coat: [-1, -8 - 158], laundry: [6, -56], sack: [4, -84], throw: [12, -150], overalls: [0, -170] }[G.kind];
+  return [m.x + f * off[0], fy + off[1]];
+}
+
+// ----- 活的光 -----
+function drawBulbBug(b, x, y, on, t, s = 1) {   // 灯泡里住着的小虫：亮着的时候翅膀扑扇、发光；灯灭了就缩着睡
+  const fl = on ? Math.abs(Math.sin(t * 22 + x)) : 0.1;
+  b.fillStyle = on ? 'rgba(255,242,196,0.95)' : 'rgba(100,110,140,0.75)';
+  for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x + sd * 4 * s, y - s, 4.2 * s, (1.3 + fl * 1.6) * s, sd * 0.5, 0, 7); b.fill(); }
+  b.fillStyle = on ? '#fffaf0' : '#2a3048'; b.beginPath(); b.ellipse(x, y, 1.6 * s, 3.2 * s, 0, 0, 7); b.fill();
+}
+function drawLampBird(b, P, lit, x, y, t) {   // 一只肚子是灯泡的鸟（门厅座钟顶上）
+  const lc = lcOf(P, lit), bob = Math.sin(t * 2) * 1; b.seedN = 431000;
+  for (const s of [-1, 1]) ink(b, seg(x + s * 4, y, x + s * 4, y - 10), { w: 0.9, col: lc, taper: 0 });
+  part(b, [[x - 15, y - 16 + bob], [x - 30, y - 10 + bob], [x - 27, y - 6 + bob], [x - 12, y - 10 + bob]], P.hat, { w: 0.7, tex: 0, lc });
+  part(b, arcPts(x, y - 18 + bob, 16, 12, 0, TAU, 18), P.hat, { w: 0.9, tex: 0, lc });
+  fillPts(b, arcPts(x + 2, y - 14 + bob, 9, 7, 0, TAU, 14), '#fff0b8'); ink(b, [[x - 3, y - 13 + bob], [x, y - 17 + bob], [x + 3, y - 13 + bob], [x + 6, y - 17 + bob]], { w: 0.5, col: '#b88a3a', taper: 0 });
+  part(b, arcPts(x + 13, y - 32 + bob, 8, 8, 0, TAU, 12), P.hat, { w: 0.8, tex: 0, lc });
+  part(b, [[x + 20, y - 34 + bob], [x + 29, y - 31 + bob], [x + 20, y - 29 + bob]], P.brass, { w: 0.5, tex: 0, lc });
+  b.fillStyle = '#0b0d14'; b.beginPath(); b.arc(x + 15, y - 34 + bob, 1.5, 0, 7); b.fill();
+}
+// ----- 暗处的小东西：衣架鸟（照到了只是挂着的衣架）、爬来爬去的手套（照到了平平地躺着）-----
+const PERCH = { bedroom: [[600, -10, 1]], bath: [[2150, -168, 1], [2440, -168, -1]], hall: [[3150, 369, -1], [3040, 759, 1], [3750, 557, -1]], living: [[1600, 446, 1]], kitchen: [[460, 430, 1], [930, 430, -1]], cellar: [[700, 1156, 1], [1900, 1156, -1]] };
+const GLOVES = { hall: [[3700, 4340, 0], [3760, 4300, 1.7]], kitchen: [[300, 720, 0.6]], cellar: [[1300, 1900, 2.2]] };
+function drawHangerBird(b, P, lit, x, y, f, seed, t) {
+  const lc = lcOf(P, lit), wire = lit ? '#5e5a52' : '#727d9c';
+  b.save(); b.translate(x, y); b.scale(f * 1.15, 1.15); b.seedN = seed;
+  if (lit) {   // 照到了：只是一个挂在那儿的衣架
+    ink(b, [[0, 0], [0, -3], ...arcPts(3.5, -4, 3.5, 3.5, Math.PI, Math.PI * 2.2, 6)].map(([u, v]) => [u, -v]), { w: 1.2, col: wire, taper: 0 });
+    ink(b, [[0, 3], [-15, 18], [15, 18], [0, 3]], { w: 1.2, col: wire, taper: 0 });
+  } else {
+    const bob = Math.sin(t * 2.2 + seed) * 0.8;
+    ink(b, [[-3, 0], [-2, -7]], { w: 1.1, col: wire, taper: 0 }); ink(b, [[3, 0], [2, -7]], { w: 1.1, col: wire, taper: 0 });
+    part(b, [[-15, -8], [-21, -6], [-25, 4], [-31, 9], [-27, 13], [-19, 9], [-14, -3]], P.scarf, { w: 0.6, tex: 0, lc });
+    ink(b, [[-15, -7], [15, -7], [0, -26 + bob], [-15, -7]], { w: 1.4, col: wire, taper: 0 });
+    ink(b, [[0, -26 + bob], [0, -31 + bob], ...arcPts(4.5, -33.5 + bob, 4.5, 4.5, Math.PI, Math.PI * 2.2, 8)], { w: 1.4, col: wire, taper: 2 });
+    b.fillStyle = '#e6ecfa'; b.beginPath(); b.arc(3.2, -35.5 + bob, 0.95, 0, 7); b.fill();
+  }
+  b.restore();
+}
+function drawGlove(b, P, lit, x, y, f, crawl, t, seed) {
+  const lc = lcOf(P, lit), col = P.scarf; b.save(); b.translate(x, y); b.scale(f * 1.4, 1.4); b.seedN = seed;
+  if (crawl) {
+    const lift = 9 + Math.sin(t * 6 + seed) * 1.5;
+    for (let i = 0; i < 4; i++) { const ph = Math.sin(t * 7 + i * 1.7 + seed), fx = 7 - i * 4.6; part(b, tube([[fx, -lift], [fx + 7, -lift - 6], [fx + 9 + ph * 3, 0]], [4.4, 4, 3.4]), col, { w: 0.6, tex: 0, lc }); }
+    part(b, roundPts(-14, -lift - 9, 27, 12, 5), col, { w: 0.8, tex: 0, lc });
+    part(b, tube([[9, -lift - 6], [15, -lift - 14], [20, -lift - 12]], [4.2, 3.8, 3.2]), col, { w: 0.6, tex: 0, lc });
+    part(b, roundPts(-23, -lift - 10, 10, 14, 3), P.coatLo, { w: 0.6, tex: 0, lc }); fillPts(b, arcPts(-23, -lift - 3, 2, 5.5, 0, TAU, 10), INK);
+  } else {
+    part(b, [[-20, -5], [6, -7], [10, -6], [24, -4], [26, -1.5], [22, 0.5], [-20, 0.5]], col, { w: 0.8, tex: 0, lc });
+    for (let i = 0; i < 3; i++) ink(b, [[9, -1.5 - i * 1.4], [24, -1 - i * 1.2]], { w: 0.45, a: 0.6 });
+  }
+  b.restore();
+}
+function drawCritters(b, P, lit, id) {
+  const t = V.T, fy = FL[ROOMS[id].fl].gy;
+  (PERCH[id] || []).forEach(([x, y, f], i) => drawHangerBird(b, P, lit, x, y, f, 296000 + i * 50 + id.length * 7, t));
+  (GLOVES[id] || []).forEach(([x0, x1, ph], i) => {
+    const u = 0.5 + 0.5 * Math.sin(t * 0.22 + ph), x = lerp(x0, x1, u), f = Math.cos(t * 0.22 + ph) >= 0 ? 1 : -1, still = coverage(x, fy - 10, LT) > 0.4;
+    drawGlove(b, P, lit, x, fy + 1, f, !lit && !still, t, 297000 + i * 40 + id.length * 9);
+  });
+}
+
 // ---------- 一些小工具 ----------
 function mk(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
 // 给一个画布配好笔：k 是一个世界单位几个像素，(x, y) 是世界原点在画布上的位置
@@ -1846,6 +2114,9 @@ for (const [k, fn] of Object.entries({
   rung: t => { noise(t, 0.05, 0.045, 900, 3); tone(150, t, 0.04, 0.025); },
   stair: t => { noise(t, 0.07, 0.07, 380, 2); tone(70, t, 0.06, 0.04); if (Math.random() < 0.18) tone(210 + Math.random() * 80, t + 0.02, 0.28, 0.018, 'sawtooth', 160); },
   power: t => { tone(1800, t, 0.03, 0.06, 'square', 900); tone(55, t + 0.04, 0.7, 0.16, 'sine', 40); noise(t + 0.04, 0.3, 0.1, 200, 1, 'lowpass'); tone(110, t + 0.15, 1.8, 0.025, 'sawtooth', 110); },
+  rise: t => { noise(t, 0.7, 0.05, 220, 1.5); tone(88, t, 0.6, 0.045, 'sawtooth', 58); },   // 衣服从地上立起来：湿的、低的一声
+  heart: t => { tone(58, t, 0.12, 0.12, 'sine', 45); tone(56, t + 0.2, 0.1, 0.08, 'sine', 42); },
+  caught: t => { [61, 64.5, 92].forEach(f => tone(f, t, 1.2, 0.12, 'sawtooth', f * 0.7)); noise(t, 0.9, 0.16, 300, 0.8, 'lowpass'); tone(1400, t + 0.05, 0.5, 0.03, 'sine', 700); noise(t + 0.1, 0.6, 0.06, 2400, 4); },
 })) snd[k] = (...a) => { if (AC && !muted) fn(AC.currentTime, ...a); };
 
 // ---------- 会变的东西 ----------
@@ -1853,7 +2124,7 @@ let S = { ...START }, bag = [], held = null, won = 0, wonT = 0, taps = 0, hints 
 let V = null, kid = null, bubble = null, fly = [], parts = [], ring = null, LT = [];
 let kidVisible = true, showUI = !qs.has('noui');   // ?noui=1：不画按钮、物品栏（截图用）
 const mouse = { x: -99, y: -99, on: false };
-const FEAR_KEYS = Object.keys(FEARS);
+const FEAR_KEYS = GARB_KEYS;
 // 画面上的状态：门、抽屉开了几成，灯多亮，吊灯升了几成、晃到哪儿，火多大，影子变成东西几成……
 const newView = () => ({
   T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10 }, candleI: 0,
@@ -1862,6 +2133,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10,
+  mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -1911,11 +2183,11 @@ function drawItem(b, name, x, y, s, style) {
   } else if (name === 'fuse') {     // 瓷保险丝，两头铜帽
     b.fillStyle = css(c.glass); rr(-s * 0.12, -s * 0.3, s * 0.24, s * 0.6, s * 0.06, b); b.fill();
     b.fillStyle = css(c.metal); b.fillRect(-s * 0.15, -s * 0.4, s * 0.3, s * 0.13); b.fillRect(-s * 0.15, s * 0.27, s * 0.3, s * 0.13);
-  } else if (name === 'candle') {   // 蜡烛插在小烛台上，点着的话有火苗
-    b.fillStyle = css(c.metal); b.beginPath(); b.ellipse(0, s * 0.34, s * 0.26, s * 0.07, 0, 0, 7); b.fill();
-    b.fillStyle = css(c.glass); rr(-s * 0.09, -s * 0.2, s * 0.18, s * 0.54, s * 0.04, b); b.fill();
-    b.strokeStyle = css(c.hole); b.lineWidth = Math.max(0.8, s * 0.03); b.beginPath(); b.moveTo(0, -s * 0.2); b.lineTo(0, -s * 0.28); b.stroke();
-    if (S.lit) { b.fillStyle = css(c.flame); b.beginPath(); b.moveTo(-s * 0.06, -s * 0.28); b.quadraticCurveTo(0, -s * 0.52, s * 0.06, -s * 0.28); b.fill(); }
+  } else if (name === 'candle') {   // 一罐萤火虫：烤暖了的话一闪一闪
+    b.strokeStyle = css(c.glass); b.lineWidth = Math.max(1, s * 0.05); rr(-s * 0.22, -s * 0.22, s * 0.44, s * 0.58, s * 0.08, b); b.stroke();
+    b.fillStyle = css(c.metal); b.fillRect(-s * 0.25, -s * 0.34, s * 0.5, s * 0.12);
+    b.beginPath(); b.moveTo(-s * 0.2, -s * 0.34); b.quadraticCurveTo(0, -s * 0.56, s * 0.2, -s * 0.34); b.stroke();
+    b.fillStyle = css(S.lit ? c.flame : c.hole, S.lit ? 1 : 0.6); for (const [u, v] of [[-0.08, 0], [0.09, -0.08], [0.02, 0.16], [-0.1, 0.22], [0.1, 0.14]]) { b.beginPath(); b.arc(u * s, v * s, s * 0.045, 0, 7); b.fill(); }
   }
   b.restore();
 }
@@ -1984,6 +2256,7 @@ function paintRoomLayer(id, lit) {
   const c = mk(Math.ceil(w * RS), Math.ceil(h * RS)), b = c.getContext('2d');
   pen(b, P, RS, -bx.x0 * RS, -bx.y0 * RS);
   ROOM_PAINT[id](b, r, P, lit);
+  if (!lit) paintInkDecor(b, id);   // 暗处的墨（光照到的地方没有）
   for (const d of DOORS) if (d.x === r.x1 && d.fl === r.fl) { b.save(); paintDoorway(b, d, P, lit, 300000 + d.x * 3 + (d.fl === 'up' ? 1 : 2)); b.restore(); }
   const e = roomC[id] || (roomC[id] = { ...bx, w, h });
   e[lit ? 'lit' : 'dark'] = c;
@@ -2125,6 +2398,9 @@ function kidUpdate(dt) {
   } else if (kid.mode === 'cough') { // 呛着了：弯着腰咳几下
     kid.t += dt; kid.crouch = 0.3 * Math.abs(Math.sin(kid.t * 10)) * Math.max(0, 1 - kid.t / 1);
     if (kid.t > 1) { kid.mode = 'idle'; kid.crouch = 0; }
+  } else if (kid.mode === 'caught') {   // 被抓住了：墨一下子涌上来，画面黑下去，回到最近一盏亮着的灯底下
+    kid.t += dt; kid.fearK = Math.min(1, kid.t / 0.15);
+    if (kid.t > 1.1) respawn();
   } else if (kid.mode === 'wait') {
     kid.t += dt;
     if (kid.t >= kid.waitFor) { kid.mode = 'idle'; const a = kid.after; kid.after = null; if (a) a(); }
@@ -2335,14 +2611,11 @@ function tick(dt) {
   V.li.fire = (fl < 1 ? lerp(0.6, 0.85, fl) : lerp(0.85, 1, fl - 1)) * V.fireFlick;
   V.smoke = approach(V.smoke, S.log === 'fire' && !S.damper ? 1 : 0, dt * 0.5);
   if (fl > 0.4 && inView(FIRE.x, FIRE.mantel, 200) && Math.random() < dt * 5 * fl) snd.crackle();
-  // 影子：光照到它的头（> 0.55）就是东西了
+  // 衣服：光照到就塌下去；暗处立起来、追人。孩子站在灯光里的时候记下这个地方（被抓住了回到这儿）
   LT = activeLights();
-  for (const k of FEAR_KEYS) {
-    const F = FEARS[k], want = coverage(F.head[0], F.head[1], LT) > 0.55 ? 1 : 0;
-    if (want !== V.figWant[k]) { V.figWant[k] = want; if (inView(F.head[0], F.head[1], 40)) { puff(F.head[0], F.head[1] + 50, want ? C.lamp : C.ink); (want ? snd.freeze : snd.wake)(); } }
-    V.fig[k] += (want - V.fig[k]) * (1 - Math.exp(-dt * 8));
-  }
-  // 门厅里有风（前门底下钻进来的）：举着点着的蜡烛走进门厅，蜡烛就灭了
+  garbUpdate(dt);
+  if ((kid.mode === 'idle' || kid.mode === 'walk') && kid.kind === 'floor' && coverage(kid.x, kid.y - 80, LT) > 0.6) V.safe = { x: kid.x, y: kid.y };
+  // 门厅里有风（前门底下钻进来的）：拎着萤火虫走进门厅，它们冷得又暗下去了（要回壁炉边烤暖）
   if (S.lit && S.candle === 'inv' && !V.candleDown && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 1 && kid.x > 2745) {
     S = { ...S, lit: 0 }; V.blowT = T; const hd = kidHand(); if (hd) puff(hd.x, hd.y - 40, C.moon, 8); snd.blow(); say(['fire'], 1.8);
   }
@@ -2390,6 +2663,15 @@ function render() {
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.78);
   vg.addColorStop(0, css(C.ink, 0)); vg.addColorStop(1, css(C.ink, 0.5));
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  if (V.caughtT > -5) {   // 被抓住：墨从四周涌上来，黑一下，再退下去
+    const e = V.T - V.caughtT, a = e < 0.9 ? smooth(e / 0.9) : e < 1.15 ? 1 : 1 - smooth((e - 1.15) / 0.8);
+    if (a > 0.003) {
+      g.setTransform(DPR, 0, 0, DPR, 0, 0); const kx = (kid.x - camX) * Z, ky = (kid.y - 90 - camY) * Z, R0 = Math.hypot(W, H);
+      const gr = g.createRadialGradient(kx, ky, R0 * (1 - a) * 0.6, kx, ky, R0 * (1.05 - a * 0.6)); gr.addColorStop(0, 'rgba(1,2,5,0)'); gr.addColorStop(0.25, css([1, 2, 5], a * 0.9)); gr.addColorStop(1, css([1, 2, 5], Math.min(1, a * 1.4)));
+      g.fillStyle = gr; g.fillRect(0, 0, W, H); if (a > 0.95) { g.fillStyle = css([1, 2, 5], (a - 0.95) * 20); g.fillRect(0, 0, W, H); }
+      g.fillStyle = css([1, 2, 5], a); for (let i = 0; i < 24; i++) { const x = (i + 0.5) / 24 * W, len = H * a * (0.25 + 0.5 * hash(i, 3)); g.beginPath(); g.ellipse(x, 0, W / 48 + 4, len, 0, 0, 7); g.fill(); }
+    } else if (e > 2) V.caughtT = -10;
+  }
   if (showUI) drawUI(); else ui = [];
   if (!lights.length || paintQ.length) paintIdle();
 }
@@ -2404,11 +2686,10 @@ const dist2 = id => { const bx = roomBox(id), cx = clamp(kid.x, bx.x0, bx.x1), c
 function drawOverlays(lights) {
   const T = V.T;
   drawLightGlows(lights);
-  for (const k of FEAR_KEYS) {
-    if (V.fig[k] > 0.98) continue;
-    const F = FEARS[k], [ex, ey] = F.eyes; if (!inView(ex, ey, 60)) continue;
-    const sees = V.fearGate === k && T - V.fearT < 1.3;
-    glowAt(ex, ey, F.slits ? 34 : 18, sees ? C.danger : F.slits ? C.amber : mix(C.moon, C.hot, 0.3), (F.slits ? 0.4 : 0.32) * (1 - V.fig[k]) * (1 - coverage(ex, ey, lights)));
+  for (const k of FEAR_KEYS) {   // 衣服里的眼睛：一点冷光，追人的时候发红
+    const m = V.mon[k]; if (m.rise < 0.05) continue;
+    const [ex, ey] = garbEyes(k); if (!inView(ex, ey, 60)) continue;
+    glowAt(ex, ey, 20, m.hunt > 0.5 ? C.danger : mix(C.moon, C.hot, 0.3), (0.2 + 0.2 * m.hunt) * m.rise * (1 - coverage(ex, ey, lights)));
   }
   const glints = [
     [SOCKET.x, SOCKET.y - 4, 0, !S.plug], [CORD.x, CORD.end + 6, 1.3, !S.bath], [2688, FL.up.gy - 120, 2.1, S.slipper !== 'door'],
@@ -2518,7 +2799,7 @@ function drawUI() {
     g.textBaseline = 'middle'; g.textAlign = 'right';
     g.fillStyle = css(C.moon, 0.96 * a); g.font = `${sm ? 18 : 26}px ${FONT}`; g.fillText('走出去了', W / 2 - 16, cy - (sm ? 7 : 10));
     g.fillStyle = css(C.moon, 0.5 * a); g.font = `${sm ? 11 : 13}px ${FONT}`;
-    g.fillText(`点了 ${taps} 下，${Math.round(wonT - tStart)} 秒${hints ? '，看了 ' + hints + ' 次提示' : ''}`, W / 2 - 16, cy + (sm ? 12 : 16));
+    g.fillText(`点了 ${taps} 下，${Math.round(wonT - tStart)} 秒${V.catches ? '，被抓住 ' + V.catches + ' 次' : ''}${hints ? '，看了 ' + hints + ' 次提示' : ''}`, W / 2 - 16, cy + (sm ? 12 : 16));
     if (a >= 1) pill(W / 2 + 16 + (sm ? 54 : 75), cy, sm ? 108 : 150, sm ? 34 : 42, '再来一遍', restart);
   }
   if (H > W * 1.1) { const G = slotGeom(); g.fillStyle = css(C.moon, 0.6); g.font = `14px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('把手机横过来，画面会大一些', W / 2, G.y - G.s / 2 - (won ? 90 : 22)); }
@@ -2569,7 +2850,7 @@ function tap(id, item) {
 if (qs.has('auto')) setInterval(() => { if (won || kid.mode !== 'idle' || fly.length) return; const r = solve(S); if (r.path && r.path.length) tap(r.path[0].spot, r.path[0].held); }, 600);
 window.__house = {
   get S() { return S; }, get V() { return V; }, get kid() { return kid; }, get bag() { return bag; }, get won() { return won; }, get held() { return held; }, get taps() { return taps; }, get bubble() { return bubble; },
-  get cam() { return [camX, camY, VWW, VHH]; }, get paintQ() { return paintQ.length; },
+  get cam() { return [camX, camY, VWW, VHH]; }, get paintQ() { return paintQ.length; }, get mon() { return V.mon; }, get catches() { return V.catches; },
   set paused(v) { paused = !!v; }, get paused() { return paused; },
   tick, render, tap, restart, hint, solve, spots, coverage, busy, tapWorld, walkTo, spotAt,
   run(sec, fps = 30) { for (let i = 0; i < Math.round(sec * fps); i++) tick(1 / fps); render(); },
@@ -2582,7 +2863,7 @@ window.__house = {
     Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
     for (const k in V.lt0) V.lt0[k] = -10;
     V.li.bedlamp = S.plug ? 1 : 0; V.li.bath = S.bath ? 1 : 0; V.li.hall = hallLit(S) ? 1 : 0; V.li.power = power(S) ? 1 : 0; V.candleI = S.lit && (S.candle === 'inv' || S.candle === 'box') ? 1 : 0;
-    tick(0.001); LT = activeLights(); for (const k of FEAR_KEYS) { const F = FEARS[k]; V.figWant[k] = V.fig[k] = coverage(F.head[0], F.head[1], LT) > 0.55 ? 1 : 0; }
+    tick(0.001); LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = GARB[k].home; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; } V.grace = V.T + 1;
     render();
   },
   // 把孩子放到某处（给截图用）
