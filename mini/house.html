@@ -1795,7 +1795,7 @@ function garbUpdate(dt) {
 }
 function caught(k) {
   if (kid.mode === 'caught') return;
-  kid.mode = 'caught'; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
+  kid.mode = 'caught'; kid.drive = false; stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走 kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
 }
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
@@ -2609,7 +2609,7 @@ const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, 
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
 function restart() {
   S = { ...START }; bag = []; held = null; won = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
-  V = newView(); kid = newKid(); LT = [];
+  V = newView(); kid = newKid(); LT = []; stickLock = null; drags = 0;
   [camFX, camFY] = camTarget(); camX = camFX; camY = camFY;
 }
 const flying = it => fly.some(f => f.it === it);
@@ -2784,7 +2784,7 @@ function walkTo(tx, ty, cb, force) {
     else path = [...path.slice(0, gate.upto), gate.stop];
     const k = gate.gate; cb = () => meetGate(k);
   }
-  kid.path = path; kid.onArrive = cb || null; kid.long = pathLen(kid.x, kid.y, path) > 250; kid.mode = 'walk';
+  kid.path = path; kid.onArrive = cb || null; kid.long = pathLen(kid.x, kid.y, path) > 250; kid.mode = 'walk'; kid.drive = false; kid.auto = false;
   if (pathLen(kid.x, kid.y, path) < 0.6) { kid.path = []; kid.mode = 'idle'; kid.onArrive = null; if (cb) cb(); }
 }
 function enterKind(q) {
@@ -2813,10 +2813,136 @@ function kidWalk(dt) {
     if (m >= 1) { kid.x = q.x; kid.y = q.y; kid.path.shift(); }
   }
   if (!kid.path.length) {
-    kid.mode = 'idle'; kid.v = 0;
+    kid.mode = 'idle'; kid.v = 0; kid.auto = false;
     if (kid.kind === 'ladder' && (Math.abs(kid.y - FL.cel.gy) < 1 || Math.abs(kid.y - FL.down.gy) < 1)) kid.kind = 'floor';
     const cb = kid.onArrive; kid.onArrive = null; if (cb) cb();
   }
+}
+// ---------- 拖着走（默认；地址后面加 ?ctl=tap 回到原来的点哪儿走到哪儿） ----------
+// 手指按住往左、往右拖就走，拖得远走得快，松手就停；楼梯口、梯子跟前往上、往下拖。点东西照旧：走过去用它。电脑上用方向键或 WASD
+// 走的还是那几条路（NODES、EDGES），影子照旧卡在路上：走到它跟前就不敢再走了
+const DRAG = qs.get('ctl') !== 'tap';
+if (DRAG) cv.style.touchAction = 'none';   // 手指在画面上拖，浏览器别拿去滚动、缩放
+const STICK_R = 70, STICK_DEAD = 10;   // 摇杆（屏幕像素）：拖出 10 才算，拖到 70 跑起来；再远，中心跟着手指走
+const stick = { id: null, on: false, drag: false, ax: 0, ay: 0, px: 0, py: 0, x0: 0, y0: 0 };
+const keys = new Set();
+let keyT = 0, drags = 0, stickLock = null;
+const NODE_EDGES = NODES.map((_, n) => EDGES.filter(E => E.a === n || E.b === n));
+const edgeDirFrom = (E, n) => { const o = E.a === n ? E.b : E.a; return [(NODES[o][0] - NODES[n][0]) / E.len, (NODES[o][1] - NODES[n][1]) / E.len]; };
+const travelDir = (E, d) => [d * (E.B[0] - E.A[0]) / E.len, d * (E.B[1] - E.A[1]) / E.len];
+const dotU = (u, w) => u.ux * w[0] + u.uy * w[1];
+const dotUU = (a, b) => a.ux * b.ux + a.uy * b.uy;
+function stickInput(dt) {   // 往哪边拖（ux, uy 是方向），拖多远（m：0 到 1）
+  if (stick.on && stick.drag) {
+    const dx = stick.px - stick.ax, dy = stick.py - stick.ay, L = Math.hypot(dx, dy);
+    return L <= STICK_DEAD ? null : { ux: dx / L, uy: dy / L, m: clamp((L - STICK_DEAD) / (STICK_R - STICK_DEAD), 0, 1) };
+  }
+  const kx = (keys.has('right') ? 1 : 0) - (keys.has('left') ? 1 : 0), ky = (keys.has('down') ? 1 : 0) - (keys.has('up') ? 1 : 0);
+  if (!kx && !ky) { keyT = 0; return null; }
+  keyT += dt; const L = Math.hypot(kx, ky);
+  return { ux: kx / L, uy: ky / L, m: keyT < 0.45 ? 0.4 : lerp(0.4, 1, smooth((keyT - 0.45) / 0.6)) };   // 按住一会儿就小跑起来
+}
+// 走到一个路口：拐角（楼梯中间的平台）就接着走；岔路挑和拖的方向最顺的那条；都不顺就停下
+function chooseAt(n, from, u) {
+  const c = NODE_EDGES[n].filter(E => E.i !== from);
+  if (!c.length) return null;
+  if (c.length === 1 && from != null) return c[0];
+  if (!u) return null;
+  let best = null, bs = 0.35;
+  for (const E of c) { let s = dotU(u, edgeDirFrom(E, n)); if (E.kind !== 'floor' && Math.abs(u.uy) > 0.4) s += 0.1; if (s > bs) { bs = s; best = E; } }
+  return best;
+}
+// 在平地上往上、往下拖：这条路两头哪一头有往那边去的楼梯、梯子，离得不远就走过去
+function seekVertical(cands, u) {
+  let best = null;
+  for (const E of cands) {
+    if (E.kind !== 'floor') continue;
+    for (const n of [E.a, E.b]) {
+      const d = Math.hypot(NODES[n][0] - kid.x, NODES[n][1] - kid.y);
+      if (d > 440 || !NODE_EDGES[n].some(F => F.kind !== 'floor' && edgeDirFrom(F, n)[1] * u.uy > 0.5)) continue;
+      if (d < 0.5) continue;
+      if (!best || d < best.d) best = { E, n, d };
+    }
+  }
+  return best;
+}
+function driveStart(u) {
+  const q = nearestOnPaths(kid.x, kid.y), E = EDGES[q.e], atN = q.t < 0.002 ? E.a : q.t > 0.998 ? E.b : null;
+  let e = null, d = 0, seek = null;
+  if (atN != null) { const F = chooseAt(atN, null, u); if (F) { e = F.i; d = F.a === atN ? 1 : -1; } }
+  else { const s = dotU(u, travelDir(E, 1)); if (Math.abs(s) > 0.3) { e = E.i; d = Math.sign(s); } }
+  if (e == null && Math.abs(u.uy) > 0.6) {
+    const sk = seekVertical(atN != null ? NODE_EDGES[atN] : [E], u);
+    if (sk) { e = sk.E.i; d = sk.n === sk.E.b ? 1 : -1; seek = sk.n; }
+  }
+  if (e == null) return false;
+  Object.assign(kid, { mode: 'walk', drive: true, de: e, dd: d, du0: { ...u }, seek, path: [], onArrive: null, long: false, auto: false });
+  if (tStart < 0) tStart = V.T;
+  return true;
+}
+function driveStop() {
+  kid.drive = false; kid.mode = 'idle'; kid.v = 0; kid.seek = null;
+  if (kid.kind === 'ladder' && (Math.abs(kid.y - FL.cel.gy) < 1 || Math.abs(kid.y - FL.down.gy) < 1)) kid.kind = 'floor';
+  if (S.hatch && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 1 && kid.x < HATCH.x1 + 17) { walkTo(HATCH.x1 + 18, FL.down.gy); kid.auto = true; }   // 地窖口开着：别站在洞上，让开
+}
+// 这一段路上，往前走多远会碰到东西：还没照亮的影子（停在它前面 40），开着的地窖口（不下梯子就停在洞边上）
+function driveBlock(E, d, u) {
+  let best = null;
+  const w = travelDir(E, kid.dd);
+  for (const k in GATEPOS) {
+    const g = GATEPOS[k]; if (g.e !== E.i || GATES[k](S)) continue;
+    const [gx, gy] = edgePt(g.e, g.t), s = (gx - kid.x) * w[0] + (gy - kid.y) * w[1];
+    if (s < -0.5 || s > d + 0.5) continue;
+    const at = Math.max(0, s - 40); if (!best || at < best.dist) best = { dist: at, gate: k };
+  }
+  const lim = HATCH.x1 + 18;
+  if (S.hatch && E.kind === 'floor' && Math.abs(E.A[1] - FL.down.gy) < 1 && w[0] < 0 && kid.x > lim - 0.5 && kid.x + w[0] * d < lim) {
+    const wantDown = kid.seek === 5 || (u && u.uy > 0.45);
+    if (!(wantDown && GATES.cellar(S))) { const at = Math.max(0, kid.x - lim); if (!best || at < best.dist) best = { dist: at, gate: wantDown ? 'cellar' : null }; }
+  }
+  return best;
+}
+function driveRun(dt, u) {
+  let E = EDGES[kid.de];
+  if (u) {   // 反过来拖：掉头（楼梯拐过平台以后方向反过来了，手没换方向就不算）
+    if (dotU(u, travelDir(E, kid.dd)) < -0.3 && dotUU(u, kid.du0) < 0.5) { kid.dd = -kid.dd; kid.du0 = { ...u }; kid.seek = null; }
+  }
+  const m = u ? u.m : 0, onFloor = E.kind === 'floor';
+  kid.gait += ((onFloor && u ? clamp((m - 0.4) / 0.6, 0, 1) : 0) - kid.gait) * (1 - Math.exp(-dt * 7));
+  const vt = !u ? 0 : onFloor ? (m < 0.4 ? lerp(60, 128, m / 0.4) : lerp(128, 360, kid.gait)) : 150 * Math.min(1, 0.55 + m);
+  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * (u ? 10 : 18)));
+  if (!u && kid.v < 6) return driveStop();
+  let step = kid.v * dt;
+  for (let guard = 0; step > 1e-6 && guard < 8; guard++) {
+    E = EDGES[kid.de];
+    const tn = kid.dd > 0 ? E.b : E.a, [nx, ny] = NODES[tn], d = Math.hypot(nx - kid.x, ny - kid.y);
+    enterKind({ kind: E.kind, y: ny });
+    const bl = driveBlock(E, d, u);
+    if (bl && bl.dist <= step) {
+      const k = d < 1e-6 ? 0 : bl.dist / d; moveKid((nx - kid.x) * k, (ny - kid.y) * k, E.kind);
+      if (bl.gate) { kid.drive = false; kid.v = 0; kid.seek = null; kid.mode = 'idle'; stickLock = u ? { ...u } : null; meetGate(bl.gate); }
+      else driveStop();
+      return;
+    }
+    if (step < d) { moveKid((nx - kid.x) * step / d, (ny - kid.y) * step / d, E.kind); return; }
+    moveKid(nx - kid.x, ny - kid.y, E.kind); kid.x = nx; kid.y = ny; step -= d;
+    let F;
+    if (kid.seek === tn) { F = NODE_EDGES[tn].find(G => G.kind !== 'floor' && edgeDirFrom(G, tn)[1] * kid.du0.uy > 0.5); kid.seek = null; }
+    else { F = chooseAt(tn, E.i, u); if (F && u && NODE_EDGES[tn].length > 2) kid.du0 = { ...u }; }
+    if (!F) return driveStop();
+    kid.de = F.i; kid.dd = F.a === tn ? 1 : -1;
+  }
+}
+function driveTick(dt) {
+  const u = stickInput(dt);
+  if (stickLock) { if (u && (stickLock.any || dotUU(u, stickLock) > 0.3)) return; stickLock = null; }   // 被吓回来以后，手不松开（或者不换个方向）就不再往前走
+  if (won) return;
+  if (kid.mode === 'walk' && !kid.drive) {   // 点了东西正走过去：一拖就不走过去了，听手指的
+    if (!u || kid.auto) return;
+    kid.path = []; kid.onArrive = null; kid.mode = 'idle';
+  }
+  if (kid.mode === 'idle' && u && !driveStart(u)) return;
+  if (kid.mode === 'walk' && kid.drive) driveRun(dt, u);
 }
 function startReach(o) { kid.mode = 'reach'; kid.r = { t: 0, k: 0, hit: false, used: false, tx: o.hx, ty: o.hy, ...o }; }
 function startPush(o) { kid.mode = 'push'; kid.pushY = o.pushY; kid.pull = !!o.pull; kid.push = { t: 0, x0: kid.x, sndT: -1, ...o }; }
@@ -2849,7 +2975,8 @@ function shakeHead(icons) { kid.mode = 'no'; kid.t = 0; snd.no(); if (icons) say
 function say(icons, dur = 1.9) { bubble = { icons, t0: V.T, dur }; }
 function kidUpdate(dt) {
   const T = V.T;
-  if (kid.mode === 'walk') kidWalk(dt);
+  if (DRAG) driveTick(dt);
+  if (kid.mode === 'walk') { if (!kid.drive) kidWalk(dt); }
   else if (kid.mode === 'reach') {   // 伸手：伸出去 →（拧一会儿）→ 碰到 → 停一下 → 收回来
     const r = kid.r, EXT = 0.2, RET = 0.24, tHit = EXT + (r.pre || 0), tEnd = tHit + (r.hold == null ? 0.14 : r.hold);
     r.t += dt;
@@ -2953,11 +3080,13 @@ function spots() {
 const spotAt = (wx, wy) => spots().find(s => wx >= s.r[0] - 6 && wx <= s.r[2] + 6 && wy >= s.r[1] - 6 && wy <= s.r[3] + 6);
 function tapWorld(wx, wy) {
   if (won || busy()) return;
+  const sp = spotAt(wx, wy), h = held, hatchTap = S.hatch && wx > HATCH.x0 - 6 && wx < HATCH.x1 + 6 && wy > FL.down.wb && wy < ROOMS.cellar.top + 20;
+  if (DRAG && !sp && !hatchTap) { held = null; return; }   // 拖着走的时候，点空地不走（只是把拿在手里的东西放回去）
   if (tStart < 0) tStart = V.T;
   taps++;
-  const sp = spotAt(wx, wy), h = held; held = null;
+  held = null;
   if (sp) return use(sp, h);
-  if (S.hatch && wx > HATCH.x0 - 6 && wx < HATCH.x1 + 6 && wy > FL.down.wb && wy < ROOMS.cellar.top + 20) return walkTo(LADDER_X + 50, FL.cel.gy);   // 点开着的地窖口：下去
+  if (hatchTap) return walkTo(LADDER_X + 50, FL.cel.gy);   // 点开着的地窖口：下去
   if (!roomAt(wx, wy)) return;
   walkTo(wx, wy);
 }
@@ -3047,7 +3176,7 @@ function commit(r) {
 }
 function exitSeq() {   // 门开了：愣一下，走到门口，走出去
   kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.7;
-  kid.after = () => walkTo(FRONT.x + 44, FL.down.gy, () => { kid.mode = 'exit'; kid.t = 0; kid.face = 1; }, true);
+  kid.after = () => { walkTo(FRONT.x + 44, FL.down.gy, () => { kid.mode = 'exit'; kid.t = 0; kid.face = 1; }, true); kid.auto = true; };
 }
 // 提示：照最短的解法，下一步该点哪儿：那儿亮一个圈（不在画面里就在画面边上指过去），要用的东西在气泡里
 function hint() {
@@ -3258,11 +3387,11 @@ function drawUI() {
   button(R - br, by, br, icoSound, toggleMute);
   button(R - br * 3 - 8, by, br, icoRestart, restart);
   button(R - br * 5 - 16, by, br, '?', hint, { size: 18 });
-  const ha = clamp(1 - (taps - 3) * 0.5, 0, 1) * clamp(T - 0.4, 0, 1) * (won ? 0 : 0.55), maxW = W - 2 * (br * 6 + 40);
+  const ha = clamp(1 - (taps + drags * 0.5 - 3) * 0.5, 0, 1) * clamp(T - 0.4, 0, 1) * (won ? 0 : 0.55), maxW = W - 2 * (br * 6 + 40);
   if (ha > 0.01 && maxW > 260) {
     g.fillStyle = css(C.moon, ha); g.font = `${small ? 12 : 14}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    const full = '点哪儿走到哪儿。捡到的东西在下面：点一下拿在手里，再点要用的地方。';
-    g.fillText(g.measureText(full).width <= maxW ? full : '点哪儿走到哪儿。东西点一下拿起来，再点要用的地方。', W / 2, by);
+    const full = DRAG ? '按住往左右拖着走，松手就停，楼梯、梯子跟前往上下拖。点东西就去用它。' : '点哪儿走到哪儿。捡到的东西在下面：点一下拿在手里，再点要用的地方。';
+    g.fillText(g.measureText(full).width <= maxW ? full : DRAG ? '按住拖着走，松手就停。点东西去用它。' : '点哪儿走到哪儿。东西点一下拿起来，再点要用的地方。', W / 2, by);
   }
   // 提示的圈不在画面里：在画面边上指过去
   if (ring) {
@@ -3287,6 +3416,11 @@ function drawUI() {
     for (const f of fly) { const i = bag.indexOf(f.it), e = ease(f.t), x0 = (f.x0 - camX) * Z, y0 = (f.y0 - camY) * Z; drawItem(g, f.it, lerp(x0, G.x(i), e), lerp(y0, G.y, e) - Math.sin(Math.PI * f.t) * 70, lerp(24 * Z, G.s * 0.64, e), 'ui'); }
     if (held && mouse.on) drawItem(g, held, mouse.x + 24, mouse.y + 20, G.s * 0.56, 'hot');   // 拿在手里的东西跟着鼠标
   }
+  if (stick.on && stick.drag && !won) {   // 拖着走：手指按下的地方一个淡淡的圈，手指在圈里的哪儿
+    const dx = stick.px - stick.ax, dy = stick.py - stick.ay, L = Math.hypot(dx, dy), k = L > STICK_R ? STICK_R / L : 1;
+    g.beginPath(); g.arc(stick.ax, stick.ay, STICK_R, 0, 7); g.fillStyle = css(C.moon, 0.035); g.fill(); g.strokeStyle = css(C.moon, 0.16); g.lineWidth = 1.2; g.stroke();
+    g.beginPath(); g.arc(stick.ax + dx * k, stick.ay + dy * k, 17, 0, 7); g.fillStyle = css(C.moon, 0.12); g.fill(); g.strokeStyle = css(C.moon, 0.32); g.stroke();
+  }
   if (won) {
     const a = clamp((T - wonT - 0.5) * 2, 0, 1), cy = H - 70, sm = W < 700;
     g.textBaseline = 'middle'; g.textAlign = 'right';
@@ -3306,10 +3440,27 @@ cv.addEventListener('pointerdown', e => {
   if (won) return;
   const si = slotAt(e.clientX, e.clientY);
   if (si >= 0) { const it = bag[si]; held = it && !flying(it) && held !== it ? it : null; if (held) snd.pick(); return; }   // 物品栏：点一下拿在手里，再点一下放回去
-  tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
+  if (!DRAG) return tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
+  if (stick.id !== null) return;   // 第二根手指不管
+  Object.assign(stick, { id: e.pointerId, on: true, drag: false, ax: e.clientX, ay: e.clientY, px: e.clientX, py: e.clientY, x0: e.clientX, y0: e.clientY });
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
 });
+// 拖着走：按下去没怎么动就松开，是点了一下（点东西）；拖出 12 像素就是拖着走
+function stickEnd(e, cancel) {
+  if (stick.id !== e.pointerId) return;
+  const tapped = !stick.drag && !cancel;
+  stick.id = null; stick.on = false; stick.drag = false;
+  if (tapped && !won) tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
+}
+cv.addEventListener('pointerup', e => stickEnd(e, false));
+cv.addEventListener('pointercancel', e => stickEnd(e, true));
 cv.addEventListener('pointermove', e => {
   mouse.x = e.clientX; mouse.y = e.clientY; mouse.on = e.pointerType === 'mouse';
+  if (stick.id === e.pointerId) {
+    stick.px = e.clientX; stick.py = e.clientY;
+    if (!stick.drag && Math.hypot(stick.px - stick.x0, stick.py - stick.y0) > 12) { stick.drag = true; drags++; }
+    if (stick.drag) { const dx = stick.px - stick.ax, dy = stick.py - stick.ay, L = Math.hypot(dx, dy); if (L > STICK_R) { stick.ax = stick.px - dx / L * STICK_R; stick.ay = stick.py - dy / L * STICK_R; } }   // 拖远了，圈跟着手指走：往回拖马上就掉头
+  }
   if (!mouse.on) return;
   const over = ui.some(u => Math.hypot(e.clientX - u.x, e.clientY - u.y) <= u.r) || (!won && (bag[slotAt(e.clientX, e.clientY)] || spotAt(camX + e.clientX / Z, camY + e.clientY / Z)));
   cv.style.cursor = over ? 'pointer' : 'default';
@@ -3321,7 +3472,11 @@ addEventListener('keydown', e => {
   else if (k === 'm') toggleMute();
   else if (k === 'h' || k === '?') hint();
   else if (k === 'escape') held = null;
+  else if (DRAG && MOVE_KEYS[k]) { keys.add(MOVE_KEYS[k]); e.preventDefault(); }
 });
+const MOVE_KEYS = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down' };
+addEventListener('keyup', e => { const m = MOVE_KEYS[e.key.toLowerCase()]; if (m) keys.delete(m); });
+addEventListener('blur', () => { keys.clear(); stick.id = null; stick.on = false; stick.drag = false; });
 
 // ---------- 开始 ----------
 layout(); restart();
@@ -3342,7 +3497,7 @@ function tap(id, item) {
 // 地址后面加 ?auto=1：照最短的解法自己玩一遍
 if (qs.has('auto')) setInterval(() => { if (won || kid.mode !== 'idle' || fly.length) return; const r = solve(S); if (r.path && r.path.length) tap(r.path[0].spot, r.path[0].held); }, 600);
 window.__house = {
-  get S() { return S; }, get V() { return V; }, get kid() { return kid; }, get bag() { return bag; }, get won() { return won; }, get held() { return held; }, get taps() { return taps; }, get bubble() { return bubble; },
+  get S() { return S; }, get V() { return V; }, get kid() { return kid; }, get stick() { return stick; }, get bag() { return bag; }, get won() { return won; }, get held() { return held; }, get taps() { return taps; }, get bubble() { return bubble; },
   get cam() { return [camX, camY, VWW, VHH]; }, get paintQ() { return paintQ.length; }, get mon() { return V.mon; }, get catches() { return V.catches; },
   set paused(v) { paused = !!v; }, get paused() { return paused; },
   tick, render, tap, restart, hint, solve, spots, coverage, busy, tapWorld, walkTo, spotAt,
