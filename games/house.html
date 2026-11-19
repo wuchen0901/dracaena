@@ -443,22 +443,23 @@ const ROOMS = {
   living: { x0: 1400, x1: 2700, fl: 'down', name: '客厅' },
   kitchen: { x0: 0, x1: 1400, fl: 'down', name: '厨房' },
   cellar: { x0: 0, x1: 2700, fl: 'cel', name: '地下室' },
+  yard: { x0: 4500, x1: 6500, fl: 'down', top: -420, name: '院子' },   // 前门外面：同一张图接着往右，不切屏幕
 };
 for (const k in ROOMS) { const r = ROOMS[k], f = FL[r.fl]; Object.assign(r, { id: k, top: r.top ?? f.ceil, wb: f.wb, gy: f.gy, ff: f.ff, fr: f.fr, ix0: r.x0 + 20, ix1: r.x1 - 20 }); }
 const roomAt = (x, y) => Object.values(ROOMS).find(r => x >= r.x0 && x < r.x1 && y >= r.top - 40 && y <= r.fr + 40) || null;
 // 隔墙上的门洞（门框 26 宽），门厅里的楼梯，厨房地板上的地窖口
-const DOORS = [{ x: 1400, fl: 'up' }, { x: 2700, fl: 'up', spring: 1 }, { x: 1400, fl: 'down' }, { x: 2700, fl: 'down' }];
+const DOORS = [{ x: 1400, fl: 'up' }, { x: 2700, fl: 'up', spring: 1 }, { x: 1400, fl: 'down' }, { x: 2700, fl: 'down' }, { x: 4500, fl: 'down' }];
 const DOOR_H = 270;
 const STAIR = { lx0: 2700, lx1: 2900, f1: [[2900, 240], [3300, 620]], mid: [3300, 3390], f2: [[3300, 620], [2900, 1000]] };
 const HATCH = { x0: 130, x1: 250, x: 190 };
 const LADDER_Y0 = 984;   // 梯子最上面一档（再往下每 46 一档）
-// 前门在门厅后墙的右头（和一屏的门厅一样）
-const FRONT = { x: 4387, w: 96, h: 202, fan: 698, y: 756 };
+// 前门开在门厅的右墙上（x = 4500，和隔墙一样 40 厚的门洞），门外就是院子，孩子直接走出去
+const FRONT = { x: 4500 }, DOOR_STOP = 4462, YARD_END = 6420;   // 门没开的时候走到 DOOR_STOP 就停；院子的路走到 YARD_END 为止
 
 // 能走的路：几个点，点和点之间一段段的路（floor 平地、stairs 楼梯、ladder 梯子）。影子（GATES）卡在路上的某一点
 // 梯子：孩子背对着我们，正对着梯子爬
 const LADDER_X = HATCH.x;
-const NODES = [[60, 240], [2900, 240], [3300, 620], [2900, 1000], [60, 1000], [LADDER_X, 1000], [4440, 1000], [LADDER_X, 1590], [60, 1590], [2640, 1590]];
+const NODES = [[60, 240], [2900, 240], [3300, 620], [2900, 1000], [60, 1000], [LADDER_X, 1000], [YARD_END, 1000], [LADDER_X, 1590], [60, 1590], [2640, 1590]];
 const EDGES = [[0, 1, 'floor'], [1, 2, 'stairs'], [2, 3, 'stairs'], [4, 5, 'floor'], [5, 3, 'floor'], [3, 6, 'floor'], [5, 7, 'ladder'], [8, 7, 'floor'], [7, 9, 'floor']]
   .map(([a, b, kind], i) => ({ i, a, b, kind, A: NODES[a], B: NODES[b], len: Math.hypot(NODES[b][0] - NODES[a][0], NODES[b][1] - NODES[a][1]) }));
 // 影子卡在哪条路的哪一点（t 从 a 到 b），影子本身站在哪儿（fx）
@@ -857,14 +858,11 @@ function paintHall(b, r, P, lit) {
   paintMoonlight(b, lit, 2740, -250, 140, 380, 240, 120100);
   paintWindow(b, P, lit, 2740, -250, 140, 380, 120200, { moon: [0.6, 0.18], tree: 0.3, bars: 3 });
   for (const d of HPICS) paintPicture(b, P, lit, d);
-  // 门上的亮子透进来的一点冷光
-  const gr = b.createRadialGradient(FRONT.x + FRONT.w / 2, FRONT.fan + 26, 10, FRONT.x + FRONT.w / 2, FRONT.fan + 26, 240); gr.addColorStop(0, rgba(DARK.moon, lit ? 0.03 : 0.08)); gr.addColorStop(1, rgba(DARK.moon, 0));
-  b.fillStyle = gr; b.fillRect(FRONT.x - 240, FRONT.fan - 240, 576, 480);
-  paintHallRope(b, P, lit); paintFrontDoor(b, P, lit);
+  paintHallRope(b, P, lit);
   b.restore();
   paintFloor(b, r, P, lit, 'planks', 120300);
   paintRug(b, P, lit, 3862, 4182, gy - 26, 54, 120350);
-  b.seedN = 120380; part(b, rectPts(FRONT.x - 10, r.wb + 6, FRONT.w + 22, 30), P.mat, { w: 0.9, lc, tex: 0.4 });
+  b.seedN = 120380; part(b, rectPts(FRONT.x - 112, r.wb + 6, 76, 30), P.mat, { w: 0.9, lc, tex: 0.4 });
   paintStairs(b, P, lit);
   paintHallClock(b, P, lit); paintHallTable(b, P, lit);
 }
@@ -902,28 +900,6 @@ function paintHallRope(b, P, lit) {   // 升降灯的绳子：从绞盘上去，
   part(b, roundPts(HWINCH.x - 22, HWINCH.y - 30, 44, 60, 5), P.box, { w: 1, tex: 0.3, lc });
   b.fillStyle = lc; for (const [ox, oy] of [[-16, -24], [16, -24], [-16, 24], [16, 24]]) { b.beginPath(); b.arc(HWINCH.x + ox, HWINCH.y + oy, 1.8, 0, 7); b.fill(); }
 }
-function paintFrontDoor(b, P, lit) {   // 前门：上面一条亮子，外面是夜
-  const { x, w, h, fan, y } = FRONT, lc = lit ? P.ink : DARK.ink; b.seedN = 121200;
-  part(b, rectPts(x - 10, fan - 10, w + 20, FL.down.wb - fan + 10), P.trim, { w: 1.2, tex: 0.4, lc });
-  const gr = b.createLinearGradient(0, fan, 0, fan + 52); gr.addColorStop(0, '#2c3a5f'); gr.addColorStop(1, '#5a6d9c'); b.fillStyle = gr; b.fillRect(x, fan, w, 52);
-  b.save(); b.beginPath(); b.rect(x, fan, w, 52); b.clip();
-  hatch(b, k => k.rect(x, fan, w, 52), [x, fan, w, 52], { ang: -0.42, gap: 5, a: 0.3, w: 0.6, len: 18, col: '#1b2440' });
-  ink(b, quadPts([x + w, fan + 34], [x + w * 0.6, fan + 22], [x + w * 0.3, fan + 8], 8), { col: '#05070d', w: 1.4, a: 1 });
-  b.restore();
-  for (const i of [1, 2]) ink(b, seg(x + w * i / 3, fan, x + w * i / 3, fan + 52), { w: 1, taper: 0, col: lc });
-  box(b, x, fan, w, 52, { w: 1, over: 0, col: lc });
-  part(b, rectPts(x, fan + 52, w, y - fan - 52), P.trim, { w: 0.9, tex: 0, lc });
-  paintLeaf(b, P, lit, x, y, w, h, 121250);
-}
-function paintLeaf(b, P, lit, x, y, w, h, seed) {   // 门扇。开门的时候也用它（w 变窄）
-  const lc = lit ? P.ink : DARK.ink; b.seedN = seed;
-  part(b, rectPts(x, y, w, h), P.door, { w: 1.1, tex: 0.4, lc });
-  const m = w * 0.1, pw = (w - m * 3) / 2;
-  for (const [py, ph] of [[y + 12, h * 0.5], [y + 24 + h * 0.5, h * 0.5 - 38]]) for (const i of [0, 1]) { const px = x + m + i * (pw + m); b.fillStyle = P.doorIn; b.fillRect(px, py, pw, ph); box(b, px, py, pw, ph, { w: 0.8, a: 0.8, col: lc, j: 0.8, over: 1.4 }); }
-  b.seedN = seed + 40;
-  if (w > 40) { part(b, arcPts(x + 14, y + 108, 5, 5, 0, TAU, 10), P.brass, { w: 0.8, tex: 0, lc }); part(b, roundPts(x + 10, y + 117, 8, 15, 2), P.brass, { w: 0.7, tex: 0, lc }); b.fillStyle = lc; b.beginPath(); b.arc(x + 14, y + 122, 1.6, 0, 7); b.fill(); b.fillRect(x + 13.2, y + 122, 1.6, 6); }
-  if (!lit) ink(b, seg(x + 1, y + 2, x + 1, y + h - 2), { col: DARK.hi, a: 0.22, w: 0.8, taper: 0, seed: seed + 50 });
-}
 function paintHallClock(b, P, lit) {   // 座钟（钟肚子上的小门、钟摆在会动的那一层）
   const x = HCLOCK.x, B = HCLOCK.base, lc = lit ? P.ink : DARK.ink; b.seedN = 121300;
   part(b, rectPts(x - 37, B - 30, 74, 30), P.woodLo, { w: 1.1, tex: 0.4, lc });
@@ -948,6 +924,77 @@ function paintHallTable(b, P, lit) {   // 靠墙的条桌（抽屉在会动的�
   for (const [tx, ty] of [[-16, -80], [-4, -96], [10, -84]]) ink(b, quadPts([vx, top - 40], [vx + tx * 0.3, top - 40 + (ty + 40) * 0.6], [vx + tx, top + ty], 6), { w: 0.8, col: P.twig, a: 1 });
 }
 
+// ---------- 院子（前门外面，同一张图接着往右）----------
+// 月光下的一小块地：天、月亮、远处的坡和几户人家、近处的树、篱笆、一条小路。没有灯，暗的、亮的两层只差一点点亮度
+function paintYard(b, r, P, lit) {
+  const x0 = r.ix0, x1 = r.x1 + 60, top = r.top - 110, wb = r.wb, ff = r.ff, fr = r.fr, lc = lit ? P.ink : DARK.ink, gy = r.gy, bx = 0.0;
+  const sk0 = lit ? '#1a2747' : '#0d152b', sk1 = lit ? '#51659a' : '#2a3a63';
+  b.save(); b.beginPath(); b.rect(x0, top, x1 - x0, wb - top); b.clip();
+  const gr = b.createLinearGradient(0, top, 0, wb); gr.addColorStop(0, sk0); gr.addColorStop(0.75, sk1); gr.addColorStop(1, lit ? '#7385b8' : '#42527f'); b.fillStyle = gr; b.fillRect(x0, top, x1 - x0, wb - top);
+  texture(b, TEX.blot2, 0.35);
+  b.seedN = 330000; hatch(b, k => k.rect(x0, top, x1 - x0, 420), [x0, top, x1 - x0, 420], { ang: 0.04, gap: 7, a: 0.16, w: 0.6, len: 90, col: '#05080f' });   // 夜空：横排线
+  const r0 = rnd(330100);
+  for (let i = 0; i < 70; i++) { const x = x0 + r0() * (x1 - x0), y = top + r0() * (wb - top - 380); b.fillStyle = rgba(C.moon ? [203, 218, 255] : [255, 255, 255], 0.35 + r0() * 0.5); b.beginPath(); b.arc(x, y, 0.8 + r0() * 1.1, 0, 7); b.fill(); }
+  // 月亮
+  const mx = x0 + 760, my = top + 250;
+  const mg = b.createRadialGradient(mx, my, 20, mx, my, 260); mg.addColorStop(0, rgba([203, 218, 255], 0.28)); mg.addColorStop(1, rgba([203, 218, 255], 0)); b.fillStyle = mg; b.fillRect(mx - 260, my - 260, 520, 520);
+  b.seedN = 330200; part(b, arcPts(mx, my, 46, 46, 0, TAU, 30), '#dfe6fa', { w: 1, tex: 0.3, lc });
+  b.save(); b.beginPath(); b.arc(mx, my, 46, 0, 7); b.clip(); hatch(b, k => k.rect(mx - 46, my - 46, 92, 92), [mx - 46, my - 46, 92, 92], { ang: -0.9, gap: 6, a: 0.25, w: 0.6, len: 26, col: '#7a89b8' }); b.restore();
+  // 远处的坡和几户人家：一层比一层暗
+  const hills = (y, amp, col, seed, step) => {
+    const rr = rnd(seed), pts = [[x0, wb]]; let yy = y;
+    for (let x = x0; x <= x1 + step; x += step) { yy = y + (rr() - 0.5) * amp; pts.push([x, yy]); }
+    pts.push([x1, wb]); const c = curvePts(pts.slice(1, -1), false, 6); fillPts(b, [[x0, wb], ...c, [x1, wb]], col); b.seedN = seed + 5; ink(b, c, { w: 0.8, col: lc, a: 0.7, amp: 1 });
+  };
+  hills(wb - 250, 70, lit ? '#3b4d7e' : '#232f52', 330300, 140);
+  const hr = rnd(330350);
+  for (let i = 0; i < 9; i++) {   // 坡上的小房子：只有屋顶和一两扇黄窗
+    const hx = x0 + 160 + i * 215 + hr() * 90, hy = wb - 232 + hr() * 20, hw = 46 + hr() * 30, hh = 34 + hr() * 14;
+    fillPts(b, [[hx, hy], [hx + hw, hy], [hx + hw, hy - hh], [hx + hw / 2, hy - hh - 22], [hx, hy - hh]], lit ? '#2c3a63' : '#18223f');
+    if (hr() < 0.55) { b.fillStyle = rgba([255, 196, 122], lit ? 0.8 : 0.6); b.fillRect(hx + hw * 0.3, hy - hh * 0.7, 7, 9); }
+  }
+  hills(wb - 150, 60, lit ? '#2b3a62' : '#18213d', 330400, 110);
+  // 树：近处几棵，树干、一团团的树冠，排线压暗
+  const tree = (x, h, sd) => {
+    const rr = rnd(sd); b.seedN = sd;
+    part(b, [[x - 9, wb + 4], [x - 5, wb - h * 0.5], [x - 3, wb - h * 0.72], [x + 3, wb - h * 0.72], [x + 5, wb - h * 0.5], [x + 10, wb + 4]], lit ? '#40384a' : '#1f1c2c', { w: 1, tex: 0.3, lc });
+    for (let i = 0; i < 6; i++) {
+      const cx = x + (rr() - 0.5) * h * 0.5, cy = wb - h * (0.7 + rr() * 0.28), cr = h * (0.2 + rr() * 0.1);
+      part(b, arcPts(cx, cy, cr, cr * 0.85, 0, TAU, 18), lit ? '#2c4551' : '#16262f', { w: 0.9, tex: 0.3, lc });
+    }
+    hatch(b, k => k.rect(x - h * 0.3, wb - h * 1.05, h * 0.6, h * 0.5), [x - h * 0.3, wb - h * 1.05, h * 0.6, h * 0.5], { ang: -1.0, gap: 5, a: 0.3, w: 0.6, len: 16, col: '#05080d' });
+  };
+  tree(x0 + 280, 330, 330500); tree(x0 + 1030, 280, 330510); tree(x0 + 1480, 360, 330520); tree(x0 + 1850, 300, 330530);
+  b.restore();
+  // 地面：草、一条小路、土的断面
+  b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, fr - wb); b.clip();
+  b.fillStyle = lit ? '#2d4136' : '#16241f'; b.fillRect(x0, wb, x1 - x0, ff - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
+  const path = [[x0, wb + 6], [x1, wb + 6], [x1, ff - 4], [x0, ff - 4]];
+  fillPts(b, path, lit ? '#6f7898' : '#3a4262'); texture(b, TEX.blot, 0.4);
+  b.fillStyle = lit ? '#2d4136' : '#16241f';
+  const pr = rnd(330600);
+  for (let x = x0 + 30; x < x1; x += 60 + pr() * 90) { b.beginPath(); b.ellipse(x, wb + 20 + pr() * 30, 18 + pr() * 22, 4 + pr() * 4, 0, 0, 7); b.fill(); }   // 路上的杂草
+  b.fillStyle = lit ? '#4b3f35' : '#241d1c'; b.fillRect(x0, ff, x1 - x0, fr - ff);
+  b.restore();
+  b.seedN = 330700;
+  hatch(b, k => k.rect(x0, wb, x1 - x0, 20), [x0, wb, x1 - x0, 20], { ang: -0.25, gap: 5 / HD, a: lit ? 0.25 : 0.45, w: 0.7, len: 30 });
+  ink(b, seg(x0, wb, x1, wb), { w: 1.4, taper: 0, col: lc }); ink(b, seg(x0, ff, x1, ff), { w: 1.6, taper: 0, col: lc }); ink(b, seg(x0, fr, x1, fr), { w: 1.1, a: 0.9, taper: 0, col: lc });
+  const gr2 = rnd(330800);
+  for (let x = x0 + 20; x < x1; x += 28 + gr2() * 40) { const y = wb - 2 + gr2() * 6, hh = 8 + gr2() * 12; ink(b, seg(x, y, x + (gr2() - 0.5) * 8, y - hh), { w: 0.8, taper: 1, col: lc, a: 0.8, seed: 330900 + (x | 0) }); }
+  // 篱笆：门口两边各一截，中间留着路；信箱
+  b.seedN = 331000;
+  const pickets = (xa, xb) => {
+    ink(b, seg(xa, wb - 26, xb, wb - 26), { w: 1.2, taper: 0, col: lc }); ink(b, seg(xa, wb - 54, xb, wb - 54), { w: 1.2, taper: 0, col: lc });
+    for (let x = xa; x <= xb; x += 24) { part(b, [[x - 7, wb + 2], [x - 7, wb - 62], [x, wb - 72], [x + 7, wb - 62], [x + 7, wb + 2]], lit ? '#8d93ab' : '#4b5170', { w: 0.9, tex: 0.3, lc }); }
+  };
+  pickets(x0 + 70, x0 + 480); pickets(x0 + 640, x0 + 900); pickets(x0 + 1560, x0 + 1900);
+  part(b, rectPts(x0 + 570, wb - 70, 6, 74), lit ? '#4a4253' : '#262233', { w: 0.9, tex: 0.2, lc }); part(b, roundPts(x0 + 548, wb - 104, 50, 32, 8), lit ? '#6b6f93' : '#383c58', { w: 1, tex: 0.3, lc });
+  paintMoonlightPool(b, lit, x0 + 130, wb + 8, 260, ff - wb - 12);
+}
+function paintMoonlightPool(b, lit, x, y, w, h) {   // 路上落着的一块月光
+  const g2 = b.createRadialGradient(x + w / 2, y + h / 2, 6, x + w / 2, y + h / 2, w * 0.6); g2.addColorStop(0, rgba([203, 218, 255], lit ? 0.12 : 0.16)); g2.addColorStop(1, rgba([203, 218, 255], 0));
+  b.fillStyle = g2; b.fillRect(x - 40, y - 10, w + 80, h + 20);
+}
 // ---------- 客厅（楼下，中）----------
 const SIDE = { x0: 1460, x1: 1650, top: 880 }, ARM = { x: 1905 }, FIRE = { x: 2260, x0: 2130, x1: 2390, box0: 2192, box1: 2328, mantel: 842 }, BASKET = { x: 2470 }, DAMPER = { x: 2260, y: 872 };
 function paintLiving(b, r, P, lit) {
@@ -1059,7 +1106,7 @@ function paintCellar(b, r, P, lit) {
   for (const x of [HATCH.x - 30, HATCH.x + 30]) part(b, rectPts(x - 4, r.top, 8, gy - r.top + 6), P.woodHi, { w: 0.9, tex: 0, lc, seed: 150510 + x });
   for (let y = LADDER_Y0 + 46; y < gy; y += 46) if (y > r.top + 4) part(b, rectPts(HATCH.x - 30, y, 60, 7), P.woodHi, { w: 0.8, tex: 0, lc, seed: 150520 + y });
 }
-const ROOM_PAINT = { bedroom: paintBedroom, bath: paintBath, hall: paintHall, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar };
+const ROOM_PAINT = { bedroom: paintBedroom, bath: paintBath, hall: paintHall, yard: paintYard, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar };
 
 // ---------- 会动的东西：暗的一层、亮的一层各画一遍 ----------
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
@@ -1216,19 +1263,16 @@ function drawHWinch(b, P, lit) {
   b.save(); b.translate(x, y); b.rotate(a); part(b, rectPts(-3.8, -3.8, 7.6, 7.6), P.brass, { w: 0.7, tex: 0, lc, seed: 233020 }); b.restore();
   if (S.crank === 'winch') { const hx = x + Math.cos(a) * r, hy = y + Math.sin(a) * r; ink(b, seg(x, y, hx, hy), { w: 2.6, col: P.brass, taper: 0, a: 1 / b.pen.a, seed: 233030 }); part(b, arcPts(hx, hy, 5, 5, 0, TAU, 10), P.wood, { w: 0.7, tex: 0, lc, seed: 233040 }); }
 }
-function drawFrontOpen(b, P, lit) {   // 前门开了：门外是月光下的一条小路
-  const o = smooth(V.door); if (o < 0.004) return;
-  const { x, y, w, h } = FRONT, lc = lcOf(P, lit);
-  b.save(); b.beginPath(); b.rect(x, y, w, h); b.clip();
-  const gr = b.createLinearGradient(0, y, 0, y + h); gr.addColorStop(0, '#46598a'); gr.addColorStop(0.7, '#a3b4de'); gr.addColorStop(1, '#bccaee'); b.fillStyle = gr; b.fillRect(x, y, w, h);
-  b.seedN = 235000;
-  const far = [[x, y + h * 0.72], ...quadPts([x, y + h * 0.72], [x + w * 0.3, y + h * 0.6], [x + w * 0.55, y + h * 0.72], 6), ...quadPts([x + w * 0.55, y + h * 0.72], [x + w * 0.8, y + h * 0.64], [x + w, y + h * 0.74], 6)];
-  fillPts(b, [...far, [x + w, y + h], [x, y + h]], '#5a6ea0'); ink(b, far, { w: 0.7, col: '#33426b', a: 0.8 });
-  fillPts(b, [[x + w * 0.16, y + h], [x + w * 0.44, y + h * 0.78], [x + w * 0.54, y + h * 0.78], [x + w * 0.8, y + h]], '#cdd9f6');
-  const lw = w * Math.cos(o * 1.35);
-  if (lw > 2) { paintLeaf(b, P, lit, x + w - lw, y, lw, h, 235100); b.fillStyle = rgba(DARK.mass, 0.3 * o); b.fillRect(x + w - lw, y, lw, h); }
+function drawFrontOpen(b, P, lit) {   // 前门：关着的时候是门洞里一块门板（侧面看过去很薄），开了就让出路来
+  const o = smooth(V.door), a = 1 - o; if (a < 0.004) return;
+  const x = FRONT.x, y0 = FL.down.gy - DOOR_H, h = FL.down.ff - y0, lc = lcOf(P, lit), w = 16 * (1 - o * 0.5);
+  b.save(); b.globalAlpha *= a; b.seedN = 235000;
+  part(b, rectPts(x - w / 2, y0, w, h), P.door, { w: 1.1, tex: 0.4, lc });
+  fillPts(b, rectPts(x - w / 2 + 2, y0 + 16, w - 4, h * 0.38), P.doorIn);
+  fillPts(b, rectPts(x - w / 2 + 2, y0 + h * 0.38 + 30, w - 4, h * 0.5), P.doorIn);
+  part(b, arcPts(x - w / 2 - 2, y0 + 170, 5, 5, 0, TAU, 10), P.brass, { w: 0.8, tex: 0, lc });
+  if (!lit) ink(b, seg(x - w / 2 + 1, y0 + 2, x - w / 2 + 1, y0 + h - 2), { col: DARK.hi, a: 0.22, w: 0.8, taper: 0, seed: 235050 });
   b.restore();
-  ink(b, seg(x, y, x, y + h), { w: 1.2, col: lc, taper: 0, seed: 235200 });
 }
 // ----- 客厅 -----
 // 壁炉的火：0 只剩一点炭火，1 有柴可风门关着（烟大、火一会儿大一会儿小），2 风门开了（火稳住）
@@ -2659,7 +2703,7 @@ for (const [k, fn] of Object.entries({
 })) snd[k] = (...a) => { if (AC && !muted) fn(AC.currentTime, ...a); };
 
 // ---------- 会变的东西 ----------
-let S = { ...START }, bag = [], held = null, won = 0, wonT = 0, taps = 0, hints = 0, tStart = -1;
+let outDone = 0, S = { ...START }, bag = [], held = null, won = 0, wonT = 0, taps = 0, hints = 0, tStart = -1;
 let V = null, kid = null, bubble = null, fly = [], parts = [], ring = null, LT = [];
 let kidVisible = true, showUI = !qs.has('noui');   // ?noui=1：不画按钮、物品栏（截图用）
 const mouse = { x: -99, y: -99, on: false };
@@ -2680,7 +2724,7 @@ const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, 
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
 function restart(keep) {
   if (!keep) clearSave();
-  S = { ...START }; bag = []; held = null; won = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
+  S = { ...START }; bag = []; held = null; won = 0; outDone = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
   V = newView(); kid = newKid(); LT = []; stickLock = null;
   [camFX, camFY] = camTarget(); camX = camFX; camY = camFY;
 }
@@ -2809,7 +2853,7 @@ const boxMeet = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[
 function camTarget() {
   const y = bodyY(), off = y <= FL.down.gy ? -295 : lerp(-295, -210, clamp((y - FL.down.gy) / (FL.cel.gy - FL.down.gy), 0, 1));
   let cx = kid.x + kid.face * Math.min(140, VWW * 0.09) - VWW / 2, cy = y + off - VHH / 2;
-  const right = (y > FL.down.fr + 30 ? ROOMS.cellar.x1 : ROOMS.hall.x1) + 40;
+  const right = (y > FL.down.fr + 30 ? ROOMS.cellar.x1 : ROOMS.yard.x1) + 40;
   cx = Math.max(-40, Math.min(cx, right - VWW));
   cy = clamp(cy, -520, Math.max(-520, 1720 - VHH));
   return [cx, cy];
@@ -2820,6 +2864,7 @@ const pathLen = (x, y, path) => { let L = 0; for (const q of path) { L += Math.h
 const busy = () => kid.mode !== 'idle' && kid.mode !== 'walk';
 // 走到 (tx, ty) 最近的那条路上。路上有还没照亮的影子：走到它跟前就不敢再走了
 function walkTo(tx, ty, cb, force) {
+  if (!S.door && ty > FL.down.gy - 200 && tx > DOOR_STOP) tx = DOOR_STOP;   // 门没开，走不出去
   const A = nearestOnPaths(kid.x, kid.y);
   let B = nearestOnPaths(tx, ty);
   let path = findPath(A.e, A.t, B.e, B.t);
@@ -2940,6 +2985,7 @@ function driveBlock(E, d, u) {
     if (s < -0.5 || s > d + 0.5) continue;
     const at = Math.max(0, s - 40); if (!best || at < best.dist) best = { dist: at, gate: k };
   }
+  if (E.i === 5 && kid.dd > 0 && !S.door) { const s = DOOR_STOP - kid.x; if (s >= -0.5 && s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null }; }   // 前门没开：走到门前就停
   return best;
 }
 function driveRun(dt, u) {
@@ -3143,17 +3189,12 @@ function kidUpdate(dt) {
   } else if (kid.mode === 'wait') {
     kid.t += dt;
     if (kid.t >= kid.waitFor) { kid.mode = 'idle'; const a = kid.after; kid.after = null; if (a) a(); }
-  } else if (kid.mode === 'exit') {  // 走进门里去：往里走，变小，淡掉
-    kid.t += dt; kid.ph = (kid.ph + dt * 1.25) % 1;
-    const e = smooth(kid.t / 1.1);
-    kid.lift = e * 36; kid.scale = 1 - e * 0.16; kid.alpha = 1 - smooth((kid.t - 0.35) / 0.75);
-    if (kid.t > 1.15) { kid.mode = 'gone'; kid.alpha = 0; won = 1; wonT = T; snd.win(); clearSave(); }
   }
   if (kid.mode === 'idle' && kid.crouch > 0) kid.crouch = Math.max(0, kid.crouch - dt * 2.5);
   kid.blink -= dt; kid.blinkT -= dt;   // 眨眼
   if (kid.blinkT < 0) { kid.blink = 0.12; kid.blinkT = 2.2 + hash(Math.floor(T * 10), 1.7) * 3.2; }
   const pushing = kid.mode === 'push' && kid.push && kid.push.t > 0.22 && kid.push.t < 0.22 + kid.push.dur;
-  const moving = (kid.mode === 'walk' && kid.kind !== 'ladder') || kid.mode === 'exit' || pushing || (kid.mode === 'grab' && Math.abs(kid.grab.v) > 4) || (kid.mode === 'recoil' && kid.t < 0.32);
+  const moving = (kid.mode === 'walk' && kid.kind !== 'ladder') || pushing || (kid.mode === 'grab' && Math.abs(kid.grab.v) > 4) || (kid.mode === 'recoil' && kid.t < 0.32);
   kid.walk += ((moving ? 1 : 0) - kid.walk) * (1 - Math.exp(-dt * (moving ? 16 : 10)));
   if (kid.mode !== 'walk') kid.gait += (0 - kid.gait) * (1 - Math.exp(-dt * 8));
 }
@@ -3183,7 +3224,7 @@ function spots() {
   if (!S.drawer) add('hdrawer', DRAWER_R, 3656, 'down', 1, [3710, 904]);
   if (!S.clock) add('hclock', CLOCK_R, 3545, 'down', -1, [3496, 882]);
   add('stand', [HSTAND.x - 52, HSTAND.base - 236, HSTAND.x + 54, HSTAND.base + 8], HSTAND.x - 72, 'down', 1, [HSTAND.x - 26, HSTAND.base - 108]);
-  add('door', [FRONT.x - 8, FRONT.fan - 8, FRONT.x + FRONT.w + 8, FL.down.wb + 4], 4359, 'down', 1, [FRONT.x + 14, 874]);
+  add('door', [FRONT.x - 30, FL.down.gy - DOOR_H - 8, FRONT.x + 30, FL.down.ff], 4448, 'down', 1, [FRONT.x - 8, FL.down.gy - 100]);
   // 客厅
   if (S.log === 'basket') add('basket', [2420, 912, 2520, 1006], 2510, 'down', -1, [2482, 952]);
   add('damper', [2242, 844, 2316, 900], 2326, 'down', -1, [2294, 884]);
@@ -3341,9 +3382,9 @@ function commit(r) {
   }
   bag = bag.filter(it => S[it] === 'inv');   // 物品栏跟规则对一遍：不在身上的东西不留在格子里（2026-11-18 主人说换保险丝时罐子放到了搁板上，物品栏里还有）
 }
-function exitSeq() {   // 门开了：愣一下，走到门口，走出去
+function exitSeq() {   // 门开了：愣一下，穿过门洞走到院子里（不切屏幕，接着自己走）
   kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.7;
-  kid.after = () => { walkTo(FRONT.x + 44, FL.down.gy, () => { kid.mode = 'exit'; kid.t = 0; kid.face = 1; }, true); kid.auto = true; };
+  kid.after = () => { walkTo(FRONT.x + 150, FL.down.gy, null, true); kid.auto = true; };
 }
 // 提示：照最短的解法，下一步该点哪儿：那儿亮一个圈（不在画面里就在画面边上指过去），要用的东西在气泡里
 function hint() {
@@ -3366,6 +3407,7 @@ const MOONS = [[290, 548, 'up'], [1650, 1770, 'up'], [1640, 1800, 'down'], [790,
 function tick(dt) {
   V.T += dt; const T = V.T;
   kidUpdate(dt);
+  if (S.out && !outDone && kid.x > FRONT.x + 60) { outDone = 1; snd.win(); clearSave(); }   // 走出前门：这一关过了（不停、不切屏，接着往前走）
   // 东西慢慢动到规则说的样子
   V.drawer = approach(V.drawer, S.drawer, dt / 0.28); V.clock = approach(V.clock, S.clock, dt / 0.36); V.door = approach(V.door, S.door, dt);
   V.side = approach(V.side, S.side, dt / 0.28); V.damperT = approach(V.damperT, S.damper, dt / 0.3); V.hatch = approach(V.hatch, S.hatch, dt / 0.55);
@@ -3501,7 +3543,7 @@ function drawOverlays(lights) {
   }
   const glints = [
     [SOCKET.x, SOCKET.y - 4, 0, !S.plug], [CORD.x, CORD.end + 6, 1.3, !S.bath], [2688, FL.up.gy - 120, 2.1, S.slipper !== 'door'],
-    [HTABLE.dx + HTABLE.dw / 2, HTABLE.dy + HTABLE.dh / 2, 0.4, !S.drawer], [HCLOCK.x + 15, HCLOCK.base - 88, 1.9, !S.clock], [HWINCH.x, HWINCH.y, 3.7, S.crank !== 'winch'], [FRONT.x + 14, FRONT.y + 108, 5.1, !S.door],
+    [HTABLE.dx + HTABLE.dw / 2, HTABLE.dy + HTABLE.dh / 2, 0.4, !S.drawer], [HCLOCK.x + 15, HCLOCK.base - 88, 1.9, !S.clock], [HWINCH.x, HWINCH.y, 3.7, S.crank !== 'winch'], [FRONT.x - 8, FL.down.gy - 100, 5.1, !S.door],
     [DAMPER.x + 30, DAMPER.y + 16, 2.7, !S.damper], [(SIDE.x0 + SIDE.x1) / 2, SIDE.top + 27, 4.4, !S.side], [FRIDGE.x0 + 17, FRIDGE.top + 100, 0.9, !S.fridge],
     [HATCH.x1 - 30, FL.down.gy - 4, 3.2, !S.hatch], [FUSEBOX.x, FUSEBOX.y, 1.6, !power(S)], [1010, FL.up.gy - 8, 2.4, S.slipper === 'bed'],   // 床边的拖鞋也闪一下
   ];
@@ -3609,6 +3651,7 @@ function drawUI() {
   }
   // 手指底下原来画着东西：拖着走时按下的地方一个淡淡的圈、手指在圈里的哪儿一个小圆；站在脏衣篓、椅子旁边按住不动时一圈慢慢画满。
   // 2026-11-19 主人说滑屏幕的时候不要那个圈，“甚至不要有任何手操作的显示”，都去掉了。操作照旧，只是不画（拖着走看孩子走，按住看他把袖子搭上去）
+  if (S.out && kid.x > YARD_END - 160 && !won) { const sm = W < 700; pill(W / 2, H - 70, sm ? 108 : 150, sm ? 34 : 42, '再来一遍', restart); }   // 院子的路走到头：后面还没做
   if (won) {   // 走出前门以后：原来还写着“走出去了”、点了几下、几秒、被抓住几次，2026-11-18 主人说这些字都不要，只留一个再来一遍
     const a = clamp((T - wonT - 0.5) * 2, 0, 1), sm = W < 700;
     if (a >= 1) pill(W / 2, H - 70, sm ? 108 : 150, sm ? 34 : 42, '再来一遍', restart);
