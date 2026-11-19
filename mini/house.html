@@ -32,6 +32,10 @@ const power = s => s.fuse === 'box';                        // 楼下来电了
 const fireOn = s => s.log === 'fire' && s.damper === 1;     // 壁炉的火稳住了（有柴、风门开着）
 const hallLit = s => s.bulb === 'lamp' && power(s);         // 门厅的吊灯亮着
 const candleLight = s => s.lit === 1 && s.candle === 'inv'; // 手里拎着一罐萤火虫
+// 萤火虫恋着窗台上的蜂蜜：拎着罐子走得离蜂蜜太远（页面里量，差不多到门厅门口），它们就从盖子的小孔里钻出来飞回蜂蜜那儿，
+// 罐子空了，要回窗台再扣一次（2026-11-19 主人说拿着罐子等于无敌了）。用罐子的几处（客厅、厨房、地下室一直到保险丝盒）都在这个范围里。
+// 这不是点出来的，求解器不搜
+const fliesLeave = s => s.lit === 1 && s.candle === 'inv' ? { s: { ...s, lit: 0 }, ev: ['fliesHome'] } : null;
 // 影子：照到了才敢过去。地窖口也算一道：底下一点光都没有，不举着蜡烛（或者没来电）不敢下去
 const GATES = {
   gown: s => s.plug === 1,                                  // 卧室门边：睡袍
@@ -988,6 +992,9 @@ function paintLiving(b, r, P, lit) {
 
 // ---------- 厨房（楼下，左）----------
 const HONEY_FR = { x: 1283, y: 900 }, HONEY_AT = { x: 784, y: 880 };   // 蜂蜜：冰箱中间那一格上；放下来以后在窗下台面上
+// 拎着萤火虫罐子离窗台上的蜂蜜多远：r1 以外不安分，r2 以外飞回去（量的是罐子到蜂蜜的直线距离）。
+// 量过：保险丝盒前 1690、柴筐 1761 都还在 r1 里面；客厅最右头 1901 不安分；门厅门口 1971 已经飞回去了
+const LEASH = { r1: 1780, r2: 1920 };
 const FRIDGE = { x0: 1192, x1: 1332, top: 770 }, KTABLE = { x0: 830, x1: 1040, top: 888 }, SHELF = { x0: 196, x1: 360, y: 862 }, CHAIR = { x0: 1085, x1: 1158 };
 function paintKitchen(b, r, P, lit) {
   const lc = lit ? P.ink : DARK.ink, gy = r.gy;
@@ -1134,7 +1141,7 @@ function drawCandle(b, P, lit, x, y, on, seed, k = 1) {   // 玻璃罐（规则�
   part(b, rectPts(x - w / 2 - 1, y - h - 5 * k, w + 2, 5 * k), P.brass, { w: 0.6, tex: 0, lc });
   ink(b, quadPts([x - w / 2, y - h - 4 * k], [x, y - h - 16 * k], [x + w / 2, y - h - 4 * k], 8), { w: 0.6, col: lc, taper: 0 });
   if (on) V.flies.pts.forEach((p, i) => {   // 萤火虫：在罐子里飞、一闪一闪
-    if (V.flies.out && V.flies.out.i === i) return;
+    if (p.gone || (V.flies.out && V.flies.out.i === i)) return;
     const fx = x + p.u * k, fy = y + p.v * k, bl = on ? 0.75 + 0.25 * Math.sin(V.T * 6 + i * 1.7) : 0;
     if (on) { const gl = b.createRadialGradient(fx, fy, 0, fx, fy, 4.5 * k); gl.addColorStop(0, `rgba(230,255,150,${0.55 * bl})`); gl.addColorStop(1, 'rgba(230,255,150,0)'); b.fillStyle = gl; b.beginPath(); b.arc(fx, fy, 4.5 * k, 0, 7); b.fill(); }
     b.fillStyle = on ? 'rgba(255,255,255,0.5)' : 'rgba(150,160,180,0.35)'; const fl = on ? Math.abs(Math.sin(V.T * 30 + i)) : 0.2; for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(fx + sd * 1.3 * k, fy - 1 * k, 1.5 * k, (0.4 + fl * 0.8) * k, sd * 0.5, 0, 7); b.fill(); }
@@ -2497,7 +2504,8 @@ const BUGS = {
 const BUG_KEYS = Object.keys(BUGS);
 const newBugs = () => Object.fromEntries(BUG_KEYS.map(k => [k, { mode: 'in', x: 0, y: 0, vx: 0, vy: 0, face: 1, t0: 0, dur: 0, next: 6 + hash(BUGS[k].seed, 1) * 10, curious: 0 }]));
 const newSwarm = () => ({ pts: [0, 1, 2, 3, 4].map(i => ({ x: 690 + i * 22, y: 520 + (i % 3) * 50, vx: 0, vy: 0, face: 1 })), scare: -10, catchT: -10 });
-const newFlies = () => ({ pts: [0, 1, 2, 3, 4].map(i => ({ u: -4 + i * 2, v: -6, vu: 0, vv: 0, tu: 0, tv: -12, tt: 0 })), jx: null, jy: 0, jvx: 0, out: null, next: 10 });
+const newFlies = () => ({ pts: [0, 1, 2, 3, 4].map(i => ({ u: -4 + i * 2, v: -6, vu: 0, vv: 0, tu: 0, tv: -12, tt: 0, gone: false })), jx: null, jy: 0, jvx: 0, out: null, next: 10,
+  pull: 0, leaving: null, gone: [] });   // pull 想回去的劲儿（0..1）；leaving 正一只一只钻出去；gone 钻出去往回飞的
 // 罐子在哪儿（世界坐标，罐底中间）和多大
 function jarAt() {
   if (S.candle === 'shelf') return [SHELF.x1 - 24, SHELF.y, 1];
@@ -2541,27 +2549,51 @@ function bugUpdate(dt) {
   }
   // 罐子里的萤火虫
   const F = V.flies, J = jarAt();
+  F.gone = F.gone.filter(o => { flyToward(o, o.tx, o.ty, dt, 1.6, o.seed, T); return T - o.t0 < 4; });   // 钻出去往回飞的：朝窗台那边飞，飞远了就不画了（回到窗台上那一群里）
   if (!J) { F.jx = null; F.out = null; return; }
   const [jx, jy, jk] = J, jvx = F.jx == null ? 0 : (jx - F.jx) / Math.max(dt, 1e-3), jax = (jvx - F.jvx) / Math.max(dt, 1e-3); F.jx = jx; F.jy = jy; F.jvx = jvx;
-  const warm = S.lit === 1, inHand = S.candle === 'inv' && !V.candleDown, gyJ = roomAt(jx, jy);
+  const warm = S.lit === 1, inHand = S.candle === 'inv' && !V.candleDown, gyJ = roomAt(jx, jy), lid = [jx, jy - 27 * jk];
+  // 离窗台上的蜂蜜太远（LEASH，2026-11-19 主人说拿着罐子等于无敌了）：先是不安分 —— 挤到朝蜂蜜的那一边、往盖子上撞、钻出来一只在罐子外面等着、光一闪一闪；
+  // 再远就一只一只从盖子的小孔钻出来，飞回蜂蜜那儿，罐子空了（规则里的 fliesLeave），要回窗台再扣一次。往回走一点，不安分的又安静下来
+  const dHome = Math.hypot(jx - HONEY_AT.x, jy - HONEY_AT.y), homeDir = Math.sign(HONEY_AT.x - jx) || -1;
+  F.pull = approach(F.pull, warm && inHand && !F.leaving ? clamp((dHome - LEASH.r1) / (LEASH.r2 - LEASH.r1), 0, 1) : 0, dt * 1.5);
+  if (warm && inHand && !F.leaving && dHome > LEASH.r2 && kid.mode !== 'caught') { F.leaving = { t0: T, n: 0, dir: homeDir }; snd.flutter(); }
+  if (F.leaving) {
+    const L = F.leaving;
+    while (L.n < 5 && T - L.t0 > L.n * 0.22) {
+      const o = F.out && F.out.i === L.n ? F.out : null, x = o ? o.x : lid[0], y = o ? o.y : lid[1] - 2;
+      F.pts[L.n].gone = true; if (o) F.out = null;
+      F.gone.push({ x, y, vx: L.dir * 40, vy: -90, face: L.dir, t0: T, seed: 80 + L.n * 7, tx: x + L.dir * 1500, ty: y - 240 - L.n * 26 });
+      L.n++;
+    }
+    if (L.n >= 5) { F.leaving = null; F.pts.forEach(p => { p.gone = false; }); const r = fliesLeave(S); if (r) S = r.s; }   // 都走了：罐子空了（不走 commit：这不是点出来的，别打断孩子手上正做的事）
+  }
   let fear = 0, toward = 0;
   for (const g of GARB_KEYS) { const o = V.mon[g], G = GARB[g]; if (o.rise > 0.9 && Math.abs(FL[G.fl].gy - (gyJ ? gyJ.gy : -1e9)) < 2 && Math.abs(o.x - jx) < 320) { fear = Math.sign(jx - o.x) || 1; } }
   if (gyJ && gyJ.id === 'living' && Math.abs(jx - FIRE.x) < 300 && V.fireLv > 0.4) toward = Math.sign(FIRE.x - jx);
+  const pull = warm ? F.pull : 0;
   F.pts.forEach((p, i) => {
-    if (F.out && F.out.i === i) return;
+    if (p.gone || (F.out && F.out.i === i)) return;
     p.tt -= dt;
     if (!warm) { const heap = [[-4.5, -4.5], [0, -4.2], [4.5, -4.5], [-2.2, -7.6], [2.2, -7.6]][i]; p.tu = heap[0] + Math.sin(T * 40 + i) * 0.4; p.tv = heap[1]; }   // 冻僵了：罐底挤成一堆打哆嗦
     else if (p.tt < 0) { p.tt = 0.6 + hash(i, T) * 0.9; p.tu = (hash(i + 3, T) - 0.5) * 12; p.tv = -6 - hash(i + 7, T) * 15; }
-    let tu = p.tu; if (warm && fear) tu = fear * 5.5 + (hash(i, 9) - 0.5) * 2; else if (warm && toward) tu = toward * 5.5 + (hash(i, 4) - 0.5) * 2;
-    const au = (tu - p.u) * (warm ? 9 : 14) - p.vu * 3.5 - jax * 0.012 + (warm ? Math.sin(T * 8 + i * 2) * 25 : 0), av = (p.tv - p.v) * (warm ? 9 : 14) - p.vv * 3.5 + (warm ? Math.cos(T * 7 + i * 3) * 25 : 30);
+    let tu = p.tu, tv = p.tv;
+    if (warm && fear) tu = fear * 5.5 + (hash(i, 9) - 0.5) * 2;
+    else if (pull > 0.05) { tu = homeDir * 6 * Math.min(1, pull * 1.6) + (hash(i, 6) - 0.5) * 2; tv = lerp(p.tv, -21, Math.min(1, pull * 1.4)); }   // 想回去：挤到朝蜂蜜的那一边，往盖子上撞
+    else if (warm && toward) tu = toward * 5.5 + (hash(i, 4) - 0.5) * 2;
+    const au = (tu - p.u) * (warm ? 9 : 14) - p.vu * 3.5 - jax * 0.012 + (warm ? Math.sin(T * 8 + i * 2) * 25 : 0), av = (tv - p.v) * (warm ? 9 : 14) - p.vv * 3.5 + (warm ? Math.cos(T * 7 + i * 3) * 25 + pull * Math.sin(T * 23 + i * 5) * 90 : 30);
     p.vu += au * dt; p.vv += av * dt; p.u = clamp(p.u + p.vu * dt, -7, 7); p.v = clamp(p.v + p.vv * dt, -23, -3.5);
   });
-  // 钻出来的那一只：绕着孩子的头飞一圈再钻回去
-  const lid = [jx, jy - 27 * jk];
-  if (!F.out) { if (warm && inHand && !fear && kid.kind === 'floor' && (F.next -= dt) < 0) { F.next = 11 + hash(T, 3) * 10; const i = Math.floor(hash(T, 5) * 5); F.out = { i, x: lid[0], y: lid[1], vx: 0, vy: -60, face: 1, t0: T, back: 0 }; } }
-  else {
-    const o = F.out; if (!warm || !inHand || fear || T - o.t0 > 4.5 || kid.kind !== 'floor') o.back = 1;
+  // 钻出来的那一只：平常绕着孩子的头飞一圈再钻回去；不安分的时候在罐子外面朝蜂蜜的那一边扑腾，想走（往回走一点就钻回去）
+  if (!F.out) {
+    if (warm && inHand && !F.leaving && pull > 0.4 && kid.kind === 'floor') { const i = F.pts.findIndex(p => !p.gone); if (i >= 0) F.out = { i, x: lid[0], y: lid[1], vx: homeDir * 30, vy: -60, face: homeDir, t0: T, back: 0, peek: 1 }; }
+    else if (warm && inHand && !fear && !F.leaving && kid.kind === 'floor' && (F.next -= dt) < 0) { F.next = 11 + hash(T, 3) * 10; const i = Math.floor(hash(T, 5) * 5); F.out = { i, x: lid[0], y: lid[1], vx: 0, vy: -60, face: 1, t0: T, back: 0 }; }
+  } else {
+    const o = F.out;
+    if (!o.back && !o.peek && pull > 0.4) o.peek = 1;   // 绕着头飞的那只也不绕了
+    if (o.peek ? (pull < 0.25 || !warm || !inHand) : (!warm || !inHand || fear || T - o.t0 > 4.5 || kid.kind !== 'floor')) o.back = 1;
     if (o.back) { flyToward(o, lid[0], lid[1], dt, 12, 7, T); if (Math.hypot(o.x - lid[0], o.y - lid[1]) < 4) { const p = F.pts[o.i]; p.u = 0; p.v = -21; p.vu = p.vv = 0; F.out = null; } }
+    else if (o.peek) flyToward(o, lid[0] + homeDir * (34 + 22 * pull), lid[1] - 18 + Math.sin(T * 4.3) * 8, dt, 6, 7, T);
     else flyToward(o, kid.x + Math.cos((T - o.t0) * 2.6) * 38, kid.y - 165 + Math.sin((T - o.t0) * 5.2) * 14, dt, 5, 7, T);
   }
 }
@@ -2586,6 +2618,7 @@ function drawFlyers() {
   const t = V.T;
   for (const k of BUG_KEYS) { const m = V.bugs[k]; if (m.mode !== 'in' && inView(m.x, m.y, 30)) drawFlyer(g, m.x, m.y, BUGS[k].s * 2.1, t, m.face, BUGS[k].seed, '255,226,150'); }
   const o = V.flies.out; if (o && inView(o.x, o.y, 30)) drawFlyer(g, o.x, o.y, 1.9, t, o.face, 77, '214,255,140');
+  for (const q of V.flies.gone) if (inView(q.x, q.y, 30)) drawFlyer(g, q.x, q.y, 1.9, t, q.face, q.seed, '214,255,140');   // 飞回窗台去的
   if (!S.lit) V.swarm.pts.forEach((p, i) => {   // 窗上的萤火虫：一闪一闪，暗下去的时候几乎看不见
     if (!inView(p.x, p.y, 30)) return;
     const bl = Math.max(0, Math.sin(t * (1.6 + i * 0.23) + i * 2.4)); g.save(); g.globalAlpha *= 0.3 + 0.7 * bl * bl; drawFlyer(g, p.x, p.y, 1.6, t, p.face, 600 + i, '214,255,140'); g.restore();
@@ -3397,8 +3430,9 @@ function tick(dt) {
   // 灯
   const on = { bedlamp: S.plug === 1, bath: S.bath === 1, hall: hallLit(S), power: power(S) };
   for (const k in on) V.li[k] = on[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
-  V.candleI = S.lit === 1 && (S.candle === 'inv' || S.candle === 'box') ? Math.min(1, V.candleI + dt * 2.5) : Math.max(0, V.candleI - dt * 5);
-  V.li.candle = V.candleI * (0.93 + 0.07 * Math.sin(T * 17) * Math.sin(T * 5.3));
+  const jarK = V.flies.leaving ? 1 - V.flies.leaving.n / 5 : 1;   // 正一只一只走掉：剩几只亮几成
+  V.candleI = S.lit === 1 && (S.candle === 'inv' || S.candle === 'box') ? approach(V.candleI, jarK, dt * (V.candleI < jarK ? 2.5 : 5)) : Math.max(0, V.candleI - dt * 5);
+  V.li.candle = V.candleI * (0.93 + 0.07 * Math.sin(T * 17) * Math.sin(T * 5.3)) * (1 - 0.3 * V.flies.pull * Math.max(0, Math.sin(T * 9.7) * Math.sin(T * 3.1)));   // 不安分的时候一闪一闪
   // 壁炉：只有炭火 → 有柴、风门关着（烟大，火一会儿大一会儿小）→ 风门开了（火稳住，照得到扶手椅）
   const lv = fireLevel(); V.fireLv = approach(V.fireLv, lv, dt * 0.7);
   const fl = V.fireLv, wob = Math.sin(T * 9.1) * Math.sin(T * 3.7 + 1) * Math.sin(T * 1.3);
@@ -3714,6 +3748,7 @@ window.__house = {
 // 直接摆到局面 s：规则里的状态换掉，画面上的东西一步到位（门开了几成、灯亮没亮、衣服塌没塌）
 function snapTo(s, b) {
   S = { ...s }; bag = b || ITEMS.filter(it => S[it] === 'inv');
+  Object.assign(V.flies, { pull: 0, leaving: null, gone: [], out: null }); V.flies.pts.forEach(p => { p.gone = false; });
   Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
   for (const k in V.lt0) V.lt0[k] = -10;
   V.li.bedlamp = S.plug ? 1 : 0; V.li.bath = S.bath ? 1 : 0; V.li.hall = hallLit(S) ? 1 : 0; V.li.power = power(S) ? 1 : 0; V.candleI = S.lit && (S.candle === 'inv' || S.candle === 'box') ? 1 : 0;
