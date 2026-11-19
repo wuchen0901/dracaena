@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 function core(file, names) {
-  const html = readFileSync(join(here, '..', file), 'utf8');
+  const html = readFileSync(join(here, '..', 'games', file), 'utf8');
   const m = html.match(/<script id="core">([\s\S]*?)<\/script>/);
   if (!m) throw new Error(file + ': no core script');
   return new Function(m[1] + `\nreturn { ${names.join(', ')} };`)();
