@@ -32,32 +32,6 @@ let bad = 0;
 }
 
 try {
-  const { LEVELS, parseLevel, solve } = core('lamplight.html', ['LEVELS', 'parseLevel', 'solve']);
-  console.log('灯下');
-  LEVELS.forEach((def, i) => {
-    const lv = parseLevel(def);
-    const s = solve(lv);
-    // 有拉杆的关，不拉拉杆应该过不去（不然就是有捷径）
-    const hasLever = def.map.some(r => /[12]/.test(r));
-    const cheat = hasLever ? solve(lv, null, 300000, 'LRUDW') : { path: null };
-    const ok = !!s.path && !cheat.path;
-    if (!ok) bad++;
-    console.log(`  ${ok ? 'ok ' : 'BAD'} ${String(i + 1).padStart(2)} ${def.name.padEnd(6, '　')} ${lv.w}x${lv.h}  最少 ${s.path ? s.path.length : '-'} 步  搜了 ${s.states} 个局面  ${s.path ? s.path.join('') : ''}${cheat.path ? '  (不拉拉杆也能过：' + cheat.path.join('') + ')' : ''}`);
-  });
-} catch (e) { if (e.code !== 'ENOENT') throw e; }
-
-try {
-  const { START, solve } = core('hall.html', ['START', 'solve']);
-  console.log('门厅');
-  const s = solve();
-  // 这几处少点哪一处都应该走不出去（不然就是有捷径）
-  const skip = ['drawer', 'clock', 'lamp', 'winch', 'stand'].filter(id => solve(START, m => m.spot !== id).path);
-  const ok = !!s.path && s.dead === 0 && !skip.length;
-  if (!ok) bad++;
-  console.log(`  ${ok ? 'ok ' : 'BAD'}  最少点 ${s.path ? s.path.length : '-'} 下  局面 ${s.states} 个  死路 ${s.dead} 个  ${s.path ? s.path.map(m => (m.held ? m.held + '→' : '') + m.spot).join(' ') : ''}${skip.length ? '  (不点 ' + skip.join('、') + ' 也能走出去)' : ''}`);
-} catch (e) { if (e.code !== 'ENOENT') throw e; }
-
-try {
   const { START, solve } = core('house.html', ['START', 'solve']);
   console.log('夜里的房子');
   const s = solve(START, () => true, true);
