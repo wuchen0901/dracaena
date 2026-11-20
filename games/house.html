@@ -544,7 +544,7 @@ const ROOMS = {
   // top 是这一块的画最高画到哪儿（再往上只有天）；out 标着这是室外
   porch: { x0: 4500, x1: 5800, fl: 'down', top: 330, out: 1, name: '门廊和前院' },
   garage: { x0: 5800, x1: 7000, fl: 'down', top: 330, out: 1, name: '车库' },
-  drive: { x0: 7000, x1: 8500, fl: 'down', top: 330, out: 1, name: '车道和院门' },
+  drive: { x0: 7000, x1: 8760, fl: 'down', top: 330, out: 1, name: '车道和院门' },
 };
 for (const k in ROOMS) { const r = ROOMS[k], f = FL[r.fl]; Object.assign(r, { id: k, top: r.top ?? f.ceil, wb: f.wb, gy: f.gy, ff: f.ff, fr: f.fr, ix0: r.x0 + 20, ix1: r.x1 - 20 }); }
 const roomAt = (x, y) => Object.values(ROOMS).find(r => x >= r.x0 && x < r.x1 && y >= r.top - 40 && y <= r.fr + 40) || null;
@@ -1052,7 +1052,7 @@ Object.assign(DARK, {
   burlap: '#262e44', burlapLo: '#1a2032', straw: '#3a4466', strawHat: '#2e3852', patch: '#1e2436', gateC: '#283048',
   knit: '#262c44', knitHi: '#4a5478', ball: '#2a3046', ballHi: '#4a5478', cabbage: '#17222a', lampHead: '#4c5878', roofT: '#131826',
 });
-const YARD = { x0: 4520, x1: 8500 };
+const YARD = { x0: 4520, x1: 8760 }, STEPS = { x: 8530, w: 62, h: 22, n: 3 };   // STEPS：院门外往山下去的石阶（第 3 关从这儿接着走，还没做）
 const PORCH = { x1: 5016, post: 4996, roof: [[4520, 652], [5044, 690]] }, SENSOR = { x: 4800, y: 716, zone: [4545, 5075], hold: 3.2 };
 const KENNEL = { x: 5330, base: 980 }, TREE1 = { x: 5626 };
 const GAR = { x0: 5800, x1: 6900, in0: 5840, in1: 6860, ceil: 566, rollTop: 664, rollX: 6880 }, RAKE = { x: 5916 }, RAINHOOK = { x: 6756, y: 772 };
@@ -1268,8 +1268,16 @@ function paintDrive(b, r, P, lit) {   // 车道、菜地、院门：门外是往
   paintFence(b, P, lit, x0, GATE.x - 8, 360200);
   paintBareTree(b, P, lit, 7262, 520, 360300);
   paintGround(b, P, lit, x0, 7720, 'gravel', 360000);
-  paintGround(b, P, lit, 7720, x1, 'grass', 360100);
-  paintWornPath(b, P, lit, 7720, x1, 360150);
+  paintGround(b, P, lit, 7720, STEPS.x, 'grass', 360100);
+  paintWornPath(b, P, lit, 7720, STEPS.x, 360150);
+  // 院门外：往山下去的石阶，一级一级低下去（第 3 关从这儿接着走）
+  b.seedN = 360600;
+  for (let i = 0; i < STEPS.n + 1; i++) {
+    const sx = STEPS.x + i * STEPS.w, dy = (i + 1) * STEPS.h, w = i < STEPS.n ? STEPS.w : x1 - sx;
+    part(b, rectPts(sx, F.wb + dy, w, F.ff - F.wb), P.stone, { w: 1, tex: 0.4, lc, seed: 360610 + i });
+    part(b, rectPts(sx, F.ff + dy, w, F.fr - F.ff + 60), P.front, { w: 0.9, tex: 0.3, lc, seed: 360620 + i });
+    part(b, rectPts(sx - 1, F.wb + dy - STEPS.h, 5, F.ff - F.wb + STEPS.h), shadeHex(P.stone), { w: 0.8, tex: 0, lc, seed: 360630 + i });
+  }
   // 菜地：一垄垄的土，几棵白菜；稻草人的杆子在会动的那一层
   b.seedN = 360400;
   for (let i = 0; i < 6; i++) { const mx = PATCH.x0 + 26 + i * 54, my = wb + 16; part(b, curvePts([[mx - 30, my + 6], [mx - 20, my - 8], [mx + 20, my - 8], [mx + 30, my + 6]], true, 4), P.soil, { w: 0.8, tex: 0.3, lc, seed: 360410 + i }); if (i !== 3) part(b, arcPts(mx, my - 12, 13, 10, 0, TAU, 12), P.cabbage, { w: 0.8, tex: 0, lc, seed: 360430 + i }); }
@@ -3493,7 +3501,7 @@ function drawSky(b) {
   const vx1 = camX + VWW, wb = FL.down.wb; if (vx1 <= YARD.x0 || camY >= wb) return;
   if (!skyC) buildSky();
   b.save(); b.setTransform(K, 0, 0, K, -camX * K, -camY * K);
-  b.beginPath(); b.rect(YARD.x0, camY - 2, vx1 - YARD.x0 + 4, wb + 1 - camY + 2); b.clip();
+  b.beginPath(); b.rect(YARD.x0, camY - 2, vx1 - YARD.x0 + 4, wb + 1 - camY + 2); b.rect(STEPS.x, wb - 2, vx1 - STEPS.x + 4, (STEPS.n + 1) * STEPS.h + 4); b.clip();   // 地面以上；石阶那儿地低下去，天也跟着露出来
   const sx = (camX - 4500) * SKY.k, fx = (camX - 4500) * FAR.k, T = V.T;
   b.imageSmoothingEnabled = true;
   b.drawImage(skyC, SKY.x0 + sx, SKY.y0, SKY.x1 - SKY.x0, SKY.y1 - SKY.y0);
