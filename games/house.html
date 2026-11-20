@@ -237,7 +237,7 @@ const LINKS2 = [['porch', 'garage', 'dog'], ['garage', 'rollside', 'rain'], ['ro
 const SPOT_ZONE2 = { yLure: 'porch', yCarDoor: 'garage', yDash: 'garage', yRake: 'garage', yRoll: 'rollside', yWheel: 'drive', yGate: 'gateway' };
 function act2(s, spot, held, R = reachL(L2, s)) {
   const no = fail => ({ fail });
-  if (s.yOut) return no('done');
+  // 院门开了以后院子里的东西照样能用（和第 1 关不一样，这儿没有 done）：孩子没走出去又折回来，自行车灯自己会灭，得能再摇
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE2[spot])) return no('far');
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
@@ -255,12 +255,12 @@ function act2(s, spot, held, R = reachL(L2, s)) {
       return no('rollFalls');   // 空着手推上去：自己又落下来
     // 车道：脚蹬子摇一下，后轮空转起来，车灯亮；还转着的时候再摇是续上（页面里的事，规则里没变化）
     case 'yWheel': if (held) return no('no'); if (s.yWheel) return no('respin'); n.yWheel = 1; return ok('wheelSpin');
-    case 'yGate': if (held) return no('no'); n.yGate = 1; n.yOut = 1; return ok('gateOpen', 'exit2');
+    case 'yGate': if (held) return no('no'); if (s.yGate) return ok('exit2'); n.yGate = 1; n.yOut = 1; return ok('gateOpen', 'exit2');   // 已经开着：就是走出去
   }
   return no('no');
 }
 // 自行车的轮子转一会儿自己停下，车灯跟着灭（页面里量：灯暗到照不倒稻草人的时候）。不是点出来的，求解器不搜
-const wheelStops = s => s.yWheel === 1 && !s.yOut ? { s: { ...s, yWheel: 0 }, ev: ['wheelStop'] } : null;
+const wheelStops = s => s.yWheel === 1 ? { s: { ...s, yWheel: 0 }, ev: ['wheelStop'] } : null;   // 院门开了以后也一样：孩子没走出去又折回来，轮子照样会停
 const L2 = mkLevel({ n: 2, name: '院子', START: START2, ITEMS: ITEMS2, VALUES: VALUES2, GATES: GATES2, LINKS: LINKS2, ENTRY: 'porch', SPOT_ZONE: SPOT_ZONE2, act: act2, GOAL: 'yOut', TIMED: [wheelStops] });
 const LEVELS = [L1, L2];
 </script>
@@ -2198,7 +2198,7 @@ const garbHead = k => { const G = GARB[k], m = V.mon[k]; return [m.x + m.face * 
 const pathOf = (k, pts) => { pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.moveTo(x, y)); k.closePath(); };
 // 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
 function garbUpdate(dt) {
-  const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm = T < V.grace || won || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone';
+  const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
   for (const k of GARB_KEYS) {
     const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55, want = lit ? 0 : 1, trapped = k === 'dog' && S.yDog === 1;
@@ -2206,7 +2206,8 @@ function garbUpdate(dt) {
     const r0 = m.rise, x0 = m.x; m.rise = approach(m.rise, want, dt / (want ? 0.9 : 0.35)); m.dr = m.rise - r0;
     V.fig[k] = 1 - m.rise;
     const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
-    let hunting = !calm && m.rise > 0.9 && inTerr && !kidLit;
+    // 狗的毛衣不等“被抓住以后那两秒半”（calm0）：它本来就要孩子过了 wake 那条线才扑出来；等的话，孩子一回到灯底下马上往右跑，它还没动人就过去了
+    let hunting = !(G.fast ? calm0 : calm) && m.rise > 0.9 && inTerr && !kidLit;
     if (G.fast) {   // 狗的毛衣：跑得快，有惯性
       // 头一回要孩子走出门廊的光、过了 wake 那条线，它才从窝里扑出来（先愣一下）。扑出来以后，孩子只要在暗处它就追；孩子被抓回灯底下，它又缩回窝里
       if (!m.alert && !trapped && hunting && kid.x > G.wake) { m.alert = true; m.alertT = T; if (inView(m.x, hy, 80)) snd.growl(); }
@@ -3302,7 +3303,7 @@ const FEAR_KEYS = GARB_KEYS;
 // 画面上的状态：门、抽屉开了几成，灯多亮，吊灯升了几成、晃到哪儿，火多大，影子变成东西几成……
 const newView = () => ({
   T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10 }, candleI: 0,
-  sensorUntil: -10, cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1,
+  sensorUntil: -10, cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1, dogCaught: 0,
   twins: [0, 1].map(i => ({ x: CAR.lamp[0], y: CAR.lamp[1], vx: 0, vy: 0, face: 1, a: 0, seed: 470 + i * 37 })),   // 车灯里的一对小灯虫（这一关跟上来的小光）   // 院子：感应灯亮到什么时候、车门、卷帘门、院门开了几成、车轮还剩几成劲、狗的毛衣塌在哪儿
   bdoor: 0, bdoorPulse: -10, lampH: 0, sway: 0.008, swayV: 0, crankA: 0.7, ratT: 0,
   fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
@@ -3863,7 +3864,7 @@ function kidUpdate(dt) {
     if (kid.t > 1) { kid.mode = 'idle'; kid.crouch = 0; }
   } else if (kid.mode === 'caught') {   // 被抓住了：墨一下子涌上来，画面黑下去，回到最近一盏亮着的灯底下
     kid.t += dt; kid.fearK = Math.min(1, kid.t / 0.15);
-    if (kid.t > 1.1) respawn();
+    if (kid.t > 1.1) { respawn(); if (V.caughtBy === 'dog' && !S.yDog && ++V.dogCaught >= 2) { ring = { id: 'yLure', t0: V.T }; say(['sweater', '>'], 2.8); } }   // 第二回让狗的毛衣抓住起：圈出感应灯，气泡里画它（和点 ? 一样的画，不算提示）
   } else if (kid.mode === 'wait') {
     kid.t += dt;
     if (kid.t >= kid.waitFor) { kid.mode = 'idle'; const a = kid.after; kid.after = null; if (a) a(); }
@@ -3929,7 +3930,7 @@ function spots() {
     if (S.yRake === 'wall') add('yRake', [RAKE.x - 30, FL.down.wb - 196, RAKE.x + 34, FL.down.wb + 14], RAKE.x - 52, 'down', 1, [RAKE.x - 4, dn - 110]);
     if (!S.yRoll) add('yRoll', [GAR.rollX - 26, GAR.rollTop - 14, GAR.rollX + 24, FL.down.ff], ROLL_STOP - 10, 'down', 1, [GAR.rollX - 14, dn - 100]);
     add('yWheel', [BIKE.x - 100, BIKE.base - 150, BIKE.x + 104, BIKE.base + 6], BIKE.crank[0] - 46, 'down', 1, [BIKE.crank[0] + 10, BIKE.crank[1] - 12]);
-    if (!S.yGate) add('yGate', [GATE.x - 24, dn - 124, GATE.x + 24, FL.down.ff], GATE_STOP - 4, 'down', 1, [GATE.x - 10, dn - 86]);
+    add('yGate', [GATE.x - 24, dn - 124, GATE.x + 24, FL.down.ff], GATE_STOP - 4, 'down', 1, [GATE.x - 10, dn - 86]);   // 开了以后还在：孩子折回来了，再点一下就是走出去
   }
   return out;
 }
@@ -4051,7 +4052,7 @@ function perform(sp, h, r) {
     case 'yDash': o.pre = 0.35; o.hold = 0.2; break;
     case 'yRoll': o.pre = 0.75; o.hold = 0.5; o.drive = rr => { if (!rr.hit) V.rollPulse = V.T; }; break;   // 先把门推上去，再把耙子竖着撑在门底下
     case 'yWheel': o.pre = 0.2; o.hold = 0.55; break;
-    case 'yGate': o.pre = 0.3; o.hold = 0.35; o.after = exitSeq2; break;
+    case 'yGate': if (S.yGate) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.3; o.hold = 0.35; } o.after = exitSeq2; break;   // 已经开着：不用再拉插销，直接走出去
     case 'fusebox':  // 换保险丝要两只手：先转身把蜂蜜放在旁边的小搁板上（萤火虫跟过去），再打开盒子把保险丝拧进去
       if (S.honey === 'inv') {
         kid.face = -1;
@@ -4110,7 +4111,7 @@ function exitSeq2() {   // 院门开了：走出去（和出前门一样，不�
 }
 // 这一关照最短的解法，下一步该点哪儿（一关一关地搜：第 1 关用原来那一套，一个字没动）
 function nextStep() {
-  const L = curLevel(); if (!L) return null;
+  const L = curLevel(); if (!L) return won ? null : { spot: S.yWheel ? 'yGate' : 'yWheel', held: null };   // 院门开了，人还没走出去（折回来了）：轮子停了先摇，再去院门
   const r = L.n === 1 ? solve(S) : solveL(L, S);
   return r.path && r.path.length ? r.path[0] : null;
 }
