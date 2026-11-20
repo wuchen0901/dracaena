@@ -568,7 +568,7 @@ const GATEPOS = {
   gown: { e: 0, x: 1265 }, towel: { e: 0, x: 2215 }, laundry: { e: 0, x: 2790 },
   stand: { e: 5, x: 4095 }, chair: { e: 4, x: 2040 }, sack: { e: 4, x: 1060 },
   cellar: { e: 6, y: 1018 }, boiler: { e: 8, x: 960 },
-  rain: { e: 5, x: 6604 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
+  rain: { e: 5, x: 6722 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
 };
 const GATE_ALL = { ...GATES, ...GATES2 };   // 两关的门放在一起查（页面上只有一个并起来的局面 S）
 for (const k in GATEPOS) { const g = GATEPOS[k], E = EDGES[g.e]; g.t = g.x != null ? (g.x - E.A[0]) / (E.B[0] - E.A[0]) : (g.y - E.A[1]) / (E.B[1] - E.A[1]); }
@@ -1397,7 +1397,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawCritters(b, P, lit, 'bedroom'); drawFear(b, P, lit, 'gown'); }
   if (vis.bath) { drawBathLamp(b, P, lit); drawCord(b, P, lit); drawHamper(b, P, lit); drawCritters(b, P, lit, 'bath'); drawFear(b, P, lit, 'towel'); }
   if (vis.bath || vis.hall) drawBathDoor(b, P, lit);
-  if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawImp(b, P, lit, 'hall'); drawFear(b, P, lit, 'stand'); }
+  if (vis.hall) { drawFear(b, P, lit, 'laundry'); drawHallLamp(b, P, lit); drawHDrawer(b, P, lit); drawHClock(b, P, lit); drawHWinch(b, P, lit); drawFrontOpen(b, P, lit); drawCritters(b, P, lit, 'hall'); drawImp(b, P, lit, 'hall', V.imps.hall.follow ? 'lamp' : undefined); drawFear(b, P, lit, 'stand'); }
   if (vis.living) { drawFire(b, P, lit); drawDamper(b, P, lit); drawBasket(b, P, lit); drawSide(b, P, lit); drawFlameImps(b, P, lit); drawCritters(b, P, lit, 'living'); drawFear(b, P, lit, 'chair'); drawCeilLamp(b, P, lit, 2050, ROOMS.living.top, 230000); }
   if (vis.kitchen) { drawFridge(b, P, lit); drawChair(b, P, lit); drawCritters(b, P, lit, 'kitchen'); drawFear(b, P, lit, 'sack'); drawCeilLamp(b, P, lit, 700, ROOMS.kitchen.top, 240000); }
   if (vis.kitchen || vis.cellar) drawHatch(b, P, lit);
@@ -1406,6 +1406,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.porch) { drawSensorLamp(b, P, lit); drawFear(b, P, lit, 'dog'); drawBall(b, P, lit); }
   if (vis.garage) { drawCarDyn(b, P, lit); drawRake(b, P, lit); drawFear(b, P, lit, 'rain'); drawRoll(b, P, lit); }
   if (vis.drive) { drawFear(b, P, lit, 'scare'); drawBike(b, P, lit); drawGate(b, P, lit); }
+  if (V.imps.hall.follow) drawImp(b, P, lit, 'hall', 'body');   // 跟着孩子走的灯崽
   drawKid(b, P, lit);
 }
 const lcOf = (P, lit) => lit ? P.ink : DARK.ink;
@@ -1737,7 +1738,7 @@ const LIGHTS = [
   ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
   // 灯崽：缩在灯罩里的时候光从灯口往下、往前照（灯罩挡着，上面不亮）；跑出来的时候是围着它的一团光，跟着它走。两种之间 0.3 秒换过去
   ...['hall'].map(k => ({ id: 'imp', off: 0.3, up: 0.85, at: () => { const m = V.imps[k], D = IMPS[k], I = m.I * Math.min(1, 2 * m.sockL); if (I < 0.005) return null; const [rx, ry] = shadeAt(0, LAMP.rim); return { x: D.lx + rx * IMP_S, y: D.hy + ry * IMP_S, R: D.R, I, rot: LAMP.tilt, clip: roomClip(D.room) }; } })),
-  ...['hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: IMPS[k].R, I, clip: roomClip(IMPS[k].room) }; } })),
+  ...['hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: m.follow ? 150 : IMPS[k].R, I, clip: m.follow ? [x - 190, y - 190, x + 190, FL[IMPS[k].fl].fr] : roomClip(IMPS[k].room) }; } })),   // 跟着孩子走的时候：一小团，跟着它走
   // 院子（第 2 关）。室外的灯自己写照得到的那一块（clip），不用屋子的框
   // 感应灯：门廊雨棚底下，照着门口到台阶外面一截
   { id: 'sensor', off: 0.42, up: 0.9, at: () => ({ x: SENSOR.x, y: SENSOR.y + 3, R: 420, I: V.li.sensor, clip: [YARD.x0 + 2, 640, 5200, 1060] }) },
@@ -2176,7 +2177,8 @@ const GARB = {
   // 院子（第 2 关）。狗的毛衣：fast 跑得比孩子快（孩子跑起来 360），有惯性、刹不住车（acc）；headDx 头在身子前面多远（照没照到看头）；
   // wake 孩子走过这条线（出了门廊那片光）它才头一回从窝里扑出来
   dog: { kind: 'sweater', fl: 'down', home: KENNEL.x, terr: [4560, 5745], speed: 430, acc: 1300, h: 110, fast: 1, headDx: 34, wake: 5100 },
-  rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6564, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'] },
+  // 雨衣、稻草人的那一片（terr）都落在照它的那盏灯照得到的地方里面：灯一亮，它走到哪儿都塌（量过，见 README）
+  rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6690, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'] },
   scare: { kind: 'coat', fl: 'down', home: SCARE.x, terr: [7812, 8236], speed: 64, h: 214, pal: { coat: 'burlap', coatLo: 'burlapLo', scarf: 'straw', hat: 'strawHat' } },
 };
 const GARB_KEYS = Object.keys(GARB);
@@ -2549,16 +2551,13 @@ function drawRainHung(b, P, lit) {   // 卷帘门边钩子上挂着的一件黄�
   for (const yy of [60, 100, 140]) { b.fillStyle = lc; b.beginPath(); b.arc(x + 5, t + yy, 1.6, 0, 7); b.fill(); }
   hatch(b, k => pathOf(k, body), [x, t, 50, 206], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.6, w: 0.7, len: 18 });
 }
-function drawScarePole(b, P, lit) {   // 稻草人的架子：一根杆子、一道横档，顶上套着一只麻袋做的头（两只扣子眼睛、一道缝的嘴）
+function drawScarePole(b, P, lit) {   // 稻草人的架子：一根杆子、一道横档（那一身行头不在上面的时候，只剩这个十字）
   const x = SCARE.x, B = SCARE.base, lc = lcOf(P, lit); b.seedN = 279000;
-  part(b, rectPts(x - 4, B - 226, 8, 232), P.wood, { w: 0.9, tex: 0, lc });
+  part(b, rectPts(x - 4, B - 214, 8, 220), P.wood, { w: 0.9, tex: 0, lc });
   part(b, rectPts(x - 64, B - 176, 128, 7), P.wood, { w: 0.9, tex: 0, lc });
-  for (const [u, v, w] of [[-10, -190, -16], [8, -188, 14], [0, -192, 2]]) ink(b, seg(x + u, B + v, x + u + w, B + v + 16), { w: 0.8, col: P.straw, taper: 4, seed: 279010 + u });   // 脖子上的稻草
-  part(b, curvePts([[x - 19, B - 194], [x - 23, B - 222], [x - 11, B - 242], [x + 11, B - 242], [x + 23, B - 222], [x + 19, B - 194]], true, 4), P.burlap, { w: 1, tex: 0.4, lc });
-  for (const s of [-1, 1]) { b.fillStyle = lc; b.beginPath(); b.arc(x + s * 8, B - 224, 2.6, 0, 7); b.fill(); }
-  ink(b, [[x - 9, B - 208], [x - 3, B - 205], [x + 3, B - 208], [x + 9, B - 205]], { w: 0.8, col: lc, taper: 0 });
+  ink(b, [[x - 7, B - 180], [x + 7, B - 166]], { w: 0.9, col: P.straw, taper: 0, seed: 279008 }); ink(b, [[x + 7, B - 180], [x - 7, B - 166]], { w: 0.9, col: P.straw, taper: 0, seed: 279009 });   // 捆横档的草绳
 }
-function drawScarecrow(b, P, lit) {   // 稻草人身上那件旧大衣和草帽：袖子撑在横档上，袖口露出稻草
+function drawScarecrow(b, P, lit) {   // 稻草人的那一身行头：旧大衣撑在横档上、袖口露出稻草，一只麻袋做的头（两只扣子眼睛、一道缝的嘴），一顶草帽
   const x = SCARE.x, B = SCARE.base, lc = lcOf(P, lit); b.seedN = 279100;
   for (const s of [-1, 1]) { part(b, [[x + s * 14, B - 184], [x + s * 66, B - 182], [x + s * 68, B - 160], [x + s * 16, B - 152]], P.burlapLo, { w: 0.9, tex: 0.3, lc, seed: 279110 + s }); for (let i = 0; i < 3; i++) ink(b, seg(x + s * 68, B - 176 + i * 6, x + s * 82, B - 182 + i * 9), { w: 0.8, col: P.straw, taper: 4, seed: 279120 + s * 3 + i }); }
   const coat = [[x - 16, B - 188], [x + 16, B - 188], [x + 28, B - 150], [x + 34, B - 40], [x - 34, B - 40], [x - 28, B - 150]];
@@ -2567,8 +2566,12 @@ function drawScarecrow(b, P, lit) {   // 稻草人身上那件旧大衣和草帽
   ink(b, seg(x + 2, B - 186, x + 4, B - 42), { w: 0.8, a: 0.8, col: lc, taper: 0 });
   for (let i = 0; i < 6; i++) ink(b, seg(x - 30 + i * 12, B - 40, x - 33 + i * 13, B - 26), { w: 0.8, col: P.straw, taper: 4, seed: 279140 + i });
   hatch(b, k => pathOf(k, coat), [x + 2, B - 188, 34, 150], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.45 : 0.6, w: 0.7, len: 18 });
-  part(b, [[x - 18, B - 240], [x - 9, B - 262], [x + 11, B - 262], [x + 18, B - 240]], P.strawHat, { w: 0.9, tex: 0.3, lc });
-  part(b, arcPts(x, B - 240, 30, 5, 0, TAU, 16), P.strawHat, { w: 0.9, tex: 0, lc });
+  for (const [u, v, w] of [[-10, -190, -16], [8, -188, 14], [0, -192, 2]]) ink(b, seg(x + u, B + v, x + u + w, B + v + 16), { w: 0.8, col: P.straw, taper: 4, seed: 279160 + u });   // 脖子上的稻草
+  part(b, curvePts([[x - 19, B - 194], [x - 23, B - 222], [x - 11, B - 242], [x + 11, B - 242], [x + 23, B - 222], [x + 19, B - 194]], true, 4), P.burlap, { w: 1, tex: 0.4, lc, seed: 279170 });
+  for (const s of [-1, 1]) { b.fillStyle = lc; b.beginPath(); b.arc(x + s * 8, B - 224, 2.6, 0, 7); b.fill(); }
+  ink(b, [[x - 9, B - 208], [x - 3, B - 205], [x + 3, B - 208], [x + 9, B - 205]], { w: 0.8, col: lc, taper: 0, seed: 279180 });
+  part(b, [[x - 18, B - 240], [x - 9, B - 262], [x + 11, B - 262], [x + 18, B - 240]], P.strawHat, { w: 0.9, tex: 0.3, lc, seed: 279190 });
+  part(b, arcPts(x, B - 240, 30, 5, 0, TAU, 16), P.strawHat, { w: 0.9, tex: 0, lc, seed: 279191 });
 }
 // 照亮了、又不在原处：掉在地上的一件衣服
 const HEAP_COLS = { gown: ['blanketHi', 'blanket'], towel: ['towel2', 'towel'], laundry: ['towel2', 'sheet'], chair: ['throw', 'throwHi'], sack: ['sack', 'sackHi'], boiler: ['cloth', 'cloth2'], stand: ['coat', 'coatLo'], dog: ['knit', 'knitHi'], rain: ['rainHi', 'rain'], scare: ['burlap', 'burlapLo'] };
@@ -2723,6 +2726,10 @@ function impUpdate(dt) {
       if (u >= 1) { m.jump = null; m.y = j.y1; m.mode = j.then; m.v = j.then === 'run' ? 180 : 0; if (j.then === 'bulb') { m.x = D.home; m.rest = 0; } if (inView(m.x, m.y, 80)) snd.hop(); }
       continue;
     }
+    // 故事：座钟里的这只灯崽带孩子出门，一路跟到底（docs/night-story-c.md）。孩子从衣帽架上拿到钥匙以后，它从钟顶上跳下来，
+    // 跑到前门口等着；门开了先出去，回头看孩子；以后跟在孩子身后。跟着的时候它只是好看：光压到 0.3，照不倒衣服，也不算孩子“在光里”
+    if (!m.follow && S.key !== 'stand') { m.follow = 1; m.scare = 0; m.goHome = 0; }
+    if (m.follow) { impFollow(D, m, dt, gy); continue; }
     // 谁在吓它：同一层、同一间屋子地上的孩子；醒着在追人的衣服
     let th = null, td = 1e9;
     if (kidHere) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
@@ -2780,6 +2787,38 @@ function impUpdate(dt) {
       m.mode = 'run'; m.fast = 0; m.goHome = 1; m.tx = clamp(sx, D.range[0], D.range[1]);
     }
   }
+}
+function impFollow(D, m, dt, gy) {
+  const T = V.T, kx = kid.x;
+  if (inSocket(m)) {   // 还在灯罩里：探出来，跳下钟
+    if (m.mode === 'bulb') { m.mode = 'pop'; if (inView(D.home, D.hy, 80)) snd.squeak(); }
+    if (m.morph >= 1) { m.face = 1; m.mode = 'air'; m.jump = { x0: D.home, y0: D.hy - impSock(1), x1: D.home + 120, y1: gy, h: 50, dur: 0.6, t: 0, then: 'run' }; }
+    return;
+  }
+  const onGround = kid.kind === 'floor' && Math.abs(kid.y - kid.standY - gy) < 4;
+  // 衣服追过来了（或者孩子被抓住了）：钻进孩子的大衣里，过去了再钻出来
+  let danger = kid.mode === 'caught';
+  for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl === D.fl && o.rise > 0.5 && (o.hunt > 0.2 || Math.abs(o.v) > 60) && Math.abs(o.x - kx) < 560) danger = true; }
+  if (danger) m.dangerT = T;
+  const tuck = onGround && T - (m.dangerT ?? -10) < 1.2;
+  m.tuck = approach(m.tuck || 0, tuck ? 1 : 0, dt * (tuck ? 5 : 2.5));
+  let tx;
+  if (tuck) tx = kx;
+  else if (!S.door) tx = DOOR_STOP - 40;                                   // 门还没开：在门口等着
+  else if (!outDone) tx = FRONT.x + 100;                                   // 门开了：先出去，在门外回头看孩子
+  else tx = kx - kid.face * 66;                                            // 跟在孩子身后一点
+  if (!onGround && !tuck) tx = clamp(tx, 2960, DOOR_STOP - 40);            // 孩子上楼、下地窖去了：在门厅里等
+  for (const st of STOPS) if (!st.open() && m.x <= st.x + 30) tx = Math.min(tx, st.x - 26);   // 关着的门它也过不去
+  tx = clamp(tx, 2960, YARD_END - 10);
+  if (m.tuck > 0.9 || (Math.abs(kx - m.x) > 1200 && onGround && !inView(m.x, m.y, 100))) { m.x = clamp(kx - (m.tuck > 0.9 ? 0 : kid.face * 90), 2960, YARD_END - 10); m.v = 0; }   // 揣在大衣里跟着走；离得太远（孩子被抓回灯底下、读了档）直接到他身边
+  const d = tx - m.x, ad = Math.abs(d), vt = ad < 5 ? 0 : clamp(ad * 2.8, 70, 420), p0 = m.ph;
+  m.v = approach(m.v, vt, dt * 1600); m.fast = m.v > 190 ? 1 : 0; m.mode = ad < 5 ? 'sit' : 'run';
+  const st = Math.min(ad, m.v * dt), L = m.fast ? 36 : 20;
+  if (ad > 0.5) m.face = Math.sign(d); else m.face = Math.sign(kx - m.x) || m.face;   // 站着的时候朝着孩子
+  m.x += Math.sign(d) * st; m.y = gy; m.ph = (m.ph + st / L) % 1;
+  if (m.fast && m.tuck < 0.5 && Math.floor(p0 * 2) !== Math.floor(m.ph * 2) && inView(m.x, m.y, 60)) snd.patter(0);
+  m.look = approach(m.look, Math.sign(kx - m.x) * m.face, dt * 5); m.scare = 0; m.hideK = 0;
+  m.I = 0.3 * (1 - 0.85 * m.tuck) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed));
 }
 // 地上的一小片黄光（像影子，可是是亮的）
 function impPool(b, x, y, rx, a) {
@@ -2892,8 +2931,9 @@ function impStride(s, fast) {
   if (s < 0.5) return [A * (1 - 4 * s), 0];
   const w = (s - 0.5) / 0.5; return [-A + 2 * A * smooth(w), -K * Math.sin(Math.PI * Math.pow(w, 0.6))];
 }
-function drawImp(b, P, lit, k) {
+function drawImp(b, P, lit, k, what) {   // what：'lamp' 只画座钟顶上的台灯，'body' 只画它自己（跟着孩子走的时候不一定在门厅里）；不给就都画
   const D = IMPS[k], m = V.imps[k], t = V.T, f = m.face, scared = m.scare > 0.35, glow = m.I / 0.62;
+  if (what === 'body' && inSocket(m)) return;
   if (inSocket(m)) {   // 缩在灯罩里：从外面看只是灯口露出一点黄绒毛、底下一团光；要出来的时候往下一沉、睁眼、两条腿垂下来晃
     const mo = m.morph, cy = IMP_NEST[1] + impDrop(f) * smooth(mo), g = smooth((mo - 0.35) / 0.65), shake = m.mode === 'pop' && mo < 0.45 ? Math.sin(t * 55) * 0.6 : 0;
     impPool(b, D.home, D.hy, (D.up ? 15 : 24) * IMP_S, 0.8 * glow);   // 门厅那只的光只铺在钟顶上
@@ -2910,9 +2950,11 @@ function drawImp(b, P, lit, k) {
     return;
   }
   const p = impPose(m), H = p.H, sq = p.sq, gy0 = m.jump ? impGround(D, m.x) : m.y, hgt = gy0 - (m.y - H * IMP_S);
-  impPool(b, m.x, gy0, (IMP_R * 1.35 + hgt * 0.06) * IMP_S, glow * clamp(1.25 - hgt / 90, 0.2, 1));
-  drawImpLamp(b, P, lit, D, m, false); drawImpLamp(b, P, lit, D, m, true);
-  b.save(); b.translate(m.x, m.y); b.scale(f * IMP_S, IMP_S); b.translate(0, -H); b.rotate(p.lean); b.seedN = D.seed;
+  if (what !== 'body') { drawImpLamp(b, P, lit, D, m, false); drawImpLamp(b, P, lit, D, m, true); }
+  if (what === 'lamp') return;
+  const tk = m.tuck || 0, ga = b.globalAlpha; if (tk > 0.98) return;
+  impPool(b, m.x, gy0, (IMP_R * 1.35 + hgt * 0.06) * IMP_S, glow * clamp(1.25 - hgt / 90, 0.2, 1) * (1 - tk));
+  b.save(); b.globalAlpha = ga * (1 - tk); b.translate(m.x, m.y - 70 * tk); b.scale(f * IMP_S * (1 - 0.5 * tk), IMP_S * (1 - 0.5 * tk)); b.translate(0, -H); b.rotate(p.lean); b.seedN = D.seed;   // 往孩子的大衣里钻：变小、往上、淡掉
   // 腿：跑的时候一前一后大步甩开；在空中垂着蹬两下；站着的时候稍微叉开；躲着的时候收起来
   if (m.hideK < 0.9) for (let i = 0; i < 2; i++) {
     const sd = i ? 1 : -1, hx = sd * 2.4; let fx, fy;
@@ -3160,6 +3202,7 @@ function drawFlyers() {
     const bl = Math.max(0, Math.sin(t * (1.6 + i * 0.23) + i * 2.4)), a = p.mode === 'home' ? 0.3 + 0.7 * bl * bl : 0.8 + 0.2 * Math.sin(t * 6 + i * 1.7);
     g.save(); g.globalAlpha *= a; drawFlyer(g, p.x, p.y, p.mode === 'home' ? 1.6 : 1.8, t, p.face, 600 + i, '214,255,140'); g.restore();
   });
+  for (const w of V.twins) if (w.a > 0.02 && inView(w.x, w.y, 30)) { g.save(); g.globalAlpha *= w.a; drawFlyer(g, w.x, w.y, 1.9, t, w.face, w.seed, '255,226,150'); g.restore(); }   // 车灯里的一对小灯虫
 }
 // ----- 暗处的小东西：衣架鸟（照到了只是挂着的衣架）-----
 // （以前地上还有爬来爬去的手套，2026-11-18 主人说留到别的关卡当有攻击力的东西，拿掉了，画法存在 design/crawling-glove.md）
@@ -3248,7 +3291,8 @@ const FEAR_KEYS = GARB_KEYS;
 // 画面上的状态：门、抽屉开了几成，灯多亮，吊灯升了几成、晃到哪儿，火多大，影子变成东西几成……
 const newView = () => ({
   T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10 }, candleI: 0,
-  sensorUntil: -10, cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1,   // 院子：感应灯亮到什么时候、车门、卷帘门、院门开了几成、车轮还剩几成劲、狗的毛衣塌在哪儿
+  sensorUntil: -10, cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1,
+  twins: [0, 1].map(i => ({ x: CAR.lamp[0], y: CAR.lamp[1], vx: 0, vy: 0, face: 1, a: 0, seed: 470 + i * 37 })),   // 车灯里的一对小灯虫（这一关跟上来的小光）   // 院子：感应灯亮到什么时候、车门、卷帘门、院门开了几成、车轮还剩几成劲、狗的毛衣塌在哪儿
   bdoor: 0, bdoorPulse: -10, lampH: 0, sway: 0.008, swayV: 0, crankA: 0.7, ratT: 0,
   fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
@@ -4097,7 +4141,26 @@ function yardUpdate(dt) {
     if (T - V.whirT > lerp(0.3, 0.07, V.bikeQ) && inView(BIKE.x, BIKE.base - 50, 300)) { V.whirT = T; snd.whirr(V.bikeQ); }
   }
   V.li.bike = 0.95 * smooth((V.bikeQ - 0.14) / 0.16);
+  twinsUpdate(dt);
   if (S.yWheel === 1 && V.bikeQ < BIKE_DIM) { const r = wheelStops(S); if (r) S = r.s; }   // 不是点出来的：直接改（和萤火虫飞走一样）
+}
+// 车灯里住着的一对小灯虫：车灯一开就飞出来，绕着车灯转；卷帘门撑起来、孩子走出车库以后跟着他走（这一关救下来的小光，只是好看，不发算数的光）。
+// 衣服追过来的时候钻进孩子的大衣里，过去了再钻出来
+function twinsUpdate(dt) {
+  const T = V.T, on = S.yBeam === 1, follow = on && S.yRoll === 1 && kid.x > GAR.rollX - 40;
+  let danger = kid.mode === 'caught';
+  for (const g of GARB_KEYS) { const o = V.mon[g]; if (GARB[g].fl === 'down' && o.rise > 0.5 && o.hunt > 0.2 && Math.abs(o.x - kid.x) < 560) danger = true; }
+  if (danger) V.twinDanger = T;
+  const tuck = follow && T - (V.twinDanger ?? -10) < 1.2;
+  V.twins.forEach((w, i) => {
+    w.a = approach(w.a, on && !tuck ? 1 : 0, dt * (on && !tuck ? 2 : 4));
+    if (!on) { w.x = CAR.lamp[0]; w.y = CAR.lamp[1]; w.vx = w.vy = 0; return; }
+    const ph = T * (1.1 + i * 0.35) + i * 3.1;
+    const tx = tuck ? kid.x : follow ? kid.x - kid.face * (38 + i * 34) + Math.cos(ph) * 22 : CAR.lamp[0] + 46 + Math.cos(ph) * 54;
+    const ty = tuck ? kid.y - 80 : follow ? kid.y - 176 - i * 26 + Math.sin(ph * 1.3) * 14 : CAR.lamp[1] - 34 + Math.sin(ph * 1.3) * 30;
+    if (Math.hypot(tx - w.x, ty - w.y) > 1500) { w.x = tx; w.y = ty; w.vx = w.vy = 0; }   // 读了档、孩子被抓回灯底下：直接到跟前
+    flyToward(w, tx, ty, dt, 9, w.seed, T, follow ? 520 : 200);
+  });
 }
 function tick(dt) {
   V.T += dt; const T = V.T;
