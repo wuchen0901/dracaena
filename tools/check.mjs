@@ -27,7 +27,7 @@ let bad = 0;
     const rotOk = !trace(rl, rl.init).solved && rs.best && rs.count === s.count;
     const ok = widths.size === 1 && !startSolved && s.best && rotOk;
     if (!ok) bad++;
-    console.log(`  ${ok ? 'ok ' : 'BAD'} ${String(i + 1).padStart(2)} ${def.name.padEnd(6, '　')} ${lv.w}x${lv.h}  可转 ${lv.pieces.length}  最少点 ${s.cost} 下  解法 ${s.count} 种${startSolved ? '  一开始就是解开的' : ''}${rotOk ? '' : '  转 90° 以后不一样'}`);
+    console.log(`  ${ok ? 'ok ' : 'BAD'} ${String(i + 1).padStart(2)} ${def.name.padEnd(6, '　')} ${lv.w}x${lv.h}  可转 ${lv.pieces.length}  最少点 ${s.cost} 下  解法 ${s.count} 种${startSolved ? '  一开始就是解开的' : ''}${widths.size > 1 ? '  行宽不一样' : ''}${rotOk ? '' : '  转 90° 以后不一样'}`);
   });
 }
 

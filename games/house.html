@@ -1331,7 +1331,7 @@ function paintLiving(b, r, P, lit) {
 // ---------- 厨房（楼下，左）----------
 const HONEY_FR = { x: 1283, y: 900 }, FLY_HOME = { x: 784, y: 880 };   // 蜂蜜：冰箱中间那一格上；萤火虫的家：厨房窗下（量远近从这儿量）
 // 拿着蜂蜜离窗多远：r1 以外萤火虫不安分，r2 以外丢下蜂蜜飞回窗上（量的是孩子手里的蜂蜜罐到 FLY_HOME 的直线距离）。
-// 量过：保险丝盒前 1690、柴筐 1761 都还在 r1 里面；客厅最右头 1901 不安分；门厅门口 1971 已经飞回去了
+// 量过：保险丝盒前 1690、柴筐 1761 都还在 r1 里面；客厅最右头 1901 不安分；门厅门口 1971 已经飞回去了。蜂蜜在地下室的时候不量（地下室最右头 1990，见 bugUpdate）
 const LEASH = { r1: 1780, r2: 1920 };
 const FRIDGE = { x0: 1192, x1: 1332, top: 770 }, KTABLE = { x0: 830, x1: 1040, top: 888 }, SHELF = { x0: 196, x1: 360, y: 862 }, CHAIR = { x0: 1085, x1: 1158 };
 function paintKitchen(b, r, P, lit) {
@@ -1754,10 +1754,12 @@ const LIGHTS = [
   // 感应灯：门廊雨棚底下，照着门口到台阶外面一截
   { id: 'sensor', off: 0.42, up: 0.9, at: () => ({ x: SENSOR.x, y: SENSOR.y + 3, R: 420, I: V.li.sensor, clip: [YARD.x0 + 2, 640, 5200, 1060] }) },
   // 车顶的小灯：车门开着就亮，只照得到车门口
-  { id: 'dome', off: 0.3, up: 0.6, at: () => ({ x: CAR.dome[0], y: CAR.dome[1], R: 190, I: V.li.dome * 0.9, clip: [6090, 790, 6430, 1060] }) },
+  { id: 'dome', off: 0.3, up: 1, at: () => ({ x: CAR.dome[0], y: CAR.dome[1], R: 190, I: V.li.dome * 0.9, clip: [6090, 740, 6430, 1060] }) },   // up 1：往上的光在灯上面一小截就淡没了，碰不到 clip 的上沿（以前车顶上面的墙上有一条平的硬边）
   // 车灯：朝右的一长条。卷帘门关着只照到门为止；撑起来以后从门底下照出去，一直照到车道上
   { id: 'beam', off: 0.8, up: 1, wd: 0.34, at: () => ({ x: CAR.lamp[0], y: CAR.lamp[1], R: 800, I: V.li.beam, rot: Math.PI / 2, clip: [CAR.lamp[0] - 8, 600, GAR.rollX, 1060] }) },
-  { id: 'beam', off: 0.8, up: 1, wd: 0.34, at: () => V.rollK < 0.05 ? null : ({ x: CAR.lamp[0], y: CAR.lamp[1], R: 800, I: V.li.beam, rot: Math.PI / 2, clip: [GAR.rollX, Math.max(ROLL_OPEN_Y - 8, rollBottom() - 8), 7960, 1060] }) },
+  // 从门底下照出去的：门框那一截上沿就是门底；出了门框，上沿放到擦着门底的那条光线最高的地方（撑住了就放到 600），让光自己往上淡下去，不在车道上那棵树上切出一条平的边
+  { id: 'beam', off: 0.8, up: 1, wd: 0.34, at: () => V.rollK < 0.05 ? null : ({ x: CAR.lamp[0], y: CAR.lamp[1], R: 800, I: V.li.beam, rot: Math.PI / 2, clip: [GAR.rollX, Math.max(ROLL_OPEN_Y - 8, rollBottom() - 8), GAR.x1 + 14, 1060] }) },
+  { id: 'beam', off: 0.8, up: 1, wd: 0.34, at: () => { if (V.rollK < 0.05) return null; const yb = rollBottom(), [lx, ly] = CAR.lamp, top = Math.max(600, yb >= ly ? yb - 8 : ly - (ly - yb) * (7960 - lx) / (GAR.rollX - lx)); return { x: lx, y: ly, R: 800, I: V.li.beam, rot: Math.PI / 2, clip: [GAR.x1 + 14, top, 7960, 1060] }; } },
   // 自行车灯：也是朝右的一长条，轮子转着才亮，越转越慢越暗。它会自己灭，所以不算“最近一盏灯”（被抓住了不回到它底下，nosafe）
   { id: 'bike', off: 0.8, up: 1, wd: 0.42, nosafe: 1, at: () => V.li.bike < 0.01 ? null : ({ x: BIKE.lamp[0], y: BIKE.lamp[1], R: 520, I: V.li.bike, rot: Math.PI / 2 - 0.03, clip: [BIKE.lamp[0] - 4, 600, 8640, 1060] }) },
 ];
@@ -1898,8 +1900,8 @@ function drawLightGlows(lights) {
       g.fillStyle = css(C.hot, I * (0.5 + 0.35 * Math.sin(T * 23 + j * 5))); g.beginPath(); g.arc(a.x + Math.cos(an) * rad, a.y + 4 + Math.sin(an * 1.3) * rad * 0.55, 1.5, 0, 7); g.fill();
     }
     for (let j = 0; j < 24; j++) {   // 光里飘着的灰
-      const yy = (hash(j, 5.3 + a.x) + T * (0.008 + hash(j, 9.1) * 0.012)) % 1, lu = (hash(j, 7.7 + a.y) * 2 - 1) * a.R * 0.8 * (L.wd || 1), lv = a.R * (L.off - 0.6 + yy * 1.2), rc = Math.cos(a.rot || 0), rs = Math.sin(a.rot || 0);
-      const px = a.x + lu * rc + lv * rs, py = a.y - lu * rs + lv * rc - (rs > 0.5 ? (yy - 0.5) * 30 : 0);
+      const yy = (hash(j, 5.3 + a.x) + T * (0.008 + hash(j, 9.1) * 0.012)) % 1, lu = (hash(j, 7.7 + a.y) * 2 - 1) * a.R * 0.8, lv = a.R * (L.off - 0.6 + yy * 1.2), rc = Math.cos(a.rot || 0), rs = Math.sin(a.rot || 0);
+      const px = a.x + lu * rc + lv * rs, py = a.y - lu * rs + lv * rc;
       if (px < a.clip[0] || px > a.clip[2] || py < a.clip[1] || py > a.clip[3]) continue;
       const al = coverage(px, py, [a]) * (0.14 + hash(j, 2.2) * 0.26) * Math.sin(yy * Math.PI); if (al < 0.01) continue;
       g.fillStyle = css(C.lamp, al); g.beginPath(); g.arc(px, py, 1.2, 0, 7); g.fill();
@@ -2239,7 +2241,9 @@ function garbUpdate(dt) {
     m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5);
     m.reach = approach(m.reach, hunting && Math.abs(kid.x - m.x) < 170 ? 1 : 0, dt * 3);
     if (hunting) { m.face = Math.sign(kid.x - m.x) || m.face; near = Math.max(near, 1 - Math.abs(kid.x - m.x) / 400); }
-    if (hunting && Math.abs(kid.x - m.x) < (G.fast ? 46 : 40)) caught(k);
+    // 孩子站在感应灯管的那一片里：狗的毛衣冲进来，灯一定亮，它抓不着人。不加这一句，站在光圈外缘（5050–5070）等它，帧数低的时候灯晚亮一两帧就被抓了
+    const porchSafe = k === 'dog' && power(S) && kid.x > SENSOR.zone[0] && kid.x < SENSOR.zone[1] && onFloor;
+    if (hunting && Math.abs(kid.x - m.x) < (G.fast ? 46 : 40) && !porchSafe) caught(k);
     // 狗的毛衣塌在感应灯底下了：这就是“把它引到灯底下”（规则里的 yLure，不是点出来的）
     if (k === 'dog' && !trapped && S.out && !S.yOut && kid.mode !== 'caught' && m.want === 0 && m.rise < 0.5 && coverage(hx, hy, LT.filter(a => a.L.id === 'sensor')) > 0.55) lureDone(m);
     if (trapped && m.rise > 0.5) V.sensorUntil = Math.max(V.sensorUntil, T + 0.5);   // 保底：困住了的那件一起来，灯一定亮
@@ -2443,11 +2447,12 @@ function drawCarDyn(b, P, lit) {
   part(b, arcPts(CAR.lamp[0] - 6, CAR.lamp[1], 9, 12, 0, TAU, 12), on ? (lit ? '#fff6dc' : '#b8b294') : P.lens, { w: 0.8, tex: 0, lc, seed: 461200 });
 }
 // 一把耙子：从 (x0, y0)（把儿的下头）到 (x1, y1)（耙头）
-function rakeShape(b, P, lit, x0, y0, x1, y1, seed) {
-  const lc = lcOf(P, lit), L = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / L, uy = (y1 - y0) / L, vx = -uy, vy = ux, hw = L * 0.13; b.seedN = seed;
-  ink(b, seg(x0, y0, x1, y1), { w: 2.4, col: P.rakeC, taper: 0, a: 1 / b.pen.a, amp: 0.3 }); ink(b, seg(x0, y0, x1, y1), { w: 0.6, col: lc, taper: 0, amp: 0.3 });
-  ink(b, seg(x1 - vx * hw, y1 - vy * hw, x1 + vx * hw, y1 + vy * hw), { w: 2, col: P.rakeIron, taper: 0, a: 1 / b.pen.a, amp: 0.2 });
-  for (let i = -3; i <= 3; i++) { const px = x1 + vx * hw * i / 3, py = y1 + vy * hw * i / 3; ink(b, seg(px, py, px + ux * L * 0.06, py + uy * L * 0.06), { w: 1.2, col: P.rakeIron, taper: 0, a: 1 / b.pen.a, amp: 0, single: 1 }); }
+function rakeShape(b, P, lit, x0, y0, x1, y1, seed, o = {}) {   // o：物品栏、气泡里的那张图另给笔画粗细（杆 shaft、中线 mid、耙头 head、齿 tooth）、耙头多宽（hk）、齿多长（tl）、几个齿（n）。不给就是屋子里那把
+  const { shaft = 2.4, mid = 0.6, head = 2, tooth = 1.2, hk = 0.13, tl = 0.06, n = 3 } = o;
+  const lc = lcOf(P, lit), L = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / L, uy = (y1 - y0) / L, vx = -uy, vy = ux, hw = L * hk; b.seedN = seed;
+  ink(b, seg(x0, y0, x1, y1), { w: shaft, col: P.rakeC, taper: 0, a: 1 / b.pen.a, amp: 0.3 }); ink(b, seg(x0, y0, x1, y1), { w: mid, col: lc, taper: 0, amp: 0.3 });
+  ink(b, seg(x1 - vx * hw, y1 - vy * hw, x1 + vx * hw, y1 + vy * hw), { w: head, col: P.rakeIron, taper: 0, a: 1 / b.pen.a, amp: 0.2 });
+  for (let i = -n; i <= n; i++) { const px = x1 + vx * hw * i / n, py = y1 + vy * hw * i / n; ink(b, seg(px, py, px + ux * L * tl, py + uy * L * tl), { w: tooth, col: P.rakeIron, taper: 0, a: 1 / b.pen.a, amp: 0, single: 1 }); }
 }
 function drawRake(b, P, lit) {
   if (S.yRake === 'wall') rakeShape(b, P, lit, RAKE.x - 16, FL.down.wb + 10, RAKE.x + 14, FL.down.wb - 178, 462500);     // 靠在墙上，耙头朝上
@@ -3157,7 +3162,9 @@ function bugUpdate(dt) {
   const mx = H && F.px != null ? H[0] - F.px : 0, my = H && F.px != null ? H[1] - F.py : 0;   // 蜂蜜罐这一帧挪了多少：围着它的萤火虫跟着一起挪（不然孩子走快了它们落在后面，光就暗了）
   if (Math.hypot(mx, my) > 300) W.snap = true;   // 蜂蜜一下跳了一大截（被抓住回到别处、读档）：跟着它的直接到它身边
   F.px = H ? H[0] : null; F.py = H ? H[1] : 0; if (H) { F.lx = H[0]; F.ly = H[1]; }
-  const hx = F.lx, hy = F.ly, dHome = Math.hypot(hx - FLY_HOME.x, hy - FLY_HOME.y), homeDir = Math.sign(FLY_HOME.x - hx) || -1, lured = S.lit === 1 && inHand;
+  // 蜂蜜在地下室（罐子低于厨房地面）：不量离窗多远。地下室只能从梯子回厨房，绳子是为了不让蜂蜜的光带进门厅、上楼的；
+  // 以前走到地下室最右头（离窗 1990，过了 r2）萤火虫就飞回去了，锅炉那件挡住回梯子的路，被抓又回到那头的黑地里，出不去
+  const hx = F.lx, hy = F.ly, dHome = hy > FL.down.gy ? 0 : Math.hypot(hx - FLY_HOME.x, hy - FLY_HOME.y), homeDir = Math.sign(FLY_HOME.x - hx) || -1, lured = S.lit === 1 && inHand;
   // 离窗太远（LEASH）：先是不安分，往回走一点又安静下来；再远就一只一只丢下蜂蜜往回飞，都走了规则里才算走了（fliesLeave）
   F.pull = approach(F.pull, lured && !F.leaving ? clamp((dHome - LEASH.r1) / (LEASH.r2 - LEASH.r1), 0, 1) : 0, dt * 1.5);
   if (lured && !F.leaving && dHome > LEASH.r2 && kid.mode !== 'caught') { F.leaving = { t0: T, n: 0 }; snd.flutter(); }
@@ -3336,7 +3343,8 @@ function iconCanvas(it) {
   if (live && e.at === V.T && e.lit === S.lit) return e;
   const b = e.c.getContext('2d'); b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, e.c.width, e.c.height);
   pen(b, LIT, ICON_R, ICON_PAD * ICON_R, ICON_PAD * ICON_R);
-  sceneItem(b, it, 0, 0, ICON_SIZE[it], LIT, true, 290000 + ALL_ITEMS.indexOf(it) * 100);
+  if (it === 'yRake') rakeShape(b, LIT, true, -26, 30, 26, -22, 290000 + ALL_ITEMS.indexOf(it) * 100 + 9, { shaft: 5.76, mid: 0.93, head: 3.84, tooth: 1.73, hk: 0.24, tl: 0.16, n: 2 });   // 耙子又细又长，等比缩进格子、气泡只剩一根头发丝：斜着放、短一些，笔画加粗，耙头和齿放大（颜色、样子还是屋子里那把）
+  else sceneItem(b, it, 0, 0, ICON_SIZE[it], LIT, true, 290000 + ALL_ITEMS.indexOf(it) * 100);
   if (!e.box) {   // 量一次画了的那一块（罐子亮不亮大小一样）
     const d = b.getImageData(0, 0, e.c.width, e.c.height).data, W0 = e.c.width; let x0 = W0, y0 = W0, x1 = -1, y1 = -1;
     for (let y = 0; y < W0; y++) for (let x = 0; x < W0; x++) if (d[(y * W0 + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -3460,7 +3468,9 @@ const boxMeet = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[
 // 只盖室外那一片（房子外墙往右、地面以上）。月亮、镇上还亮着的几扇窗每一帧画。
 // 钟楼在山下镇子中间，从院子里哪儿都看得见，钟面是黑的（故事：开场它灭了，孩子要去的就是那儿）。
 // 镇上的窗一扇一扇灭掉：光正在一盏盏死掉
-const SKY = { x0: 4380, x1: 6720, y0: -620, y1: 980, k: 0.94, s: 0.5 }, FAR = { x0: 4380, x1: 7020, y0: 600, y1: 980, k: 0.82 };
+// x1：画面很宽（手机横屏露着浏览器的工具栏、带鱼屏，宽高比到 3:1 左右）走到院门口，右边也还是天和山（2026-11-20 补宽：天原来到 6720 = xa，山到 7020）。
+// 补宽的那一截另撒星星、另画排线，天原来那一段一个像素不差；山梁是按 x 算的噪声，往右接着长（原来那一段的墨线最多差 2/255，看不出来）
+const SKY = { x0: 4380, x1: 7400, xa: 6720, y0: -620, y1: 980, k: 0.94, s: 0.5 }, FAR = { x0: 4380, x1: 7600, y0: 600, y1: 980, k: 0.82 };
 const MOON = { x: 5180, y: 392, r: 40 }, TOWER = { x: 5560, base: 956 };
 const TOWN = (() => {
   const tr = rnd(331200), houses = [], wins = [];
@@ -3478,9 +3488,10 @@ function buildSky() {
   const gr = b.createLinearGradient(0, -200, 0, 960); gr.addColorStop(0, '#0a1022'); gr.addColorStop(0.6, '#1b2748'); gr.addColorStop(1, '#3d4c78');
   b.fillStyle = '#0a1022'; b.fillRect(SKY.x0, SKY.y0, w, h); b.fillStyle = gr; b.fillRect(SKY.x0, -200, w, 1180);
   texture(b, TEX.blot2, 0.35);
-  b.seedN = 330000; hatch(b, k => k.rect(SKY.x0, SKY.y0, w, h), [SKY.x0, SKY.y0, w, h], { ang: 0.04, gap: 9, a: 0.2, w: 1, len: 120, col: '#05080f' });
-  const r0 = rnd(330100);
-  for (let i = 0; i < 300; i++) { const x = SKY.x0 + r0() * w, y = SKY.y0 + r0() * (h - 240), rad = 1 + r0() * 1.6; b.fillStyle = css(C.moon, 0.25 + r0() * 0.6); b.beginPath(); b.arc(x, y, rad, 0, 7); b.fill(); }
+  const wa = SKY.xa - SKY.x0, we = SKY.x1 - SKY.xa, hs = { ang: 0.04, gap: 9, a: 0.2, w: 1, len: 120, col: '#05080f' };   // 横排线、星星：原来那一段照旧，补宽的那一段另撒
+  b.seedN = 330000; hatch(b, k => k.rect(SKY.x0, SKY.y0, wa, h), [SKY.x0, SKY.y0, wa, h], hs); hatch(b, k => k.rect(SKY.xa, SKY.y0, we, h), [SKY.xa, SKY.y0, we, h], hs);
+  const star = (r0, x0, sw, n) => { for (let i = 0; i < n; i++) { const x = x0 + r0() * sw, y = SKY.y0 + r0() * (h - 240), rad = 1 + r0() * 1.6; b.fillStyle = css(C.moon, 0.25 + r0() * 0.6); b.beginPath(); b.arc(x, y, rad, 0, 7); b.fill(); } };
+  star(rnd(330100), SKY.x0, wa, 300); star(rnd(330200), SKY.xa, we, Math.round(300 * we / wa));
   // 远处：两道山梁，山下的镇子（一片小屋顶），镇子中间的钟楼
   const fw = FAR.x1 - FAR.x0, fh = FAR.y1 - FAR.y0, fs = Math.min(RS, 1.2); farC = mk(Math.ceil(fw * fs), Math.ceil(fh * fs));
   b = farC.getContext('2d'); pen(b, DARK, fs, -FAR.x0 * fs, -FAR.y0 * fs);
@@ -3506,7 +3517,7 @@ function drawSky(b) {
   if (!skyC) buildSky();
   b.save(); b.setTransform(K, 0, 0, K, -camX * K, -camY * K);
   b.beginPath(); b.rect(YARD.x0, camY - 2, vx1 - YARD.x0 + 4, wb + 1 - camY + 2); b.rect(STEPS.x, wb - 2, vx1 - STEPS.x + 4, (STEPS.n + 1) * STEPS.h + 4); b.clip();   // 地面以上；石阶那儿地低下去，天也跟着露出来
-  const sx = (camX - 4500) * SKY.k, fx = (camX - 4500) * FAR.k, T = V.T;
+  const sx = Math.max((camX - 4500) * SKY.k, vx1 + 4 - SKY.x1), fx = Math.max((camX - 4500) * FAR.k, vx1 + 4 - FAR.x1), T = V.T;   // 再宽也不露出图的右边（平常走不到这个兜底）
   b.imageSmoothingEnabled = true;
   b.drawImage(skyC, SKY.x0 + sx, SKY.y0, SKY.x1 - SKY.x0, SKY.y1 - SKY.y0);
   // 月亮
@@ -3541,9 +3552,10 @@ const pathLen = (x, y, path) => { let L = 0; for (const q of path) { L += Math.h
 const busy = () => kid.mode !== 'idle' && kid.mode !== 'walk';
 // 走到 (tx, ty) 最近的那条路上。路上有还没照亮的影子：走到它跟前就不敢再走了
 function walkTo(tx, ty, cb, force) {
-  if (ty > FL.down.gy - 200) for (const st of STOPS) if (!st.open() && kid.x <= st.x + 0.5 && tx > st.x) { tx = st.x; break; }   // 门没开，走不出去（前门、卷帘门、院门）
   const A = nearestOnPaths(kid.x, kid.y);
   let B = nearestOnPaths(tx, ty);
+  // 门没开，走不出去（前门、卷帘门、院门，都在 5 号路上）。看点落到路上的哪一点，不看点得多高：以前点在天上、墙上（离地 200 以外）会穿过关着的门
+  if (B.e === 5) { const bx = edgePt(5, B.t)[0]; for (const st of STOPS) if (!st.open() && kid.x <= st.x + 0.5 && bx > st.x) { B = nearestOnPaths(st.x, FL.down.gy); break; } }
   let path = findPath(A.e, A.t, B.e, B.t);
   const gate = force ? null : firstClosedGate(kid.x, kid.y, path, S);
   if (gate) {
@@ -3772,7 +3784,7 @@ function grabTick(dt) {   // 每一帧：长按够久了就去抓；按住 E 也
 }
 // 孩子站在哪个能推的东西旁边（同一层的地上，离它的这一边站的地方不到 GRAB_NEAR）
 function nearPushable() {
-  if (kid.mode !== 'idle' || kid.kind !== 'floor' || kid.onBox) return null;
+  if (S.out || kid.mode !== 'idle' || kid.kind !== 'floor' || kid.onBox) return null;   // 出了前门屋里的事做完了：椅子、篓子不再拖（点一下还是摸一下），不然椅子拉走了冰箱门还开着
   let best = null;
   for (const id in PUSHABLE) { const O = PUSHABLE[id], d = Math.abs(kid.x - O.x() - grabSide(id) * O.off); if (Math.abs(kid.y - FL[O.fl].gy) < 2 && d < GRAB_NEAR && (!best || d < best.d)) best = { id, d }; }
   return best ? best.id : null;
@@ -3924,9 +3936,12 @@ function spots() {
   // 院子（第 2 关）：出了前门才有
   if (S.out) {
     if (!S.yDog) add('yLure', [SENSOR.x - 26, SENSOR.y - 30, SENSOR.x + 34, SENSOR.y + 14], SENSOR.x - 30, 'down', 1, [SENSOR.x, SENSOR.y]);
-    const CAR_R = [CAR.door0, CAR.base - 172, CAR.door1 + 36, CAR.base - 32];
-    if (!S.yCar) add('yCarDoor', [CAR.door0, CAR.base - 172, CAR.door1, CAR.base - 32], CAR.door0 - 26, 'down', 1, [CAR.door0 + 22, CAR.base - 108]);
-    else if (!S.yBeam) add('yDash', [CAR.dash[0] - 22, CAR.dash[1] - 28, CAR.dash[0] + 22, CAR.dash[1] + 16], CAR.door0 + 52, 'down', 1, [CAR.dash[0], CAR.dash[1] - 4], CAR_R);   // 车门开着：点在车门口哪儿都算拧车灯的开关
+    // 车门关着点车门、开着点开关；点在车上哪儿都算（被雨衣吓回来，气泡里画的是车灯，最自然是去点车灯）。圈和小星星还是圈车门、开关
+    // near：算“在不在跟前”量到车上离孩子最近的地方，不量到车门后面站的地方（站在车头那边也点得到，孩子绕过去开）
+    const CAR_R = [CAR.x0, CAR.base - 182, CAR.x1 + 12, CAR.base - 30];
+    if (!S.yCar) add('yCarDoor', [CAR.door0, CAR.base - 172, CAR.door1, CAR.base - 32], CAR.door0 - 26, 'down', 1, [CAR.door0 + 22, CAR.base - 108], CAR_R);
+    else if (!S.yBeam) add('yDash', [CAR.dash[0] - 22, CAR.dash[1] - 28, CAR.dash[0] + 22, CAR.dash[1] + 16], CAR.door0 + 52, 'down', 1, [CAR.dash[0], CAR.dash[1] - 4], CAR_R);
+    if (/^y(CarDoor|Dash)$/.test(out.at(-1).id)) out.at(-1).near = [clamp(kid.x, CAR.door0 - 26, CAR.x1), dn];
     if (S.yRake === 'wall') add('yRake', [RAKE.x - 30, FL.down.wb - 196, RAKE.x + 34, FL.down.wb + 14], RAKE.x - 52, 'down', 1, [RAKE.x - 4, dn - 110]);
     if (!S.yRoll) add('yRoll', [GAR.rollX - 26, GAR.rollTop - 14, GAR.rollX + 24, FL.down.ff], ROLL_STOP - 10, 'down', 1, [GAR.rollX - 14, dn - 100]);
     add('yWheel', [BIKE.x - 100, BIKE.base - 150, BIKE.x + 104, BIKE.base + 6], BIKE.crank[0] - 46, 'down', 1, [BIKE.crank[0] + 10, BIKE.crank[1] - 12]);
@@ -4019,7 +4034,7 @@ function perform(sp, h, r) {
     // 院子（第 2 关）
     else if (f === 'gaze') { o.hx = SENSOR.x; o.hy = FL.down.gy - 196; o.pre = 0.4; o.jump = true; o.onHit = () => snd.tap(); }   // 感应灯太高，跳起来也够不着
     else if (f === 'rollFalls') { o.pre = 0.5; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.rollPulse = V.T; }; o.onHit = bub(['yRake'], () => snd.rattle()); }   // 卷帘门推上去，一松手自己又落下来
-    else if (f === 'respin') { o.pre = 0.2; o.hold = 0.5; o.onHit = () => { V.bikeQ = 1; snd.ratchet(); }; }   // 轮子还转着：再摇一下，续上
+    else if (f === 'respin') { o.pre = 0.2; o.hold = 0.5; o.onHit = () => { const r2 = ACT(S, sp.id, h); if (r2.s) commit(r2); else { V.bikeQ = 1; snd.ratchet(); } }; }   // 轮子还转着：再摇一下，续上。伸手那一下轮子可能刚好停了（规则里 yWheel 已经回 0）：那就是重新摇一下
     else if (f === 'carShut') o.onHit = () => snd.locked();
     return startReach(o);
   }
@@ -4111,6 +4126,7 @@ function exitSeq2() {   // 院门开了：走出去（和出前门一样，不�
 }
 // 这一关照最短的解法，下一步该点哪儿（一关一关地搜：第 1 关用原来那一套，一个字没动）
 function nextStep() {
+  if (S.out && !won && kid.x > YARD.x0 && yardZoneAt(kid.x) === 'gateway' && ACT(S, 'yGate', null).s) return { spot: 'yGate', held: null };   // 已经过了稻草人、站在院门跟前（轮子停了也一样，ACT 把孩子站的那一块算进去）：下一步就是院门，不往回指自行车
   const L = curLevel(); if (!L) return won ? null : { spot: S.yWheel ? 'yGate' : 'yWheel', held: null };   // 院门开了，人还没走出去（折回来了）：轮子停了先摇，再去院门
   const r = L.n === 1 ? solve(S) : solveL(L, S);
   return r.path && r.path.length ? r.path[0] : null;
@@ -4134,7 +4150,7 @@ function puff(x, y, col, n = 22) {
 // 窗下的月光落在地板上的那几块：孩子站进去，身上亮一点
 const MOONS = [[290, 548, 'up'], [1650, 1770, 'up'], [1640, 1800, 'down'], [790, 950, 'down'], [2790, 2940, 'up'], [YARD.x0, GAR.x0, 'down'], [GAR.x1, YARD.x1, 'down']];   // 室外整片算月光（车库里面不算）
 // 院子里到时候自己变的东西：感应灯（底下有东西动就亮，没动静过几秒自己灭）、车门卷帘门院门开合、自行车的轮子（越转越慢，车灯跟着暗）
-const BIKE_SPIN = 8, BIKE_DIM = 0.27;   // 轮子从摇一下到停下几秒；还剩几成劲的时候灯暗得照不倒稻草人了（规则里的 yWheel 回到 0）
+const BIKE_SPIN = 8, BIKE_DIM = 0.27;   // 轮子从摇一下到停下几秒；还剩几成劲以前灯一定照得倒稻草人（这以后它头上的光不够、醒过来的那一刻，规则里的 yWheel 回到 0）
 function yardUpdate(dt) {
   const T = V.T, [z0, z1] = SENSOR.zone, gy = FL.down.gy;
   let moved = false;
@@ -4154,7 +4170,9 @@ function yardUpdate(dt) {
   }
   V.li.bike = 0.95 * smooth((V.bikeQ - 0.14) / 0.16);
   twinsUpdate(dt);
-  if (S.yWheel === 1 && V.bikeQ < BIKE_DIM) { const r = wheelStops(S); if (r) S = r.s; }   // 不是点出来的：直接改（和萤火虫飞走一样）
+  // 不是点出来的：直接改（和萤火虫飞走一样）。什么时候改看稻草人自己醒没醒（want 是上一帧 garbUpdate 算的“头上的光不够了”），轮子停死了兜底。
+  // 以前只看 bikeQ < BIKE_DIM：规则比稻草人早 0.3 秒关门，稻草人还塌着，跑到跟前的孩子却被吓回来
+  if (S.yWheel === 1 && (V.bikeQ <= 0 || (V.bikeQ < BIKE_DIM && V.mon.scare.want === 1))) { const r = wheelStops(S); if (r) S = r.s; }
 }
 // 车灯里住着的一对小灯虫：车灯一开就飞出来，绕着车灯转；卷帘门撑起来、孩子走出车库以后跟着他走（这一关救下来的小光，只是好看，不发算数的光）。
 // 衣服追过来的时候钻进孩子的大衣里，过去了再钻出来
@@ -4538,7 +4556,8 @@ function snapTo(s, b) {
   Object.assign(V, { cardoor: S.yCar, rollK: S.yRoll, gate: S.yGate, bikeQ: S.yWheel ? 1 : 0, ballT: -10, sensorUntil: S.yDog ? V.T + SENSOR.hold : -10, rollPulse: -10 });
   V.li.dome = S.yCar ? 1 : 0; V.li.beam = S.yBeam ? 1 : 0; V.li.sensor = S.yDog ? 1 : 0;
   outDone = S.out ? 1 : 0; if (S.out && V.outT < 0) V.outT = V.T;
-  tick(0.001); LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].home; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; }
+  { const st = saveT; saveT = Infinity; tick(0.001); saveT = st; }   // 这一下不存档：读档的时候站的地方、点了几下还是开局的（以前会把卧室窗下写进去，再打开一次就回卧室了）
+  LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].home; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; }
 }
 function placeKid(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.mode = 'idle'; kid.path = []; kid.onBox = null; kid.standY = 0; const q = nearestOnPaths(x, y); enterKind({ kind: EDGES[q.e].kind, y }); [camFX, camFY] = camTarget(); camX = camFX; camY = camFY; }
 
@@ -4549,7 +4568,7 @@ const SAVE_KEY = 'house.save.v3', SAVE_OLD = 'house.save.v2', SAVE_ON = !['auto'
 let saveLast = null, saveT = -10;
 // 每一项能是哪几个值（规则里的 VALUES）。规则里没有死路（check.mjs 查过），所以每一项对得上就走得出去
 const SAVE_VALS = { ...VALUES, ...VALUES2 }, SAVE_KEYS = [...KEYS, ...L2.KEYS];
-function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches }; }
+function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches, dogX: Math.round(V.dogX), ballDir: V.ballDir }; }   // dogX、ballDir：困住的狗毛衣塌在哪儿、球滚到哪边（读回来还在原处）
 function writeSave() {
   if (!SAVE_ON || won || S.yOut || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记。走出院门（后面还没做）：不记
   const j = JSON.stringify(saveData()); if (j === saveLast) return;
@@ -4570,10 +4589,12 @@ function readSave() {
     if (!Array.isArray(d.bag) || d.bag.length !== inv.length || !inv.every(it => d.bag.includes(it))) return null;
     const { x, y } = d.safe; if (!isFinite(x) || !isFinite(y)) return null;
     const q = nearestOnPaths(x, y), [px, py] = edgePt(q.e, q.t); if (Math.hypot(px - x, py - y) > 2 || EDGES[q.e].kind !== 'floor') return null;
-    return { S: s, bag: d.bag.slice(), safe: { x: px, y: py }, taps: +d.taps || 0, hints: +d.hints || 0, catches: +d.catches || 0 };
+    return { S: s, bag: d.bag.slice(), safe: { x: px, y: py }, taps: +d.taps || 0, hints: +d.hints || 0, catches: +d.catches || 0,
+      dogX: Number.isFinite(d.dogX) ? clamp(d.dogX, SENSOR.zone[0] + 40, SENSOR.zone[1] + 30) : null, ballDir: d.ballDir === -1 ? -1 : 1 };   // 以前的存档没有 dogX：照旧读，狗放在默认的地方
   } catch (e) { return null; }
 }
 function applySave(d) {
+  V.dogX = d.dogX ?? V.dogX; V.ballDir = d.ballDir;   // snapTo 放困住的狗毛衣用的就是 V.dogX（以前的存档没有：放在默认的地方）
   snapTo(d.S, d.bag);
   taps = d.taps; hints = d.hints; V.catches = d.catches; V.safe = { ...d.safe };
   placeKid(d.safe.x, d.safe.y, 1); V.grace = V.T + 2.5;
