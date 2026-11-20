@@ -3604,7 +3604,7 @@ function kidWalk(dt) {
 // 走的还是那几条路（NODES、EDGES），影子照旧卡在路上：走到它跟前就不敢再走了
 const DRAG = qs.get('ctl') !== 'tap';
 if (DRAG) cv.style.touchAction = 'none';   // 手指在画面上拖，浏览器别拿去滚动、缩放
-const STICK_R = 70, STICK_DEAD = 10;   // 摇杆（屏幕像素）：拖出 10 才算，拖到 70 跑起来；再远，中心跟着手指走
+const STICK_R = 90, STICK_DEAD = 10;   // 摇杆（屏幕像素）：拖出 10 才算，拖到 90 跑到最快；再远，中心跟着手指走
 const stick = { id: null, on: false, drag: false, ax: 0, ay: 0, px: 0, py: 0, x0: 0, y0: 0 };
 const keys = new Set();
 let keyT = 0, stickLock = null;
@@ -3685,9 +3685,10 @@ function driveRun(dt, u) {
     if (dotU(u, travelDir(E, kid.dd)) < -0.3 && dotUU(u, kid.du0) < 0.5) { kid.dd = -kid.dd; kid.du0 = { ...u }; kid.seek = null; }
   }
   const m = u ? u.m : 0, onFloor = E.kind === 'floor';
-  kid.gait += ((onFloor && u ? clamp((m - 0.4) / 0.6, 0, 1) : 0) - kid.gait) * (1 - Math.exp(-dt * 7));
-  const vt = !u ? 0 : onFloor ? (m < 0.4 ? lerp(60, 128, m / 0.4) : lerp(128, 360, kid.gait)) : 150 * Math.min(1, 0.55 + m);
-  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * (u ? 10 : 18)));
+  // 拖得越远跑得越快（连续的，不分档）；速度慢慢加上去（起步约 0.3 秒），松手或拖近了也不是马上停：顺着滑一小段（惯性）。步态跟着实际速度走，滑的时候还在迈步
+  const vt = !u ? 0 : onFloor ? lerp(45, 360, Math.pow(m, 1.15)) : 150 * Math.min(1, 0.55 + m);
+  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * (vt > kid.v ? 3.4 : u ? 4.5 : 5.5)));
+  kid.gait += ((onFloor ? clamp((kid.v - 128) / 232, 0, 1) : 0) - kid.gait) * (1 - Math.exp(-dt * 7));
   if (!u && kid.v < 6) return driveStop();
   let step = kid.v * dt;
   for (let guard = 0; step > 1e-6 && guard < 8; guard++) {
