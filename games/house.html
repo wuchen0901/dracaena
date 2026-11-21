@@ -3714,6 +3714,7 @@ function driveRun(dt, u) {
 function driveTick(dt, u) {
   if (stickLock) { if (u && (stickLock.any || dotUU(u, stickLock) > 0.3)) return; stickLock = null; }   // 被吓回来以后，手不松开（或者不换个方向）就不再往前走
   if (won) return;
+  if (kid.mode === 'recoil' && u && kid.t > 0.08 && u.ux * kid.rdir > 0.3) { kid.mode = 'idle'; kid.t = 0; }   // 吓得往后退的时候，手往远离它的方向一拖就能接着跑，不用等发完抖（2026-11-21：影子正朝孩子跑，僵在那儿就错过了逃跑的机会）
   if (kid.mode === 'walk' && !kid.drive) {   // 点了东西正走过去：一拖就不走过去了，听手指的
     if (!u || kid.auto) return;
     kid.path = []; kid.onArrive = null; kid.mode = 'idle';
@@ -3884,6 +3885,7 @@ function kidUpdate(dt) {
     kid.t += dt;
     if (kid.t >= kid.waitFor) { kid.mode = 'idle'; const a = kid.after; kid.after = null; if (a) a(); }
   }
+  if (kid.mode !== 'recoil' && kid.mode !== 'caught' && kid.fearK > 0) kid.fearK = Math.max(0, kid.fearK - dt * 6);   // 打断了发抖：怕的样子很快收回去
   if (kid.mode === 'idle' && kid.crouch > 0) kid.crouch = Math.max(0, kid.crouch - dt * 2.5);
   kid.blink -= dt; kid.blinkT -= dt;   // 眨眼
   if (kid.blinkT < 0) { kid.blink = 0.12; kid.blinkT = 2.2 + hash(Math.floor(T * 10), 1.7) * 3.2; }
