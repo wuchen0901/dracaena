@@ -2213,7 +2213,8 @@ function garbUpdate(dt) {
     if (G.fast) {   // 狗的毛衣：跑得快，有惯性
       // 头一回要孩子走出门廊的光、过了 wake 那条线，它才从窝里扑出来（先愣一下）。扑出来以后，孩子只要在暗处它就追；孩子被抓回灯底下，它又缩回窝里
       if (!m.alert && !trapped && hunting && kid.x > G.wake) { m.alert = true; m.alertT = T; if (inView(m.x, hy, 80)) snd.growl(); }
-      hunting = hunting && m.alert && T - m.alertT > 0 && !trapped;
+      // 孩子站在感应灯那一片里（门廊）：狗不进来（2026-11-21 主人说“遇到狗马上往回跑、站着等灯灭”太容易了）。要引它，孩子得待在暗处等它冲近了再冲进灯里，它刹不住才滑进光里
+      hunting = hunting && m.alert && T - m.alertT > 0 && !trapped && !(kid.x > SENSOR.zone[0] && kid.x < SENSOR.zone[1]);
       const d = (hunting ? kid.x : G.home) - m.x, dir = Math.sign(d) || m.face;
       let vt = 0;
       if (m.rise > 0.9 && !trapped && m.alert && Math.abs(d) > 1.5) {
@@ -4535,9 +4536,15 @@ function tap(id, item) {
 }
 // 地址后面加 ?auto=1：照最短的解法自己玩一遍（两关接着玩）。把狗的毛衣引到感应灯底下不是点出来的：自己走出去招它、再跑回门口站着等（autoLure）
 let autoStep = null;
-function autoLure() {
-  const m = V.mon.dog, tx = m.alert ? 4700 : GARB.dog.wake + 40;
+const AUTO_GAP = 380;
+function autoLure() {   // 试玩用：走出去等狗冲近了，掉头跑进灯里，它刹不住滑进光里
+  const m = V.mon.dog, outside = kid.x > SENSOR.zone[1] + 20;
   if (kid.mode === 'caught' || kid.mode === 'wait' || busy()) return;
+  let tx;
+  if (!m.alert) tx = GARB.dog.wake + 40;                                              // 它还没出来：走到线外面去
+  else if (!outside) tx = Math.abs(m.x - GARB.dog.home) < 30 ? GARB.dog.wake + 40 : 4700;   // 人在灯里：它回窝了就再出去引一次，没回就等着
+  else if (m.x - kid.x < AUTO_GAP) tx = 4700;                                         // 它冲近了：掉头
+  else return;                                                                        // 还远：站着等（离灯近，一跑就到）
   if (kid.mode === 'idle' ? Math.abs(kid.x - tx) > 4 : kid.autoTx !== tx) { walkTo(tx, FL.down.gy); kid.autoTx = tx; kid.long = true; }
 }
 if (qs.has('auto')) setInterval(() => {
