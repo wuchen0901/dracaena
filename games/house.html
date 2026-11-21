@@ -1054,7 +1054,7 @@ Object.assign(DARK, {
 });
 const YARD = { x0: 4520, x1: 8760 }, STEPS = { x: 8530, w: 62, h: 22, n: 3 };   // STEPS：院门外往山下去的石阶（第 3 关从这儿接着走，还没做）
 const PORCH = { x1: 5016, post: 4996, roof: [[4520, 652], [5044, 690]] }, SENSOR = { x: 4800, y: 716, zone: [4545, 5075], hold: 3.2 };
-const KENNEL = { x: 5330, base: 980 }, TREE1 = { x: 5626 };
+const KENNEL = { x: 5600, base: 980 }, TREE1 = { x: 5330 };
 const GAR = { x0: 5800, x1: 6900, in0: 5840, in1: 6860, ceil: 566, rollTop: 664, rollX: 6880 }, RAKE = { x: 5916 }, RAINHOOK = { x: 6756, y: 772 };
 const CAR = { x0: 5990, x1: 6506, base: 986, door0: 6192, door1: 6318, lamp: [6494, 916], dome: [6252, 838], dash: [6338, 880] };
 const BIKE = { x: 7600, base: 990, lamp: [7672, 890], crank: [7596, 946] }, SCARE = { x: 8040, base: 984 }, GATE = { x: 8250 }, PATCH = { x0: 7880, x1: 8200 };
@@ -2189,7 +2189,7 @@ const GARB = {
   stand: { kind: 'coat', fl: 'down', home: HSTAND.x, terr: [3885, 4470], speed: 62, h: 214 },
   // 院子（第 2 关）。狗的毛衣：fast 跑得比孩子快（孩子跑起来 360），有惯性、刹不住车（acc）；headDx 头在身子前面多远（照没照到看头）；
   // wake 孩子走过这条线（出了门廊那片光）它才头一回从窝里扑出来
-  dog: { kind: 'sweater', fl: 'down', home: KENNEL.x, terr: [4560, 5745], speed: 450, acc: 500, h: 110, fast: 1, headDx: 34, wake: 5100 },
+  dog: { kind: 'sweater', fl: 'down', home: KENNEL.x, terr: [4560, 5760], speed: 573, acc: 1733, h: 110, fast: 1, headDx: 34, wake: 5100 },
   // 雨衣、稻草人的那一片（terr）都落在照它的那盏灯照得到的地方里面：灯一亮，它走到哪儿都塌（量过，见 README）
   rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6690, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'] },
   scare: { kind: 'coat', fl: 'down', home: SCARE.x, terr: [7812, 8236], speed: 64, h: 214, pal: { coat: 'burlap', coatLo: 'burlapLo', scarf: 'straw', hat: 'strawHat' } },
@@ -2213,14 +2213,16 @@ function garbUpdate(dt) {
     if (G.fast) {   // 狗的毛衣：跑得快，有惯性
       // 头一回要孩子走出门廊的光、过了 wake 那条线，它才从窝里扑出来（先愣一下）。扑出来以后，孩子只要在暗处它就追；孩子被抓回灯底下，它又缩回窝里
       if (!m.alert && !trapped && hunting && kid.x > G.wake) { m.alert = true; m.alertT = T; if (inView(m.x, hy, 80)) snd.growl(); }
-      hunting = hunting && m.alert && T - m.alertT > 0.6 && !trapped;
+      hunting = hunting && m.alert && T - m.alertT > 0.4 && !trapped;
       const d = (hunting ? kid.x : G.home) - m.x, dir = Math.sign(d) || m.face;
       let vt = 0;
       if (m.rise > 0.9 && !trapped && m.alert && Math.abs(d) > 1.5) {
         vt = dir * (hunting ? G.speed : Math.min(G.speed * 0.45, Math.abs(d) * 4 + 20));
         if (coverage(m.x + dir * (34 + G.headDx), hy, LT) >= 0.5) vt = 0;   // 前面是光：刹车。刹不住的那一截会滑进光里
       }
-      m.v = approach(m.v, vt, G.acc * dt);
+      // 灯是孩子跑进去弄亮的（狗追在后面）：狗刹得住，停在光的边上，不会滑进光里（2026-11-21 主人说去掉“引着它追进灯里”这一种）；灯是狗自己一跑动弄亮的：照旧刹不住，滑进光里塌掉
+      const lightAhead = Math.abs(m.v) > 1 && coverage(m.x + Math.sign(m.v) * (34 + G.headDx), hy, LT) >= 0.5;
+      m.v = approach(m.v, vt, G.acc * dt * (!hunting && lightAhead && V.sensorBy === 'kid' ? 6 : 1));
       if (Math.abs(m.v) > 40) m.face = Math.sign(m.v); else if (vt) m.face = dir;   // 头朝着它正在冲的那一边（刹车、掉头的时候身子还在往前滑）
       if (Math.abs(m.v) > 0.5) {
         const nx = clamp(m.x + m.v * dt, G.terr[0], G.terr[1]), p0 = m.ph; if (nx <= G.terr[0] || nx >= G.terr[1]) m.v = 0;
@@ -3312,7 +3314,7 @@ const FEAR_KEYS = GARB_KEYS;
 // 画面上的状态：门、抽屉开了几成，灯多亮，吊灯升了几成、晃到哪儿，火多大，影子变成东西几成……
 const newView = () => ({
   T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10 }, candleI: 0,
-  sensorUntil: -10, cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1, dogCaught: 0,
+  sensorUntil: -10, sensorBy: "kid", cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1, dogCaught: 0,
   twins: [0, 1].map(i => ({ x: CAR.lamp[0], y: CAR.lamp[1], vx: 0, vy: 0, face: 1, a: 0, seed: 470 + i * 37 })),   // 车灯里的一对小灯虫（这一关跟上来的小光）   // 院子：感应灯亮到什么时候、车门、卷帘门、院门开了几成、车轮还剩几成劲、狗的毛衣塌在哪儿
   bdoor: 0, bdoorPulse: -10, lampH: 0, sway: 0.008, swayV: 0, crankA: 0.7, ratT: 0,
   fireR: 150, fireLv: 0, fireFlick: 1, smoke: 0, plugT: 0, cordSwing: 0, cordSwingV: 0, cordPull: 0, hamperT: 0,
@@ -4158,12 +4160,12 @@ const MOONS = [[290, 548, 'up'], [1650, 1770, 'up'], [1640, 1800, 'down'], [790,
 const BIKE_SPIN = 8, BIKE_DIM = 0.27;   // 轮子从摇一下到停下几秒；还剩几成劲以前灯一定照得倒稻草人（这以后它头上的光不够、醒过来的那一刻，规则里的 yWheel 回到 0）
 function yardUpdate(dt) {
   const T = V.T, [z0, z1] = SENSOR.zone, gy = FL.down.gy;
-  let moved = false;
+  let moved = false, kidMoved = false;
   if (power(S)) {   // 来电了感应灯才管用（走得出前门，一定是换过保险丝了）
-    if (kid.x > z0 && kid.x < z1 && Math.abs(kid.y - gy) < 4 && kid.mode !== 'caught' && (kid.walk > 0.25 || kid.mode === 'reach' || kid.mode === 'recoil')) moved = true;
+    if (kid.x > z0 && kid.x < z1 && Math.abs(kid.y - gy) < 4 && kid.mode !== 'caught' && (kid.walk > 0.25 || kid.mode === 'reach' || kid.mode === 'recoil')) moved = kidMoved = true;
     for (const k of GARB_KEYS) { const G = GARB[k], m = V.mon[k]; if (G.fl === 'down' && m.x > z0 && m.x < z1 + 40 && (m.mv > 0.2 || (m.dr > 0 && m.rise > 0.12))) moved = true; }
   }
-  if (moved) { if (T >= V.sensorUntil) { V.lt0.sensor = T; if (inView(SENSOR.x, SENSOR.y, 200)) snd.click(); } V.sensorUntil = T + SENSOR.hold; }
+  if (moved) { if (T >= V.sensorUntil) { V.lt0.sensor = T; V.sensorBy = kidMoved ? 'kid' : 'dog'; if (inView(SENSOR.x, SENSOR.y, 200)) snd.click(); } V.sensorUntil = T + SENSOR.hold; }
   V.li.sensor = T < V.sensorUntil ? Math.min(1, 0.55 + (T - V.lt0.sensor) / 0.08) : Math.max(0, V.li.sensor - dt * 7);   // 一动就亮（不闪那一下）
   V.cardoor = approach(V.cardoor, S.yCar, dt / 0.45);
   const lift = T - V.rollPulse < 0.5;   // 空着手推卷帘门：推上去一截，松手又落下来
