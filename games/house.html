@@ -2258,7 +2258,7 @@ function drawKid(b, P0, lit) {
   if (kid.kind === 'ladder') return drawKidBack(b, P0, lit);
   const p = kidPose(), f = kid.face, P = kidCols(lit), lc = lit ? LIT.ink : DARK.ink, w = kid.walk, fear = kid.fearK;
   b.save(); const ga = b.globalAlpha; b.globalAlpha = ga * kid.alpha;
-  if (kid.scale !== 1 || kid.lift) { b.translate(kid.x, kid.y - kid.lift); b.scale(kid.scale, kid.scale); b.translate(-kid.x, -kid.y); }
+  if (kid.scale !== 1 || kid.lift || kid.rot) { b.translate(kid.x, kid.y - kid.lift); if (kid.rot) b.rotate(kid.rot); b.scale(kid.scale, kid.scale); b.translate(-kid.x, -kid.y); }   // rot：被抓住的时候往后摔倒（绕着脚）
   const pen0 = b.pen; b.pen = { ...PEN, col: lc, a: Math.min(1, PEN.a + 0.08) }; b.seedN = 37000;
   // 脚下的影子：灯下是一摊排线，往背灯的那一边拖；暗处是一团淡淡的黑
   const gy = footY(kid.x), Lk = lit ? kidLight() : null, dir = Lk ? clamp((kid.x - Lk.x) / 200, -1, 1) : 0;
@@ -2489,10 +2489,13 @@ function caught(k) {
   if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.snap && O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
   stickLock = { any: true };   // 被抓住了：回到灯底下以后，手指要先松开才再走
   kid.mode = 'caught'; kid.drive = false; kid.onBox = null; kid.t = 0; kid.r = null; kid.path = []; kid.onArrive = null; kid.push = null; kid.pushK = 0; kid.pull = false; kid.hop = null; kid.standY = 0; kid.lift = 0; held = null;
+  // 被扑倒的动画：怪物扑过来，孩子被撞得往后退一步、腾空一点，接着仰面摔倒（绕着脚转），摔在地上，墨涌上来盖住
+  const mm = V.mon[k]; kid.cdir = kid.kind === 'floor' && mm ? (Math.sign(kid.x - mm.x) || -kid.face) : 0; kid.cx0 = kid.x; kid.rot = 0; kid.thumped = false;
+  if (kid.cdir) kid.face = -kid.cdir;   // 脸朝着怪物
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught();
 }
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
-  kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1;
+  kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1; kid.rot = 0; kid.lift = 0; kid.alpha = 1; kid.cdir = 0; kid.thumped = false;
   for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; m.x = GARB[k].home; m.v = 0; m.alert = false; }   // 困在感应灯底下的狗毛衣留在原处
   V.grace = V.T + 2.5; [camFX, camFY] = camTarget();
 }
@@ -3552,7 +3555,7 @@ const newView = () => ({
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
-  alpha: 1, lift: 0, scale: 1, blink: 0, blinkT: 2.5, shake: 0, fearK: 0, moon: 1, standY: 0, crouch: 0, pushK: 0, pushY: 0, pull: false, climbPh: 0, x0: 0, rdir: 1, waitFor: 0, after: null, push: null, hop: null });
+  alpha: 1, lift: 0, scale: 1, rot: 0, cdir: 0, cx0: 0, thumped: false, blink: 0, blinkT: 2.5, shake: 0, fearK: 0, moon: 1, standY: 0, crouch: 0, pushK: 0, pushY: 0, pull: false, climbPh: 0, x0: 0, rdir: 1, waitFor: 0, after: null, push: null, hop: null });
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
 function restart(keep) {
   if (!keep) clearSave();
@@ -4119,6 +4122,13 @@ function kidUpdate(dt) {
     if (kid.t > 1) { kid.mode = 'idle'; kid.crouch = 0; }
   } else if (kid.mode === 'caught') {   // 被抓住了：墨一下子涌上来，画面黑下去，回到最近一盏亮着的灯底下
     kid.t += dt; kid.fearK = Math.min(1, kid.t / 0.15);
+    if (kid.cdir) {
+      const hit = clamp(kid.t / 0.22, 0, 1), fall = clamp((kid.t - 0.12) / 0.42, 0, 1);
+      kid.x = kid.cx0 + kid.cdir * 38 * ease(hit); kid.lift = Math.sin(Math.PI * clamp(kid.t / 0.3, 0, 1)) * 14;
+      kid.rot = kid.cdir * 1.5 * fall * fall;                                          // 越摔越快
+      if (fall >= 1 && !kid.thumped) { kid.thumped = true; snd.thump(); if (inView(kid.x, kid.y, 120)) puff(kid.x, kid.y - 6, [130, 138, 158], 10); }
+      kid.alpha = 1 - smooth(clamp((kid.t - 0.7) / 0.4, 0, 1));                         // 摔在地上，墨盖上来
+    }
     if (kid.t > 1.1) { respawn(); if (V.caughtBy === 'dog' && !S.yDog && ++V.dogCaught >= 2) { ring = { id: 'yLure', t0: V.T }; say(['sweater', '>'], 2.8); } }   // 第二回让狗的毛衣抓住起：圈出感应灯，气泡里画它（和点 ? 一样的画，不算提示）
   } else if (kid.mode === 'wait') {
     kid.t += dt;
