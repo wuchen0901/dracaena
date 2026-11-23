@@ -514,7 +514,51 @@ function act8(s, spot, held, R = reachL(L8, s)) {
   return no('no');
 }
 const L8 = mkLevel({ n: 8, name: '体育馆', START: START8, ITEMS: ITEMS8, VALUES: VALUES8, GATES: GATES8, LINKS: LINKS8, ENTRY: 'g0', SPOT_ZONE: SPOT_ZONE8, act: act8, GOAL: 'gOut' });
-const LEVELS = [L1, L2, L3, L4, L5, L6, L7, L8];
+// ---------- 第 9 关：夜市（转折以后：给定一只光；第三条新规则第一次要看懂“这件在做什么”）----------
+// 体育馆后门的外面是夜市的入口：入口的灯泡串断着电（插头垂在柱子底下）；刨冰摊的柱子上挂着一把蒲扇；摊子边上一只炭炉，凉透了。
+// 插上灯泡串、拿蒲扇、把炭炉扇红：红光照到面摊摊主的围裙头上（它守着摊子在炉子和摊位之间来回摆），它塌下去，口袋里掉出一把杆秤，摊位上露出一碗凉了的面；
+// 烤串摊的摊主（又一件围裙）也在炉子和摊位之间来回摆：摆到炉子那头它在扇火、背对着路，那一下把手里那只小光递给它，它抱着光站在炉子边上，成了一盏灯；
+// 摊位那头它朝着路招呼，这时候递不出去；后巷的铁栅门上的门闩太高，用杆秤的钩子挑开；走出去（docs/night-level-9.md）。
+const ITEMS9 = ['nFan', 'nScale'];
+const START9 = {
+  nPlug: 0,                   // 入口的灯泡串插上电了没有（一直亮）
+  nFan: 'hook',               // 蒲扇：挂在刨冰摊的柱子上 / 身上 / 扇过炭炉以后靠在炉子边（used）
+  nStv: 0,                    // 炭炉扇红了没有（一直红着）
+  nScale: 'floor',            // 杆秤：面摊摊主塌下去才从围裙口袋里掉出来 / 身上 / 钩子挑过门闩以后（used）
+  nGive: 0,                   // 手里那只小光递给烤串摊的摊主了没有（递了，它站在炉子边，是一盏灯）
+  nGate: 0, nOut: 0,          // 后巷铁栅门的门闩挑开了没有；走出去没有
+};
+const VALUES9 = { nFan: ['hook', 'inv', 'used'], nScale: ['floor', 'inv', 'used'] };
+const GATES9 = {
+  ng1: s => s.nStv === 1,     // 面摊的摊主（炭炉红着）
+  ng2: s => s.nGive === 1,    // 烤串摊的摊主（拿了光就站住了）
+  ngt: s => s.nGate === 1,    // 后巷的铁栅门（不是衣服，是一道门）
+};
+const LINKS9 = [['n0', 'n1', 'ng1'], ['n1', 'n2', 'ng2'], ['n2', 'n3', 'ngt']];
+const SPOT_ZONE9 = { nPlug: 'n0', nFanH: 'n0', nStove: 'n0', nScale: 'n1', nHand: 'n1', nLatch: 'n2', nExit: 'n3' };
+function act9(s, spot, held, R = reachL(L9, s)) {
+  const no = fail => ({ fail });
+  if (held && !has(s, held)) return no('no');
+  if (!R.has(SPOT_ZONE9[spot])) return no('far');
+  const n = { ...s }, ok = (...ev) => ({ s: n, ev });
+  switch (spot) {
+    // 入口的柱子底下垂着灯泡串的插头：空着手插上
+    case 'nPlug': if (held) return no('no'); if (s.nPlug) return no('look'); n.nPlug = 1; return ok('plug9');
+    // 刨冰摊的柱子上挂着的蒲扇：灯泡串亮了才看得见
+    case 'nFanH': if (held || s.nFan !== 'hook') return no(held ? 'no' : 'look'); if (!s.nPlug) return no('look'); n.nFan = 'inv'; return ok('take:nFan');
+    // 炭炉：空着手点，灰是凉的，气泡里画蒲扇；举着蒲扇扇，炭红起来
+    case 'nStove': if (s.nStv) return no(held ? 'no' : 'look'); if (held === 'nFan') { n.nFan = 'used'; n.nStv = 1; return ok('fan9'); } if (held) return no('no'); return no('cold9');
+    case 'nScale': if (held || s.nScale !== 'floor') return no(held ? 'no' : 'look'); n.nScale = 'inv'; return ok('take:nScale');
+    // 烤串摊的摊主：它摆到炉子那头、背对着路扇火的时候，把小光递给它（页面里才看它在哪儿，规则里不管）
+    case 'nHand': if (held) return no('no'); if (s.nGive) return no('look'); n.nGive = 1; return ok('give9');
+    // 后巷的铁栅门：门闩在头顶上，够不着；用杆秤的钩子挑开
+    case 'nLatch': if (s.nGate) return no(held ? 'no' : 'look'); if (held === 'nScale') { n.nScale = 'used'; n.nGate = 1; return ok('latch9'); } if (held) return no('no'); return no('high9');
+    case 'nExit': if (held) return no('no'); if (s.nOut) return ok('exit9'); n.nOut = 1; return ok('exit9');
+  }
+  return no('no');
+}
+const L9 = mkLevel({ n: 9, name: '夜市', START: START9, ITEMS: ITEMS9, VALUES: VALUES9, GATES: GATES9, LINKS: LINKS9, ENTRY: 'n0', SPOT_ZONE: SPOT_ZONE9, act: act9, GOAL: 'nOut' });
+const LEVELS = [L1, L2, L3, L4, L5, L6, L7, L8, L9];
 </script>
 
 <script>
@@ -840,6 +884,10 @@ const ROOMS = {
   gymA: { x0: 24340, x1: 25340, fl: 'down', top: 250, name: '体育馆的门厅' },
   gymB: { x0: 25340, x1: 26640, fl: 'down', top: 250, name: '球场' },
   gymC: { x0: 26640, x1: 27640, fl: 'down', top: 250, name: '器材室' },
+  // 夜市（第 9 关）：入口；摊子街；后巷，尽头的牌楼外面是出口
+  mktA: { x0: 27640, x1: 28640, fl: 'down', top: 250, name: '夜市的入口' },
+  mktB: { x0: 28640, x1: 29840, fl: 'down', top: 250, name: '摊子街' },
+  mktC: { x0: 29840, x1: 30940, fl: 'down', top: 250, name: '后巷' },
 };
 for (const k in ROOMS) { const r = ROOMS[k], f = FL[r.fl]; Object.assign(r, { id: k, top: r.top ?? f.ceil, wb: f.wb, gy: f.gy, ff: f.ff, fr: f.fr, ix0: r.x0 + 20, ix1: r.x1 - 20 }); }
 const roomAt = (x, y) => Object.values(ROOMS).find(r => x >= r.x0 && x < r.x1 && y >= r.top - 40 && y <= r.fr + 40) || null;
@@ -850,7 +898,7 @@ const STAIR = { lx0: 2700, lx1: 2900, f1: [[2900, 240], [3300, 620]], mid: [3300
 const HATCH = { x0: 130, x1: 250, x: 190 };
 const LADDER_Y0 = 984;   // 梯子最上面一档（再往下每 46 一档）
 // 前门开在门厅的右墙上（x = 4500，和隔墙一样 40 厚的门洞），门外就是院子，孩子直接走出去
-const FRONT = { x: 4500 }, DOOR_STOP = 4462, YARD_END = 27630;   // 门没开的时候走到 DOOR_STOP 就停；路走到 YARD_END 为止（体育馆器材室后门的外面，第 9 关还没做）
+const FRONT = { x: 4500 }, DOOR_STOP = 4462, YARD_END = 30930;   // 门没开的时候走到 DOOR_STOP 就停；路走到 YARD_END 为止（夜市后巷尽头的牌楼外面，第 10 关还没做）
 
 // 能走的路：几个点，点和点之间一段段的路（floor 平地、stairs 楼梯、ladder 梯子）。影子（GATES）卡在路上的某一点
 // 梯子：孩子背对着我们，正对着梯子爬
@@ -867,12 +915,14 @@ const GATEPOS = {
   zt1: { e: 5, x: 16100 }, zt2: { e: 5, x: 16760 }, zt3: { e: 5, x: 17620 },   // 公寓楼（第 5 关）：大堂、楼道、楼梯间口的三位住户
   rt1: { e: 5, x: 19010 }, rt2: { e: 5, x: 19970 },   // 屋顶（第 6 关）：晾着的两件衬衫
   sg1: { e: 5, x: 21700 }, sg2: { e: 5, x: 23900 },   // 学校（第 7 关）：走廊里的外套、后面走廊里的围裙
+  ng1: { e: 5, x: 28690 }, ng2: { e: 5, x: 30010 },   // 夜市（第 9 关）：面摊摊主（孩子停在炉子这头）、烤串摊摊主（孩子停在它那一片的外面）
   gg1: { e: 5, x: 25470 }, gg2: { e: 5, x: 26850 },   // 体育馆（第 8 关）：球场上跑圈的运动服（孩子停在球场入口）、器材室里跑圈的运动服
   queue: { e: 5, x: QU.x0 },   // 商店街（第 4 关）：公交站排队的一排大衣（孩子从排尾这头走过来，停在最左边那件跟前）
   rain: { e: 5, x: 6722 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
 };
-const GATE_ALL = { ...GATES, ...GATES2, ...GATES3, ...GATES4, ...GATES5, ...GATES6, ...GATES7, ...GATES8 };   // 几关的门放在一起查（页面上只有一个并起来的局面 S）
-GATE_ALL.gg1 = s => GATES8.gg1(s) && (!V || V.gSeen === 1);   // 球场上跑圈的运动服：大灯要热够了、它塌下去了，孩子才敢走进球场（规则里只记配电箱扳了没有）
+const GATE_ALL = { ...GATES, ...GATES2, ...GATES3, ...GATES4, ...GATES5, ...GATES6, ...GATES7, ...GATES8, ...GATES9 };   // 几关的门放在一起查（页面上只有一个并起来的局面 S）
+GATE_ALL.gg1 = s => GATES8.gg1(s) && (!V || V.gSeen === 1);
+GATE_ALL.ng1 = s => GATES9.ng1(s) && (!V || V.nSeen === 1);   // 面摊的摊主：炭炉扇红了、它塌下去了，孩子才敢走过去（规则里只记炉子扇红了没有）   // 球场上跑圈的运动服：大灯要热够了、它塌下去了，孩子才敢走进球场（规则里只记配电箱扳了没有）
 for (const k in GATEPOS) { const g = GATEPOS[k], E = EDGES[g.e]; g.t = g.x != null ? (g.x - E.A[0]) / (E.B[0] - E.A[0]) : (g.y - E.A[1]) / (E.B[1] - E.A[1]); }
 const edgePt = (e, t) => { const E = EDGES[e]; return [lerp(E.A[0], E.B[0], t), lerp(E.A[1], E.B[1], t)]; };
 // 最近的一条路上的一点（点在屋子里哪儿，就走到那一层的那儿）
@@ -1405,6 +1455,15 @@ Object.assign(DARK, {
   gmCab: '#222c38', gmCabHi: '#2e3a48', gmLamp: '#262e3a', gmWin: '#0c1428', gmEx: '#143c2c', gmExHi: '#7ad0a0', gmShelf: '#242c38', gmScore: '#10141c', gmScoreDot: '#7a3a34',
   g1c: '#2a3c5c', g1l: '#202e48', g1s: '#4a4c5c', g2c: '#4c2c3c', g2l: '#3a2230', g2s: '#564c60', gkc: '#4c4a44', gkl: '#3a3a40', gks: '#4c4a58',
 });
+// 夜市（第 9 关）：雨棚、案子、锅、碗、炭、木箱、水果、灯笼、铁栅门、蒲扇、肉串、两件围裙
+Object.assign(LIT, {
+  mkAwn1: '#b4503e', mkAwn2: '#3f7f7a', mkAwn3: '#cfa94c', mkTable: '#8b6b49', mkPot: '#8d949a', mkBowl: '#e9ddc1', mkNoodle: '#d8bf76', mkCoal: '#3a2d28', mkCrate: '#9b7b53', mkFruitA: '#c4533a', mkFruitB: '#d8b24a',
+  mkGate: '#56626c', mkGateHi: '#74828c', mkLantern: '#cf4a3d', mkStraw: '#c8b27a', mkSkew: '#d8a86a', n1c: '#6e8aa6', n1l: '#556f88', n1s: '#ece4cc', n2c: '#5f8a62', n2l: '#486e4c', n2s: '#d98a52',
+});
+Object.assign(DARK, {
+  mkAwn1: '#3a1f2c', mkAwn2: '#14303a', mkAwn3: '#3a3a3c', mkTable: '#242035', mkPot: '#2c3548', mkBowl: '#4c5268', mkNoodle: '#4a4a52', mkCoal: '#0c0e16', mkCrate: '#262236', mkFruitA: '#4a2634', mkFruitB: '#4a4438',
+  mkGate: '#222c3a', mkGateHi: '#303c4e', mkLantern: '#5a2a32', mkStraw: '#4c4c5c', mkSkew: '#4a3a3c', n1c: '#2e3e58', n1l: '#222f46', n1s: '#4a4c5c', n2c: '#24402e', n2l: '#1a3022', n2s: '#5a4048',
+});
 const YARD = { x0: 4520, x1: 8760 }, STEPS = { x: 8530, w: 62, h: 0, n: 0 };   // STEPS：院门外的石板路（原来是三级往下的石阶，第 3 关接着往右走，改成和院子一样高）
 const PORCH = { x1: 5016, post: 4996, roof: [[4520, 652], [5044, 690]] }, SENSOR = { x: 4800, y: 716, zone: [4545, 5075], hold: 3.2 };
 const KENNEL = { x: 5700, base: 980 }, TREE1 = { x: 5330 };
@@ -1438,6 +1497,9 @@ const schoolZoneAt = x => x < GATEPOS.sg1.x ? 's0' : x < SDOOR.x ? 's1' : x < GA
 // 第 8 关：体育馆。长凳上小孩的外套、配电箱、球场顶上的大灯、器材室的门、递光的地方（孩子站在门里）、跑圈的运动服停下来站的地方、后门
 const GYM = { x0: 24340, x1: 27640 }, GKID = { x: 24650 }, GSW = { x: 24960, y: 884 }, GLAMP = { x: 25990, y: 520 }, GDOOR = { x: 26690 }, GDOOR_STOP = 26646, GHAND = { x: 26772 }, GR2_STAND = 26950, GEXIT = { x: 27540 };
 const gymZoneAt = x => x < GATEPOS.gg1.x ? 'g0' : x < GDOOR.x ? 'g1' : x < GATEPOS.gg2.x ? 'g2' : 'g3';
+// 第 9 关：夜市。入口柱子上的插座、刨冰摊柱子上的蒲扇、入口的炭炉、烤串摊的炭炉、递光的地方（孩子站在烤串摊那一片的外面）、烤串摊摊主扇火站的地方、后巷的铁栅门、出口
+const MKT = { x0: 27640, x1: 30940 }, NPLUG = { x: 27930, y: 886 }, NFANP = { x: 28224, y: 800 }, NSTV = { x: 28590 }, NSTV2 = { x: 30500 }, NHAND = { x: 29990 }, NR2_STAND = 30440, NGATE = { x: 30800 }, NGATE_STOP = 30752, NEXIT = { x: 30880 };
+const mktZoneAt = x => x < GATEPOS.ng1.x ? 'n0' : x < GATEPOS.ng2.x ? 'n1' : x < NGATE.x ? 'n2' : 'n3';
 // 室外的地：从墙脚线（wb）到前沿（ff）是地面，前沿下面一道断面。kind：grass 草地、deck 门廊的木板、concrete 水泥、gravel 碎石。
 // 草、石子按世界坐标撒，相邻两块的接缝对得上
 function paintGround(b, P, lit, x0, x1, kind, seed) {
@@ -2874,7 +2936,242 @@ function gymUpdate(dt) {   // 大灯：配电箱扳下去就慢慢热起来（�
   if (!V.gSeen && S.gSw && m1.rise < 0.5) { V.gSeen = 1; V.gT1 = T; V.gX0 = m1.x; V.gWx = clamp(m1.x, 25760, 26480); }
 }
 
-const ROOM_PAINT = { gymA: paintGym, gymB: paintGym, gymC: paintGym, schA: paintSchool, schB: paintSchool, schC: paintSchool, roofA: paintRoof, roofB: paintRoof, roofC: paintRoof, aptA: paintApt, aptB: paintApt, aptC: paintApt, streetA: paintStreet, streetB: paintStreet, streetC: paintStreet, laneA: paintLane, laneB: paintLane, laneC: paintLane, bedroom: paintBedroom, bath: paintBath, hall: paintHall, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar, porch: paintPorch, garage: paintGarage, drive: paintDrive };
+// ---------- 第 9 关：夜市（画）----------
+// 体育馆后门的外面：入口（一道牌楼、灯泡串、刨冰摊、凉透了的炭炉）；摊子街（面摊、水果摊）；后巷（烤串摊、铁栅门、出口）。
+// 静的画在屋子的那一层；会动的（灯泡串、插头、蒲扇、炭炉、凉了的面、门闩、小光、两件围裙）在会动的那一层
+const mktStringY = (x, xa, xb, y0, sag) => { const m = (xa + xb) / 2, h = (xb - xa) / 2; return y0 + sag * (1 - ((x - m) / h) ** 2); };
+const MKT_STR = { xa: 27830, xb: 28620, y0: 570, sag: 62 };
+function mktBulbs(S0) { const n = Math.round((S0.xb - S0.xa) / 58), out = []; for (let i = 1; i < n; i++) { const x = lerp(S0.xa, S0.xb, i / n); out.push([x, mktStringY(x, S0.xa, S0.xb, S0.y0, S0.sag) + 9]); } return out; }
+function mktString(b, P, lit, S0, on, seed) {   // 一串灯泡：两头拴在柱子上，当中垂下来；没通电的时候是一串黑玻璃
+  const lc = lcOf(P, lit); b.seedN = seed;
+  const pts = []; for (let i = 0; i <= 30; i++) { const x = lerp(S0.xa, S0.xb, i / 30); pts.push([x, mktStringY(x, S0.xa, S0.xb, S0.y0, S0.sag)]); }
+  ink(b, pts, { w: 1.1, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: seed + 1, single: 1 });
+  mktBulbs(S0).forEach(([x, y], i) => {
+    ink(b, seg(x, y - 9, x, y - 3), { w: 1, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: seed + 10 + i, single: 1 });
+    part(b, arcPts(x, y, 5.5, 7, 0, TAU, 8), on > 0.4 ? '#fff0b8' : (lit ? '#cdbf98' : '#46506c'), { w: 0.5, tex: 0, lc, seed: seed + 40 + i });
+  });
+}
+function mktPole(b, P, lit, x, top, seed) { ink(b, seg(x, top, x, FL.down.wb + 6), { w: 2.6, col: P.iron, taper: 0, a: 1 / b.pen.a, seed }); ink(b, seg(x, top, x, FL.down.wb + 6), { w: 0.6, col: lcOf(P, lit), taper: 0, a: 0.6, seed: seed + 1, single: 1 }); }
+function mktAwning(b, P, lit, x0, x1, y, cA, cB, seed) {   // 条纹的雨棚：两根柱子撑着，檐口一排小三角
+  const lc = lcOf(P, lit), wb = FL.down.wb, n = Math.max(2, Math.round((x1 - x0) / 36)), w = (x1 - x0) / n; b.seedN = seed;
+  for (const px of [x0 + 10, x1 - 10]) ink(b, seg(px, y + 40, px, wb + 4), { w: 2.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: seed + 100 + Math.round(px) % 97, single: 1 });
+  for (let i = 0; i < n; i++) part(b, [[x0 + i * w, y], [x0 + (i + 1) * w, y], [x0 + (i + 1) * w + 4, y + 40], [x0 + i * w + 4, y + 40]], i % 2 ? P[cB] : P[cA], { w: 0.8, tex: 0.3, lc, seed: seed + i * 3 });
+  for (let i = 0; i < n; i++) part(b, [[x0 + i * w + 4, y + 40], [x0 + (i + 1) * w + 4, y + 40], [x0 + (i + 0.5) * w + 4, y + 54]], i % 2 ? P[cB] : P[cA], { w: 0.7, tex: 0.2, lc, seed: seed + 60 + i * 3 });
+  hatch(b, k => k.rect(x0, y, x1 - x0, 40), [x0, y, x1 - x0, 40], { ang: -1.15, gap: 5 / HD, a: lit ? 0.16 : 0.34, w: 0.7, len: 14, seed: seed + 90 });
+}
+function mktCounter(b, P, lit, x0, x1, top, seed) {   // 摊位的案子：一块台面、底下两块木板
+  const lc = lcOf(P, lit), wb = FL.down.wb; b.seedN = seed;
+  part(b, rectPts(x0, top, x1 - x0, wb - top + 2), P.wood, { w: 1, tex: 0.4, lc, seed });
+  for (let x = x0 + 50, i = 0; x < x1 - 20; x += 56, i++) ink(b, seg(x, top + 10, x, wb), { w: 0.6, col: lc, taper: 0, a: 0.5, seed: seed + 3 + i, single: 1 });
+  part(b, rectPts(x0 - 6, top - 9, x1 - x0 + 12, 11), P.mkTable, { w: 0.9, tex: 0.3, lc, seed: seed + 1 });
+}
+function mktPot(b, P, lit, x, y, rw, h, seed) {   // 一口大锅：圆肚子、两只耳朵、一个盖
+  const lc = lcOf(P, lit); b.seedN = seed;
+  part(b, roundPts(x - rw, y - h, rw * 2, h, h * 0.4), P.mkPot, { w: 1, tex: 0.3, lc, seed });
+  part(b, rectPts(x - rw - 5, y - h + 8, 8, 6), P.mkPot, { w: 0.6, tex: 0, lc, seed: seed + 1 }); part(b, rectPts(x + rw - 3, y - h + 8, 8, 6), P.mkPot, { w: 0.6, tex: 0, lc, seed: seed + 2 });
+  part(b, [[x - rw - 2, y - h], [x + rw + 2, y - h], [x + rw * 0.4, y - h - 10], [x - rw * 0.4, y - h - 10]], P.mkPot, { w: 0.8, tex: 0.2, lc, seed: seed + 3 });
+}
+function mktBowl(b, P, lit, x, y, r, seed, noodles) {   // 一只碗：半圆，里面盘着面
+  const lc = lcOf(P, lit); b.seedN = seed;
+  part(b, [...arcPts(x, y - r * 0.5, r, r * 0.9, 0, Math.PI, 10)], P.mkBowl, { w: 0.9, tex: 0.2, lc, seed });
+  if (noodles) { part(b, arcPts(x, y - r * 0.5, r * 0.86, r * 0.28, 0, TAU, 12), P.mkNoodle, { w: 0.6, tex: 0.3, lc, seed: seed + 1 }); ink(b, curvePts([[x - r * 0.5, y - r * 0.55], [x - r * 0.1, y - r * 0.72], [x + r * 0.3, y - r * 0.5], [x + r * 0.6, y - r * 0.64]], false, 4), { w: 0.8, col: lc, taper: 0, a: 0.6, seed: seed + 2, single: 1 }); }
+}
+function mktLantern(b, P, lit, x, y, r, seed) { const lc = lcOf(P, lit); b.seedN = seed; ink(b, seg(x, y - 22, x, y - r * 1.2), { w: 0.9, col: P.iron, taper: 0, a: 1 / b.pen.a, seed, single: 1 }); part(b, arcPts(x, y, r * 0.8, r * 1.1, 0, TAU, 12), P.mkLantern, { w: 0.9, tex: 0.3, lc, seed: seed + 1 }); for (const dy of [-0.4, 0, 0.4]) ink(b, seg(x - r * 0.7, y + r * dy, x + r * 0.7, y + r * dy), { w: 0.5, col: lc, taper: 0, a: 0.45, seed: seed + 2 + Math.round(dy * 10), single: 1 }); }
+function mktCrate(b, P, lit, x, y, w, h, fruit, seed) {   // 一只木箱，里面堆着水果
+  const lc = lcOf(P, lit); b.seedN = seed;
+  if (fruit) for (let i = 0; i < Math.floor(w / 18); i++) part(b, arcPts(x + 10 + i * 18, y - 6 - (i % 2) * 6, 9, 9, 0, TAU, 8), (i + fruit) % 2 ? P.mkFruitA : P.mkFruitB, { w: 0.6, tex: 0.2, lc, seed: seed + 5 + i });
+  part(b, rectPts(x, y, w, h), P.mkCrate, { w: 0.9, tex: 0.35, lc, seed }); ink(b, seg(x, y + h * 0.5, x + w, y + h * 0.5), { w: 0.6, col: lc, taper: 0, a: 0.5, seed: seed + 1, single: 1 });
+}
+function mktBrazier(b, P, lit, x, k, seed) {   // 炭炉：三条腿，一只铁盆，盆里的炭（凉的时候灰黑，扇旺了红）
+  const lc = lcOf(P, lit), gy = FL.down.gy; b.seedN = seed;
+  for (const dx of [-24, 0, 24]) ink(b, seg(x + dx * 0.8, gy - 66, x + dx * 1.3, gy - 2), { w: 2, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: seed + 1 + dx, single: 1 });
+  part(b, [[x - 36, gy - 100], [x + 36, gy - 100], [x + 24, gy - 66], [x - 24, gy - 66]], P.iron, { w: 1, tex: 0.3, lc, seed });
+  part(b, rectPts(x - 40, gy - 106, 80, 8), P.iron, { w: 0.8, tex: 0.2, lc, seed: seed + 5 });
+  const col = hexMix(lit ? '#4a3c34' : '#1a1a24', '#f2742e', k);
+  part(b, [[x - 32, gy - 106], [x - 18, gy - 122], [x - 2, gy - 116], [x + 14, gy - 124], [x + 32, gy - 106]], col, { w: 0.7, tex: 0.2, lc, seed: seed + 6 });
+  for (let i = 0; i < 4; i++) ink(b, seg(x - 26 + i * 16, gy - 98, x - 22 + i * 16, gy - 70), { w: 0.6, col: lc, taper: 0, a: 0.5, seed: seed + 8 + i, single: 1 });
+}
+function mktFanShape(b, P, lit, x, y, ang, seed) {   // 蒲扇：一把圆圆的草扇，一根短柄；(x, y) 是扇面中心，柄朝 ang 的反方向
+  const lc = lcOf(P, lit); b.save(); b.translate(x, y); b.rotate(ang); b.seedN = seed;
+  ink(b, seg(0, 14, 0, 46), { w: 3, col: P.mkStraw, taper: 0, a: 1 / b.pen.a, seed, single: 1 });
+  part(b, arcPts(0, 0, 22, 26, 0, TAU, 16), P.mkStraw, { w: 1, tex: 0.4, lc, seed: seed + 1 });
+  for (const dx of [-12, -4, 4, 12]) ink(b, seg(dx * 0.4, 20, dx, -20), { w: 0.5, col: lc, taper: 0, a: 0.45, seed: seed + 3 + dx, single: 1 });
+  ink(b, arcPts(0, 0, 22, 26, 0, TAU, 16), { w: 0.8, col: lc, taper: 0, a: 0.7, seed: seed + 2, single: 1 });
+  b.restore();
+}
+function paintMkt(b, r, P, lit) {
+  const F = FL.down, wb = F.wb, gy = F.gy, lc = lcOf(P, lit), x0 = r.x0, x1 = r.x1;
+  b.save(); b.beginPath(); b.rect(x0, r.top - 110, x1 - x0 + 10, F.fr + 70 - (r.top - 110)); b.clip();
+  b.seedN = 560000 + r.x0 % 997;
+  shopWall(b, P, lit, x0, x1, 330, 'aptOut', 'aptOutLo', 560000 + r.x0 % 997);   // 后面是一排楼的墙，高处几扇黑着的窗
+  for (let x = Math.ceil((x0 - 10) / 170) * 170 + 50, i = 0; x < x1 - 100; x += 170, i++) upperWin(b, P, lit, x, 380, 60, 70, 560020 + i * 5 + r.x0 % 97);
+  if (r.id === 'mktA') {
+    // 入口的牌楼：两根柱子，一道横梁，梁上挂着三只红灯笼
+    for (const px of [27690, 27830]) part(b, rectPts(px - 8, 430, 16, wb - 430 + 4), P.mkLantern, { w: 1, tex: 0.35, lc, seed: 560100 + px });
+    part(b, rectPts(27660, 420, 200, 22), P.mkLantern, { w: 1, tex: 0.35, lc, seed: 560110 }); part(b, rectPts(27650, 408, 220, 12), P.trim, { w: 0.9, tex: 0.3, lc, seed: 560111 });
+    for (let i = 0; i < 3; i++) mktLantern(b, P, lit, 27712 + i * 46, 480 + (i % 2) * 8, 14, 560120 + i * 7);
+    // 刨冰摊（收了摊，盖着布）：案子、一台刨冰机、几只空碗
+    mktAwning(b, P, lit, 27980, 28240, 480, 'mkAwn1', 'mkAwn3', 560200);
+    mktCounter(b, P, lit, 28000, 28220, wb - 100, 560260);
+    part(b, rectPts(28040, wb - 160, 56, 50), P.cab, { w: 1, tex: 0.3, lc, seed: 560270 }); part(b, arcPts(28068, wb - 168, 22, 10, 0, TAU, 12), P.chrome, { w: 0.8, tex: 0.2, lc, seed: 560271 });
+    ink(b, seg(28096, wb - 140, 28112, wb - 126), { w: 2, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 560272, single: 1 }); mktBowl(b, P, lit, 28150, wb - 110, 14, 560273, false); mktBowl(b, P, lit, 28186, wb - 110, 12, 560274, false);
+    // 两只叠着的木箱、一只小凳
+    mktCrate(b, P, lit, 28300, wb - 56, 70, 58, 0, 560300); mktCrate(b, P, lit, 28310, wb - 112, 56, 54, 0, 560310);
+    part(b, rectPts(28410, wb - 44, 34, 8), P.mkTable, { w: 0.8, tex: 0.2, lc, seed: 560320 }); for (const lx of [-12, 12]) ink(b, seg(28427 + lx, wb - 36, 28427 + lx * 1.3, wb + 4), { w: 1.8, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 560321 + lx, single: 1 });
+    mktPole(b, P, lit, 27830, 580, 560400); mktPole(b, P, lit, 28620, 580, 560402); mktPole(b, P, lit, NPLUG.x, 640, 560404);
+  } else if (r.id === 'mktB') {
+    // 面摊：条纹雨棚，案子，一口大锅，一摞碗，几只小凳，一盏灯笼
+    mktAwning(b, P, lit, 28760, 29450, 470, 'mkAwn2', 'mkAwn3', 560500);
+    mktCounter(b, P, lit, 28960, 29440, wb - 104, 560560);
+    mktPot(b, P, lit, 29040, wb - 104, 38, 52, 560570); mktPot(b, P, lit, 29140, wb - 104, 28, 40, 560575);
+    for (let i = 0; i < 4; i++) mktBowl(b, P, lit, 29380, wb - 104 - i * 8, 18, 560580 + i * 4, false);
+    for (const sx of [28880, 28920]) { part(b, rectPts(sx - 16, wb - 40, 32, 8), P.mkTable, { w: 0.8, tex: 0.2, lc, seed: 560590 + sx }); for (const lx of [-10, 10]) ink(b, seg(sx + lx, wb - 32, sx + lx * 1.3, wb + 4), { w: 1.8, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 560591 + sx + lx, single: 1 }); }
+    mktLantern(b, P, lit, 29230, 540, 15, 560600); mktLantern(b, P, lit, 28840, 540, 12, 560610);
+    // 水果摊：三只箱子，堆着水果；雨棚底下一只空钩子（本来挂着东西）
+    mktAwning(b, P, lit, 29530, 29810, 480, 'mkAwn1', 'mkAwn3', 560700);
+    for (let i = 0; i < 3; i++) mktCrate(b, P, lit, 29550 + i * 80, wb - 50, 70, 52, i + 1, 560760 + i * 20);
+    mktCrate(b, P, lit, 29590, wb - 100, 66, 50, 2, 560830);
+    ink(b, [[29690, 536], [29690, 572], [29698, 580], [29706, 572]], { w: 1.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 560840, single: 1 });
+    mktPole(b, P, lit, 28680, 580, 560900); mktPole(b, P, lit, 29800, 580, 560902);
+    mktString(b, P, lit, { xa: 28680, xb: 29800, y0: 570, sag: 62 }, 0, 560950);
+  } else {
+    // 烤串摊：雨棚、案子、一排穿好的肉串、盘子；摊主的凳子
+    mktAwning(b, P, lit, 30040, 30590, 470, 'mkAwn1', 'mkAwn3', 561000);
+    mktCounter(b, P, lit, 30080, 30380, wb - 104, 561060);
+    for (let i = 0; i < 6; i++) { ink(b, seg(30100 + i * 44, wb - 112, 30124 + i * 44, wb - 146), { w: 2, col: P.mkSkew, taper: 0, a: 1 / b.pen.a, seed: 561070 + i, single: 1 }); part(b, arcPts(30124 + i * 44, wb - 148, 5, 5, 0, TAU, 6), P.mkFruitA, { w: 0.4, tex: 0, lc, seed: 561080 + i }); }
+    for (let i = 0; i < 3; i++) part(b, rectPts(30110 + i * 90, wb - 112, 60, 8), P.mkBowl, { w: 0.7, tex: 0.2, lc, seed: 561090 + i });
+    mktLantern(b, P, lit, 30200, 540, 14, 561100); mktLantern(b, P, lit, 30420, 540, 12, 561110);
+    mktPole(b, P, lit, 29880, 580, 561200); mktPole(b, P, lit, 30740, 580, 561202);
+    mktString(b, P, lit, { xa: 29880, xb: 30740, y0: 570, sag: 62 }, 0, 561250);
+    // 出口的牌楼：两根柱子，一道横梁，梁上挂着灯笼（和入口那道一个样）
+    for (const px of [NEXIT.x - 36, NEXIT.x + 36]) part(b, rectPts(px - 8, 430, 16, wb - 430 + 4), P.mkLantern, { w: 1, tex: 0.35, lc, seed: 561300 + px });
+    part(b, rectPts(NEXIT.x - 60, 420, 120, 22), P.mkLantern, { w: 1, tex: 0.35, lc, seed: 561310 }); part(b, rectPts(NEXIT.x - 68, 408, 136, 12), P.trim, { w: 0.9, tex: 0.3, lc, seed: 561311 });
+    mktLantern(b, P, lit, NEXIT.x - 20, 480, 12, 561320); mktLantern(b, P, lit, NEXIT.x + 20, 486, 12, 561327);
+  }
+  paintGround(b, P, lit, x0, x1 + 10, 'concrete', 562000 + (x0 % 997));
+  b.restore();
+}
+
+// 会动的那一层
+function drawMktString(b, P, lit) { mktString(b, P, lit, MKT_STR, V.li.nl, 563000); }   // 入口的灯泡串：通了电就亮
+function drawMktPlug(b, P, lit) {   // 柱子上的插座（一只方盒子），灯泡串垂下来一根线，线头是插头：垂在插座底下；插上了就在插座里
+  const lc = lcOf(P, lit), x = NPLUG.x, y = NPLUG.y, k = smooth(V.npl); b.seedN = 563100;
+  part(b, rectPts(x - 18, y - 24, 36, 48), P.cab, { w: 1, tex: 0.3, lc, seed: 563101 });
+  for (const dx of [-7, 7]) part(b, rectPts(x + dx - 3, y - 10, 6, 5), '#0a0e1a', { w: 0.4, tex: 0, lc, seed: 563102 + dx });
+  const px = lerp(x - 8, x, k), py = lerp(y + 62, y - 2, k);
+  const cord = quadPts([x + 14, mktStringY(x + 14, MKT_STR.xa, MKT_STR.xb, MKT_STR.y0, MKT_STR.sag) + 2], [x + 30 - k * 14, y + 20], [px + 6, py + 6], 12);
+  ink(b, cord, { w: 1.6, col: P.wire, taper: 0, a: 1 / b.pen.a, seed: 563110, single: 1 });
+  part(b, rectPts(px - 8, py - 4, 16, 22), P.chrome, { w: 0.8, tex: 0.2, lc, seed: 563111 });
+  for (const dx of [-3.5, 3.5]) ink(b, seg(px + dx, py - 4, px + dx, py - 11), { w: 1.4, col: P.brass, taper: 0, a: 1 / b.pen.a, seed: 563112 + dx, single: 1 });
+}
+function drawMktFan(b, P, lit) {   // 蒲扇：挂在刨冰摊柱子的钉子上；扇过炭炉以后靠在炉子边上
+  if (S.nFan === 'hook') { const sw = Math.sin(V.T * 1.3) * 0.05; ink(b, seg(NFANP.x - 6, NFANP.y - 30, NFANP.x, NFANP.y - 24), { w: 2.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 563201, single: 1 }); mktFanShape(b, P, lit, NFANP.x, NFANP.y + 8, Math.PI + sw, 563210); }
+  else if (S.nFan === 'used') mktFanShape(b, P, lit, NSTV.x + 56, FL.down.gy - 58, 0.2, 563220);
+}
+function drawMktStoves(b, P, lit) {   // 入口的炭炉（扇旺了才红）、烤串摊的炭炉（摊主扇着，它不灭；递了光以后红着）
+  mktBrazier(b, P, lit, NSTV.x, smooth(V.nstv) * (0.92 + 0.08 * Math.sin(V.T * 9)), 563300);
+  mktBrazier(b, P, lit, NSTV2.x, 0.25 + 0.75 * smooth(V.nb), 563310);
+}
+function drawMktBowl(b, P, lit) {   // 面摊的案子上：摊主塌下去以后露出来的一碗面，凉了，不冒气
+  if (!V.nSeen) return; const e = smooth(clamp((V.T - V.nT1) / 0.8, 0, 1)); b.save(); b.globalAlpha *= e; mktBowl(b, P, lit, 29250, FL.down.wb - 104, 20, 563400, true); b.restore();
+}
+function drawMktScale(b, P, lit) {   // 杆秤：摊主塌下去，从围裙口袋里掉出来，滚到地上
+  if (S.nScale !== 'floor' || !V.nSeen) return;
+  const e = ease((V.T - V.nT1) / 0.6), x = lerp(V.nX0, V.nWx, e), y = FL.down.gy - 10 - Math.sin(e * Math.PI) * 30;
+  sceneItem(b, 'nScale', x, y - 12, 56, P, lit, 563500);
+}
+function drawMktGate(b, P, lit) {   // 后巷的铁栅门：两根门柱，一扇栅栏门，头顶上一根门闩；挑开以后门朝里推开
+  const lc = lcOf(P, lit), wb = FL.down.wb, x = NGATE.x, k = smooth(V.ngt), w = lerp(80, 8, k); b.seedN = 563600;
+  for (const px of [x - 52, x + 44]) part(b, rectPts(px - 6, wb - 270, 12, 274), P.mkGate, { w: 1, tex: 0.3, lc, seed: 563601 + px });
+  part(b, rectPts(x - 52, wb - 276, 104, 10), P.mkGate, { w: 1, tex: 0.3, lc, seed: 563602 });
+  fillPts(b, rectPts(x - 44, wb - 266, 88, 266), lit ? '#10131c' : '#04060b', 1);
+  for (let bx = x - 44, i = 0; bx < x - 44 + w - 2; bx += 13, i++) ink(b, seg(bx + 4, wb - 262, bx + 4, wb), { w: 2.2, col: P.mkGateHi, taper: 0, a: 1 / b.pen.a, seed: 563610 + i, single: 1 });
+  part(b, rectPts(x - 44, wb - 200, w, 7), P.mkGate, { w: 0.8, tex: 0.2, lc, seed: 563640 }); part(b, rectPts(x - 44, wb - 80, w, 7), P.mkGate, { w: 0.8, tex: 0.2, lc, seed: 563641 });
+  // 门闩：门框上一块铁，一根横闩插进门上的环里；挑开以后横闩翘起来
+  const by = wb - 250, up = k * 0.9;
+  part(b, rectPts(x - 56, by - 8, 14, 20), P.iron, { w: 0.8, tex: 0.2, lc, seed: 563650 });
+  ink(b, seg(x - 50, by + 2, x - 50 + Math.cos(up) * 46, by + 2 - Math.sin(up) * 46), { w: 3.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 563651 });
+  ink(b, arcPts(x - 6, by + 2, 6, 6, 0, TAU, 10), { w: 1.4, col: P.brass, taper: 0, a: 1 / b.pen.a, seed: 563652, single: 1 });
+}
+function mktOrbs() {   // 小光：进门的时候孩子肩头飘着一只；递出去以后在烤串摊摊主的怀里
+  if (!S.gOut || kid.x < MKT.x0 - 360) return [];
+  const T = V.T, kx = kid.x - kid.face * 24, ky = kid.y - 150 + Math.sin(T * 3.1) * 6, gy = FL.down.gy, m2 = V.mon.nr2;
+  if (!S.nGive) return [{ x: kx, y: ky + Math.sin(T * 2.6) * 4 }];
+  const u = clamp((T - V.nGiveT) / 1.1, 0, 1), hx = m2.x + m2.face * 8, hy = gy - 104;
+  if (u >= 1) return [{ x: hx, y: hy + Math.sin(T * 2.2) * 3 }];
+  const e = ease(u); return [{ x: lerp(V.nGiveX, hx, e), y: lerp(V.nGiveY, hy, e) - Math.sin(e * Math.PI) * 60 }];
+}
+function drawMktOrbs(b, P, lit) { mktOrbs().forEach((o, i) => part(b, arcPts(o.x, o.y, 4.5, 4.5, 0, TAU, 8), lit ? '#fff4c8' : '#d9cfa4', { w: 0.4, tex: 0, lc: lcOf(P, lit), seed: 563700 + i })); }
+function inkApron(b, P, x, fy, f, t, m, seed, G) {   // 摊主的围裙：脖子上挂着一块围裙盖在身子前面，系带在腰后；来回摆的时候胳膊慢慢甩；摆到炉子那头扇火（背对着路），摆到摊位那头招呼（朝着路）
+  const lc = DARK.ink, run = m.run || 0, ph = m.ph * 2.2, sw = Math.sin(ph) * 22 * run, bob = Math.abs(Math.sin(ph)) * 3 * run, lean = -0.06 * run - 0.07 * m.hunt;
+  const still = run < 0.3 && m.hunt < 0.3, fan = still && m.x > G.lap[1] - 8, call = still && m.x < G.lap[0] + 8;
+  b.save(); b.translate(x, fy - 6 - bob); b.scale(f, 1); b.rotate(lean); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(2, 12 + bob, 38, 5, 0, 0, 7); b.fill();
+  for (const s of [-1, 1]) {   // 腿
+    const kx = s * sw * 0.7 + 4, fx = s * sw + 6;
+    part(b, tube([[0, -96], [kx, -50], [fx, -2]], [16, 14, 12]), s > 0 ? P.coat : P.coatLo, { w: 0.9, tex: 0.3, lc });
+    part(b, arcPts(fx + 7, -2, 11, 5, 0, TAU, 10), INK, { w: 0.5, tex: 0, lc });
+  }
+  const body = curvePts([[-16, -152], [16, -152], [26, -134], [24, -92], [-24, -92], [-26, -134]], true, 4);
+  part(b, body, P.coat, { w: 1.1, tex: 0.42, lc });
+  part(b, [[-14, -148], [14, -148], [22, -100], [22, -62], [-22, -62], [-22, -100]], P.scarf, { w: 0.9, tex: 0.3, lc });   // 围裙：从脖子一直盖到膝盖
+  part(b, rectPts(-10, -92, 20, 14), P.coatLo, { w: 0.6, tex: 0, lc });   // 围裙口袋
+  ink(b, seg(-12, -148, -20, -136), { w: 1, col: lc, taper: 0, a: 0.8, seed: seed + 3, single: 1 }); ink(b, seg(12, -148, 20, -136), { w: 1, col: lc, taper: 0, a: 0.8, seed: seed + 4, single: 1 });
+  hatch(b, k => pathOf(k, body), [-26, -152, 52, 60], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 18 });
+  for (const s of [-1, 1]) {   // 胳膊
+    let ax = -s * sw * 0.5 + 10, ay = -106 + Math.abs(sw) * 0.2;
+    if (s > 0 && fan) { ax = 34 + Math.sin(t * 9) * 8; ay = -112 + Math.cos(t * 9) * 6; }
+    else if (s > 0 && call) { ax = 24; ay = -168 - Math.abs(Math.sin(t * 4)) * 10; }
+    part(b, tube([[s * 2, -140], [(s * 2 + ax) / 2 + 6, (-140 + ay) / 2], [ax + 12, ay]], [12, 11, 10]), s > 0 ? P.coat : P.coatLo, { w: 0.9, tex: 0.3, lc });
+    part(b, arcPts(ax + 14, ay + 2, 6, 7, 0, TAU, 10), INK, { w: 0.5, tex: 0, lc });
+    if (s > 0 && fan) { b.save(); b.translate(ax + 24, ay - 4); b.rotate(Math.sin(t * 9) * 0.5); part(b, arcPts(0, 0, 13, 16, 0, TAU, 12), DARK.straw || '#2c2e3c', { w: 0.7, tex: 0.2, lc }); b.restore(); }
+  }
+  part(b, arcPts(0, -166, 18, 20, 0, TAU, 16), P.hat, { w: 1, tex: 0.3, lc });
+  part(b, rectPts(-18, -176, 36, 7), P.hat, { w: 0.7, tex: 0.2, lc });   // 帽檐
+  fillPts(b, arcPts(3, -164, 11, 13, 0, TAU, 14), INK);
+  inkEyes(b, [[-1, -169, 2.4], [7, -167, 2.7], [3, -160, 1.6]], m.hunt);
+  inkDrips(b, [[-24, -96, 26], [24, -96, 20], [4, -62, 22]], seed + 20);
+  b.restore();
+}
+function drawApronHeld(b, P, lit, k) {   // 抱着光站住的摊主：围裙、两只手捧在胸前，帽子里面没有脸；它自己是一盏灯（光在 drawMktGlow 里）
+  const G = GARB[k], m = V.mon[k], Q = { ...P, ...Object.fromEntries(Object.entries(G.pal).map(([a, c]) => [a, P[c]])) }, lc = lcOf(P, lit), x = m.x, gy = FL.down.gy, f = m.face || 1, breath = Math.sin(V.T * 2.2) * 1.5; b.seedN = 563800;
+  b.save(); b.translate(x, gy - 6 + breath * 0.3); b.scale(f, 1);
+  for (const s of [-1, 1]) part(b, tube([[0, -96], [s * 8 + 4, -50], [s * 11 + 6, -2]], [16, 14, 12]), s > 0 ? Q.coat : Q.coatLo, { w: 0.9, tex: 0.3, lc, seed: 563801 + s });
+  const body = curvePts([[-16, -152], [16, -152], [26, -134], [24, -92], [-24, -92], [-26, -134]], true, 4);
+  part(b, body, Q.coat, { w: 1.1, tex: 0.42, lc, seed: 563803 });
+  part(b, [[-14, -148], [14, -148], [22, -100], [22, -62], [-22, -62], [-22, -100]], Q.scarf, { w: 0.9, tex: 0.3, lc, seed: 563804 });
+  hatch(b, kk => pathOf(kk, body), [-26, -152, 52, 60], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 18, seed: 563805 });
+  for (const s of [-1, 1]) part(b, tube([[s * 2, -140], [s * 10 + 12, -118], [10 + s * 4, -104 + breath]], [12, 11, 10]), s > 0 ? Q.coat : Q.coatLo, { w: 0.9, tex: 0.3, lc, seed: 563806 + s });
+  part(b, arcPts(0, -166 + breath * 0.5, 18, 20, 0, TAU, 16), Q.hat, { w: 1, tex: 0.3, lc, seed: 563808 });
+  part(b, rectPts(-18, -176 + breath * 0.5, 36, 7), Q.hat, { w: 0.7, tex: 0.2, lc, seed: 563809 });
+  part(b, arcPts(3, -164 + breath * 0.5, 11, 13, 0, TAU, 14), lit ? '#3a3d52' : '#161b29', { w: 0.5, tex: 0, lc, seed: 563810 });
+  b.restore();
+}
+function drawMktDyn(b, P, lit, vis) {   // 夜市（第 9 关）
+  if (vis.mktA) { drawMktString(b, P, lit); drawMktPlug(b, P, lit); drawMktFan(b, P, lit); }
+  if (vis.mktA || vis.mktB || vis.mktC) drawMktStoves(b, P, lit);
+  if (vis.mktB) { drawMktBowl(b, P, lit); drawFear(b, P, lit, 'nr1'); drawMktScale(b, P, lit); }
+  if (vis.mktC) { drawFear(b, P, lit, 'nr2'); drawMktGate(b, P, lit); }
+  if (vis.mktA || vis.mktB || vis.mktC) drawMktOrbs(b, P, lit);
+}
+function drawMktGlow() {   // 灯泡串的灯泡、炭炉的火、小光、烤串摊炉子的火
+  if (V.li.nl > 0.02) for (const [x, y] of mktBulbs(MKT_STR)) if (inView(x, y, 120)) { glowAt(x, y, 46, [255, 226, 150], 0.34 * V.li.nl); glowAt(x, y, 10, C.hot, 0.8 * V.li.nl); }
+  if (V.nstv > 0.02 && inView(NSTV.x, FL.down.gy - 110, 300)) { glowAt(NSTV.x, FL.down.gy - 112, 150, [255, 110, 50], 0.34 * V.li.ns); glowAt(NSTV.x, FL.down.gy - 108, 34, [255, 170, 90], 0.8 * V.li.ns); }
+  if (V.nb > 0.02 && inView(NSTV2.x, FL.down.gy - 110, 300)) { glowAt(NSTV2.x, FL.down.gy - 112, 130, [255, 110, 50], 0.3 * V.nb); glowAt(NSTV2.x, FL.down.gy - 108, 30, [255, 170, 90], 0.7 * V.nb); }
+  for (const o of mktOrbs()) if (inView(o.x, o.y, 200)) { glowAt(o.x, o.y, 34, C.lamp, 0.3); glowAt(o.x, o.y, 9, C.hot, 0.9); }
+}
+function mktUpdate(dt) {   // 灯泡串：插上就亮；炭炉：扇红以后慢慢旺起来；小灯：小光递过去才亮；铁栅门；面摊摊主塌下去的那一下记下来
+  const T = V.T;
+  V.npl = approach(V.npl, S.nPlug, dt / 0.5);
+  V.nlk = approach(V.nlk, S.nPlug, dt * 3); V.li.nl = V.nlk * (0.96 + 0.04 * Math.sin(T * 19) * Math.sin(T * 5.3));
+  V.nstv = approach(V.nstv, S.nStv, dt / 1.6); V.li.ns = smooth(V.nstv) * (0.96 + 0.04 * Math.sin(T * 11) * Math.sin(T * 4.3));
+  V.nb = approach(V.nb, S.nGive, dt / 1.6); V.li.nb = clamp((V.nb - 0.3) / 0.4, 0, 1) * (0.94 + 0.06 * Math.sin(T * 2.7));
+  V.ngt = approach(V.ngt, S.nGate, dt / 0.9);
+  const m1 = V.mon.nr1;
+  if (!V.nSeen && S.nStv && m1.rise < 0.5) { V.nSeen = 1; V.nT1 = T; V.nX0 = m1.x; V.nWx = clamp(m1.x, 28830, 29270); }
+}
+
+const ROOM_PAINT = { mktA: paintMkt, mktB: paintMkt, mktC: paintMkt, gymA: paintGym, gymB: paintGym, gymC: paintGym, schA: paintSchool, schB: paintSchool, schC: paintSchool, roofA: paintRoof, roofB: paintRoof, roofC: paintRoof, aptA: paintApt, aptB: paintApt, aptC: paintApt, streetA: paintStreet, streetB: paintStreet, streetC: paintStreet, laneA: paintLane, laneB: paintLane, laneC: paintLane, bedroom: paintBedroom, bath: paintBath, hall: paintHall, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar, porch: paintPorch, garage: paintGarage, drive: paintDrive };
 
 // ---------- 会动的东西：暗的一层、亮的一层各画一遍 ----------
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
@@ -2898,6 +3195,7 @@ function drawDynamic(b, lit, vis) {
   drawRoofDyn(b, P, lit, vis);   // 屋顶（第 6 关）
   drawSchoolDyn(b, P, lit, vis);   // 学校（第 7 关）
   drawGymDyn(b, P, lit, vis);   // 体育馆（第 8 关）
+  drawMktDyn(b, P, lit, vis);   // 夜市（第 9 关）
   if (V.imps.hall.follow) drawImp(b, P, lit, 'hall', 'body');   // 跟着孩子走的灯崽
   drawKid(b, P, lit);
 }
@@ -2945,6 +3243,18 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
     ink(b, cubPts([-s * 0.16, -s * 0.06], [-s * 0.18, s * 0.1], [-s * 0.06, s * 0.2], [s * 0.02, s * 0.2], 8), { w: 1, col: P.bagHi, taper: 0, a: 0.8, seed: seed + 2 });
   }
   else if (name === 'sKey') { b.restore(); sceneItem(b, 'key', x, y, s, P, lit, seed); return; }
+  else if (name === 'nFan') {   // 蒲扇（夜市）：一把圆圆的草扇，一根短柄，扇面上几道筋
+    ink(b, seg(-s * 0.1, s * 0.22, -s * 0.22, s * 0.5), { w: 2.4, col: P.mkStraw, taper: 0, a: 1 / b.pen.a, seed: seed + 1, single: 1 });
+    part(b, arcPts(0, -s * 0.12, s * 0.36, s * 0.4, 0, TAU, 16), P.mkStraw, { w: 0.9, tex: 0.3, lc, seed: seed + 2 });
+    for (const dx of [-0.2, -0.07, 0.07, 0.2]) ink(b, seg(s * dx * 0.4, s * 0.2, s * dx, -s * 0.46), { w: 0.6, col: lc, taper: 0, a: 0.5, seed: seed + 3 + Math.round(dx * 10), single: 1 });
+  }
+  else if (name === 'nScale') {   // 杆秤（夜市）：一根长长的秤杆，一头一只铁钩，一头吊着秤盘，秤杆上一只秤砣
+    ink(b, seg(-s * 0.5, s * 0.12, s * 0.5, -s * 0.12), { w: 3.2, col: P.mkTable, taper: 0, a: 1 / b.pen.a, seed: seed + 1 }); ink(b, seg(-s * 0.5, s * 0.12, s * 0.5, -s * 0.12), { w: 0.6, col: lc, taper: 0, seed: seed + 2 });
+    ink(b, [[-s * 0.5, s * 0.12], [-s * 0.6, s * 0.2], [-s * 0.56, s * 0.34], [-s * 0.44, s * 0.3]], { w: 1.8, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: seed + 3, single: 1 });
+    ink(b, seg(s * 0.5, -s * 0.12, s * 0.38, s * 0.18), { w: 0.8, col: lc, taper: 0, a: 0.8, seed: seed + 4, single: 1 }); ink(b, seg(s * 0.5, -s * 0.12, s * 0.62, s * 0.18), { w: 0.8, col: lc, taper: 0, a: 0.8, seed: seed + 5, single: 1 });
+    part(b, [[s * 0.34, s * 0.18], [s * 0.66, s * 0.18], [s * 0.6, s * 0.3], [s * 0.4, s * 0.3]], P.brass, { w: 0.8, tex: 0, lc, seed: seed + 6 });
+    part(b, arcPts(s * 0.12, s * 0.04, s * 0.07, s * 0.09, 0, TAU, 8), P.brass, { w: 0.7, tex: 0, lc, seed: seed + 7 });
+  }
   else if (name === 'gWhis') {   // 哨子（体育馆）：一只圆圆的哨子，吹口朝右，一根绳子，绳子下面挂着一把小钥匙
     part(b, arcPts(-s * 0.08, -s * 0.02, s * 0.2, s * 0.2, 0, TAU, 14), P.gmCabHi, { w: 0.8, tex: 0, lc, seed: seed + 1 });
     part(b, rectPts(s * 0.08, -s * 0.12, s * 0.3, s * 0.16), P.gmCabHi, { w: 0.8, tex: 0, lc, seed: seed + 2 });
@@ -3303,6 +3613,10 @@ const LIGHTS = [
   { id: 'ggk', off: 0.6, up: 0.9, at: () => ({ x: GKID.x, y: 860, R: 450, I: V.li.gk, clip: [24360, 450, 25340, 1060] }) },
   { id: 'gga', off: 0.4, up: 0.6, at: () => ({ x: GLAMP.x, y: GLAMP.y + 60, R: 820, I: V.li.ga, clip: [25360, 250, 26640, 1060] }) },
   { id: 'ggb', off: 0.6, up: 0.9, at: () => ({ x: GR2_STAND, y: 860, R: 470, I: V.li.gb, clip: [26660, 450, 27640, 1060] }) },
+  // 夜市（第 9 关）。入口的灯泡串：插上电就亮（照着入口这一段）；入口的炭炉：扇红了照着一小片，够得着面摊摊主摆到最左头的时候的头；烤串摊的摊主抱着光站在炉子边：照亮后巷
+  { id: 'nla', off: 0.4, up: 0.6, at: () => ({ x: 28225, y: 660, R: 520, I: V.li.nl, clip: [27650, 250, 28640, 1060] }) },
+  { id: 'nls', off: 0.5, up: 0.7, at: () => ({ x: NSTV.x, y: 850, R: 900, I: V.li.ns, clip: [28480, 450, 29080, 1060] }) },
+  { id: 'nlb', off: 0.6, up: 0.9, at: () => ({ x: NR2_STAND, y: 860, R: 470, I: V.li.nb, clip: [30030, 450, 30940, 1060] }) },
   { id: 'bike', off: 0.8, up: 1, wd: 0.42, nosafe: 1, at: () => V.li.bike < 0.01 ? null : ({ x: BIKE.lamp[0], y: BIKE.lamp[1], R: 520, I: V.li.bike, rot: Math.PI / 2 - 0.03, clip: [BIKE.lamp[0] - 4, 600, 8640, 1060] }) },
 ];
 // 萤火虫的光在哪儿：跟着孩子手里的蜂蜜，或者放在保险丝盒旁边的蜂蜜（规则里还叫 candle）
@@ -3755,6 +4069,10 @@ const GARB = {
   // 孩子走进它那一片、又不在光里，它朝孩子追过来（speed）。光照到头它就塌。gr2 接了小光（holds）就不跑了，站在 stand 抱着光
   gr1: { kind: 'runner', fl: 'down', home: 25640, terr: [25480, 26640], lap: [25640, 26590], lapSpeed: 170, lapRest: 1.2, speed: 150, h: 214, pal: { coat: 'g1c', coatLo: 'g1l', scarf: 'g1s', hat: 'rh' } },
   gr2: { kind: 'runner', fl: 'down', home: 26890, terr: [26840, 27440], lap: [26890, 27300], lapSpeed: 150, lapRest: 1.6, speed: 140, h: 214, pal: { coat: 'g2c', coatLo: 'g2l', scarf: 'g2s', hat: 'rh' }, holds: () => S.gGive2 === 1, stand: GR2_STAND },
+  // 夜市（第 9 关）：摊主的围裙（第三条新规则：衣服照着它的人在做的事动）。守着摊子在 lap 这一段里来回摆，到头歇一会儿：炉子那头在扇火，摊位那头在招呼；
+  // 孩子走进它那一片、又不在光里，它朝孩子追过来。光照到头它就塌。nr2 接了小光（holds）就不摆了，站在 stand（炉子边）抱着光
+  nr1: { kind: 'apron', fl: 'down', keepDown: () => V.nSeen === 1, home: 28980, terr: [28730, 29420], lap: [28790, 29300], lapSpeed: 110, lapRest: 1.6, speed: 130, h: 214, pal: { coat: 'n1c', coatLo: 'n1l', scarf: 'n1s', hat: 'rh' } },
+  nr2: { kind: 'apron', fl: 'down', home: 30140, terr: [30040, 30580], lap: [30140, 30440], lapSpeed: 100, lapRest: 1.9, speed: 125, h: 214, pal: { coat: 'n2c', coatLo: 'n2l', scarf: 'n2s', hat: 'rh' }, holds: () => S.nGive === 1, stand: NR2_STAND },
   rt2: { kind: 'coat', fl: 'down', home: 19970, terr: [19840, 20100], speed: 60, h: 214, pal: { coat: 'r2c', coatLo: 'r2l', scarf: 'r2s', hat: 'rh' } },
 };
 const GARB_KEYS = Object.keys(GARB);
@@ -3766,7 +4084,7 @@ function garbUpdate(dt) {
   const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
   for (const k of GARB_KEYS) {
-    const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55, want = lit ? 0 : 1, trapped = k === 'dog' && S.yDog === 1;
+    const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55 || !!(G.keepDown && G.keepDown()), want = lit ? 0 : 1, trapped = k === 'dog' && S.yDog === 1;
     if (G.holds && G.holds()) {   // 接了小光：不跑了，跑到 stand 抱着光站住，不塌、不追人（它自己是一盏灯）
       const dx = G.stand - m.x; m.mv = 0; m.dr = 0; m.want = 0; m.rise = 0; m.hunt = m.reach = 0; V.fig[k] = 1;
       if (Math.abs(dx) > 1.5) { const nx = m.x + Math.sign(dx) * Math.min(Math.abs(dx), G.lapSpeed * dt); m.ph += Math.abs(nx - m.x) / 60; m.mv = Math.abs(nx - m.x); m.x = nx; m.face = Math.sign(dx); } else m.face = -1;
@@ -4187,7 +4505,7 @@ function drawScarecrow(b, P, lit) {   // 稻草人的那一身行头：旧大衣
 // 照亮了、又不在原处：掉在地上的一件衣服
 const HEAP_COLS = { gown: ['blanketHi', 'blanket'], towel: ['towel2', 'towel'], laundry: ['towel2', 'sheet'], chair: ['throw', 'throwHi'], sack: ['sack', 'sackHi'], boiler: ['cloth', 'cloth2'], stand: ['coat', 'coatLo'], dog: ['knit', 'knitHi'], rain: ['rainHi', 'rain'], scare: ['burlap', 'burlapLo'], nightie: ['lnSh1', 'lnSh2'], jacket: ['jkC', 'jkLo'], apron: ['apC1', 'apC2'] };
 QU_KEYS.forEach((k, i) => { HEAP_COLS[k] = ['qc' + i, 'qcl' + i]; });
-HEAP_COLS.zt1 = ['zr1', 'zr2']; HEAP_COLS.zt2 = ['zc', 'zcl']; HEAP_COLS.zt3 = ['zr3', 'zr4']; HEAP_COLS.rt1 = ['r1c', 'r1l']; HEAP_COLS.rt2 = ['r2c', 'r2l']; HEAP_COLS.sg1 = ['s1c', 's1l']; HEAP_COLS.sg2 = ['s2c', 's2l']; HEAP_COLS.gr1 = ['g1c', 'g1l']; HEAP_COLS.gr2 = ['g2c', 'g2l'];   // 公寓楼的三位住户塌下去
+HEAP_COLS.zt1 = ['zr1', 'zr2']; HEAP_COLS.zt2 = ['zc', 'zcl']; HEAP_COLS.zt3 = ['zr3', 'zr4']; HEAP_COLS.rt1 = ['r1c', 'r1l']; HEAP_COLS.rt2 = ['r2c', 'r2l']; HEAP_COLS.sg1 = ['s1c', 's1l']; HEAP_COLS.sg2 = ['s2c', 's2l']; HEAP_COLS.gr1 = ['g1c', 'g1l']; HEAP_COLS.gr2 = ['g2c', 'g2l']; HEAP_COLS.nr1 = ['n1c', 'n1l']; HEAP_COLS.nr2 = ['n2c', 'n2l'];   // 公寓楼的三位住户塌下去
 function drawGarbHeap(b, P, lit, k, x, fy) {
   const lc = lcOf(P, lit), [c1, c2] = HEAP_COLS[k]; b.seedN = 282000 + GARB_KEYS.indexOf(k) * 100;
   const hsc = k === 'dog' ? 0.7 : GARB[k].queue ? 0.62 : 1;   // 狗的毛衣：小小的一摊；排队的大衣一件隔 60，一摊也小一点
@@ -4249,6 +4567,7 @@ function drawOverallsHung(b, P, lit) {   // 锅炉边上钉子上挂着的一套
 }
 const GARB_HOME = { gown: drawGown, towel: drawTowels, laundry: drawLaundry, chair: drawThrowOnChair, sack: drawSack, boiler: drawOverallsHung, stand: drawStandCoat, dog: drawDogHome, rain: drawRainHung, scare: drawScarecrow, nightie: (b, P, lit) => drawHungRobe(b, P, lit, 'nightie'), jacket: (b, P, lit) => drawHungJacket(b, P, lit, 'jacket'), apron: (b, P, lit) => drawHungRobe(b, P, lit, 'apron') };
 for (const k of [...QU_KEYS, ...ZT_KEYS]) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);
+for (const k of ['nr1', 'nr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 夜市的围裙：没醒的时候就是地上的一摊
 for (const k of ['gr1', 'gr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 体育馆的运动服：跑圈的，没醒的时候就是地上的一摊
 for (const k of ['rt1', 'rt2', 'sg1', 'sg2']) GARB_HOME[k] = (b, P, lit) => drawHungShirt(b, P, lit, k);   // 屋顶的衬衫：没醒的时候晾在绳子上   // 公寓楼的住户也一样   // 排队的大衣塌下去：就在它站的地方一摊
 const palOf = (G, P) => G.palD || (G.palD = { ...P, ...Object.fromEntries(Object.entries(G.pal).map(([a, c]) => [a, P[c]])) });   // 换一套颜色画（稻草人用长大衣的画法）
@@ -4259,7 +4578,7 @@ function drawGarb(b, P, lit, k) {
   if (k === 'boiler') drawBoiler(b, P, lit);
   if (k === 'stand') drawBareStand(b, P, lit);
   if (k === 'scare') drawScarePole(b, P, lit);
-  if (G.holds && G.holds()) { drawRunnerHeld(b, P, lit, k); return; }   // 接了小光、抱着光站着的那件
+  if (G.holds && G.holds()) { (G.kind === 'apron' ? drawApronHeld : drawRunnerHeld)(b, P, lit, k); return; }   // 接了小光、抱着光站着的那件
   const ga = b.globalAlpha, rest = lit && !G.queue ? 1 : 1 - m.rise;   // 排队的大衣：亮的那一层也只在塌下去以后才画那一摊（只开一盏灯时，还站着的两件脚下不该有一摊）
   if (rest > 0.01) { b.globalAlpha = ga * rest; if (atHome) GARB_HOME[k](b, P, lit); else drawGarbHeap(b, P, lit, k, m.x, fy); b.globalAlpha = ga; }
   if (lit || m.rise < 0.01) return;
@@ -4272,6 +4591,7 @@ function drawGarb(b, P, lit, k) {
   if (G.kind === 'robe') inkRobe(b, P, m.x, fy, f, t, m, G, seed);
   else if (G.kind === 'coat') inkCoat(b, G.pal ? palOf(G, P) : P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'runner') inkRunner(b, palOf(G, P), m.x, fy, f, t, m, seed);
+  else if (G.kind === 'apron') inkApron(b, palOf(G, P), m.x, fy, f, t, m, seed, G);
   else if (G.kind === 'sweater') inkSweater(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'laundry') inkLaundry(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'sack') inkSack(b, P, m.x, fy, f, t, m, seed);
@@ -4283,7 +4603,7 @@ function drawGarb(b, P, lit, k) {
 function garbEyes(k) {
   const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, f = m.face;
   if (G.fast && m.den > 0.5) return [KENNEL.x - 3, KENNEL.base - 27];
-  const off = { robe: [14, -8 - G.h + 34], coat: [-1, -8 - 158], laundry: [6, -56], sack: [4, -84], throw: [12, -150], overalls: [0, -170], sweater: [52, -95], runner: [2, -8 - 164] }[G.kind];
+  const off = { robe: [14, -8 - G.h + 34], coat: [-1, -8 - 158], laundry: [6, -56], sack: [4, -84], throw: [12, -150], overalls: [0, -170], sweater: [52, -95], runner: [2, -8 - 164], apron: [2, -8 - 164] }[G.kind];
   return [m.x + f * off[0], fy + off[1]];
 }
 
@@ -4903,8 +5223,8 @@ for (const [k, fn] of Object.entries({
 })) snd[k] = (...a) => { if (AC && !muted) fn(AC.currentTime, ...a); };
 
 // ---------- 会变的东西 ----------
-let outDone = 0, S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8 }, bag = [], held = null, won = 0, wonT = 0, taps = 0, hints = 0, tStart = -1;   // S：两关的局面并在一起（每关的规则只看自己那几项）
-const ALL_ITEMS = [...ITEMS, ...ITEMS2, ...ITEMS3, ...ITEMS4, ...ITEMS5, ...ITEMS6, ...ITEMS7, ...ITEMS8];
+let outDone = 0, S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8, ...START9 }, bag = [], held = null, won = 0, wonT = 0, taps = 0, hints = 0, tStart = -1;   // S：两关的局面并在一起（每关的规则只看自己那几项）
+const ALL_ITEMS = [...ITEMS, ...ITEMS2, ...ITEMS3, ...ITEMS4, ...ITEMS5, ...ITEMS6, ...ITEMS7, ...ITEMS8, ...ITEMS9];
 const curLevel = () => LEVELS.find(L => !S[L.GOAL]) || null;   // 现在在第几关（都走完了就是 null）
 let V = null, kid = null, bubble = null, fly = [], parts = [], ring = null, LT = [];
 let kidVisible = true, showUI = !qs.has('noui');   // ?noui=1：不画按钮、物品栏（截图用）
@@ -4912,8 +5232,8 @@ const mouse = { x: -99, y: -99, on: false };
 const FEAR_KEYS = GARB_KEYS;
 // 画面上的状态：门、抽屉开了几成，灯多亮，吊灯升了几成、晃到哪儿，火多大，影子变成东西几成……
 const newView = () => ({
-  T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0, lamp1: 0, lamp2: 0, porch3: 0, neon: 0, win: 0, za: 0, zb: 0, zc: 0, ra: 0, rb: 0, sa: 0, sk: 0, sp: 0, ga: 0, gk: 0, gb: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10, lamp1: -10, lamp2: -10, porch3: -10, neon: -10, win: -10, za: -10, zb: -10, zc: -10, ra: -10, rb: -10, sa: -10, sp: -10 }, candleI: 0,
-  soundT: -10, soundX: 0, zdoorPulse: -10, zUntil: { a: -10, b: -10, c: -10 }, zdoor: 0, zSeen1: 0, zSeen2: 0, zT1: -10, zT2: -10, tossT: -10, clapT: -10, stompT: -10, streetDone: 0, aptDone: 0, rsw: 0, rbr: 0, rSeen1: 0, rT1: -10, swT: -10, roofDone: 0, ssw: 0, sswT: -10, sdoor: 0, sk: 0, sSeen1: 0, sT1: -10, giveT: -10, giveX: 0, giveY: 0, schoolDone: 0, ga: 0, gk1: 0, gb: 0, gsw: 0, gswT: -10, gdoor: 0, gSeen: 0, gT1: -10, gX0: 25640, gWx: 25900, give1T: -10, give1X: 0, give1Y: 0, give2T: -10, give2X: 0, give2Y: 0,   // 屋顶：总闸扳手扳下去几成、木板倒下去几成、第一件衬衫塌下去了没有；公寓楼：最后一次声音的时候和地方、三盏灯亮到什么时候、防火门开了几成、拖鞋和垃圾袋露出来没有、丢拖鞋/拍手/跺脚的那一下
+  T: 0, li: { bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0, lamp1: 0, lamp2: 0, porch3: 0, neon: 0, win: 0, za: 0, zb: 0, zc: 0, ra: 0, rb: 0, sa: 0, sk: 0, sp: 0, ga: 0, gk: 0, gb: 0, nl: 0, ns: 0, nb: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10, lamp1: -10, lamp2: -10, porch3: -10, neon: -10, win: -10, za: -10, zb: -10, zc: -10, ra: -10, rb: -10, sa: -10, sp: -10 }, candleI: 0,
+  soundT: -10, soundX: 0, zdoorPulse: -10, zUntil: { a: -10, b: -10, c: -10 }, zdoor: 0, zSeen1: 0, zSeen2: 0, zT1: -10, zT2: -10, tossT: -10, clapT: -10, stompT: -10, streetDone: 0, aptDone: 0, rsw: 0, rbr: 0, rSeen1: 0, rT1: -10, swT: -10, roofDone: 0, ssw: 0, sswT: -10, sdoor: 0, sk: 0, sSeen1: 0, sT1: -10, giveT: -10, giveX: 0, giveY: 0, schoolDone: 0, ga: 0, gk1: 0, gb: 0, gsw: 0, gswT: -10, gdoor: 0, gSeen: 0, gT1: -10, gX0: 25640, gWx: 25900, give1T: -10, give1X: 0, give1Y: 0, give2T: -10, give2X: 0, give2Y: 0, gymDone: 0, npl: 0, nlk: 0, nstv: 0, nb: 0, ngt: 0, nSeen: 0, nT1: -10, nX0: 28980, nWx: 29100, nGiveT: -10, nGiveX: 0, nGiveY: 0,   // 屋顶：总闸扳手扳下去几成、木板倒下去几成、第一件衬衫塌下去了没有；公寓楼：最后一次声音的时候和地方、三盏灯亮到什么时候、防火门开了几成、拖鞋和垃圾袋露出来没有、丢拖鞋/拍手/跺脚的那一下
   lpull: 0, lpullWho: 0, knockT: -10, knockUntil: -10, lgate: 0,
   pot: 0, box: 0, sw: 0, dialF: 0, tgate: 0, winUntil: -10, tkSeen: 0, tkT: -10, laneDone: 0,   // 商店街：花盆翻了几成、配电箱门开了几成、闸刀合了几成、定时器的指针（还剩几成）、检票机的杆、橱窗灯亮到什么时候、车票飘出来没有、走出巷口没有   // 巷子：拉线、敲门、栅栏门
   sensorUntil: -10, sensorBy: 'kid', cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1, dogCaught: 0,
@@ -4931,7 +5251,7 @@ const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, 
 let camFX = 0, camFY = 0, camX = 0, camY = 0;
 function restart(keep) {
   if (!keep) clearSave();
-  S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8 }; bag = []; held = null; won = 0; outDone = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
+  S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8, ...START9 }; bag = []; held = null; won = 0; outDone = 0; taps = 0; hints = 0; tStart = -1; bubble = null; fly = []; parts = []; ring = null;
   V = newView(); kid = newKid(); LT = []; stickLock = null;
   [camFX, camFY] = camTarget(); camX = camFX; camY = camFY;
 }
@@ -4941,7 +5261,7 @@ const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 // 物品栏、气泡、捡起来飞过去的那一下：画成它在屋子里的样子（2026-11-18 主人说：地上是什么样，物品栏里就是什么样）。
 // 照 sceneItem 在灯下的颜色先画一张大的（世界里的大小，一个单位 ICON_R 个像素），量出画了的那一块，用的时候等比缩到格子里。
 // 画一次就放着
-const ICON_SIZE = { gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, lPole: 110, qKey: 52, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
+const ICON_SIZE = { nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, lPole: 110, qKey: 52, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
 const iconCache = {};
 function iconCanvas(it) {
   const live = it === 'candle', key = it + (live ? '' : ''), e = iconCache[key] || (iconCache[key] = { c: mk(ICON_PAD * 2 * ICON_R, ICON_PAD * 2 * ICON_R), box: null, at: -1 });
@@ -5039,6 +5359,10 @@ function drawIcon(b, name, x, y, s) {
   } else if (name === 'clap') {     // 拍手：两只手，当中几道声音
     b.beginPath(); b.ellipse(-s * 0.22, s * 0.02, s * 0.12, s * 0.26, -0.3, 0, 7); b.fill(); b.beginPath(); b.ellipse(s * 0.22, s * 0.02, s * 0.12, s * 0.26, 0.3, 0, 7); b.fill();
     b.lineWidth = s * 0.06; for (const a of [-0.9, 0, 0.9]) { b.beginPath(); b.moveTo(Math.sin(a) * s * 0.1, -s * 0.2 - Math.cos(a) * s * 0.02); b.lineTo(Math.sin(a) * s * 0.2, -s * 0.2 - Math.cos(a) * s * 0.18); b.stroke(); }
+  } else if (name === 'stove') {    // 炭炉：一只铁盆、三条腿，盆上冒出几道火苗
+    b.beginPath(); b.moveTo(-s * 0.3, -s * 0.02); b.lineTo(s * 0.3, -s * 0.02); b.lineTo(s * 0.18, s * 0.22); b.lineTo(-s * 0.18, s * 0.22); b.closePath(); b.fill();
+    for (const dx of [-0.16, 0, 0.16]) { b.beginPath(); b.moveTo(s * dx * 1.2, s * 0.22); b.lineTo(s * dx * 1.8, s * 0.46); b.stroke(); }
+    b.fillStyle = pale; for (const [dx, h] of [[-0.16, 0.22], [0, 0.34], [0.16, 0.2]]) { b.beginPath(); b.moveTo(s * dx - s * 0.08, -s * 0.04); b.quadraticCurveTo(s * dx - s * 0.02, -s * h * 0.8, s * dx, -s * h - s * 0.06); b.quadraticCurveTo(s * dx + s * 0.04, -s * h * 0.5, s * dx + s * 0.08, -s * 0.04); b.closePath(); b.fill(); } b.fillStyle = ink;
   } else if (name === 'hatch') {    // 地上一块掀开的盖子
     b.fillRect(-s * 0.44, s * 0.14, s * 0.88, s * 0.12); b.fillStyle = pale; b.fillRect(-s * 0.34, s * 0.16, s * 0.42, s * 0.08); b.fillStyle = ink;
     b.beginPath(); b.moveTo(s * 0.08, s * 0.14); b.lineTo(s * 0.2, -s * 0.42); b.lineTo(s * 0.3, -s * 0.4); b.lineTo(s * 0.18, s * 0.14); b.fill();
@@ -5176,7 +5500,7 @@ function camTarget() {
   const y = bodyY(), outside = kid.x > FRONT.x + 40 && y > FL.down.gy - 60 && y < FL.down.gy + 60;   // 到了外面：多看一点天，少看一点地底下
   const off = y <= FL.down.gy ? (outside ? -335 : -295) : lerp(-295, -210, clamp((y - FL.down.gy) / (FL.cel.gy - FL.down.gy), 0, 1));
   let cx = kid.x + kid.face * Math.min(140, VWW * 0.09) - VWW / 2, cy = y + off - VHH / 2;
-  const right = y > FL.down.fr + 30 ? ROOMS.cellar.x1 + 40 : ROOMS.gymC.x1 + 10;   // 屋顶的尽头：地面画到 x1 + 10，镜头不越过去（以前多 40 会露出图外）
+  const right = y > FL.down.fr + 30 ? ROOMS.cellar.x1 + 40 : ROOMS.mktC.x1 + 10;   // 屋顶的尽头：地面画到 x1 + 10，镜头不越过去（以前多 40 会露出图外）
   cx = Math.max(-40, Math.min(cx, right - VWW));
   cy = clamp(cy, -520, Math.max(-520, 1720 - VHH));
   return [cx, cy];
@@ -5184,7 +5508,7 @@ function camTarget() {
 
 // ---------- 走路 ----------
 // 关着的门：走到门前就停。前门、车库的卷帘门（撑住了才出得去）、院门
-const STOPS = [{ x: DOOR_STOP, open: () => S.door }, { x: ROLL_STOP, open: () => S.yRoll }, { x: GATE_STOP, open: () => S.yGate }, { x: LGATE_STOP, open: () => S.lGate }, { x: TGATE_STOP, open: () => S.qGate }, { x: ZDOOR_STOP, open: () => S.zDoor }, { x: RGAP_STOP, open: () => S.rBr }, { x: SDOOR_STOP, open: () => S.sDoor }, { x: GDOOR_STOP, open: () => S.gDoor }];
+const STOPS = [{ x: DOOR_STOP, open: () => S.door }, { x: ROLL_STOP, open: () => S.yRoll }, { x: GATE_STOP, open: () => S.yGate }, { x: LGATE_STOP, open: () => S.lGate }, { x: TGATE_STOP, open: () => S.qGate }, { x: ZDOOR_STOP, open: () => S.zDoor }, { x: RGAP_STOP, open: () => S.rBr }, { x: SDOOR_STOP, open: () => S.sDoor }, { x: GDOOR_STOP, open: () => S.gDoor }, { x: NGATE_STOP, open: () => S.nGate }];
 const pathLen = (x, y, path) => { let L = 0; for (const q of path) { L += Math.hypot(q.x - x, q.y - y); x = q.x; y = q.y; } return L; };
 const busy = () => kid.mode !== 'idle' && kid.mode !== 'walk';
 // 走到 (tx, ty) 最近的那条路上。路上有还没照亮的影子：走到它跟前就不敢再走了
@@ -5470,6 +5794,8 @@ function gateHint(k) {
     case 'zt1': return ['stomp'];   // 公寓楼：大堂里的住户要大堂的灯照（跺脚）
     case 'zt2': return ['clap'];    // 楼道里的住户要楼道的灯照（拍手）
     case 'zt3': return s.zSlip === 'floor' ? ['stomp'] : ['zSlip'];   // 楼梯间口的住户：拖鞋丢过去
+    case 'ng1': return !S.nPlug ? ['plug'] : S.nStv ? null : ['stove'];   // 夜市：面摊的摊主要炉子的火照；炉子是凉的，先插上灯泡串、拿蒲扇
+    case 'ng2': return ['orb'];   // 烤串摊的摊主：把小光递给它
     case 'gg1': return !S.gGive1 ? ['orb'] : !S.gSw ? ['lever'] : null;   // 体育馆：球场上跑圈的运动服要大灯照；配电箱在黑着的角落里，先把小光递给长凳上的外套；大灯在热了，等着
     case 'gg2': return ['orb'];   // 器材室里跑圈的运动服：把小光递给它
     case 'sg1': return ['lever'];   // 学校：走廊里的外套要走廊的灯照（扳电闸）
@@ -5636,6 +5962,16 @@ function spots() {
     if (S.zSlip === 'far' && !(V.T - V.tossT < 0.6)) add('zSlipB', [ZTOSS_X - 30, dn - 40, ZTOSS_X + 30, FL.down.ff - 4], ZTOSS_X - 40, 'down', 1, [ZTOSS_X - 10, dn - 12]);
     add('zDoor', [ZDOOR.x - 52, dn - 190, ZDOOR.x + 52, FL.down.ff], ZDOOR_STOP - 4, 'down', 1, [ZDOOR.x - 10, dn - 94]);   // 撑住了以后还在：孩子折回来了，再点一下就是走出去
   }
+  // 夜市（第 9 关）：走出体育馆的后门才有
+  if (S.gOut) {
+    add('nPlug', [NPLUG.x - 40, NPLUG.y - 70, NPLUG.x + 40, NPLUG.y + 84], NPLUG.x - 52, 'down', 1, [NPLUG.x - 4, NPLUG.y]);
+    if (S.nFan === 'hook') add('nFanH', [NFANP.x - 36, NFANP.y - 52, NFANP.x + 36, NFANP.y + 56], NFANP.x - 70, 'down', 1, [NFANP.x, NFANP.y]);
+    add('nStove', [NSTV.x - 50, dn - 150, NSTV.x + 50, FL.down.ff], NSTV.x - 76, 'down', 1, [NSTV.x - 8, dn - 100]);
+    if (S.nScale === 'floor' && V.nSeen && V.T - V.nT1 > 0.6) add('nScale', [V.nWx - 36, dn - 40, V.nWx + 36, FL.down.ff - 4], V.nWx - 42, 'down', 1, [V.nWx, dn - 14]);
+    { const rx = clamp(V.mon.nr2.x, 30140, 30440); add('nHand', [rx - 80, dn - 200, rx + 80, FL.down.ff], NHAND.x, 'down', 1, [NHAND.x + 40, dn - 106]); }
+    add('nLatch', [NGATE.x - 64, dn - 300, NGATE.x + 50, FL.down.ff], NGATE_STOP - 6, 'down', 1, [NGATE.x - 30, dn - 246]);
+    add('nExit', [NEXIT.x - 50, dn - 220, NEXIT.x + 50, FL.down.ff], NEXIT.x - 80, 'down', 1, [NEXIT.x - 10, dn - 100]);
+  }
   // 体育馆（第 8 关）：走出学校的楼梯口才有
   if (S.sOut) {
     add('gKidH', [GKID.x - 80, dn - 140, GKID.x + 80, FL.down.ff], GKID.x - 130, 'down', 1, [GKID.x - 40, dn - 80]);
@@ -5715,6 +6051,13 @@ function use(sp, h) {
 // （规则里不记孩子站在哪儿：自行车灯暗下去的那一下，他可能已经跑过了稻草人，正站在院门跟前）
 const yardZoneAt = x => x < 5770 ? 'porch' : x < GATEPOS.rain.x ? 'garage' : x < GAR.rollX ? 'rollside' : x < GATEPOS.scare.x ? 'drive' : 'gateway';
 function ACT(s, id, h) {
+  if (id in SPOT_ZONE9) {   // 夜市（第 9 关）：走出体育馆的后门才有。孩子人站在哪一块，那一块就算走得到
+    if (!s.gOut) return { fail: 'far' };
+    const R = reachL(L9, s); if (kid.x > MKT.x0) R.add(mktZoneAt(kid.x));
+    const r = act9(s, id, h, R);
+    if (id === 'nHand' && r.s) { const m = V.mon.nr2; if (!(m.x > NR2_STAND - 40 && (m.pause || 0) > 0.5)) return { fail: 'wait9' }; }   // 第三条新规则：它摆到炉子那头、背对着路扇火的时候才递得出去（规则里不管它在哪儿）；摆到摊位那头它朝着路招呼，递不出去
+    return r;
+  }
   if (id in SPOT_ZONE8) {   // 体育馆（第 8 关）：走出学校的楼梯口才有。孩子人站在哪一块，那一块就算走得到
     if (!s.sOut) return { fail: 'far' };
     const R = reachL(L8, s); if (kid.x > GYM.x0) R.add(gymZoneAt(kid.x));
@@ -5788,6 +6131,9 @@ function perform(sp, h, r) {
     else if (f === 'tooFar5') { o.hx = kid.x + 40; o.hy = FL.down.gy - 110; o.pre = 0.2; o.hold = 0.1; o.onHit = bub(['zSlip'], () => snd.clap()); }   // 楼梯间的灯太远，拍手它听不见：气泡里画拖鞋
     else if (f === 'doorShuts') { o.pre = 0.5; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.zdoorPulse = V.T; }; o.onHit = bub(['zBag'], () => snd.hiss()); }   // 防火门推开一点，闭门器又把它拉上：气泡里画垃圾袋
     else if (f === 'needBulb6') { o.hx = RHOLD.x; o.hy = RHOLD.y + 4; o.pre = 0.2; o.hold = 0.2; o.onHit = bub(['rBulb'], () => snd.tap()); }   // 屋顶：灯座是空的，气泡里画灯泡
+    else if (f === 'cold9') { o.hx = NSTV.x - 8; o.hy = FL.down.gy - 104; o.pre = 0.3; o.hold = 0.25; o.onHit = bub(['nFan'], () => snd.tap()); }   // 夜市：炭炉是凉的，气泡里画蒲扇
+    else if (f === 'wait9') { o.hx = kid.x + 40; o.hy = FL.down.gy - 110; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['stove'], () => snd.no()); }   // 夜市：烤串摊的摊主正朝着路招呼，递不出去，气泡里画炉子（要等它摆到炉子那头扇火）
+    else if (f === 'high9') { o.hx = NGATE.x - 30; o.hy = FL.down.gy - 150; o.pre = 0.4; o.jump = true; o.onHit = bub(['nScale'], () => snd.no()); }   // 夜市：门闩在头顶上够不着，气泡里画杆秤
     else if (f === 'locked8') { o.hx = GDOOR.x - 20; o.hy = FL.down.gy - 96; o.pre = 0.25; o.hold = 0.25; o.onHit = bub(['gWhis'], () => snd.locked()); }   // 体育馆：器材室的门锁着，气泡里画哨子（钥匙挂在哨子上）
     else if (f === 'locked7') { o.hx = SDOOR.x - 20; o.hy = FL.down.gy - 96; o.pre = 0.25; o.hold = 0.25; o.onHit = bub(['sKey'], () => snd.locked()); }   // 学校：教室的门锁着，气泡里画钥匙
     else if (f === 'gap6') { o.hx = kid.x + 40; o.hy = FL.down.gy - 50; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['rPlank'], () => snd.no()); }   // 屋顶：缝太宽，跨不过去，气泡里画木板
@@ -5843,6 +6189,14 @@ function perform(sp, h, r) {
     case 'zSlip': case 'zBag': case 'zSlipB': o.pre = 0.2; o.hold = 0.2; break;
     case 'zToss': o.pre = 0.3; o.hold = 0.25; break;
     case 'zDoor': if (S.zDoor) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.4; o.hold = 0.4; } o.after = exitSeq5; break;
+    // 夜市（第 9 关）
+    case 'nPlug': o.pre = 0.35; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.npl = Math.max(V.npl, ease(clamp(rr.t / 0.5, 0, 1)) * 0.6); }; break;
+    case 'nFanH': o.pre = 0.25; o.hold = 0.25; break;
+    case 'nStove': o.pre = 0.35; o.hold = 0.6; o.wiggle = true; break;   // 举着蒲扇，朝炉子扇
+    case 'nScale': o.pre = 0.2; o.hold = 0.2; break;
+    case 'nHand': o.pre = 0.5; o.hold = 0.7; break;   // 朝炉子边扇火的摊主伸出手，小光飞过去
+    case 'nLatch': o.pre = 0.5; o.wiggle = true; o.hold = 0.5; o.jump = true; snd.screw(); break;   // 举着杆秤，用钩子朝头顶的门闩够
+    case 'nExit': o.pre = 0.4; o.hold = 0.4; o.after = exitSeq9; break;
     // 体育馆（第 8 关）
     case 'gKidH': o.pre = 0.5; o.hold = 0.7; break;   // 朝长凳上那件小孩的外套伸出手，身边的小光飞过去
     case 'gSw': o.pre = 0.25; o.hold = 0.4; break;
@@ -5922,6 +6276,11 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'clap': V.clapT = V.T; hearAt(kid.x, 'b', V.T); snd.clap(); snd.sparkOn(); break;
       case 'toss': V.tossT = V.T; V.tossX0 = kid.x; hearAt(ZTOSS_X, 'c', V.T + 0.35); snd.whoosh(); setTimeout(() => { snd.slap(); snd.sparkOn(); }, 350); break;   // 拖鞋飞过去 0.35 秒，啪的一声，灯才亮
       case 'doorProp': drop('zBag'); snd.thump(); snd.hiss(); break;
+      // 夜市（第 9 关）
+      case 'plug9': V.lt0.nla = V.T; snd.clank(); snd.lightOn(); break;
+      case 'fan9': V.peek = { x: 28900, t0: V.T, dur: 3.4 }; snd.whoosh(); snd.lightOn(); break;   // 蒲扇扇红炭炉：镜头过去看一眼面摊
+      case 'give9': V.nGiveT = V.T; V.nGiveX = kid.x - kid.face * 36; V.nGiveY = kid.y - 168; snd.lightOn(); break;
+      case 'latch9': drop('nScale'); snd.clank(); snd.thump(); break;
       // 体育馆（第 8 关）
       case 'swOn8': V.gswT = V.T; V.peek = { x: GLAMP.x - 140, t0: V.T, dur: 4.8 }; snd.clank(); snd.lightOn(); break;   // 配电箱扳下去：镜头过去看大灯慢慢热起来
       case 'give8a': V.give1T = V.T; V.give1X = kid.x - kid.face * 24; V.give1Y = kid.y - 150; snd.lightOn(); break;
@@ -5960,6 +6319,10 @@ function exitSeq5() {   // 防火门撑住了：走出去
   kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.5;
   kid.after = () => { walkTo(ZDOOR.x + 120, FL.down.gy, null, true); kid.auto = true; };
 }
+function exitSeq9() {   // 后巷的出口：走出去
+  kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.5;
+  kid.after = () => { walkTo(NEXIT.x + 40, FL.down.gy, null, true); kid.auto = true; };
+}
 function exitSeq8() {   // 后门推开：走出去
   kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.5;
   kid.after = () => { walkTo(GEXIT.x + 80, FL.down.gy, null, true); kid.auto = true; };
@@ -5994,7 +6357,9 @@ function hint() {
   else if (m.spot === 'zStomp') say(['stomp', '>'], 2.8);
   else if (m.spot === 'zClap') say(['clap', '>'], 2.8);
   else if (m.spot === 'rSwitch' || m.spot === 'sSwitch') say(['lever', '>'], 2.8);
-  else if (m.spot === 'sKid' || m.spot === 'gKidH' || m.spot === 'gHand') say(['orb', '>'], 2.8);
+  else if (m.spot === 'sKid' || m.spot === 'gKidH' || m.spot === 'gHand' || m.spot === 'nHand') say(['orb', '>'], 2.8);
+  else if (m.spot === 'nPlug') say(['plug', '>'], 2.8);
+  else if (m.spot === 'nFanH') say(['nFan', '>'], 2.8);
   else if (m.spot === 'gSw') say(['lever', '>'], 2.8);
   else if (m.spot === 'sProj') say(['proj', '>'], 2.8);
   else if (m.spot === 'yLure') say(['sweater', '>'], 2.8);   // 把狗的毛衣引到圈着的那盏灯底下
@@ -6100,7 +6465,8 @@ function tick(dt) {
   if (S.zOut && !V.aptDone && kid.x > ZDOOR.x + 90) { V.aptDone = 1; snd.win(); V.progT = T; writeSave(); }   // 走出防火门：第 5 关过了，接着就是第 6 关（不停、不切屏，接着往前走）
   if (S.rOut && !V.roofDone && kid.x > RGAP.x1 + 60) { V.roofDone = 1; snd.win(); V.progT = T; writeSave(); }   // 走过木板、到了隔壁的屋顶：第 6 关过了，接着就是第 7 关（不停、不切屏，接着往前走）
   if (S.sOut && !V.schoolDone && kid.x > SEXIT.x + 90) { V.schoolDone = 1; snd.win(); V.progT = T; writeSave(); }   // 走出楼梯口、进了体育馆的门厅：第 7 关过了，接着就是第 8 关（不停、不切屏，接着往前走）
-  if (S.gOut && !won && kid.x > GEXIT.x + 40) { won = 1; wonT = T; snd.win(); clearSave(); }   // 走出后门：第 8 关过了。后面的关还没做，到这儿为止
+  if (S.gOut && !V.gymDone && kid.x > GEXIT.x + 40) { V.gymDone = 1; snd.win(); V.progT = T; writeSave(); }   // 走出后门、进了夜市的入口：第 8 关过了，接着就是第 9 关（不停、不切屏，接着往前走）
+  if (S.nOut && !won && kid.x > NEXIT.x + 20) { won = 1; wonT = T; snd.win(); clearSave(); }   // 走出夜市的牌楼：第 9 关过了。后面的关还没做，到这儿为止
   // 东西慢慢动到规则说的样子
   V.drawer = approach(V.drawer, S.drawer, dt / 0.28); V.clock = approach(V.clock, S.clock, dt / 0.36); V.door = approach(V.door, S.door, dt);
   V.side = approach(V.side, S.side, dt / 0.28); V.damperT = approach(V.damperT, S.damper, dt / 0.3); V.hatch = approach(V.hatch, S.hatch, dt / 0.55);
@@ -6125,7 +6491,7 @@ function tick(dt) {
   for (const k in on) V.li[k] = on[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
   const onY = { dome: S.yCar === 1, beam: S.yBeam === 1 };   // 院子：车顶的小灯、车灯
   for (const k in onY) V.li[k] = onY[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
-  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt);
+  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt); mktUpdate(dt);
   const HA = honeyAt(), jarK = S.lit === 1 && HA ? V.swarm.pts.filter(p => p.mode === 'honey' && Math.hypot(p.x - HA[0], p.y - HA[1]) < 140).length / 5 : 0;   // 围在蜂蜜边上的有几只亮几成
   V.candleI = approach(V.candleI, jarK, dt * (V.candleI < jarK ? 2.5 : 5));
   V.li.candle = V.candleI * (0.93 + 0.07 * Math.sin(T * 17) * Math.sin(T * 5.3)) * (1 - 0.3 * V.flies.pull * Math.max(0, Math.sin(T * 9.7) * Math.sin(T * 3.1)));   // 不安分的时候一闪一闪
@@ -6158,7 +6524,7 @@ function tick(dt) {
   if (V.peek) {   // 扳闸刀、拧定时器以后：镜头先看一眼亮起来的东西再回来（孩子一动就不看了，听手指的）
     const u = (T - V.peek.t0) / V.peek.dur;
     if (u >= 1 || kid.mode === 'walk' || kid.mode === 'caught') V.peek = null;
-    else { const right = ROOMS.gymC.x1 + 10, px = clamp(V.peek.x - VWW / 2, -40, right - VWW); tx = lerp(tx, px, Math.min(1, u * 6, (1 - u) * 5)); }
+    else { const right = ROOMS.mktC.x1 + 10, px = clamp(V.peek.x - VWW / 2, -40, right - VWW); tx = lerp(tx, px, Math.min(1, u * 6, (1 - u) * 5)); }
   }
   camFX += (tx - camFX) * (1 - Math.exp(-dt * 2.4)); camFY += (ty - camFY) * (1 - Math.exp(-dt * ky));
 }
@@ -6241,6 +6607,7 @@ function drawOverlays(lights) {
   drawRoofGlow();   // 屋顶：马灯、两串灯的灯泡
   drawSchoolGlow();   // 学校：日光灯、幻灯机的镜头、小光、星星
   drawGymGlow();   // 体育馆：大灯、小光、后门的绿牌子
+  drawMktGlow();   // 夜市：灯泡串、炭炉的火、小光
   drawFlyers();
   for (const k of FEAR_KEYS) {   // 衣服里的眼睛：一点冷光，追人的时候发红
     const m = V.mon[k]; if (m.rise < 0.05) continue;
@@ -6274,6 +6641,10 @@ function drawOverlays(lights) {
     [SSW.x, SSW.y, 0.5, !S.sLA], [SKEY_X, FL.down.gy - 14, 1.6, S.sKey === 'floor' && V.sSeen1], [SDOOR.x - 20, FL.down.gy - 96, 2.7, S.sKey === 'inv'],
     [SKID.x - 30, FL.down.gy - 70, 3.8, S.sDoor && !S.sGive], [SPROJ.x + 30, SPROJ.y - 30, 4.9, S.sGive && !S.sLP], [SEXIT.x - 10, FL.down.gy - 94, 0.9, S.sLP],
   ];
+  const nglints = [   // 夜市（第 9 关）
+    [NPLUG.x - 4, NPLUG.y + 40, 0.5, !S.nPlug], [NFANP.x, NFANP.y, 1.6, S.nPlug && S.nFan === 'hook'], [NSTV.x - 8, FL.down.gy - 104, 2.7, S.nFan === 'inv'],
+    [V.nWx, FL.down.gy - 14, 3.8, S.nScale === 'floor' && V.nSeen], [NHAND.x + 40, FL.down.gy - 106, 4.9, S.nStv && !S.nGive], [NGATE.x - 30, FL.down.gy - 246, 0.9, S.nGive && !S.nGate],
+  ];
   const gglints = [   // 体育馆（第 8 关）
     [GKID.x - 30, FL.down.gy - 70, 0.5, !S.gGive1], [GSW.x, GSW.y, 1.6, S.gGive1 && !S.gSw], [V.gWx, FL.down.gy - 14, 2.7, S.gWhis === 'floor' && V.gSeen],
     [GDOOR.x - 20, FL.down.gy - 96, 3.8, S.gWhis === 'inv'], [GHAND.x + 40, FL.down.gy - 106, 4.9, S.gDoor && !S.gGive2], [GEXIT.x - 10, FL.down.gy - 100, 0.9, S.gGive2],
@@ -6284,7 +6655,7 @@ function drawOverlays(lights) {
   ];
   const stuck = clamp((T - V.progT - STUCK_T) / 4, 0, 1);
   if (stuck > 0) {
-    for (const [x, y, ph, want, inLight] of (S.sOut ? gglints : S.rOut ? kglints : S.zOut ? rglints : S.qOut ? zglints : S.lOut ? sglints : S.yOut ? lglints : S.out ? yglints : glints)) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (inLight ? 1 : 1 - coverage(x, y, lights)));   // inLight：东西本来就躺在光里（车票），不按光压暗
+    for (const [x, y, ph, want, inLight] of (S.gOut ? nglints : S.sOut ? gglints : S.rOut ? kglints : S.zOut ? rglints : S.qOut ? zglints : S.lOut ? sglints : S.yOut ? lglints : S.out ? yglints : glints)) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (inLight ? 1 : 1 - coverage(x, y, lights)));   // inLight：东西本来就躺在光里（车票），不按光压暗
     if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
   }
   g.save(); g.globalCompositeOperation = 'lighter';
@@ -6484,7 +6855,7 @@ window.__house = {
 };
 // 直接摆到局面 s：规则里的状态换掉，画面上的东西一步到位（门开了几成、灯亮没亮、衣服塌没塌）
 function snapTo(s, b) {
-  S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8, ...s }; bag = b || ALL_ITEMS.filter(it => S[it] === 'inv');
+  S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8, ...START9, ...s }; bag = b || ALL_ITEMS.filter(it => S[it] === 'inv');
   Object.assign(V.flies, { pull: 0, leaving: null, px: null }); V.swarm.pts.forEach(p => { p.mode = S.lit ? 'honey' : 'home'; }); V.swarm.snap = true;
   Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
   for (const k in V.lt0) V.lt0[k] = -10;
@@ -6510,6 +6881,9 @@ function snapTo(s, b) {
   // 体育馆（第 8 关）：大灯、扳手、门、小灯一步到位（大灯不再慢慢热）；哨子拿了就不再掉出来
   Object.assign(V, { ga: S.gSw, gsw: S.gSw, gk1: S.gGive1, gb: S.gGive2, gdoor: S.gDoor, gSeen: S.gSw ? 1 : 0, gT1: -10, gX0: GARB.gr1.home, gWx: 25760, give1T: -10, give2T: -10, schoolDone: S.sOut ? 1 : 0 });
   V.li.ga = S.gSw ? 1 : 0; V.li.gk = S.gGive1 ? 1 : 0; V.li.gb = S.gGive2 ? 1 : 0;
+  // 夜市（第 9 关）：灯泡串、炭炉、小灯、铁栅门一步到位；杆秤拿了就不再掉出来
+  Object.assign(V, { npl: S.nPlug, nlk: S.nPlug, nstv: S.nStv, nb: S.nGive, ngt: S.nGate, nSeen: S.nStv && S.nScale !== 'floor' ? 1 : 0, nT1: -10, nX0: GARB.nr1.home, nWx: 29100, nGiveT: -10, gymDone: S.gOut ? 1 : 0 });
+  V.li.nl = S.nPlug ? 1 : 0; V.li.ns = S.nStv ? 1 : 0; V.li.nb = S.nGive ? 1 : 0;
   outDone = S.out ? 1 : 0; if (S.out && V.outT < 0) V.outT = V.T;
   { const st = saveT; saveT = Infinity; tick(0.001); saveT = st; }   // 这一下不存档：读档的时候站的地方、点了几下还是开局的（以前会把卧室窗下写进去，再打开一次就回卧室了）
   LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].holds && GARB[k].holds() ? GARB[k].stand : GARB[k].home; m.dir = 1; m.pause = 0; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; }
@@ -6522,10 +6896,10 @@ function placeKid(x, y, face = 1) { kid.x = x; kid.y = y; kid.face = face; kid.m
 const SAVE_KEY = 'house.save.v3', SAVE_OLD = 'house.save.v2', SAVE_ON = !['auto', 'paused', 'noui', 'nosave', 'lv'].some(k => qs.has(k));   // v3（2026-11-20）：多了第 2 关那几项。v2 的旧存档一定还在房子里，补上院子的开局照样读
 let saveLast = null, saveT = -10;
 // 每一项能是哪几个值（规则里的 VALUES）。规则里没有死路（check.mjs 查过），所以每一项对得上就走得出去
-const SAVE_VALS = { ...VALUES, ...VALUES2, ...VALUES3, ...VALUES4, ...VALUES5, ...VALUES6, ...VALUES7, ...VALUES8 }, SAVE_KEYS = [...KEYS, ...L2.KEYS, ...L3.KEYS, ...L4.KEYS, ...L5.KEYS, ...L6.KEYS, ...L7.KEYS, ...L8.KEYS];
+const SAVE_VALS = { ...VALUES, ...VALUES2, ...VALUES3, ...VALUES4, ...VALUES5, ...VALUES6, ...VALUES7, ...VALUES8, ...VALUES9 }, SAVE_KEYS = [...KEYS, ...L2.KEYS, ...L3.KEYS, ...L4.KEYS, ...L5.KEYS, ...L6.KEYS, ...L7.KEYS, ...L8.KEYS, ...L9.KEYS];
 function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches, dogX: Math.round(V.dogX), ballDir: V.ballDir }; }   // dogX、ballDir：困住的狗毛衣塌在哪儿、球滚到哪边（读回来还在原处）
 function writeSave() {
-  if (!SAVE_ON || won || S.gOut || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记。走出街尾（后面还没做）：不记
+  if (!SAVE_ON || won || S.nOut || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记。走出街尾（后面还没做）：不记
   const j = JSON.stringify(saveData()); if (j === saveLast) return;
   saveLast = j; try { localStorage.setItem(SAVE_KEY, j); } catch (e) {}
 }
@@ -6536,11 +6910,11 @@ function readSave() {
   let d = store.get(SAVE_KEY, null);
   try {
     if (!d) { d = store.get(SAVE_OLD, null); if (d && d.S && typeof d.S === 'object') d.S = { ...START2, ...d.S }; }   // 旧存档：院子那几项照开局补上
-    if (d && d.S && typeof d.S === 'object') d.S = { ...START8, ...START7, ...START6, ...START5, ...START4, ...START3, ...d.S };   // 第 3、4、5 关加进来以前的存档：巷子、商店街、公寓楼那几项照开局补上
+    if (d && d.S && typeof d.S === 'object') d.S = { ...START9, ...START8, ...START7, ...START6, ...START5, ...START4, ...START3, ...d.S };   // 第 3、4、5 关加进来以前的存档：巷子、商店街、公寓楼那几项照开局补上
     if (!d || typeof d !== 'object' || !d.S || !d.safe) return null;
     const s = {};
     for (const k of SAVE_KEYS) { const v = d.S[k]; if (!(SAVE_VALS[k] || [0, 1]).includes(v)) return null; s[k] = v; }
-    if (s.gOut || (!s.sOut && L8.KEYS.some(k => s[k] !== START8[k])) || (!s.rOut && L7.KEYS.some(k => s[k] !== START7[k])) || (!s.zOut && L6.KEYS.some(k => s[k] !== START6[k])) || (!s.qOut && L5.KEYS.some(k => s[k] !== START5[k])) || (!s.out && L2.KEYS.some(k => s[k] !== START2[k])) || (!s.yOut && L3.KEYS.some(k => s[k] !== START3[k])) || (!s.lOut && L4.KEYS.some(k => s[k] !== START4[k]))) return null;   // 走完了的不读；没出前门院子里就有东西变了、没出院门巷子里就有东西变了，不对
+    if (s.nOut || (!s.gOut && L9.KEYS.some(k => s[k] !== START9[k])) || (!s.sOut && L8.KEYS.some(k => s[k] !== START8[k])) || (!s.rOut && L7.KEYS.some(k => s[k] !== START7[k])) || (!s.zOut && L6.KEYS.some(k => s[k] !== START6[k])) || (!s.qOut && L5.KEYS.some(k => s[k] !== START5[k])) || (!s.out && L2.KEYS.some(k => s[k] !== START2[k])) || (!s.yOut && L3.KEYS.some(k => s[k] !== START3[k])) || (!s.lOut && L4.KEYS.some(k => s[k] !== START4[k]))) return null;   // 走完了的不读；没出前门院子里就有东西变了、没出院门巷子里就有东西变了，不对
     const inv = ALL_ITEMS.filter(it => s[it] === 'inv');
     if (!Array.isArray(d.bag) || d.bag.length !== inv.length || !inv.every(it => d.bag.includes(it))) return null;
     const { x, y } = d.safe; if (!isFinite(x) || !isFinite(y)) return null;
@@ -6614,6 +6988,18 @@ if (qs.get('lv') === '8') {
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   snapTo({ ...s7, ...START8 }, []); placeKid(SEXIT.x + 100, FL.down.gy, 1); V.safe = { x: SEXIT.x + 100, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; taps = 1;
+}
+// 地址后面加 ?lv=9：直接从第 9 关开头玩（前八关照最短的解法当作走完，孩子站在夜市的入口）。不读也不写存档
+if (qs.get('lv') === '9') {
+  let s1 = { ...START }; for (const m of solve(START).path) s1 = act(s1, m.spot, m.held).s;
+  let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
+  let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
+  let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1'])).s; s4.qWin = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
+  snapTo({ ...s8, ...START9 }, []); placeKid(GEXIT.x + 90, FL.down.gy, 1); V.safe = { x: GEXIT.x + 90, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; V.gymDone = 1; taps = 1;
 }
 </script>
 </body>
