@@ -7941,7 +7941,7 @@ const LIGHTS = [
   ...[0, 1].map(i => ({ id: 'fimp', off: 0, up: 0.3, at: () => { const m = V.flames[i]; if (m.mode === 'sleep' || m.mode === 'in') return null; return { x: m.x, y: m.y - 18 * FLAMES[i].s, R: 120, I: 0.5 * (0.9 + 0.1 * Math.sin(V.T * 11 + i)), clip: roomClip('living') }; } })),   // 火苗崽跑出来的时候身上的小光
   // 灯崽：缩在灯罩里的时候光从灯口往下、往前照（灯罩挡着，上面不亮）；跑出来的时候是围着它的一团光，跟着它走。两种之间 0.3 秒换过去
   ...['hall'].map(k => ({ id: 'imp', off: 0.3, up: 0.85, at: () => { const m = V.imps[k], D = IMPS[k], I = m.I * Math.min(1, 2 * m.sockL); if (I < 0.005) return null; const [rx, ry] = shadeAt(0, LAMP.rim); return { x: D.lx + rx * IMP_S, y: D.hy + ry * IMP_S, R: D.R, I, rot: LAMP.tilt, clip: roomClip(D.room) }; } })),
-  ...['hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: m.follow ? 150 : IMPS[k].R, I, clip: m.follow ? [x - 190, y - 190, x + 190, FL[IMPS[k].fl].fr] : roomClip(IMPS[k].room) }; } })),   // 跟着孩子走的时候：一小团，跟着它走
+  ...['hall'].map(k => ({ id: 'imp', off: 0, up: 0.25, at: () => { const m = V.imps[k], I = m.I * Math.min(1, 2 * (1 - m.sockL)); if (I < 0.005) return null; const [x, y] = impGlobe(m); return { x, y, R: m.follow ? (V.orb.p ? 280 : 150) : IMPS[k].R, I, clip: m.follow ? (V.orb.p ? [x - 320, y - 320, x + 320, FL[IMPS[k].fl].fr] : [x - 190, y - 190, x + 190, FL[IMPS[k].fl].fr]) : roomClip(IMPS[k].room) }; } })),   // 跟着孩子走的时候：一小团，跟着它走
   // 院子（第 2 关）。室外的灯自己写照得到的那一块（clip），不用屋子的框
   // 感应灯：门廊雨棚底下，照着门口到台阶外面一截
   { id: 'sensor', off: 0.42, up: 0.9, at: () => ({ x: SENSOR.x, y: SENSOR.y + 3, R: 420, I: V.li.sensor, clip: [YARD.x0 + 2, 640, 5200, 1060] }) },
@@ -9152,7 +9152,7 @@ function impUpdate(dt) {
     // 故事：座钟里的这只灯崽带孩子出门，一路跟到底（docs/night-story-c.md）。孩子从衣帽架上拿到钥匙以后，它从钟顶上跳下来，
     // 跑到前门口等着；门开了先出去，回头看孩子；以后跟在孩子身后。跟着的时候它只是好看：光压到 0.3，照不倒衣服，也不算孩子“在光里”
     if (!m.follow && S.key !== 'stand') { m.follow = 1; m.scare = 0; m.goHome = 0; }
-    if (m.follow) { impFollow(D, m, dt, gy); continue; }
+    if (m.follow) { impFollow(D, m, dt, kid.kind === 'floor' && Math.abs(kid.y - kid.standY - FL.sfc.gy) < 4 ? FL.sfc.gy : gy); continue; }   // 街面（第 15 关爬上来以后）：孩子在街面上，它也在街面上跟着
     // 谁在吓它：同一层、同一间屋子地上的孩子；醒着在追人的衣服
     let th = null, td = 1e9;
     if (kidHere) { const d = Math.abs(kid.x - m.x); if (d < (m.mode === 'hide' ? 150 : 190)) { th = kid.x; td = d; } }
@@ -9223,25 +9223,30 @@ function impFollow(D, m, dt, gy) {
   let danger = kid.mode === 'caught';
   for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl === D.fl && o.rise > 0.5 && (o.hunt > 0.2 || Math.abs(o.v) > 60) && Math.abs(o.x - kx) < 560) danger = true; }
   if (danger) m.dangerT = T;
-  const tuck = onGround && T - (m.dangerT ?? -10) < 1.2;
+  const O = V.orb, lv = curLevel();
+  if (O.p && (!lv || lv.GOAL !== O.lv || S.xDown)) { O.p = 0; O.rec = 1; }   // 放下的小灯：进了下一关（或者这一关走完了）自动飞回孩子身边
+  if (O.rec && Math.abs(kx - m.x) < 110) O.rec = 0;
+  const tuck = !O.p && onGround && T - (m.dangerT ?? -10) < 1.2;
   m.tuck = approach(m.tuck || 0, tuck ? 1 : 0, dt * (tuck ? 5 : 2.5));
   let tx;
   if (tuck) tx = kx;
   else if (!S.door) tx = DOOR_STOP - 40;                                   // 门还没开：在门口等着
   else if (!outDone) tx = FRONT.x + 100;                                   // 门开了：先出去，在门外回头看孩子
   else tx = kx - kid.face * 66;                                            // 跟在孩子身后一点
-  if (!onGround && !tuck) tx = clamp(tx, 2960, DOOR_STOP - 40);            // 孩子上楼、下地窖去了：在门厅里等
+  if (!onGround && !tuck) tx = m.x > YARD_END - 2500 ? m.x : clamp(tx, 2960, DOOR_STOP - 40);            // 孩子上楼、下地窖去了：在门厅里等（钟楼里面的几层：它留在钟楼脚下等）
+  if (O.p) tx = O.x;                                                       // 放下了：飞过去停在那儿当一盏小灯
   for (const st of STOPS) if (!st.open() && m.x <= st.x + 30) tx = Math.min(tx, st.x - 26);   // 关着的门它也过不去
   tx = clamp(tx, 2960, YARD_END - 10);
-  if (m.tuck > 0.9 || (Math.abs(kx - m.x) > 1200 && onGround && !inView(m.x, m.y, 100))) { m.x = clamp(kx - (m.tuck > 0.9 ? 0 : kid.face * 90), 2960, YARD_END - 10); m.v = 0; }   // 揣在大衣里跟着走；离得太远（孩子被抓回灯底下、读了档）直接到他身边
-  const d = tx - m.x, ad = Math.abs(d), vt = ad < 5 ? 0 : clamp(ad * 2.8, 70, 420), p0 = m.ph;
+  if (m.tuck > 0.9 || (!O.p && Math.abs(kx - m.x) > 1200 && onGround && !inView(m.x, m.y, 100))) { m.x = clamp(kx - (m.tuck > 0.9 ? 0 : kid.face * 90), 2960, YARD_END - 10); m.v = 0; }   // 揣在大衣里跟着走；离得太远（孩子被抓回灯底下、读了档）直接到他身边
+  const d = tx - m.x, ad = Math.abs(d), vt = ad < 5 ? 0 : clamp(ad * 2.8, 70, O.p || O.rec ? 560 : 420), p0 = m.ph;
   m.v = approach(m.v, vt, dt * 1600); m.fast = m.v > 190 ? 1 : 0; m.mode = ad < 5 ? 'sit' : 'run';
   const st = Math.min(ad, m.v * dt), L = m.fast ? 36 : 20;
   if (ad > 0.5) m.face = Math.sign(d); else m.face = Math.sign(kx - m.x) || m.face;   // 站着的时候朝着孩子
   m.x += Math.sign(d) * st; m.y = gy; m.ph = (m.ph + st / L) % 1;
   if (m.fast && m.tuck < 0.5 && Math.floor(p0 * 2) !== Math.floor(m.ph * 2) && inView(m.x, m.y, 60)) snd.patter(0);
   m.look = approach(m.look, Math.sign(kx - m.x) * m.face, dt * 5); m.scare = 0; m.hideK = 0;
-  m.I = 0.3 * (1 - 0.85 * m.tuck) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed));
+  O.mv = (O.p || O.rec) && m.v > 30 ? 1 : 0;   // 它被叫着飞的时候算“有东西在动”（第 2 关的感应灯）
+  m.I = (O.p ? 0.4 : 0.3) * (1 - 0.85 * m.tuck) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed));   // 放下的小灯 0.4：照得到一小圈，可是不到 0.45，照不倒衣服、也不算孩子“在光里”
 }
 // 地上的一小片黄光（像影子，可是是亮的）
 function impPool(b, x, y, rx, a) {
@@ -9733,7 +9738,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   ...xView(), fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10, progT: 0, outT: -1,   // progT：最后一次做成一件事的时候（卡住多久了）
-  imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
+  orb: { s: 0, p: 0, x: 0, lv: '', rec: 0, mv: 0, t: -10 }, imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -10673,8 +10678,37 @@ function withinReach(x, y) {
   const A = nearestOnPaths(kid.x, kid.y), B = nearestOnPaths(x, y);
   return pathLen(kid.x, kid.y, findPath(A.e, A.t, B.e, B.t)) <= REACH;
 }
+// ---------- 跟着的小光：灯崽可以放下当灯（通用玩法，docs/night-orb.md） ----------
+// 点灯崽一下（它亮一圈），再点地面某处：它飞过去停在那儿，是一盏小灯（照一小圈，光 0.4：只是照亮，照不倒衣服，也不是“最近一盏灯”）。
+// 再点它一下：飞回孩子身边。每关只有这一只；进了下一关自动回来。规则里没有它（不进 S、不进存档、不进求解器），只是画面上的光和第 2 关感应灯的“有东西在动”。
+// 肩头的小光（递光用的）是另一回事：它们不是灯崽，点不到，递光的规则一字没动
+function orbOK() { const m = V.imps.hall; return !won && !S.xDown && m.follow && !inSocket(m) && !m.jump && m.x >= 2960 && kid.mode !== 'caught' && kid.mode !== 'gone' && kid.mode !== 'wait' && !V.xs && !!curLevel(); }
+function orbTap(wx, wy) {
+  const O = V.orb, m = V.imps.hall;
+  if (!orbOK()) { O.s = 0; return false; }
+  const onImp = Math.abs(wx - m.x) < 46 && wy > m.y - 110 && wy < m.y + 30;
+  if (O.p) { if (!onImp) return false; O.p = 0; O.rec = 1; O.s = 0; if (inView(m.x, m.y, 100)) snd.squeak(); return true; }   // 放下了：点它是叫回来
+  if (O.s) {
+    if (onImp) { O.s = 0; return true; }   // 再点一下它：不放了
+    const gy = kid.kind === 'floor' && Math.abs(kid.y - kid.standY - FL.sfc.gy) < 4 ? FL.sfc.gy : FL.down.gy;
+    O.s = 0; held = null;
+    if (Math.abs(wy - gy) > 330) return true;   // 点在别的楼层上：不放，只是放下手
+    O.p = 1; O.x = clamp(wx, 2960, YARD_END - 10); O.lv = curLevel().GOAL; O.t = V.T; O.rec = 0; snd.click(); return true;
+  }
+  if (onImp) { O.s = 1; held = null; snd.pick(); return true; }
+  return false;
+}
+function drawOrbCue() {   // 点了灯崽等着放的时候，它外面一圈转着的小点；放下以后，它外面一圈慢慢的光晕
+  const O = V.orb, m = V.imps.hall; if (!(O.s || O.p) || !orbOK()) return;
+  const T = V.T, x = m.x, y = m.y - 26;
+  g.save(); g.globalCompositeOperation = 'lighter';
+  if (O.s) { for (let i = 0; i < 6; i++) { const a = T * 2.4 + i * TAU / 6; g.fillStyle = css(C.hot, 0.85); g.beginPath(); g.arc(x + Math.cos(a) * 34, y + Math.sin(a) * 34 * 0.8, 3, 0, 7); g.fill(); } }
+  else { const ph = (T * 0.5) % 1; g.strokeStyle = css(C.lamp, 0.35 * (1 - ph)); g.lineWidth = 2; g.beginPath(); g.arc(x, y, 30 + ph * 40, 0, 7); g.stroke(); }
+  g.restore();
+}
 function tapWorld(wx, wy) {
   if (won || busy()) return;
+  if (orbTap(wx, wy)) return;
   const sp = spotAt(wx, wy), h = held, hatchTap = S.hatch && wx > HATCH.x0 - 6 && wx < HATCH.x1 + 6 && wy > FL.down.wb && wy < ROOMS.cellar.top + 20;
   if (DRAG && !sp && !hatchTap) { held = null; return; }   // 拖着走的时候，点空地不走（只是把拿在手里的东西放回去）
   if (DRAG && !kid.onBox) {   // 拖着走的时候，只有孩子就在跟前的东西点了才去用（2026-11-18 主人说：不小心点到楼下的东西，人就莫名其妙地冲过去）
@@ -11353,6 +11387,7 @@ function yardUpdate(dt) {
     if (kid.x > z0 && kid.x < z1 && Math.abs(kid.y - gy) < 4 && kid.mode !== 'caught' && (kid.walk > 0.25 || kid.mode === 'reach' || kid.mode === 'recoil')) moved = kidMoved = true;
     for (const k of GARB_KEYS) { const G = GARB[k], m = V.mon[k]; if (G.fl === 'down' && m.x > z0 && m.x < z1 + 40 && (m.mv > 0.2 || (m.dr > 0 && m.rise > 0.12))) moved = true; }
   }
+  if (power(S) && V.orb.mv && V.imps.hall.x > z0 && V.imps.hall.x < z1 + 40) moved = true;   // 放下的小灯飞过感应灯底下：也算有东西在动
   if (moved) { if (T >= V.sensorUntil) { V.lt0.sensor = T; V.sensorBy = kidMoved || kid.mode === 'walk' || kid.mode === 'caught' ? 'kid' : 'dog'; if (inView(SENSOR.x, SENSOR.y, 200)) snd.click(); } V.sensorUntil = T + SENSOR.hold; }
   V.li.sensor = T < V.sensorUntil ? Math.min(1, 0.55 + (T - V.lt0.sensor) / 0.08) : Math.max(0, V.li.sensor - dt * 7);   // 一动就亮（不闪那一下）
   V.cardoor = approach(V.cardoor, S.yCar, dt / 0.45);
@@ -11724,6 +11759,7 @@ function drawOverlays(lights) {
       g.restore();
     }
   }
+  drawOrbCue();
   drawBubble();
 }
 function drawBubble() {   // 孩子头上的气泡：不用字，只画小图
@@ -11827,7 +11863,7 @@ cv.addEventListener('pointerdown', e => {
   for (let i = ui.length - 1; i >= 0; i--) { const u = ui[i]; if (Math.hypot(e.clientX - u.x, e.clientY - u.y) <= u.r) { u.fn(); return; } }
   if (won) return;
   const si = slotAt(e.clientX, e.clientY);
-  if (si >= 0) { const it = bag[si]; held = it && !flying(it) && held !== it ? it : null; if (held) snd.pick(); return; }   // 物品栏：点一下拿在手里，再点一下放回去
+  if (si >= 0) { V.orb.s = 0; const it = bag[si]; held = it && !flying(it) && held !== it ? it : null; if (held) snd.pick(); return; }   // 物品栏：点一下拿在手里，再点一下放回去
   if (!DRAG) return tapWorld(camX + e.clientX / Z, camY + e.clientY / Z);
   if (stick.id !== null) return;   // 第二根手指不管
   Object.assign(stick, { id: e.pointerId, on: true, drag: false, ax: e.clientX, ay: e.clientY, px: e.clientX, py: e.clientY, x0: e.clientX, y0: e.clientY, t0: V.T, grabbing: false });
