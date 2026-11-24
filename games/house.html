@@ -228,15 +228,19 @@ const L1 = mkLevel({ n: 1, name: '家', START, ITEMS, VALUES, GATES, LINKS, ENTR
 // 故事还在转折以前（docs/night-story-c.md），规则和第 1 关是同一条：光照到衣服的头，它就塌下去。
 // 这一关三样新的光：感应灯（底下有东西动就亮，过几秒自己灭）、车灯（一长条）、自行车灯（轮子转着才亮，越转越慢）；
 // 一种新的衣服：狗的毛衣，跑得比孩子快。
-const ITEMS2 = ['yRake'];
+// 2026-11-24 加了一条岔开的线（docs/night-level-2.md“第一条岔线”）：院门夜里挂着锁，备用钥匙藏在狗窝最里面。狗窝里黑，灯崽停在窝口才看得见；
+// 手够不着，要拿耙子往外勾。耙子还要撑卷帘门：撑上了又要勾钥匙，就把它从门底下抽出来（门落下来），勾完再撑回去。
+const ITEMS2 = ['yRake', 'yKey'];
 const START2 = {
   yDog: 0,                    // 前院：狗的毛衣被困在门廊的感应灯底下没有。它在暗处追人，孩子把它引到灯底下：它一动灯就亮，塌在那儿
   yCar: 0, yBeam: 0,          // 车库：车门开没开；车灯开没开（开了就开着）
   yRake: 'wall', yRoll: 0,    // 耙子靠在车库墙上 / 身上 / 撑着卷帘门（roll）；卷帘门撑住没有（弹簧坏了，推上去自己落下来）
   yWheel: 0,                  // 车道：自行车的后轮还在转没有（脚蹬子一转，轮子带着车灯亮；过一会儿自己停，见 wheelStops）
   yGate: 0, yOut: 0,          // 院门开没开；走出院门没有
+  yOrb: 0,                    // 灯崽停在狗窝口的灯座上没有（0 在孩子身边 / A）
+  yKey: 'ken',                // 院门挂锁的备用钥匙：挂在狗窝最里面 / 身上 / 插在挂锁上（used，开了锁留在那儿）
 };
-const VALUES2 = { yRake: ['wall', 'inv', 'roll'] };
+const VALUES2 = { yRake: ['wall', 'inv', 'roll'], yOrb: [0, 'A'], yKey: ['ken', 'inv', 'used'] };
 const GATES2 = {
   dog: s => s.yDog === 1,     // 前院：狗的毛衣（不是“不敢过去”，是过不去：它跑得比孩子快，页面里没有 GATEPOS）
   rain: s => s.yBeam === 1,   // 车库：卷帘门边钩子上的雨衣（车灯照着）
@@ -244,12 +248,14 @@ const GATES2 = {
   scare: s => s.yWheel === 1, // 院门前菜地里的稻草人（自行车灯照着的那一会儿）
 };
 const LINKS2 = [['porch', 'garage', 'dog'], ['garage', 'rollside', 'rain'], ['rollside', 'drive', 'roll'], ['drive', 'gateway', 'scare']];
-const SPOT_ZONE2 = { yLure: 'porch', yCarDoor: 'garage', yDash: 'garage', yRake: 'garage', yRoll: 'rollside', yWheel: 'drive', yGate: 'gateway' };
+// 狗窝在前院（狗的毛衣守着的那一片），和车库算一块：狗的毛衣困住了才走得到
+const SPOT_ZONE2 = { yLure: 'porch', yCarDoor: 'garage', yDash: 'garage', yRake: 'garage', yRoll: 'rollside', yWheel: 'drive', yGate: 'gateway', yOrbA: 'garage', yKenH: 'garage' };
 function act2(s, spot, held, R = reachL(L2, s)) {
   const no = fail => ({ fail });
   // 院门开了以后院子里的东西照样能用（和第 1 关不一样，这儿没有 done）：孩子没走出去又折回来，自行车灯自己会灭，得能再摇
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE2[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'yOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 门廊：这一步不是点出来的。页面里狗的毛衣真的塌在感应灯底下的那一下，才算（像松手时的脏衣篓）；玩家点感应灯只是抬头看看
@@ -259,19 +265,32 @@ function act2(s, spot, held, R = reachL(L2, s)) {
     case 'yDash': if (held) return no('no'); if (!s.yCar) return no('carShut'); if (s.yBeam) return no('look'); n.yBeam = 1; return ok('beamOn');
     case 'yRake': if (held || s.yRake !== 'wall') return no('no'); n.yRake = 'inv'; return ok('take:yRake');
     case 'yRoll':
-      if (s.yRoll) return no(held ? 'no' : 'look');
+      // 撑着的耙子：空着手点它，把耙子抽出来（门哗啦落下来）。要拿它去勾狗窝里的钥匙，勾完再撑回去
+      if (s.yRoll) { if (held) return no('no'); n.yRoll = 0; n.yRake = 'inv'; return ok('rollDrop', 'take:yRake'); }
       if (held === 'yRake') { n.yRake = 'roll'; n.yRoll = 1; return ok('rollProp'); }
       if (held) return no('no');
       return no('rollFalls');   // 空着手推上去：自己又落下来
+    // 狗窝：里面黑，看不见（灯崽停在窝口才看得见：最里面的钉子上挂着一把钥匙）；手伸进去够不着，拿耙子勾出来，耙子还拿在手里
+    case 'yKenH':
+      if (s.yKey !== 'ken') return no(held ? 'no' : 'look');
+      if (s.yOrb !== 'A') return no('dk2');   // 拿着耙子往黑里捅也一样：先得看得见
+      if (held === 'yRake') { n.yKey = 'inv'; return ok('kenRake', 'take:yKey'); }
+      if (held) return no('no');
+      return no('deep2');
     // 车道：脚蹬子摇一下，后轮空转起来，车灯亮；还转着的时候再摇是续上（页面里的事，规则里没变化）
     case 'yWheel': if (held) return no('no'); if (s.yWheel) return no('respin'); n.yWheel = 1; return ok('wheelSpin');
-    case 'yGate': if (held) return no('no'); if (s.yGate) return ok('exit2'); n.yGate = 1; n.yOut = 1; return ok('gateOpen', 'exit2');   // 已经开着：就是走出去
+    // 院门：链子绕着门柱挂了一把锁。拿着钥匙点：开锁、拉开插销，走出去（钥匙留在锁上）。已经开着：就是走出去
+    case 'yGate':
+      if (s.yGate) return held ? no('no') : ok('exit2');
+      if (held === 'yKey') { n.yKey = 'used'; n.yGate = 1; n.yOut = 1; return ok('unlock2', 'gateOpen', 'exit2'); }
+      if (held) return no('no');
+      return no('padlock2');
   }
   return no('no');
 }
 // 自行车的轮子转一会儿自己停下，车灯跟着灭（页面里量：灯暗到照不倒稻草人的时候）。不是点出来的，求解器不搜
 const wheelStops = s => s.yWheel === 1 ? { s: { ...s, yWheel: 0 }, ev: ['wheelStop'] } : null;   // 院门开了以后也一样：孩子没走出去又折回来，轮子照样会停
-const L2 = mkLevel({ n: 2, name: '院子', START: START2, ITEMS: ITEMS2, VALUES: VALUES2, GATES: GATES2, LINKS: LINKS2, ENTRY: 'porch', SPOT_ZONE: SPOT_ZONE2, act: act2, GOAL: 'yOut', TIMED: [wheelStops] });
+const L2 = mkLevel({ n: 2, name: '院子', START: START2, ITEMS: ITEMS2, VALUES: VALUES2, GATES: GATES2, LINKS: LINKS2, ENTRY: 'porch', SPOT_ZONE: SPOT_ZONE2, act: act2, GOAL: 'yOut', TIMED: [wheelStops], ORB: { key: 'yOrb', done: s => s.yKey !== 'ken' } });
 
 // ---------- 第 3 关：下山的巷子 ----------
 // 院门外一条往山下去的窄巷（docs/night-level-3.md）。故事还在转折以前，规则和第 1、2 关是同一条：光照到衣服的头，它就塌下去。
@@ -7404,7 +7423,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.kitchen || vis.cellar) drawHatch(b, P, lit);
   if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawCritters(b, P, lit, 'cellar'); drawFear(b, P, lit, 'boiler'); if (S.honey === 'box' || (S.honey === 'inv' && V.candleDown)) drawHoney(b, P, lit, CSHELF.cx, CSHELF.y, true, 250500); }
   // 院子（第 2 关）
-  if (vis.porch) { drawSensorLamp(b, P, lit); if (!S.xRode) { drawFear(b, P, lit, 'dog'); drawBall(b, P, lit); } }   // 后半：狗从毛衣里出来了，自己跑
+  if (vis.porch) { drawSensorLamp(b, P, lit); drawKenKey(b, P, lit); if (!S.xRode) { drawFear(b, P, lit, 'dog'); drawBall(b, P, lit); } }   // 后半：狗从毛衣里出来了，自己跑
   if (vis.garage) { drawCarDyn(b, P, lit); drawRake(b, P, lit); drawFear(b, P, lit, 'rain'); drawRoll(b, P, lit); }
   if (vis.drive) { drawFear(b, P, lit, 'scare'); drawBike(b, P, lit); drawGate(b, P, lit); }
   drawLaneDyn(b, P, lit, vis);   // 巷子（第 3 关）
@@ -7459,6 +7478,12 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
     ink(b, [[0, -s * 0.1], [0, s * 0.42]], { ...o, w: s * 0.06 });
     for (const yy of [0.26, 0.4]) ink(b, seg(0, s * yy, s * 0.15, s * yy), { ...o, w: s * 0.055 });
     part(b, [[s * 0.1, -s * 0.34], [s * 0.3, -s * 0.28], [s * 0.26, -s * 0.12], [s * 0.08, -s * 0.18]], P.awnA, { w: 0.7, tex: 0, lc });
+  } else if (name === 'yKey') {   // 院门挂锁的小钥匙：圆头套着一只绿的胶皮帽，细线画的短杆、两个齿（深黄铜，白气泡上看得清；和商店街那把拴红牌子的分得开）
+    const kc = lit ? '#8a6420' : '#5a4a2a', o = { taper: 0, a: 1 / b.pen.a, col: kc };
+    part(b, roundPts(-s * 0.17, -s * 0.44, s * 0.34, s * 0.3, s * 0.12), P.cabbage, { w: 0.8, tex: 0, lc });
+    b.fillStyle = lit ? '#efe6cf' : '#26304a'; b.beginPath(); b.arc(0, -s * 0.33, s * 0.05, 0, 7); b.fill();
+    ink(b, [[0, -s * 0.14], [0, s * 0.4]], { ...o, w: s * 0.07 });
+    for (const yy of [0.2, 0.34]) ink(b, seg(0, s * yy, s * 0.14, s * yy), { ...o, w: s * 0.06 });
   } else if (name === 'qTicket') {   // 一张硬纸车票：一头剪了个角，当中一道孔
     b.rotate(-0.22);
     part(b, [[-s * 0.4, -s * 0.2], [s * 0.3, -s * 0.2], [s * 0.4, -s * 0.1], [s * 0.4, s * 0.2], [-s * 0.4, s * 0.2]], P.tkC, { w: 0.9, tex: 0, lc });
@@ -8895,6 +8920,7 @@ function drawGate(b, P, lit) {   // 院门：关着的时候横在路上（从�
     for (const [u, v] of [[0, -70], [0, -22]]) ink(b, seg(x - 7, F.wb + v, x + 31, F.ff + v + 12), { w: 0.8, a: 0.8, taper: 0, col: lc, seed: 464010 + v });
     ink(b, seg(x + 5, F.wb - 96, x + 19, F.ff - 104), { w: 0.7, a: 0.7, taper: 0, col: lc });
     part(b, rectPts(x - 16, F.gy - 90, 12, 7), P.iron, { w: 0.6, tex: 0, lc });   // 插销
+    if (!(S.yGate || S.yKey === 'used')) drawGateLock(b, P, lit, x, F.gy, false);   // 链子绕着门柱和门边，挂着一把锁
     b.restore();
   }
   if (o > 0.01) {
@@ -8903,6 +8929,38 @@ function drawGate(b, P, lit) {   // 院门：关着的时候横在路上（从�
     for (let i = 0; i < 5; i++) { const px = x + 16 + i * w / 5; part(b, [[px - 7, wb + 4], [px - 7, wb - 78], [px, wb - 88], [px + 7, wb - 78], [px + 7, wb + 4]], P.fence, { w: 0.9, tex: 0.3, lc, seed: 464120 + i }); }
     b.restore();
   }
+  if (S.yGate || S.yKey === 'used') drawGateLock(b, P, lit, x, F.gy, true);   // 开了锁：链子从门柱上垂下来，锁开着挂在头上
+}
+// 院门的链子和挂锁（第 2 关的第一条岔线）。open：开了锁，链子垂在门柱上，锁梁弹开，钥匙插在锁上（以前的存档开了门却没有钥匙：不画钥匙）
+function drawGateLock(b, P, lit, x, gy, open) {
+  const lc = lcOf(P, lit), dt = V.T - (V.chainT ?? -10), jig = dt < 1.2 ? Math.sin(dt * 28) * Math.exp(-dt * 5) * 4 : 0; b.seedN = 464300;
+  const link = (cx, cy, rx, ry, ang, i) => { b.save(); b.translate(cx, cy); b.rotate(ang); ink(b, arcPts(0, 0, rx, ry, 0, TAU, 10), { w: 1.6, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 464310 + i, single: 1 }); b.restore(); };
+  let lx, ly;
+  if (!open) {   // 一圈链子绕着门柱和门边（侧面看是一个扁圈），锁挂在靠孩子这边
+    for (let i = 0; i < 9; i++) { const t = i / 9 * TAU, cx = x + 6 + Math.cos(t) * 22, cy = gy - 72 + Math.sin(t) * 5; link(cx, cy, 4, 2.6, t + Math.PI / 2, i); }
+    lx = x - 18 + jig; ly = gy - 60;
+    ink(b, [[x - 15, gy - 72], [lx, ly - 10]], { w: 1.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 464330 });
+  } else {       // 链子从门柱上垂下来一截，锁开着挂在头上
+    for (let i = 0; i < 6; i++) link(x - 12 + Math.sin(i * 0.7) * 1.5, gy - 74 + i * 7, 2.6, 4, 0, i);
+    lx = x - 12; ly = gy - 26;
+  }
+  // 锁梁：关着是扣进锁身的一个倒 U；开着一边弹出来
+  const sh = open ? [[lx - 5, ly - 6], [lx - 5, ly - 16], ...arcPts(lx - 1, ly - 16, 4, 5, Math.PI, TAU, 6).slice(1, -1), [lx + 3, ly - 16], [lx + 3, ly - 12]]
+    : [[lx - 4, ly - 6], [lx - 4, ly - 13], ...arcPts(lx, ly - 13, 4, 5, Math.PI, TAU, 6).slice(1, -1), [lx + 4, ly - 13], [lx + 4, ly - 6]];
+  ink(b, sh, { w: 1.6, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 464340, single: 1 });
+  part(b, roundPts(lx - 8, ly - 7, 16, 14, 3), P.brass, { w: 0.8, tex: 0, lc, seed: 464350 });
+  b.fillStyle = lc; b.beginPath(); b.arc(lx, ly - 1, 1.5, 0, 7); b.fill(); b.fillRect(lx - 0.6, ly - 1, 1.2, 4);   // 锁眼
+  if (open && S.yKey === 'used') { const kc = lit ? '#8a6420' : '#5a4a2a'; ink(b, seg(lx, ly + 2, lx + 1, ly + 12), { w: 1.3, col: kc, taper: 0, a: 1 / b.pen.a, seed: 464360 }); part(b, roundPts(lx - 4, ly + 11, 9, 8, 3), P.cabbage, { w: 0.6, tex: 0, lc, seed: 464370 }); }   // 钥匙留在锁上
+}
+// 狗窝最里面：钉子上挂着的那把钥匙。只画在“亮的一层”里：灯崽停在窝口照着才看得见（V.kenA 慢慢显出来）
+function drawKenKey(b, P, lit) {
+  if (!lit || S.yKey !== 'ken' || (V.kenA || 0) < 0.02) return;
+  const x = KENNEL.x + 12, y = KENNEL.base - 58, lc = lcOf(P, lit); b.seedN = 341200;
+  b.save(); b.globalAlpha *= V.kenA;
+  b.fillStyle = 'rgba(255,236,190,0.2)'; b.beginPath(); b.ellipse(x - 2, y + 18, 26, 32, 0, 0, 7); b.fill();
+  ink(b, seg(x - 3, y - 7, x + 3, y - 5), { w: 1.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 341210 });   // 钉子
+  sceneItem(b, 'yKey', x, y + 15, 38, P, lit, 341220);
+  b.restore();
 }
 // 一只咬烂的球：狗的毛衣塌下去的时候从里面滚出来
 function drawBall(b, P, lit) {
@@ -9788,7 +9846,7 @@ const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 // 物品栏、气泡、捡起来飞过去的那一下：画成它在屋子里的样子（2026-11-18 主人说：地上是什么样，物品栏里就是什么样）。
 // 照 sceneItem 在灯下的颜色先画一张大的（世界里的大小，一个单位 ICON_R 个像素），量出画了的那一块，用的时候等比缩到格子里。
 // 画一次就放着
-const ICON_SIZE = { jKey: 52, jWt: 70, hMatch: 40, hCrank: 56, hCandle: 56, hLamp: 56, kWrench: 60, kPail: 56, kPailF: 56, cBulb: 40, cBal: 70, bLamp: 54, bTag: 44, bMirror: 84, fBeacon: 44, fHelmet: 56, vFuse: 44, vPole: 130, vKeys: 40, dPlank: 96, dWheel: 56, wPail: 64, wTorch: 66, wChain: 60, mHandle: 56, mBq: 64, uHat: 56, tMir: 56, tBill: 50, nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, lPole: 110, qKey: 52, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
+const ICON_SIZE = { jKey: 52, jWt: 70, hMatch: 40, hCrank: 56, hCandle: 56, hLamp: 56, kWrench: 60, kPail: 56, kPailF: 56, cBulb: 40, cBal: 70, bLamp: 54, bTag: 44, bMirror: 84, fBeacon: 44, fHelmet: 56, vFuse: 44, vPole: 130, vKeys: 40, dPlank: 96, dWheel: 56, wPail: 64, wTorch: 66, wChain: 60, mHandle: 56, mBq: 64, uHat: 56, tMir: 56, tBill: 50, nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, yKey: 52, lPole: 110, qKey: 52, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
 const iconCache = {};
 function iconCanvas(it) {
   const live = it === 'candle', key = it + (live ? '' : ''), e = iconCache[key] || (iconCache[key] = { c: mk(ICON_PAD * 2 * ICON_R, ICON_PAD * 2 * ICON_R), box: null, at: -1 });
@@ -10508,6 +10566,9 @@ function spots() {
     if (/^y(CarDoor|Dash)$/.test(out.at(-1).id)) out.at(-1).near = [clamp(kid.x, CAR.door0 - 26, CAR.x1), dn];
     if (S.yRake === 'wall') add('yRake', [RAKE.x - 30, FL.down.wb - 196, RAKE.x + 34, FL.down.wb + 14], RAKE.x - 52, 'down', 1, [RAKE.x - 4, dn - 110]);
     if (!S.yRoll) add('yRoll', [GAR.rollX - 26, GAR.rollTop - 14, GAR.rollX + 24, FL.down.ff], ROLL_STOP - 10, 'down', 1, [GAR.rollX - 14, dn - 100]);
+    else add('yRoll', [GAR.rollX - 12, dn - 150, GAR.rollX + 8, FL.down.ff], ROLL_STOP - 10, 'down', 1, [GAR.rollX - 4, dn - 70]);   // 撑着的耙子：只点耙杆那一窄条才算（点着走的时候点门那儿是想走过去，不是抽耙子）
+    // 狗窝（狗的毛衣困住以后）：黑着点是往里看看（气泡里画灯崽）；灯崽照着，手够不着（画耙子）；拿着耙子勾出钥匙
+    if (S.yDog && S.yKey === 'ken' && !S.yOut) add('yKenH', [KENNEL.x - 40, KENNEL.base - 96, KENNEL.x + 40, KENNEL.base + 4], KENNEL.x - 74, 'down', 1, [KENNEL.x - 8, KENNEL.base - 34]);
     add('yWheel', [BIKE.x - 100, BIKE.base - 150, BIKE.x + 104, BIKE.base + 6], BIKE.crank[0] - 46, 'down', 1, [BIKE.crank[0] + 10, BIKE.crank[1] - 12]);
     add('yGate', [GATE.x - 24, dn - 124, GATE.x + 24, FL.down.ff], GATE_STOP - 4, 'down', 1, [GATE.x - 10, dn - 86]);   // 开了以后还在：孩子折回来了，再点一下就是走出去
   }
@@ -10730,6 +10791,7 @@ function withinReach(x, y) {
 // 灯崽谜题（docs/night-orb-puzzles.md）：有几关里，一件事要灯崽停在“灯座”上才做得了。灯座是规则里的几个固定位置（名字 = 项名 + 灯座名，见各关的 START / act），
 // 放灯崽的时候吸附到离点的地方最近的灯座（不到 260 才算），规则里记下来；没有灯座的地方放下，还是好看的小灯。ORBP：每关灯座的 x、暗处的东西（dev）、点不成的时候气泡里画什么
 const ORBP = {
+  2: { seats: { yOrbA: KENNEL.x + 50 }, fails: { dk2: ['imp'] } },   // 院子：狗窝口的右边（钥匙画在 drawKenKey，不是 dev：狗窝黑着也点得到，气泡里画灯崽）
   3: { seats: { lOrbA: 10710 }, dev: { id: 'lSwH', need: 'A', kind: 'lever', x: 10640, y: 884, stand: 10584 }, fails: { dk3: ['bolt'] } },
   6: { seats: { rOrbA: 19480 }, dev: { id: 'rPgH', need: 'A', kind: 'plug', x: 19410, y: 934, stand: 19356 }, fails: { dk6: ['plug'] } },
   12: { seats: { mOrbA: 40840 }, dev: { id: 'mFzH', need: 'A', kind: 'box', x: 40760, y: 868, stand: 40704 }, fails: { dk12: ['bolt'] } },
@@ -10981,6 +11043,8 @@ function perform(sp, h, r) {
     else if (f === 'rollFalls') { o.pre = 0.5; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.rollPulse = V.T; }; o.onHit = bub(['yRake'], () => snd.rattle()); }   // 卷帘门推上去，一松手自己又落下来
     else if (f === 'respin') { o.pre = 0.2; o.hold = 0.5; o.onHit = () => { const r2 = ACT(S, sp.id, h); if (r2.s) commit(r2); else { V.bikeQ = 1; snd.ratchet(); } }; }   // 轮子还转着：再摇一下，续上。伸手那一下轮子可能刚好停了（规则里 yWheel 已经回 0）：那就是重新摇一下
     else if (f === 'carShut') o.onHit = () => snd.locked();
+    else if (f === 'deep2') { o.hx = KENNEL.x + 6; o.hy = KENNEL.base - 30; o.pre = 0.45; o.hold = 0.4; o.wiggle = true; o.onHit = bub(['yRake'], () => snd.tap()); }   // 狗窝：手伸进去够不着最里面的钥匙，气泡里画耙子
+    else if (f === 'padlock2') { o.pre = 0.3; o.hold = 0.3; o.onHit = bub(['yKey'], () => { V.chainT = V.T; snd.locked(); }); }   // 院门：链子上挂着锁，拉不开，气泡里画钥匙
     else if (f === 'tooHigh3') { o.hx = LAMP2.cord[0]; o.hy = LAMP2.cord[1] + 90; o.pre = 0.4; o.jump = true; o.onHit = bub(['lPole'], () => snd.no()); }   // 拉线太高，跳起来也够不着：气泡里画晾衣叉
     else if (f === 'boxLocked') o.onHit = bub(['qKey'], () => snd.locked());   // 商店街：配电箱挂着锁，气泡里画钥匙
     else if (f === 'tooFar5') { o.hx = kid.x + 40; o.hy = FL.down.gy - 110; o.pre = 0.2; o.hold = 0.1; o.onHit = bub(['zSlip'], () => snd.clap()); }   // 楼梯间的灯太远，拍手它听不见：气泡里画拖鞋
@@ -11050,9 +11114,12 @@ function perform(sp, h, r) {
     // 院子（第 2 关）
     case 'yCarDoor': o.pre = 0.25; o.hold = 0.3; break;
     case 'yDash': o.pre = 0.35; o.hold = 0.2; break;
-    case 'yRoll': o.pre = 0.75; o.hold = 0.5; o.drive = rr => { if (!rr.hit) V.rollPulse = V.T; }; break;   // 先把门推上去，再把耙子竖着撑在门底下
+    case 'yRoll':
+      if (ev === 'rollDrop') { o.pre = 0.3; o.hold = 0.25; break; }   // 抓住耙杆往外一抽，门哗啦落下来
+      o.pre = 0.75; o.hold = 0.5; o.drive = rr => { if (!rr.hit) V.rollPulse = V.T; }; break;   // 先把门推上去，再把耙子竖着撑在门底下
+    case 'yKenH': o.hx = KENNEL.x + 4; o.hy = KENNEL.base - 30; o.pre = 0.5; o.hold = 0.6; o.wiggle = true; break;   // 耙子伸进狗窝里勾一勾，钥匙勾到门口，一把抓住
     case 'yWheel': o.pre = 0.2; o.hold = 0.55; break;
-    case 'yGate': if (S.yGate) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.3; o.hold = 0.35; } o.after = exitSeq2; break;   // 已经开着：不用再拉插销，直接走出去
+    case 'yGate': if (S.yGate) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.3; o.hold = 0.45; o.wiggle = true; } o.after = exitSeq2; break;   // 开锁、拉开插销（已经开着：直接走出去）
     // 巷子（第 3 关）
     case 'lLamp': o.pre = 0.2; o.hold = 0.25; o.drive = rr => { V.lpull = rr.hit ? rr.k : 0; V.lpullWho = 1; }; break;
     case 'lPole': o.pre = 0.2; o.hold = 0.2; break;
@@ -11220,6 +11287,9 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'carOpen': V.lt0.dome = V.T; snd.carDoor(); break;
       case 'beamOn': V.lt0.beam = V.T; snd.click(); snd.lightOn(); break;
       case 'rollProp': drop('yRake'); snd.rattle(); snd.clank(); break;
+      case 'rollDrop': snd.rattle(); setTimeout(() => snd.thump(), 260); break;   // 耙子抽出来：门哗啦落下来，咚
+      case 'kenRake': V.kenT = V.T; snd.rattle(); break;   // 耙齿在狗窝的木板上刮了一下，钥匙勾出来了
+      case 'unlock2': drop('yKey'); V.chainT = V.T; snd.unlock(); break;   // 开了锁：链子松开垂下来，锁挂在门柱上（钥匙留在锁上）
       case 'wheelSpin': V.bikeQ = 1; snd.ratchet(); break;
       case 'gateOpen': snd.latch(); snd.creak(); break;
       // 巷子（第 3 关）
@@ -11425,7 +11495,8 @@ function exitSeq4() {   // 检票机的杆抬起来了：走出去
 }
 // 这一关照最短的解法，下一步该点哪儿（一关一关地搜：第 1 关用原来那一套，一个字没动）
 function nextStep() {
-  if (S.out && !S.yOut && !won && kid.x > YARD.x0 && yardZoneAt(kid.x) === 'gateway' && ACT(S, 'yGate', null).s) return { spot: 'yGate', held: null };   // 已经过了稻草人、站在院门跟前（轮子停了也一样，ACT 把孩子站的那一块算进去）：下一步就是院门，不往回指自行车
+  { const h = S.yGate ? null : 'yKey';   // 院门挂着锁：手里得有钥匙（开了以后再点就是走出去）
+    if (S.out && !S.yOut && !won && kid.x > YARD.x0 && yardZoneAt(kid.x) === 'gateway' && ACT(S, 'yGate', h).s) return { spot: 'yGate', held: h }; }   // 已经过了稻草人、站在院门跟前（轮子停了也一样，ACT 把孩子站的那一块算进去）：下一步就是院门，不往回指自行车
   const L = curLevel(); if (!L) return null;   // 都走完了
   const r = L.n === 1 ? solve(S) : solveL(L, S, undefined, false, L.n === 3 && kid.x > GATE.x ? [laneZoneAt(kid.x)] : L.n === 4 && kid.x > LGATE.x ? [streetZoneAt(kid.x)] : L.n === 5 && kid.x > TGATE.x ? [aptZoneAt(kid.x)] : L.n === 6 && kid.x > ZDOOR.x ? [roofZoneAt(kid.x)] : L.n === 15 && kid.x > VS.x0 ? [vsZoneAt(kid.x)] : L.n === 16 && kid.x > FS.x0 ? [fsZoneAt(kid.x)] : L.n === 17 && kid.x > BP.x0 ? [bpZoneAt(kid.x)] : L.n === 18 && kid.x > CP.x0 ? [cpZoneAt(kid.x)] : L.n === 19 && kid.x > KT.x0 ? [klZoneAt(kid.x)] : L.n === 20 && kid.x > TW.x0 ? [twZoneAt()] : undefined);   // 第 3 关：孩子已经过了会自己关上的门（门廊灯灭了），就从他站的那一块往后找
   return r.path && r.path.length ? r.path[0] : null;
@@ -11501,6 +11572,7 @@ function yardUpdate(dt) {
   const lift = T - V.rollPulse < 0.5;   // 空着手推卷帘门：推上去一截，松手又落下来
   V.rollK = approach(V.rollK, S.yRoll ? 1 : lift ? 0.42 : 0, dt / (S.yRoll ? 0.8 : lift ? 0.45 : 0.22));
   V.gate = approach(V.gate, S.yGate, dt / 0.7);
+  V.kenA = approach(V.kenA || 0, S.yOrb === 'A' && S.yKey === 'ken' && V.orb.p && Math.abs(V.imps.hall.x - ORBP[2].seats.yOrbA) < 40 ? 1 : 0, dt / 0.6);   // 狗窝里的钥匙：灯崽飞到窝口停下了才慢慢显出来
   if (V.bikeQ > 0) {
     V.bikeQ = Math.max(0, V.bikeQ - dt / BIKE_SPIN); V.wheelA += dt * (3 + 27 * V.bikeQ);
     if (T - V.whirT > lerp(0.3, 0.07, V.bikeQ) && inView(BIKE.x, BIKE.base - 50, 300)) { V.whirT = T; snd.whirr(V.bikeQ); }
@@ -11769,6 +11841,8 @@ function drawOverlays(lights) {
   const yglints = [   // 院子（第 2 关）
     [SENSOR.x, SENSOR.y, 0.6, !S.yDog], [CAR.door0 + 20, CAR.base - 108, 1.7, !S.yCar], [CAR.dash[0], CAR.dash[1] - 6, 2.9, S.yCar && !S.yBeam], [RAKE.x - 2, FL.down.gy - 110, 4.1, S.yRake === 'wall'],
     [GAR.rollX - 12, FL.down.gy - 100, 0.2, !S.yRoll], [BIKE.crank[0], BIKE.crank[1], 3.3, !S.yWheel], [GATE.x - 10, FL.down.gy - 86, 5.4, !S.yGate],
+    // 第一条岔线：灯崽停在狗窝口了，狗窝闪；钥匙还在里面、耙子撑着门，撑门的耙子闪（灯崽还没放下的时候，闪的是灯崽自己，见下面）
+    [KENNEL.x + 4, KENNEL.base - 40, 2.2, S.yDog && S.yKey === 'ken' && S.yOrb === 'A'], [GAR.rollX - 4, FL.down.gy - 60, 1.1, S.yRoll && S.yKey === 'ken' && S.yOrb === 'A'],
   ];
   const lglints = [   // 巷子（第 3 关）
     [LAMP1.cord[0], LAMP1.cord[1] + 4, 0.5, !S.lLamp], [LPOLE.x - 8, FL.down.gy - 150, 1.8, S.lPole === 'wall'], [LDOOR.x - 32, FL.down.gy - 110, 3.0, S.lLamp && !S.lLamp2],
@@ -11854,8 +11928,10 @@ function drawOverlays(lights) {
     for (const [x, y, ph, want, inLight] of (S.hOut ? jglints : S.kOut ? twglints : S.cOut ? klglints : S.bOut ? cglints : S.fOut ? bglints : S.vOut ? fglints : S.dOut ? vglints : S.wOut ? dglints : S.mOut ? wglints : S.uOut ? mglints : S.tOut ? uglints : S.nOut ? tglints : S.gOut ? nglints : S.sOut ? gglints : S.rOut ? kglints : S.zOut ? rglints : S.qOut ? zglints : S.lOut ? sglints : S.yOut ? lglints : S.out ? yglints : glints)) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (inLight ? 1 : 1 - coverage(x, y, lights)));   // inLight：东西本来就躺在光里（车票），不按光压暗
     if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
     { const lv = curLevel(), Q = lv && lv.ORB && ORBP[lv.n];   // 灯崽谜题：卡住了，灯崽的位置闪（灯崽没放下、这一关的谜题还没做完）；放下以后，卡住的那一步闪
-      if (Q && !lv.ORB.done(S) && !V.orb.p) { const m = V.imps.hall; star(m.x, m.y - 30, 9, C.lamp, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9); } }
+      if (Q && !lv.ORB.done(S) && !V.orb.p && (lv.n !== 2 || S.yDog)) { const m = V.imps.hall; star(m.x, m.y - 30, 9, C.lamp, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9); } }   // 院子：狗的毛衣还没困住的时候卡住了，该引狗，不闪灯崽
   }
+  // 院子：狗窝最里面隔一会儿亮一下（钥匙反了一点光）。狗的毛衣困住了、钥匙还在、灯崽没停在窝口，孩子走近了才看得到；不算提示，一开始就有
+  if (S.yDog && S.yKey === 'ken' && !S.yOut && S.yOrb !== 'A' && Math.abs(kid.x - KENNEL.x) < 520 && inView(KENNEL.x, KENNEL.base - 50, 20)) star(KENNEL.x + 12, KENNEL.base - 50, 5, C.moon, Math.pow(Math.max(0, Math.sin(T * 0.9)), 40) * 0.7);
   g.save(); g.globalCompositeOperation = 'lighter';
   for (const p of parts) { g.fillStyle = css(p.col, Math.min(0.6, p.life)); g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); }
   g.restore();
@@ -12063,7 +12139,7 @@ function snapTo(s, b) {
   for (const k in V.lt0) V.lt0[k] = -10;
   V.li.bedlamp = S.plug ? 1 : 0; V.li.bath = S.bath ? 1 : 0; V.li.hall = hallLit(S) ? 1 : 0; V.li.power = power(S) ? 1 : 0; V.candleI = S.lit && (S.honey === 'inv' || S.honey === 'box') ? 1 : 0;
   // 院子（第 2 关）：车门、卷帘门、院门、车灯一步到位；自行车的轮子当它刚摇过；困住了的狗毛衣塌在感应灯底下，球在旁边
-  Object.assign(V, { cardoor: S.yCar, rollK: S.yRoll, gate: S.yGate, bikeQ: S.yWheel ? 1 : 0, ballT: -10, sensorUntil: S.yDog ? V.T + SENSOR.hold : -10, rollPulse: -10 });
+  Object.assign(V, { cardoor: S.yCar, rollK: S.yRoll, gate: S.yGate, bikeQ: S.yWheel ? 1 : 0, ballT: -10, sensorUntil: S.yDog ? V.T + SENSOR.hold : -10, rollPulse: -10, kenA: S.yOrb === 'A' && S.yKey === 'ken' ? 1 : 0, kenT: -10, chainT: -10 });
   V.li.dome = S.yCar ? 1 : 0; V.li.beam = S.yBeam ? 1 : 0; V.li.sensor = S.yDog ? 1 : 0;
   // 巷子（第 3 关）：路灯、栅栏门一步到位；门廊灯亮着（存档在敲门的那一阵里）就接着亮 KNOCK_HOLD 秒
   Object.assign(V, { lgate: S.lGate, lpull: 0, knockT: -10, knockUntil: S.lKnock ? V.T + KNOCK_HOLD : -10, yardDone: S.yOut ? 1 : 0 });
@@ -12148,7 +12224,7 @@ function readSave() {
   let d = store.get(SAVE_KEY, null);
   try {
     if (!d) { d = store.get(SAVE_OLD, null); if (d && d.S && typeof d.S === 'object') d.S = { ...START2, ...d.S }; }   // 旧存档：院子那几项照开局补上
-    if (d && d.S && typeof d.S === 'object') d.S = { ...START21, ...START20, ...START19, ...START18, ...START17, ...START16, ...START15, ...START14, ...START13, ...START12, ...START11, ...START10, ...START9, ...START8, ...START7, ...START6, ...START5, ...START4, ...START3, ...d.S };   // 第 3、4、5 关加进来以前的存档：巷子、商店街、公寓楼那几项照开局补上
+    if (d && d.S && typeof d.S === 'object') d.S = { ...START21, ...START20, ...START19, ...START18, ...START17, ...START16, ...START15, ...START14, ...START13, ...START12, ...START11, ...START10, ...START9, ...START8, ...START7, ...START6, ...START5, ...START4, ...START3, ...START2, ...d.S };   // 第 3、4、5 关加进来以前的存档：巷子、商店街、公寓楼那几项照开局补上（院子 2026-11-24 多了灯崽、钥匙两项：以前的存档照开局补上）
     if (!d || typeof d !== 'object' || !d.S || !d.safe) return null;
     const s = {};
     for (const k of SAVE_KEYS) { const v = d.S[k]; if (!(SAVE_VALS[k] || [0, 1]).includes(v)) return null; s[k] = v; }

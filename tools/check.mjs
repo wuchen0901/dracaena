@@ -52,8 +52,10 @@ let bad = 0;
     if (owner.has(name)) dup.push(`${name}（第 ${owner.get(name)} 关、第 ${L.n} 关）`); else owner.set(name, L.n);
   }
   if (dup.length) { bad++; console.log(`  BAD  重名：${dup.join('、')}`); }
+  const depth = [];
   for (const L of LEVELS) {
     const s = solveL(L, L.START, () => true, true);
+    if (s.path) depth.push({ n: L.n, name: L.name, taps: s.path.length, states: s.states });
     const skip = s.path ? [...new Set(s.path.map(m => m.spot))].filter(id => solveL(L, L.START, m => m.spot !== id).path) : [];
     // 走出这一关的时候身上不带东西（进下一关物品栏是空的）
     const carry = s.ends.filter(e => L.ITEMS.some(it => e[it] === 'inv')).length;
@@ -65,6 +67,14 @@ let bad = 0;
     if (!ok) bad++;
     console.log(`  ${ok ? 'ok ' : 'BAD'}  第 ${L.n} 关 ${L.name}  ${fmt(s)}${skip.length ? '  不点也走得出去：' + skip.join(' ') : ''}${carry ? `  带着东西走出去的局面 ${carry} 个` : ''}${timed ? `  自己变的 ${timed} 处${timedBad ? `，其中 ${timedBad} 处变了就走不出去` : ''}` : ''}${fits ? '' : `  编不下：${L.KEYS.length} 项、最多 ${wide} 个值`}`);
   }
+  // 深浅（只是报个数，不算 BAD）：docs/night-rules.md 说一关最少点 20–30 下。“岔开” = 局面 ÷（最少点 + 1）：
+  // 1.0 是一条直线（每一刻只有一件事做得成）；几件事能换着先后做、同时开着几条线，它就往上涨（第 1 关几百）
+  const MIN_TAPS = 15, LINE = 1.5, fork = d => d.states / (d.taps + 1);
+  console.log('深浅（一关最少点 20–30 下；岔开 = 局面 ÷（最少点 + 1），1.0 是一条直线）');
+  for (const d of depth) console.log(`  第 ${String(d.n).padStart(2)} 关 ${d.name.padEnd(8, '　')} 最少点 ${String(d.taps).padStart(2)} 下  岔开 ${fork(d).toFixed(1)}`);
+  const short = depth.filter(d => d.taps < MIN_TAPS).map(d => d.n), line = depth.filter(d => fork(d) < LINE).map(d => d.n);
+  console.log(`  最少点不到 ${MIN_TAPS} 下：${short.length ? '第 ' + short.join('、') + ' 关（' + short.length + ' 关）' : '没有'}`);
+  console.log(`  差不多一条直线（岔开不到 ${LINE}）：${line.length ? '第 ' + line.join('、') + ' 关（' + line.length + ' 关）' : '没有'}`);
 }
 
 process.exit(bad ? 1 : 0);
