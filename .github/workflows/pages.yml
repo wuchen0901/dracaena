@@ -1,4 +1,8 @@
 name: Publish game to GitHub Pages
+# 把 games/*.html 发到 GitHub Pages 的根目录。
+# 2026-11-24：拆成 build、deploy 两个 job（GitHub 官方 Pages 模板的样子：上传的 job 跑完了，部署的 job 才去找它），
+# action 换成当时最新的大版本（都是 Node 24）。以前上传、部署在一个 job 里，11-24 起部署那一步连着两次找不到刚上传的文件
+# （No artifacts named "github-pages" were found）。用不着 Node，setup-node 去掉了。
 on:
   push:
     branches: [main]
@@ -11,24 +15,25 @@ concurrency:
   group: github-pages
   cancel-in-progress: false
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare public files
+        run: |
+          mkdir -p _site
+          cp games/*.html _site/
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Prepare public files
-        run: |
-          mkdir -p _site
-          cp games/*.html _site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -7,7 +7,7 @@
 - `games/`：游戏本身，每个游戏一个 HTML 页面，`index.html` 是入口页。
 - `tools/`：检查脚本 `check.mjs` 和试验页 `worlds.html`。
 - `docs/`：设计文档，`docs/images/` 是效果图。
-- `.github/workflows/pages.yml`：把 `games/*.html` 发到 GitHub Pages 的根目录。
+- `.github/workflows/pages.yml`：把 `games/*.html` 发到 GitHub Pages 的根目录。2026-11-24 改过：合并 #144、#145 时部署那一步连着两次失败（找不到刚上传的文件：No artifacts named "github-pages" were found；上传那一步是成功的），根目录的 `house.html` 变成 404，只有 `games/house.html`（另一路按分支构建的）是新的。拆成 build、deploy 两个 job（GitHub 官方模板的样子），action 升到当时最新的大版本（checkout v7、configure-pages v6、upload-pages-artifact v5、deploy-pages v5，都是 Node 24），去掉用不着的 setup-node。
 - 2026-11-19 目录改过：`mini/` → `games/`，`mini/tools/` → `tools/`，`design/` → `docs/`，`generated_images/` → `docs/images/`。下面的历史记录里的路径已经一起换成了新的。
 
 ## 小游戏（`games/`）
