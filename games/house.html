@@ -211,6 +211,16 @@ function solveL(L, from = L.START, allow = () => true, full = false, extra) {
   while (grew) { grew = false; for (const k of qk) { if (canWin.has(k)) continue; if (succ.get(k).some(x => canWin.has(x))) { canWin.add(k); grew = true; } } }
   return { path: goal != null ? path : null, states: prev.size, dead: prev.size - canWin.size, all: q, ends: q.filter(done), canWin };
 }
+// 灯崽谜题（docs/night-orb-puzzles.md）：几关里有一件事要灯崽停在一个固定的“灯座”上才做得了。规则里是一项 xOrb：0 灯崽在孩子身边 / 某个灯座的名字；
+// “放灯崽”是一步（点灯座 = 灯崽飞过去停在那儿，吸附到最近的灯座，灯座的名字 = key + 灯座名）。灯崽被叫回、走出这一关：页面把这一项放回 0（不是点出来的，求解器不搜，也不用搜：
+// 放回去的局面就是开局那样，再放一次就是）。没有灯座的地方放下灯崽，规则里没有它，还是好看的小灯（docs/night-orb.md）
+function orbStep(s, spot, held, key) {
+  if (spot.length <= key.length || !spot.startsWith(key)) return null;
+  if (held) return { fail: 'no' };
+  const seat = spot.slice(key.length);
+  if (s[key] === seat) return { fail: 'look' };
+  return { s: { ...s, [key]: seat }, ev: ['orbSet'] };
+}
 const L1 = mkLevel({ n: 1, name: '家', START, ITEMS, VALUES, GATES, LINKS, ENTRY: 'bed', SPOT_ZONE, act, GOAL: 'out', TIMED: [fliesLeave] });
 
 // ---------- 第 2 关：院子 ----------
@@ -274,19 +284,21 @@ const START3 = {
   lKnock: 0,                  // 邻居的门廊灯亮着没有（敲一下门，亮一阵自己灭，见 knockEnds）
   lLamp2: 0,                  // 巷子深处的路灯（拉线太高，要用晾衣叉勾）
   lGate: 0, lOut: 0,          // 巷口的栅栏门开没开；走出巷口没有
+  lOrb: 0, lSw: 0,            // 灯崽停在巷子深处墙脚下的灯座上没有（0 在孩子身边 / A）；路灯二的闸合上没有（闸在墙上的小铁盒里，黑着，灯崽照着才看得见）
 };
-const VALUES3 = { lPole: ['wall', 'inv', 'used'] };
+const VALUES3 = { lPole: ['wall', 'inv', 'used'], lOrb: [0, 'A'] };
 const GATES3 = {
   nightie: s => s.lLamp === 1,    // 巷口晾着的睡裙（路灯照着）
   jacket: s => s.lKnock === 1,    // 邻居门口晾着的外套（门廊灯亮着的那一阵）
   apron: s => s.lLamp2 === 1,     // 巷子深处晾着的围裙（高处的路灯照着）
 };
 const LINKS3 = [['lane0', 'lane1', 'nightie'], ['lane1', 'lane2', 'jacket'], ['lane2', 'lane3', 'apron']];
-const SPOT_ZONE3 = { lLamp: 'lane0', lPole: 'lane2', lKnock: 'lane1', lCord: 'lane2', lGate: 'lane3' };
+const SPOT_ZONE3 = { lLamp: 'lane0', lPole: 'lane2', lKnock: 'lane1', lCord: 'lane2', lGate: 'lane3', lOrbA: 'lane2', lSwH: 'lane2' };
 function act3(s, spot, held, R = reachL(L3, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE3[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'lOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     case 'lLamp': if (held) return no('no'); if (s.lLamp) return no('look'); n.lLamp = 1; return ok('lampOn');
@@ -294,14 +306,16 @@ function act3(s, spot, held, R = reachL(L3, s)) {
     // 敲门：门廊灯亮一阵。已经亮着，再敲没用（页面里把灯续上不算数）
     case 'lKnock': if (held) return no('no'); if (s.lKnock) return no('look'); n.lKnock = 1; return ok('knock');
     // 高处的路灯：空着手够不着；拿晾衣叉勾，拉线一拉灯就亮，叉子留在那儿
-    case 'lCord': if (s.lLamp2) return no(held ? 'no' : 'look'); if (held === 'lPole') { n.lPole = 'used'; n.lLamp2 = 1; return ok('lamp2On'); } if (held) return no('no'); return no('tooHigh3');
+    // 墙上的小铁盒（路灯二的闸）：黑着，灯崽照着才看得见、摸得到；扳上去，路灯二才有电
+    case 'lSwH': if (held) return no('no'); if (s.lSw) return no('look'); if (s.lOrb !== 'A') return no('dark'); n.lSw = 1; return ok('sw3');
+    case 'lCord': if (s.lLamp2) return no(held ? 'no' : 'look'); if (held === 'lPole') { if (!s.lSw) return no('dk3'); n.lPole = 'used'; n.lLamp2 = 1; return ok('lamp2On'); } if (held) return no('no'); return no('tooHigh3');
     case 'lGate': if (held) return no('no'); if (s.lGate) return ok('exit3'); n.lGate = 1; n.lOut = 1; return ok('gate3Open', 'exit3');   // 已经开着：就是走出去
   }
   return no('no');
 }
 // 邻居的门廊灯亮一阵自己灭（页面里量：灯灭了、外套醒过来的那一刻）。不是点出来的，求解器不搜
 const knockEnds = s => s.lKnock === 1 ? { s: { ...s, lKnock: 0 }, ev: ['knockEnd'] } : null;
-const L3 = mkLevel({ n: 3, name: '下山的巷子', START: START3, ITEMS: ITEMS3, VALUES: VALUES3, GATES: GATES3, LINKS: LINKS3, ENTRY: 'lane0', SPOT_ZONE: SPOT_ZONE3, act: act3, GOAL: 'lOut', TIMED: [knockEnds] });
+const L3 = mkLevel({ n: 3, name: '下山的巷子', START: START3, ITEMS: ITEMS3, VALUES: VALUES3, GATES: GATES3, LINKS: LINKS3, ENTRY: 'lane0', SPOT_ZONE: SPOT_ZONE3, act: act3, GOAL: 'lOut', TIMED: [knockEnds], ORB: { key: 'lOrb', done: s => s.lSw === 1 } });
 
 // ---------- 第 4 关：商店街 ----------
 // 巷口外面的一条商店街（docs/night-level-4.md）。故事还在转折以前，规则和前三关是同一条：光照到衣服的头，它就塌下去。
@@ -405,32 +419,36 @@ const START6 = {
   rPlank: 'floor',             // 木板：靠在水箱边上 / 身上 / 搭在缝上（used）
   rLA: 0, rLB: 0,              // 第一串灯亮着没有（总闸扳下去就一直亮）；第二串（灯泡拧上了才亮，接在第一串后面）
   rBr: 0, rOut: 0,             // 木板搭上了没有；走到隔壁的屋顶上没有
+  rOrb: 0, rPg: 0,            // 灯崽停在天台中间墙根的灯座上没有（0 在孩子身边 / A）；第二串灯的插头插上了没有（插头掉在墙根的黑里，灯崽照着才看得见）
 };
-const VALUES6 = { rBulb: ['floor', 'inv', 'used'], rPlank: ['floor', 'inv', 'used'] };
+const VALUES6 = { rBulb: ['floor', 'inv', 'used'], rPlank: ['floor', 'inv', 'used'], rOrb: [0, 'A'] };
 const GATES6 = {
   rt1: s => s.rLA === 1,       // 第一件衬衫（第一串灯照着）
   rt2: s => s.rLB === 1,       // 第二件衬衫（第二串灯照着）
 };
 const LINKS6 = [['r0', 'r1', 'rt1'], ['r1', 'r2', 'rt2']];
-const SPOT_ZONE6 = { rSwitch: 'r0', rBulb: 'r1', rSocket: 'r1', rPlank: 'r2', rGap: 'r2' };
+const SPOT_ZONE6 = { rSwitch: 'r0', rBulb: 'r1', rSocket: 'r1', rPlank: 'r2', rGap: 'r2', rOrbA: 'r1', rPgH: 'r1' };
 function act6(s, spot, held, R = reachL(L6, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE6[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'rOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 棚子边墙上的总闸：扳下去，第一串灯亮，一直亮着
     case 'rSwitch': if (held) return no('no'); if (s.rLA) return no('look'); n.rLA = 1; return ok('swOn');
     case 'rBulb': if (held || s.rBulb !== 'floor') return no(held ? 'no' : 'look'); n.rBulb = 'inv'; return ok('take:rBulb');
     // 第二串灯里空着的一只灯座：空着手点，灯泡要拧上去才有用（气泡里画灯泡）
-    case 'rSocket': if (s.rBulb === 'used') return no(held ? 'no' : 'look'); if (held === 'rBulb') { n.rBulb = 'used'; n.rLB = 1; return ok('screw'); } if (held) return no('no'); return no('needBulb6');
+    // 墙根的插座：第二串灯的插头掉在那儿，黑着，灯崽照着才看得见；插上，第二串才通电
+    case 'rPgH': if (held) return no('no'); if (s.rPg) return no('look'); if (s.rOrb !== 'A') return no('dark'); n.rPg = 1; return ok('plug6');
+    case 'rSocket': if (s.rBulb === 'used') return no(held ? 'no' : 'look'); if (held === 'rBulb') { if (!s.rPg) return no('dk6'); n.rBulb = 'used'; n.rLB = 1; return ok('screw'); } if (held) return no('no'); return no('needBulb6');
     case 'rPlank': if (held || s.rPlank !== 'floor') return no(held ? 'no' : 'look'); n.rPlank = 'inv'; return ok('take:rPlank');
     // 天台尽头的那道缝：木板搭上去，走过去。已经搭好了：就是走过去
     case 'rGap': if (s.rBr) return held ? no('no') : ok('exit6'); if (held === 'rPlank') { n.rPlank = 'used'; n.rBr = 1; n.rOut = 1; return ok('bridge', 'exit6'); } if (held) return no('no'); return no('gap6');
   }
   return no('no');
 }
-const L6 = mkLevel({ n: 6, name: '屋顶', START: START6, ITEMS: ITEMS6, VALUES: VALUES6, GATES: GATES6, LINKS: LINKS6, ENTRY: 'r0', SPOT_ZONE: SPOT_ZONE6, act: act6, GOAL: 'rOut' });
+const L6 = mkLevel({ n: 6, name: '屋顶', START: START6, ITEMS: ITEMS6, VALUES: VALUES6, GATES: GATES6, LINKS: LINKS6, ENTRY: 'r0', SPOT_ZONE: SPOT_ZONE6, act: act6, GOAL: 'rOut', ORB: { key: 'rOrb', done: s => s.rLB === 1 } });
 
 // ---------- 第 7 关：学校（转折）----------
 // 隔壁的屋顶接着是学校：天台门进去是走廊，走廊尽头一间教室，教室后门通着后面的走廊，走廊尽头是楼梯口（docs/night-level-7.md）。
@@ -656,8 +674,9 @@ const START12 = {
   mBq: 'floor',               // 花：抱花的大衣塌了才看得见，在它脚边 / 身上 / 垫在车门的轨道里（used）
   mDoor: 0,                   // 车门垫住了没有
   mOut: 0,                    // 走出车门没有
+  mOrb: 0, mFz: 0,            // 灯崽停在站台中段墙根的灯座上没有（0 在孩子身边 / A）；信号线的保险合上了没有（保险盒在墙上的黑里，灯崽照着才看得见）
 };
-const VALUES12 = { mHandle: ['wall', 'inv', 'used'], mAt: [0, 1, 2], mBq: ['floor', 'inv', 'used'] };
+const VALUES12 = { mHandle: ['wall', 'inv', 'used'], mAt: [0, 1, 2], mBq: ['floor', 'inv', 'used'], mOrb: [0, 'A'] };
 const GATES12 = {
   mp1: s => s.mLamp === 1,    // 站台长椅边的那个人（手摇车的灯照着）
   mp2: s => s.mAt === 2,      // 车厢里拉着吊环的两位乘客（手摇车顶到跟前，灯照着，车一晃他们跟着晃）
@@ -665,11 +684,12 @@ const GATES12 = {
   mw: s => s.mSig === 1,      // 车门口抱着花的大衣（信号灯照着）
 };
 const LINKS12 = [['m0', 'm1', 'mp1'], ['m1', 'm2', 'mp2'], ['m2', 'm3', 'mp3'], ['m3', 'm4', 'mw']];
-const SPOT_ZONE12 = { mHandleH: 'm0', mCrank: 'm0', mPush: 'm0', mLever: 'm1', mShove: 'm1', mBqH: 'm4', mDoor: 'm4', mExit: 'm4' };
+const SPOT_ZONE12 = { mHandleH: 'm0', mCrank: 'm0', mPush: 'm0', mLever: 'm1', mShove: 'm1', mBqH: 'm4', mDoor: 'm4', mExit: 'm4', mOrbA: 'm1', mFzH: 'm1' };
 function act12(s, spot, held, R = reachL(L12, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE12[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'mOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 站台墙上钩子上挂着的摇柄
@@ -679,7 +699,9 @@ function act12(s, spot, held, R = reachL(L12, s)) {
     // 推手摇车：闸松了（摇过）才推得动
     case 'mPush': if (held) return no('no'); if (s.mAt !== 0) return no('look'); if (!s.mLamp) return no('stuck12'); n.mAt = 1; return ok('push12');
     // 信号扳手
-    case 'mLever': if (held) return no('no'); if (s.mSig) return no('look'); n.mSig = 1; return ok('lever12');
+    // 墙上的保险盒：黑着，灯崽照着才看得见；合上，信号线才通电
+    case 'mFzH': if (held) return no('no'); if (s.mFz) return no('look'); if (s.mOrb !== 'A') return no('dark'); n.mFz = 1; return ok('fz12');
+    case 'mLever': if (held) return no('no'); if (s.mSig) return no('look'); if (!s.mFz) return no('dk12'); n.mSig = 1; return ok('lever12');
     // 再推一把：手摇车顶到车厢跟前
     case 'mShove': if (held) return no('no'); if (s.mAt !== 1) return no('look'); n.mAt = 2; return ok('shove12');
     // 车门口的花：抱花的大衣塌了才看得见
@@ -690,7 +712,7 @@ function act12(s, spot, held, R = reachL(L12, s)) {
   }
   return no('no');
 }
-const L12 = mkLevel({ n: 12, name: '旧地铁', START: START12, ITEMS: ITEMS12, VALUES: VALUES12, GATES: GATES12, LINKS: LINKS12, ENTRY: 'm0', SPOT_ZONE: SPOT_ZONE12, act: act12, GOAL: 'mOut' });
+const L12 = mkLevel({ n: 12, name: '旧地铁', START: START12, ITEMS: ITEMS12, VALUES: VALUES12, GATES: GATES12, LINKS: LINKS12, ENTRY: 'm0', SPOT_ZONE: SPOT_ZONE12, act: act12, GOAL: 'mOut', ORB: { key: 'mOrb', done: s => s.mSig === 1 } });
 // ---------- 第 13 关：下水道（发光蘑菇、格栅漏下来的路灯光；修水管的胶皮水裤；一只没电的手电）----------
 // 隧道口再往右是一条下水道：砖砌的拱，脚边一道水，墙上一丛丛发着青光的蘑菇。管子上有三件胶皮水裤，各站在自己那一段的管子边上，手里拿着扳手，一直在拧。
 // 架子上有一只桶，桶里长着一簇发光的蘑菇：拎起来放到墙上的托架上，它的光照着第一件水裤，它塌下去；再把桶拎到下一个托架上，照着第二件。
@@ -705,19 +727,21 @@ const START13 = {
   wTorch: 'floor',            // 手电：第三件水裤塌了才看得见，在它脚边 / 身上 / 插在阀门轮子里（used）
   wDrain: 0,                  // 水放掉了没有
   wOut: 0,                    // 走进尽头的排水口没有
+  wOrb: 0,                    // 灯崽停在第二个托架底下的灯座上没有（0 在孩子身边 / A）：第二个托架在黑的拐角里，灯崽照着才看得见、放得上桶
 };
-const VALUES13 = { wPail: ['shelf', 'inv', 'put'], wLed: [1, 2], wTorch: ['floor', 'inv', 'used'] };
+const VALUES13 = { wPail: ['shelf', 'inv', 'put'], wLed: [1, 2], wTorch: ['floor', 'inv', 'used'], wOrb: [0, 'A'] };
 const GATES13 = {
   wp1: s => s.wDn1 === 1,     // 第一段管子边上的水裤（桶放在第一个托架上，蘑菇的光照着）
   wp2: s => s.wDn2 === 1,     // 第二段的水裤（桶放在第二个托架上）
   wp3: s => s.wGrate === 1,   // 窨井盖底下的水裤（路灯的光照着）
 };
 const LINKS13 = [['w0', 'w1', 'wp1'], ['w1', 'w2', 'wp2'], ['w2', 'w3', 'wp3']];
-const SPOT_ZONE13 = { wPailH: 'w0', wLed1: 'w0', wLed2: 'w1', wChain: 'w2', wTorchH: 'w3', wValve: 'w3', wExit: 'w3' };
+const SPOT_ZONE13 = { wPailH: 'w0', wLed1: 'w0', wLed2: 'w1', wChain: 'w2', wTorchH: 'w3', wValve: 'w3', wExit: 'w3', wOrbA: 'w1' };
 function act13(s, spot, held, R = reachL(L13, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE13[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'wOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 架子上的蘑菇桶
@@ -725,7 +749,7 @@ function act13(s, spot, held, R = reachL(L13, s)) {
     // 墙上的托架：拿着桶就放上去；桶在这儿就拎走；空着手什么也没有（气泡里画桶）
     case 'wLed1': case 'wLed2': {
       const k = spot === 'wLed1' ? 1 : 2;
-      if (held === 'wPail') { n.wPail = 'put'; n.wLed = k; n['wDn' + k] = 1; return ok('put13'); }
+      if (held === 'wPail') { if (k === 2 && s.wOrb !== 'A') return no('dk13'); n.wPail = 'put'; n.wLed = k; n['wDn' + k] = 1; return ok('put13'); }
       if (held) return no('no');
       if (s.wPail === 'put' && s.wLed === k && k === 1) { n.wPail = 'inv'; return ok('take:wPail'); }   // 第二个托架上的桶卡在里面了，拎不下来（走出这一关身上不带东西）
       return no(s.wPail === 'shelf' ? 'dark13' : 'look');
@@ -740,7 +764,7 @@ function act13(s, spot, held, R = reachL(L13, s)) {
   }
   return no('no');
 }
-const L13 = mkLevel({ n: 13, name: '下水道', START: START13, ITEMS: ITEMS13, VALUES: VALUES13, GATES: GATES13, LINKS: LINKS13, ENTRY: 'w0', SPOT_ZONE: SPOT_ZONE13, act: act13, GOAL: 'wOut' });
+const L13 = mkLevel({ n: 13, name: '下水道', START: START13, ITEMS: ITEMS13, VALUES: VALUES13, GATES: GATES13, LINKS: LINKS13, ENTRY: 'w0', SPOT_ZONE: SPOT_ZONE13, act: act13, GOAL: 'wOut', ORB: { key: 'wOrb', done: s => s.wDn2 === 1 } });
 // ---------- 第 14 关：地下最深处（几乎没有光；一大群挤在最黑的地方的衣服；水涨上来把他托过去）----------
 // 下水道的排水口外面是全游戏最低的一处：一个又深又黑的大池子，一大群衣服挤在最里头。孩子一走进来，它们冲上来，把他肩头的小光一只一只抱走（这一关里没有别的光了，只剩灯崽，它不算数）。
 // 这里本来就有的东西：地上一块旧门板；一根进水管的闸轮；池子那头的矮坝；还有坝后面天花板上的一道缝，漏下来一束光。
@@ -752,21 +776,23 @@ const START14 = {
   dWheel: 0,                  // 闸轮拧开了没有（水从大管子里涌进来）
   dRide: 0,                   // 站上门板、让水托着漂过人群、翻过矮坝了没有
   dOut: 0,                    // 走到坝后面那束光里没有
+  dOrb: 0,                    // 灯崽停在闸轮底下的灯座上没有（0 在孩子身边 / A）：这一关只剩它一盏光，闸轮在黑里，灯崽照着才摸得到
 };
-const VALUES14 = { dPlank: ['floor', 'inv', 'put'] };
+const VALUES14 = { dPlank: ['floor', 'inv', 'put'], dOrb: [0, 'A'] };
 const GATES14 = { dc1: s => s.dRide === 1 };   // 挤满池子的人群：站在水面上漂过去才过得去（它们没有光可以照，也不追人）
 const LINKS14 = [['d0', 'd1', 'dc1']];
-const SPOT_ZONE14 = { dPlankH: 'd0', dWheel: 'd0', dWater: 'd0', dRaftH: 'd0', dExit: 'd1' };
+const SPOT_ZONE14 = { dPlankH: 'd0', dWheel: 'd0', dWater: 'd0', dRaftH: 'd0', dExit: 'd1', dOrbA: 'd0' };
 function act14(s, spot, held, R = reachL(L14, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE14[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'dOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 地上的旧门板
     case 'dPlankH': if (held || s.dPlank !== 'floor') return no(held ? 'no' : 'look'); n.dPlank = 'inv'; return ok('take:dPlank');
     // 进水管的闸轮：空着手就拧得动
-    case 'dWheel': if (held) return no('no'); if (s.dWheel) return no('look'); n.dWheel = 1; return ok('wheel14');
+    case 'dWheel': if (held) return no('no'); if (s.dWheel) return no('look'); if (s.dOrb !== 'A') return no('dk14'); n.dWheel = 1; return ok('wheel14');
     // 池子里的地方：拿着门板放上去，要先有水（没水，气泡里画闸轮）
     case 'dWater': if (held === 'dPlank') { if (!s.dWheel) return no('dry14'); n.dPlank = 'put'; return ok('put14'); } if (held) return no('no'); return no(s.dWheel ? 'look' : 'dry14');
     // 浮在水上的门板：站上去，水把他托过人群、托到坝顶，翻过去
@@ -776,7 +802,7 @@ function act14(s, spot, held, R = reachL(L14, s)) {
   }
   return no('no');
 }
-const L14 = mkLevel({ n: 14, name: '地下最深处', START: START14, ITEMS: ITEMS14, VALUES: VALUES14, GATES: GATES14, LINKS: LINKS14, ENTRY: 'd0', SPOT_ZONE: SPOT_ZONE14, act: act14, GOAL: 'dOut' });
+const L14 = mkLevel({ n: 14, name: '地下最深处', START: START14, ITEMS: ITEMS14, VALUES: VALUES14, GATES: GATES14, LINKS: LINKS14, ENTRY: 'd0', SPOT_ZONE: SPOT_ZONE14, act: act14, GOAL: 'dOut', ORB: { key: 'dOrb', done: s => s.dWheel === 1 } });
 // ---------- 第 15 关：变电站（假的“好了”；合闸、配电盘；巡夜的工作服；一串钥匙）----------
 // 从地底下的斜坡爬上来，是街边一个变电站的院子：一个配电盘，一座铁塔，一排路灯，全都黑着。两件巡夜的工作服守在路上，一件在配电盘后面，一件在铁塔前面（别着一串钥匙）。
 // 配电盘的保险管烧了（隧道里的接线箱里有一根备用的），闸刀在高处，要拿架子上那根绝缘杆去推：保险管插上、杆子把闸刀推下去 —— 合闸。
@@ -979,21 +1005,23 @@ const START19 = {
   kPailF: 'none',             // 灌满水的水桶：没有 / 身上 / 挂在栅门链子的钩子上了（used）
   kGate: 0,                   // 卷帘栅门升起来没有（链子的钩子上有了重东西）
   kOut: 0,                    // 推开了钟楼的大门，走进去没有
+  kOrb: 0,                    // 灯崽停在哪个灯座上（0 在孩子身边 / A 补鞋摊跟前 / B 街口的钩子底下）：摊子里、钩子上黑着，灯崽照着才翻得到、挂得上
 };
-const VALUES19 = { kWrench: ['stall', 'inv', 'used'], kPail: ['door', 'inv', 'used'], kPailF: ['none', 'inv', 'used'] };
+const VALUES19 = { kWrench: ['stall', 'inv', 'used'], kPail: ['door', 'inv', 'used'], kPailF: ['none', 'inv', 'used'], kOrb: [0, 'A', 'B'] };
 const GATES19 = {
   kg1: s => s.kGate === 1,    // 挤在拱门口的一街衣服（栅门升起来、它们走进拱门以后，孩子才过得去）
 };
 const LINKS19 = [['k0', 'k1', 'kg1']];
-const SPOT_ZONE19 = { kWrenchH: 'k0', kPailH: 'k0', kTapH: 'k0', kHookH: 'k0', kDoorH: 'k1' };
+const SPOT_ZONE19 = { kWrenchH: 'k0', kPailH: 'k0', kTapH: 'k0', kHookH: 'k0', kDoorH: 'k1', kOrbA: 'k0', kOrbB: 'k0' };
 function act19(s, spot, held, R = reachL(L19, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE19[spot])) return no('far');
+  const o = orbStep(s, spot, held, 'kOrb'); if (o) return o;
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // 补鞋摊柜台上的工具堆：一把方头的水栓扳手
-    case 'kWrenchH': if (held || s.kWrench !== 'stall') return no(held ? 'no' : 'look'); n.kWrench = 'inv'; return ok('take:kWrench');
+    case 'kWrenchH': if (held || s.kWrench !== 'stall') return no(held ? 'no' : 'look'); if (s.kOrb !== 'A') return no('dk19'); n.kWrench = 'inv'; return ok('take:kWrench');
     // 面包店门边钩子上挂着的水桶
     case 'kPailH': if (held || s.kPail !== 'door') return no(held ? 'no' : 'look'); n.kPail = 'inv'; return ok('take:kPail');
     // 街角的水栓：方头的阀杆没有手柄，要扳手才拧得开；开了以后拿桶去接水
@@ -1005,7 +1033,7 @@ function act19(s, spot, held, R = reachL(L19, s)) {
     // 街口的钩子（链子的末端）：灌满水的桶挂上去，重量把链子拉下来，卷帘栅门就升起来
     case 'kHookH':
       if (s.kGate) return no(held ? 'no' : 'look');
-      if (held === 'kPailF') { n.kPailF = 'used'; n.kGate = 1; return ok('hang19'); }
+      if (held === 'kPailF') { if (s.kOrb !== 'B') return no('dk19b'); n.kPailF = 'used'; n.kGate = 1; return ok('hang19'); }
       if (held === 'kPail') return no('light19');
       if (held) return no('no');
       return no('needPail19');
@@ -1014,7 +1042,7 @@ function act19(s, spot, held, R = reachL(L19, s)) {
   }
   return no('no');
 }
-const L19 = mkLevel({ n: 19, name: '钟楼脚下的老街', START: START19, ITEMS: ITEMS19, VALUES: VALUES19, GATES: GATES19, LINKS: LINKS19, ENTRY: 'k0', SPOT_ZONE: SPOT_ZONE19, act: act19, GOAL: 'kOut' });
+const L19 = mkLevel({ n: 19, name: '钟楼脚下的老街', START: START19, ITEMS: ITEMS19, VALUES: VALUES19, GATES: GATES19, LINKS: LINKS19, ENTRY: 'k0', SPOT_ZONE: SPOT_ZONE19, act: act19, GOAL: 'kOut', ORB: { key: 'kOrb', done: s => s.kGate === 1 } });
 // ---------- 第 20 关：钟楼里面（齿轮、重锤、往上的楼梯；敲钟人的衣服一直往上爬）----------
 // 钟楼大门里面是一条竖着往上的剖面：底层是齿轮房（钟停了，齿轮和重锤都不动），一层是钟的背面（月光从钟面的缝里漏进来，是冷光，不算光），最上面是钟房（一口大钟、敲钟的绳子）。
 // 黑着，只有敲钟人的那件衣服在前面一直往上爬（它不追孩子，走到哪儿等孩子到哪儿）；孩子跟着它走才找得到路。
@@ -7399,6 +7427,7 @@ function drawDynamic(b, lit, vis) {
   drawJDyn(b, P, lit, vis);   // 钟楼顶（第 21 关）
   drawXDyn(b, P, lit, vis);   // 后半：街上的人、末班车、一家人、狗、相机
   drawVsDyn(b, P, lit, vis);   // 变电站（第 15 关）
+  drawOrbDev(b, P, lit);   // 灯崽谜题里暗处的东西（只在灯崽的光里）
   if (V.imps.hall.follow && !S.xDown) drawImp(b, P, lit, 'hall', 'body');   // 跟着孩子走的灯崽
   drawKid(b, P, lit);
 }
@@ -9224,20 +9253,23 @@ function impFollow(D, m, dt, gy) {
   for (const g of GARB_KEYS) { const G = GARB[g], o = V.mon[g]; if (G.fl === D.fl && o.rise > 0.5 && (o.hunt > 0.2 || Math.abs(o.v) > 60) && Math.abs(o.x - kx) < 560) danger = true; }
   if (danger) m.dangerT = T;
   const O = V.orb, lv = curLevel();
-  if (O.p && (!lv || lv.GOAL !== O.lv || S.xDown)) { O.p = 0; O.rec = 1; }   // 放下的小灯：进了下一关（或者这一关走完了）自动飞回孩子身边
+  if (O.p && (!lv || lv.GOAL !== O.lv || S.xDown || (O.seat && lv.ORB && lv.ORB.done(S)))) { O.p = 0; O.rec = 1; O.seat = null; }   // 放下的小灯：进了下一关（或者这一关走完了、灯崽谜题做完了）自动飞回孩子身边
   if (O.rec && Math.abs(kx - m.x) < 110) O.rec = 0;
+  // 没有灯崽谜题的关（或者谜题做完了）：它藏在孩子的大衣里，不画出来；有谜题的关，进关飞出来跟着，直到谜题做完。第 1 关、钟楼里面和第 21 关照旧
+  const stay = !lv || lv.n === 1 || lv.n >= 20 || !outDone || kx < FRONT.x + 400 || O.p || O.rec || O.s || (lv.ORB && !lv.ORB.done(S));
+  const hide = !stay;
   const tuck = !O.p && onGround && T - (m.dangerT ?? -10) < 1.2;
-  m.tuck = approach(m.tuck || 0, tuck ? 1 : 0, dt * (tuck ? 5 : 2.5));
+  m.tuck = approach(m.tuck || 0, tuck || hide ? 1 : 0, dt * (tuck || hide ? 5 : 2.5));
   let tx;
-  if (tuck) tx = kx;
+  if (tuck || hide) tx = kx;
   else if (!S.door) tx = DOOR_STOP - 40;                                   // 门还没开：在门口等着
   else if (!outDone) tx = FRONT.x + 100;                                   // 门开了：先出去，在门外回头看孩子
   else tx = kx - kid.face * 66;                                            // 跟在孩子身后一点
-  if (!onGround && !tuck) tx = m.x > YARD_END - 2500 ? m.x : clamp(tx, 2960, DOOR_STOP - 40);            // 孩子上楼、下地窖去了：在门厅里等（钟楼里面的几层：它留在钟楼脚下等）
+  if (!onGround && !tuck && !hide) tx = m.x > YARD_END - 2500 ? m.x : clamp(tx, 2960, DOOR_STOP - 40);            // 孩子上楼、下地窖去了：在门厅里等（钟楼里面的几层：它留在钟楼脚下等）
   if (O.p) tx = O.x;                                                       // 放下了：飞过去停在那儿当一盏小灯
   for (const st of STOPS) if (!st.open() && m.x <= st.x + 30) tx = Math.min(tx, st.x - 26);   // 关着的门它也过不去
   tx = clamp(tx, 2960, YARD_END - 10);
-  if (m.tuck > 0.9 || (!O.p && Math.abs(kx - m.x) > 1200 && onGround && !inView(m.x, m.y, 100))) { m.x = clamp(kx - (m.tuck > 0.9 ? 0 : kid.face * 90), 2960, YARD_END - 10); m.v = 0; }   // 揣在大衣里跟着走；离得太远（孩子被抓回灯底下、读了档）直接到他身边
+  if (m.tuck > 0.9 || (Math.abs((O.p ? O.x : kx) - m.x) > 1200 && onGround && !inView(m.x, m.y, 100))) { m.x = clamp(m.tuck > 0.9 || !O.p ? kx - (m.tuck > 0.9 ? 0 : kid.face * 90) : O.x, 2960, YARD_END - 10); m.v = 0; }   // 揣在大衣里跟着走；离得太远（孩子被抓回灯底下、读了档）直接到他身边
   const d = tx - m.x, ad = Math.abs(d), vt = ad < 5 ? 0 : clamp(ad * 2.8, 70, O.p || O.rec ? 560 : 420), p0 = m.ph;
   m.v = approach(m.v, vt, dt * 1600); m.fast = m.v > 190 ? 1 : 0; m.mode = ad < 5 ? 'sit' : 'run';
   const st = Math.min(ad, m.v * dt), L = m.fast ? 36 : 20;
@@ -9246,7 +9278,7 @@ function impFollow(D, m, dt, gy) {
   if (m.fast && m.tuck < 0.5 && Math.floor(p0 * 2) !== Math.floor(m.ph * 2) && inView(m.x, m.y, 60)) snd.patter(0);
   m.look = approach(m.look, Math.sign(kx - m.x) * m.face, dt * 5); m.scare = 0; m.hideK = 0;
   O.mv = (O.p || O.rec) && m.v > 30 ? 1 : 0;   // 它被叫着飞的时候算“有东西在动”（第 2 关的感应灯）
-  m.I = (O.p ? 0.4 : 0.3) * (1 - 0.85 * m.tuck) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed));   // 放下的小灯 0.4：照得到一小圈，可是不到 0.45，照不倒衣服、也不算孩子“在光里”
+  m.I = (O.p ? 0.4 : 0.3) * (1 - (hide ? 1 : 0.85) * m.tuck) * (0.94 + 0.06 * Math.sin(T * 3 + D.seed));   // 放下的小灯 0.4：照得到一小圈，可是不到 0.45，照不倒衣服、也不算孩子“在光里”
 }
 // 地上的一小片黄光（像影子，可是是亮的）
 function impPool(b, x, y, rx, a) {
@@ -9738,7 +9770,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   ...xView(), fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10, progT: 0, outT: -1,   // progT：最后一次做成一件事的时候（卡住多久了）
-  orb: { s: 0, p: 0, x: 0, lv: '', rec: 0, mv: 0, t: -10 }, imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
+  orb: { s: 0, p: 0, x: 0, lv: '', rec: 0, mv: 0, t: -10, seat: null }, odA: 0, imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -9844,6 +9876,11 @@ function drawIcon(b, name, x, y, s) {
     b.fillStyle = pale; b.beginPath(); b.arc(s * 0.16, -s * 0.28, s * 0.07, 0, 7); b.fill(); b.fillStyle = ink;
   } else if (name === 'orb') {    // 小光：一颗亮亮的小珠子，周围几道放出来的光
     b.beginPath(); b.arc(0, 0, s * 0.14, 0, 7); b.fill(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; b.beginPath(); b.moveTo(Math.cos(a) * s * 0.24, Math.sin(a) * s * 0.24); b.lineTo(Math.cos(a) * s * 0.38, Math.sin(a) * s * 0.38); b.stroke(); }
+  } else if (name === 'imp') {    // 灯崽：一团圆圆的小东西，两只眼睛、两条细腿，头顶放出几道光
+    b.beginPath(); b.arc(0, s * 0.04, s * 0.25, 0, 7); b.fill();
+    b.lineWidth = s * 0.06; for (const dx of [-0.1, 0.1]) { b.beginPath(); b.moveTo(s * dx, s * 0.26); b.lineTo(s * dx * 1.5, s * 0.42); b.stroke(); }
+    for (const a of [-2.3, -1.57, -0.84]) { b.beginPath(); b.moveTo(Math.cos(a) * s * 0.36, s * 0.04 + Math.sin(a) * s * 0.36); b.lineTo(Math.cos(a) * s * 0.5, s * 0.04 + Math.sin(a) * s * 0.5); b.stroke(); }
+    b.fillStyle = pale; for (const dx of [-0.09, 0.09]) { b.beginPath(); b.arc(s * dx, s * 0.0, s * 0.05, 0, 7); b.fill(); } b.fillStyle = ink;
   } else if (name === 'proj') {    // 幻灯机：一只方盒子、一个镜头，镜头前一长条光
     rr(-s * 0.4, -s * 0.2, s * 0.44, s * 0.34, s * 0.04, b); b.fill(); b.fillRect(s * 0.04, -s * 0.1, s * 0.1, s * 0.16);
     b.beginPath(); b.moveTo(s * 0.2, -s * 0.12); b.lineTo(s * 0.46, -s * 0.24); b.moveTo(s * 0.2, -s * 0.02); b.lineTo(s * 0.48, -s * 0.02); b.moveTo(s * 0.2, s * 0.08); b.lineTo(s * 0.46, s * 0.2); b.stroke();
@@ -10662,6 +10699,14 @@ function spots() {
     if (S.rPlank === 'floor') add('rPlank', [RPLANK.x - 42, dn - 250, RPLANK.x + 34, FL.down.ff], RPLANK.x - 58, 'down', 1, [RPLANK.x - 12, dn - 110]);
     add('rGap', [RGAP.x0 - 70, dn - 130, RGAP.x1 + 24, FL.down.ff + 14], RGAP_STOP - 6, 'down', 1, [RGAP.x0 - 24, dn - 40]);   // 搭好以后还在：孩子折回来了，再点一下就是走过去
   }
+  // 灯崽谜题（docs/night-orb-puzzles.md）：灯座（只给提示的圈用，点不到）；暗处的东西（灯崽停在灯座上才看得见、点得到）
+  { const lv = curLevel(), Q = lv && lv.ORB && ORBP[lv.n];
+    if (Q) {
+      const gy = orbGy();
+      for (const id in Q.seats) { const x = Q.seats[id], r = [x - 46, gy - 96, x + 46, gy + 8]; out.push({ id, r, hit: r, stand: { x: x - 70, y: gy }, face: 1, hand: [x, gy - 40], orb: true }); }
+      const d = Q.dev;
+      if (d && S[lv.ORB.key] === d.need) add(d.id, [d.x - 44, d.y - 56, d.x + 44, d.y + 56], d.stand, 'down', 1, [d.x - 6, d.y]);
+    } }
   return out;
 }
 // 点到了哪样东西：点在它的框里，或者离框不到 SPOT_PAD 个屏幕像素（2026-11-18 主人说地上的拖鞋这些小东西点半天点不到：手机上画面缩得小，一只拖鞋只有指尖那么大）。
@@ -10669,7 +10714,7 @@ function spots() {
 const SPOT_PAD = 24;
 function spotAt(wx, wy) {
   const pad = Math.max(6, SPOT_PAD / Z); let best = null, bd = Infinity;
-  for (const s of spots()) { const b = s.hit, d = Math.hypot(Math.max(b[0] - wx, 0, wx - b[2]), Math.max(b[1] - wy, 0, wy - b[3])); if (d <= pad && d < bd) { bd = d; best = s; } }
+  for (const s of spots()) { if (s.orb) continue; const b = s.hit, d = Math.hypot(Math.max(b[0] - wx, 0, wx - b[2]), Math.max(b[1] - wy, 0, wy - b[3])); if (d <= pad && d < bd) { bd = d; best = s; } }
   return best;
 }
 // 孩子走到 (x, y) 要走多远：不到 REACH 才算在跟前（同一间屋子里几步路；别的楼层、隔着半间屋子都不算）
@@ -10682,21 +10727,78 @@ function withinReach(x, y) {
 // 点灯崽一下（它亮一圈），再点地面某处：它飞过去停在那儿，是一盏小灯（照一小圈，光 0.4：只是照亮，照不倒衣服，也不是“最近一盏灯”）。
 // 再点它一下：飞回孩子身边。每关只有这一只；进了下一关自动回来。规则里没有它（不进 S、不进存档、不进求解器），只是画面上的光和第 2 关感应灯的“有东西在动”。
 // 肩头的小光（递光用的）是另一回事：它们不是灯崽，点不到，递光的规则一字没动
+// 灯崽谜题（docs/night-orb-puzzles.md）：有几关里，一件事要灯崽停在“灯座”上才做得了。灯座是规则里的几个固定位置（名字 = 项名 + 灯座名，见各关的 START / act），
+// 放灯崽的时候吸附到离点的地方最近的灯座（不到 260 才算），规则里记下来；没有灯座的地方放下，还是好看的小灯。ORBP：每关灯座的 x、暗处的东西（dev）、点不成的时候气泡里画什么
+const ORBP = {
+  3: { seats: { lOrbA: 10710 }, dev: { id: 'lSwH', need: 'A', kind: 'lever', x: 10640, y: 884, stand: 10584 }, fails: { dk3: ['bolt'] } },
+  6: { seats: { rOrbA: 19480 }, dev: { id: 'rPgH', need: 'A', kind: 'plug', x: 19410, y: 934, stand: 19356 }, fails: { dk6: ['plug'] } },
+  12: { seats: { mOrbA: 40840 }, dev: { id: 'mFzH', need: 'A', kind: 'box', x: 40760, y: 868, stand: 40704 }, fails: { dk12: ['bolt'] } },
+  13: { seats: { wOrbA: 44330 }, fails: { dk13: ['imp'] } },
+  14: { seats: { dOrbA: 46960 }, fails: { dk14: ['imp'] } },
+  19: { seats: { kOrbA: 65140, kOrbB: 65770 }, fails: { dk19: ['imp'], dk19b: ['imp'] } },
+};
+const ORB_FAILS = Object.assign({}, ...Object.values(ORBP).map(q => q.fails));
+const orbGy = () => kid.kind === 'floor' && Math.abs(kid.y - kid.standY - FL.sfc.gy) < 4 ? FL.sfc.gy : FL.down.gy;
+const orbPuzzle = () => { const lv = curLevel(); return lv && lv.ORB && ORBP[lv.n] ? ORBP[lv.n] : null; };
+const orbHidden = () => (V.imps.hall.tuck || 0) > 0.5 && !V.orb.p && !V.orb.rec;   // 藏在孩子的大衣里
 function orbOK() { const m = V.imps.hall; return !won && !S.xDown && m.follow && !inSocket(m) && !m.jump && m.x >= 2960 && kid.mode !== 'caught' && kid.mode !== 'gone' && kid.mode !== 'wait' && !V.xs && !!curLevel(); }
+function orbSeatFor(wx) { const Q = orbPuzzle(); if (!Q) return null; let best = null, bd = 260; for (const id in Q.seats) { const d = Math.abs(wx - Q.seats[id]); if (d < bd) { bd = d; best = id; } } return best; }
+function orbPutAt(wx, seat) {   // 放下：落在灯座上（规则里记着，是一步），或者落在随便什么地方（只是好看的小灯）
+  const O = V.orb, Q = orbPuzzle(); held = null;
+  const r = seat ? ACT(S, seat, null) : null;
+  if (r && !r.s && r.fail !== 'look') seat = null;   // 这一块还走不到：不算灯座
+  O.s = 0; O.p = 1; O.rec = 0; O.lv = curLevel().GOAL; O.t = V.T;
+  if (seat) { O.seat = seat; O.x = Q.seats[seat]; if (r.s) commit(r); } else { O.seat = null; O.x = clamp(wx, 2960, YARD_END - 10); }
+  snd.click();
+}
+function orbRecall() { const O = V.orb; O.p = 0; O.rec = 1; O.s = 0; O.seat = null; }
 function orbTap(wx, wy) {
   const O = V.orb, m = V.imps.hall;
   if (!orbOK()) { O.s = 0; return false; }
-  const onImp = Math.abs(wx - m.x) < 46 && wy > m.y - 110 && wy < m.y + 30;
-  if (O.p) { if (!onImp) return false; O.p = 0; O.rec = 1; O.s = 0; if (inView(m.x, m.y, 100)) snd.squeak(); return true; }   // 放下了：点它是叫回来
+  // 藏在大衣里的时候：点孩子的胸口、大衣，把它掏出来
+  const onImp = orbHidden() ? Math.abs(wx - kid.x) < 62 && wy > m.y - 215 && wy < m.y + 30 && !spotAt(wx, wy) : Math.abs(wx - m.x) < 46 && wy > m.y - 110 && wy < m.y + 30;
+  if (O.p) { if (!onImp) return false; orbRecall(); if (inView(m.x, m.y, 100)) snd.squeak(); return true; }   // 放下了：点它是叫回来
   if (O.s) {
     if (onImp) { O.s = 0; return true; }   // 再点一下它：不放了
-    const gy = kid.kind === 'floor' && Math.abs(kid.y - kid.standY - FL.sfc.gy) < 4 ? FL.sfc.gy : FL.down.gy;
+    const gy = orbGy();
     O.s = 0; held = null;
     if (Math.abs(wy - gy) > 330) return true;   // 点在别的楼层上：不放，只是放下手
-    O.p = 1; O.x = clamp(wx, 2960, YARD_END - 10); O.lv = curLevel().GOAL; O.t = V.T; O.rec = 0; snd.click(); return true;
+    orbPutAt(wx, orbSeatFor(wx)); return true;
   }
   if (onImp) { O.s = 1; held = null; snd.pick(); return true; }
   return false;
+}
+// 每一帧：规则里的灯崽谜题那一项跟着灯崽（停在灯座上就是灯座的名字，别的都是 0），暗处的东西慢慢显出来、慢慢隐下去
+function orbSync(dt) {
+  const O = V.orb, lv = curLevel();
+  for (const L of LEVELS) if (L.ORB) { const want = lv === L && O.p && O.seat ? O.seat.slice(L.ORB.key.length) : 0; if (S[L.ORB.key] !== want) S[L.ORB.key] = want; }
+  const Q = orbPuzzle(), on = Q && Q.dev && S[lv.ORB.key] === Q.dev.need ? 1 : 0;
+  V.odA = approach(V.odA || 0, on, dt / 0.6);
+}
+function drawOrbDev(b, P, lit) {   // 暗处的东西：只画在“亮的一层”里，灯崽的光照到的地方才看得见
+  if (!lit || (V.odA || 0) < 0.02) return;
+  const lv = curLevel(), Q = lv && ORBP[lv.n]; if (!Q || !Q.dev) return;
+  const d = Q.dev, x = d.x, y = d.y, lc = lcOf(P, lit), done = lv.ORB.done(S) ? 1 : 0;
+  b.save(); b.globalAlpha *= V.odA; b.seedN = 760000 + lv.n * 100; b.translate(x, y); b.scale(1.4, 1.4); b.translate(-x, -y);   // 放大一点，好看清
+  if (d.kind === 'lever') {   // 墙上的小铁盒，一根扳手；扳上去以后朝上
+    b.fillStyle = 'rgba(255,236,190,0.16)'; b.beginPath(); b.ellipse(x, y, 70, 64, 0, 0, 7); b.fill();
+    part(b, rectPts(x - 26, y - 36, 52, 72), '#b3ad98', { w: 1.1, tex: 0.3, lc });
+    part(b, rectPts(x - 5, y - 24, 10, 46), P.iron, { w: 0.6, tex: 0, lc, seed: 760010 });
+    const ty = done ? y - 22 : y + 14;
+    ink(b, [[x, y], [x + 12, ty]], { w: 2.2, col: P.brass, taper: 0, seed: 760020 }); part(b, roundPts(x + 6, ty - 6, 12, 12, 5), P.brass, { w: 0.6, tex: 0, lc, seed: 760030 });
+  } else if (d.kind === 'plug') {   // 墙根的插座，插头的线垂在地上（插上以后插在插座里）
+    b.fillStyle = 'rgba(255,236,190,0.16)'; b.beginPath(); b.ellipse(x + 10, y + 20, 80, 62, 0, 0, 7); b.fill();
+    part(b, roundPts(x - 22, y - 20, 44, 36, 6), '#b8b2a0', { w: 1, tex: 0.2, lc });
+    part(b, rectPts(x - 8, y - 6, 4, 10), P.iron, { w: 0.4, tex: 0, lc, seed: 760040 }); part(b, rectPts(x + 4, y - 6, 4, 10), P.iron, { w: 0.4, tex: 0, lc, seed: 760041 });
+    const px = done ? x : x + 44, py = done ? y - 2 : y + 58;
+    ink(b, quadPts([x + 14, y + 16], [x + 34, y + 34], [px + (done ? 0 : 6), py + 4], 8), { w: 1.1, col: P.wire, taper: 0, amp: 0.5, seed: 760050 });
+    part(b, roundPts(px - 9, py - 8, 18, 15, 3), P.socket, { w: 0.9, tex: 0, lc, seed: 760060 });
+  } else {   // 保险盒：铁盒子，门开着一条缝，里面两只瓷座
+    b.fillStyle = 'rgba(255,236,190,0.16)'; b.beginPath(); b.ellipse(x, y, 76, 70, 0, 0, 7); b.fill();
+    part(b, rectPts(x - 30, y - 38, 60, 76), '#b3ad98', { w: 1.1, tex: 0.3, lc });
+    for (let i = 0; i < 2; i++) { const fx = x - 14 + i * 28; part(b, roundPts(fx - 7, y - 26, 14, 46, 4), lit ? '#d8d1bf' : '#3a4560', { w: 0.7, tex: 0, lc, seed: 760070 + i }); if (done || i === 1) part(b, rectPts(fx - 4, y - 14, 8, 26), P.brass, { w: 0.5, tex: 0, lc, seed: 760080 + i }); }
+  }
+  b.restore();
 }
 function drawOrbCue() {   // 点了灯崽等着放的时候，它外面一圈转着的小点；放下以后，它外面一圈慢慢的光晕
   const O = V.orb, m = V.imps.hall; if (!(O.s || O.p) || !orbOK()) return;
@@ -10918,6 +11020,7 @@ function perform(sp, h, r) {
     else if (f === 'locked7') { o.hx = SDOOR.x - 20; o.hy = FL.down.gy - 96; o.pre = 0.25; o.hold = 0.25; o.onHit = bub(['sKey'], () => snd.locked()); }   // 学校：教室的门锁着，气泡里画钥匙
     else if (f === 'gap6') { o.hx = kid.x + 40; o.hy = FL.down.gy - 50; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['rPlank'], () => snd.no()); }   // 屋顶：缝太宽，跨不过去，气泡里画木板
     else if (f === 'needTicket') o.onHit = bub(['qTicket'], () => snd.locked());   // 检票机：杆抬不起来，气泡里画车票
+    else if (f in ORB_FAILS) { o.pre = 0.3; o.hold = 0.3; o.onHit = bub(ORB_FAILS[f], () => snd.tap()); }   // 灯崽谜题：这儿黑着、没通电，气泡里画灯崽（或者缺的东西）
     return startReach(o);
   }
   o.onHit = () => commit(r);
@@ -11125,6 +11228,9 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'knock': V.knockT = V.T; V.knockUntil = V.T + KNOCK_HOLD; V.lt0.porch3 = V.T; snd.thump(); setTimeout(() => snd.thump(), 170); setTimeout(() => snd.thump(), 340); break;
       case 'gate3Open': snd.latch(); snd.creak(); break;
       // 商店街（第 4 关）
+      case 'orbSet': snd.click(); break;   // 灯崽飞过去停在灯座上
+      case 'sw3': case 'fz12': snd.clank(); snd.click(); break;   // 暗处的闸、保险盒合上
+      case 'plug6': snd.plug(); break;
       case 'potTip': snd.thump(); break;
       case 'boxOpen': drop('qKey'); snd.unlock(); snd.creak(); break;
       case 'neonOn': V.lt0.neon = V.T; V.peek = { x: NEON.x - 140, t0: V.T, dur: 2.2 }; snd.clank(); snd.buzz(); break;   // 闸刀离招牌太远，镜头过去看一眼招牌和塌下去的排头
@@ -11331,6 +11437,7 @@ function hint() {
   ring = { id: m.spot, t0: V.T };
   if (m.spot === 'lKnock') say(['knock', '>'], 2.8);
   else if (m.spot === 'qTimer') say(['timer', '>'], 2.8);
+  else if (spots().some(s => s.id === m.spot && s.orb)) say(['imp', '>'], 2.8);   // 灯崽谜题：把灯崽放在那儿
   else if (m.spot === 'qMain') say(['neon', '>'], 2.8);
   else if (m.spot === 'zStomp') say(['stomp', '>'], 2.8);
   else if (m.spot === 'zClap') say(['clap', '>'], 2.8);
@@ -11527,7 +11634,7 @@ function tick(dt) {
   V.smoke = approach(V.smoke, S.log === 'fire' && !S.damper ? 1 : 0, dt * 0.5);
   if (fl > 0.4 && inView(FIRE.x, FIRE.mantel, 200) && Math.random() < dt * 5 * fl) snd.crackle();
   // 衣服：光照到就塌下去；暗处立起来、追人。孩子站在灯光里的时候记下这个地方（被抓住了回到这儿）
-  impUpdate(dt); if (S.xDown) V.imps.hall.I = 0; flameUpdate(dt); bugUpdate(dt);   // 灯崽留在钟楼的大灯里了：座钟顶的小灯黑着
+  orbSync(dt); impUpdate(dt); if (S.xDown) V.imps.hall.I = 0; flameUpdate(dt); bugUpdate(dt);   // 灯崽留在钟楼的大灯里了：座钟顶的小灯黑着
   LT = activeLights();
   garbUpdate(dt);
   if ((kid.mode === 'idle' || kid.mode === 'walk') && kid.kind === 'floor' && coverage(kid.x, kid.y - 80, LT.filter(a => !a.L.nosafe)) > 0.6) V.safe = { x: kid.x > YARD.x0 && kid.x < SENSOR.zone[1] + 30 ? Math.min(kid.x, 4900) : kid.x, y: kid.y };   // 会自己灭的自行车灯不算；门廊的感应灯底下记得靠门口一点
@@ -11746,6 +11853,8 @@ function drawOverlays(lights) {
   if (stuck > 0) {
     for (const [x, y, ph, want, inLight] of (S.hOut ? jglints : S.kOut ? twglints : S.cOut ? klglints : S.bOut ? cglints : S.fOut ? bglints : S.vOut ? fglints : S.dOut ? vglints : S.wOut ? dglints : S.mOut ? wglints : S.uOut ? mglints : S.tOut ? uglints : S.nOut ? tglints : S.gOut ? nglints : S.sOut ? gglints : S.rOut ? kglints : S.zOut ? rglints : S.qOut ? zglints : S.lOut ? sglints : S.yOut ? lglints : S.out ? yglints : glints)) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (inLight ? 1 : 1 - coverage(x, y, lights)));   // inLight：东西本来就躺在光里（车票），不按光压暗
     if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
+    { const lv = curLevel(), Q = lv && lv.ORB && ORBP[lv.n];   // 灯崽谜题：卡住了，灯崽的位置闪（灯崽没放下、这一关的谜题还没做完）；放下以后，卡住的那一步闪
+      if (Q && !lv.ORB.done(S) && !V.orb.p) { const m = V.imps.hall; star(m.x, m.y - 30, 9, C.lamp, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9); } }
   }
   g.save(); g.globalCompositeOperation = 'lighter';
   for (const p of parts) { g.fillStyle = css(p.col, Math.min(0.6, p.life)); g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); }
@@ -11915,6 +12024,7 @@ requestAnimationFrame(frame);
 function tap(id, item) {
   if (won || busy()) return false;
   const sp = spots().find(s => s.id === id); if (!sp) return false;
+  if (sp.orb) { if (!orbOK()) return false; if (tStart < 0) tStart = V.T; taps++; orbPutAt(sp.r[0] + 46, id); return true; }   // 灯崽谜题的灯座：像点灯崽、再点那儿一样
   if (tStart < 0) tStart = V.T;
   taps++; held = null; use(sp, item || null); return true;
 }
@@ -12008,6 +12118,10 @@ function snapTo(s, b) {
   Object.assign(V, { cpDone: S.cOut ? 1 : 0, ktap: S.kTap, klg: S.kGate, kdr: S.kOut, klSeen: S.kGate, klfar: S.cOut ? 1 : 0, klw: null }); if (S.cOut) klWalkSnap(S.kGate);
   // 百货大楼（第 17 关）：射灯、试衣镜、反射的光、店员手里的灯、闸杆一步到位；灯照着、店员塌了就当塌了
   { const on = S.bSw && S.bMir === 2 ? 1 : 0; Object.assign(V, { fsDone: S.fOut ? 1 : 0, bsw: S.bSw, bsI: S.bSw, bmk: S.bMir >= 1 ? 1 : 0, bmt: S.bMir, bmx: S.bMir >= 1 ? BPP.mirAt : BPP.mirHome, brI: on, bgI: S.bGive, bgate: S.bOut, bSeen1: on, bDrop: null }); }
+  // 灯崽谜题：读档、摆局面的时候灯崽已经停在灯座上了（别的关里记着的灯座都当没有）
+  { const O = V.orb, lv = curLevel(), v = lv && lv.ORB ? S[lv.ORB.key] : 0; Object.assign(O, { s: 0, p: 0, rec: 0, seat: null, mv: 0 }); V.odA = 0;
+    if (v) { const id = lv.ORB.key + v; O.p = 1; O.seat = id; O.x = ORBP[lv.n].seats[id]; O.lv = lv.GOAL; V.imps.hall.x = O.x; V.odA = 1; }
+    for (const L of LEVELS) if (L.ORB && L !== lv) S[L.ORB.key] = 0; }
   outDone = S.out ? 1 : 0; if (S.out && V.outT < 0) V.outT = V.T;
   { const st = saveT; saveT = Infinity; tick(0.001); saveT = st; }   // 这一下不存档：读档的时候站的地方、点了几下还是开局的（以前会把卧室窗下写进去，再打开一次就回卧室了）
   LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].holds && GARB[k].holds() ? GARB[k].stand : GARB[k].home; m.dir = 1; m.pause = 0; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = coverage(hx, hy, LT) > 0.55 || !!(GARB[k].keepDown && GARB[k].keepDown()) ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; }
