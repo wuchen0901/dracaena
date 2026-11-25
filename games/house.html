@@ -1877,6 +1877,15 @@ function creepMarks(b, x0, x1, ptop, pbot, seed) {   // 墙上的抓痕、墨手
     else creepHand(b, x, Math.min(y, pbot - 50), sc, rot, seed + i * 17, dr);
   }
 }
+function creepRoom(b, id, r) {   // 后面各关的屋子（暗处）：室内的墙上有抓痕、墨手印，天花板往下淌墨（自己用 paintShell 画墙的屋子墙上已经有了，只加淌墨）
+  if (INK_DECOR[id] || r.out) return;
+  let sd = 0; for (const ch of id) sd = (sd * 31 + ch.charCodeAt(0)) % 90000;
+  const seed = 940000 + sd * 10, r0 = rnd(seed), x0 = r.ix0, x1 = r.ix1;
+  if (!b.__creepShell) creepMarks(b, x0, x1, r.top + 30, r.wb - 200, seed);
+  const n = Math.max(2, Math.round((x1 - x0) / 330)), drips = [];
+  for (let i = 0; i < n; i++) drips.push([x0 + (i + 0.2 + r0() * 0.6) * (x1 - x0) / n, r.top + 2, 24 + r0() * 70]);
+  inkDrips(b, drips, seed + 3);
+}
 function creepDoorway(b, x, y0, wb, seed) {   // 门洞（暗处）：门楣上淌下来的墨，两边的门框上一只手印、几道抓痕
   inkDrips(b, [[x - 15, y0 - 2, 40], [x + 6, y0 - 2, 18], [x + 17, y0 - 2, 62]], seed + 1);
   creepHand(b, x + 26, wb - 118, 0.62, 0.25, seed + 2, true);
@@ -1991,7 +2000,7 @@ function paintShell(b, r, P, lit, o) {
       ink(b, seg(x0, y, x1, y), { w: 0.7, a: lit ? 0.5 : 0.6, taper: 0, col: P.brickLine, single: 1 });
       for (let x = x0 + (i % 2 ? 0 : 36) + rr0() * 8; x < x1; x += 72) ink(b, seg(x, y, x + 1, y + 28), { w: 0.6, a: lit ? 0.45 : 0.55, taper: 0, col: P.brickLine, seed: seed + 3000 + i * 97 + (x | 0) % 89, single: 1 });
     }
-    if (!lit && o.creep) creepMarks(b, x0, x1, top + 30, wb - 20, seed);   // 暗处：砖墙上的抓痕、墨手印
+    if (!lit && o.creep) { b.__creepShell = 1; creepMarks(b, x0, x1, top + 30, wb - 20, seed); }   // 暗处：砖墙上的抓痕、墨手印
   } else {
     const ptop = top + 67, pbot = o.wains ? wb - 140 : wb - 16;
     b.seedN = seed + 10;
@@ -2008,7 +2017,7 @@ function paintShell(b, r, P, lit, o) {
       }
       b.globalAlpha = 1;
       b.seedN = seed + 5290; hatch(b, k => k.rect(x0, top, x1 - x0, wb - top), [x0, top, x1 - x0, wb - top], { ang: -1.35, gap: 9.5, a: 0.1, w: 0.6, len: 40, breaks: 40 });   // 铅笔：墙面上再轻轻扫一层
-    } else if (o.creep) { creepWallpaper(b, x0, x1, ptop, pbot, seed); creepMarks(b, x0, x1, ptop, pbot, seed); }   // 暗处：小花的位置上是眼睛，墙上有抓痕、墨手印
+    } else if (o.creep) { b.__creepShell = 1; creepWallpaper(b, x0, x1, ptop, pbot, seed); creepMarks(b, x0, x1, ptop, pbot, seed); }   // 暗处：小花的位置上是眼睛，墙上有抓痕、墨手印
     b.fillStyle = P.frieze; b.fillRect(x0, top, x1 - x0, 62); b.fillStyle = P.rail2; b.fillRect(x0, top + 62, x1 - x0, 5); b.fillStyle = P.cornice; b.fillRect(x0, top, x1 - x0, 13);
     b.seedN = seed + 300;
     ink(b, seg(x0, top + 13, x1, top + 13), { w: 0.9, a: 0.8, taper: 0 }); ink(b, seg(x0, top + 62, x1, top + 62), { w: 1, taper: 0 }); ink(b, seg(x0, top + 67, x1, top + 67), { w: 0.7, a: 0.6, taper: 0 });
@@ -3033,6 +3042,7 @@ function paintLaneWall(b, P, lit, x0, x1, seed, top = 650) {   // 低矮的院�
   for (let y = top + 2, i = 0; y < wb - 4; y += 28, i++) for (let x = Math.ceil(x0 / 78) * 78 + (i % 2) * 39; x < x1 - 4; x += 78) ink(b, seg(x, y, x + 1, y + 28), { w: 0.5, a: 0.4, taper: 0, col: lc, seed: seed + 100 + i * 31 + (x % 997), single: 1 });
   part(b, rectPts(x0, top - 12, x1 - x0, 14), P.laneWallLo, { w: 1, tex: 0.3, lc, seed: seed + 5 });
   hatch(b, k => k.rect(x0, top, x1 - x0, wb - top), [x0, top, x1 - x0, wb - top], { ang: -1.15, gap: 6 / HD, a: lit ? 0.2 : 0.4, w: 0.7, len: 26, col: lc, seed: seed + 6 });
+  if (!lit) creepMarks(b, x0 + 10, x1 - 10, top + 10, wb - 20, seed + 500);   // 暗处：院墙上的抓痕、墨手印
 }
 function paintLampPost(b, P, lit, L, seed) {   // 路灯的杆子：细细的铁杆，顶上伸出一根横臂（灯头在会动的那一层）
   const lc = lcOf(P, lit), wb = FL.down.wb, hx = L.x + 30; b.seedN = seed;
@@ -3239,6 +3249,7 @@ function paintClock(b, P, lit, cx, cy, r, seed) {   // 一只停了的钟：全�
   for (let i = 0; i < 12; i++) { const a = i * TAU / 12; ink(b, seg(cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2), cx + Math.cos(a) * (r - 5), cy + Math.sin(a) * (r - 5)), { w: 0.7, col: lc, taper: 0, a: 0.8, seed: seed + 2 + i, single: 1 }); }
   const ha = ((11 + 47 / 60) / 12) * TAU - Math.PI / 2, ma = (47 / 60) * TAU - Math.PI / 2;
   ink(b, seg(cx, cy, cx + Math.cos(ha) * r * 0.5, cy + Math.sin(ha) * r * 0.5), { w: 1.6, col: lc, taper: 0, a: 1, seed: seed + 20 }); ink(b, seg(cx, cy, cx + Math.cos(ma) * r * 0.78, cy + Math.sin(ma) * r * 0.78), { w: 1.1, col: lc, taper: 0, a: 1, seed: seed + 21 });
+  if (!lit) creepEye(b, cx, cy, r * 0.55, { open: 0.8, look: Math.sin(seed) , a: 0.5 });   // 暗处：钟面中间是一只眼睛
 }
 function paintClockWindow(b, P, lit, seed) {   // 钟表店的橱窗：里面两层搁板，一排停了的钟；上沿一排灯泡的灯座（灯泡在会动的那一层）
   const lc = lcOf(P, lit), x0 = 12900, x1 = 13410, y0 = 752, y1 = 940; b.seedN = seed;
@@ -3367,7 +3378,7 @@ function stepLadder(b, P, lit, x, base, h, spread, seed, lean = 0) {
 function paintCK(b, r, P, lit) {
   const lc = lcOf(P, lit), top = r.top, wb = FL.ck.wb, ff = FL.ck.ff, fr = FL.ck.fr, x0 = CK.x0, x1 = CK.x1;
   const room = { ...r, ix0: x0, ix1: x1, top, wb, ff, fr };
-  paintShell(b, room, P, lit, { seed: 519100, paper: [P.ckWall, P.ckStripe, P.ckMotif] });
+  paintShell(b, room, P, lit, { seed: 519100, paper: [P.ckWall, P.ckStripe, P.ckMotif], creep: 1 });
   paintFloor(b, room, P, lit, 'planks', 519200);
   b.seedN = 519300;
   part(b, rectPts(x0 - 20, top - 16, x1 - x0 + 40, 16), P.stALo, { w: 1, tex: 0.3, lc });   // 屋顶的厚板
@@ -3422,7 +3433,7 @@ function paintQB(b, r, P, lit) {
   const rr0 = rnd(517010); for (let i = 0; i < 26; i++) { const sx = r.x0 + rr0() * (r.x1 - r.x0), sy = below + 20 + rr0() * (r.fr - below); if (sx > x0 - 30 && sx < x1 + 30 && sy < ff + 20) continue; part(b, arcPts(sx, sy, 5 + rr0() * 9, 4 + rr0() * 6, 0, TAU, 9), P.stone, { w: 0.7, tex: 0.2, lc, seed: 517020 + i }); }   // 土里的石子
   b.restore();
   const room = { ...r, ix0: x0, ix1: x1, top, wb, ff, fr: ff + 18 };
-  paintShell(b, room, P, lit, { seed: 517100, brick: true });
+  paintShell(b, room, P, lit, { seed: 517100, brick: true, creep: 1 });
   paintFloor(b, room, P, lit, 'concrete', 517200);
   for (const [a, w] of [[x0 - 16, 16], [x1, 16]]) part(b, rectPts(a, top - 4, w, ff + 18 - top + 4), P.stone, { w: 1, tex: 0.4, lc, seed: 517300 + a });   // 两边的墙身
   part(b, rectPts(x0 - 16, top - 6, x1 - x0 + 32, 12), P.woodLo, { w: 1, tex: 0.2, lc, seed: 517310 });   // 顶上：街面底下的一道横梁
@@ -3753,7 +3764,7 @@ function paintZB(b, r, P, lit) {
   const rr0 = rnd(526010); for (let i = 0; i < 30; i++) { const sx = r.x0 + rr0() * (r.x1 - r.x0), sy = below + 20 + rr0() * (r.fr - below); if (sx > x0 - 30 && sx < x1 + 30 && sy < ff + 20) continue; part(b, arcPts(sx, sy, 5 + rr0() * 9, 4 + rr0() * 6, 0, TAU, 9), P.stone, { w: 0.7, tex: 0.2, lc, seed: 526020 + i }); }
   b.restore();
   const room = { ...r, ix0: x0, ix1: x1, top, wb, ff, fr: ff + 18 };
-  paintShell(b, room, P, lit, { seed: 526100, brick: true });
+  paintShell(b, room, P, lit, { seed: 526100, brick: true, creep: 1 });
   paintFloor(b, room, P, lit, 'concrete', 526200);
   for (const [a, w] of [[x0 - 16, 16], [x1, 16]]) part(b, rectPts(a, top - 4, w, ff + 18 - top + 4), P.stone, { w: 1, tex: 0.4, lc, seed: 526300 + a });   // 两边的墙身
   part(b, rectPts(x0 - 16, top - 50, x1 - x0 + 32, 50), P.aptOutLo, { w: 1, tex: 0.3, lc, seed: 526310 });   // 顶上：楼道的楼板
@@ -3848,6 +3859,7 @@ function drawFireDoor(b, P, lit) {   // 防火门：铁灰的一扇，推杠、�
   if (o < 0.6) {
     b.save(); b.globalAlpha *= 1 - o / 0.6;
     part(b, rectPts(x - 36, wb - 170, 72, 66), P.fireDHi, { w: 0.7, tex: 0.3, lc, seed: 521502 });
+    if (!lit) creepDoorSlab(b, x, wb - 188, wb + 4, 521550);   // 暗处：淌墨、抓痕、手印
     ink(b, seg(x - 38, wb - 94, x + 38, wb - 94), { w: 3.4, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 521503 });   // 推杠
     part(b, rectPts(x - 24, wb - 196, 52, 8), P.cageC, { w: 0.7, tex: 0, lc, seed: 521504 });   // 门顶的闭门器
     ink(b, [[x + 24, wb - 192], [x + 36, wb - 178], [x + 42, wb - 190]], { w: 1.2, col: P.cageC, taper: 0, a: 1 / b.pen.a, seed: 521505, single: 1 });
@@ -3887,6 +3899,7 @@ function drawZBDoor(b, P, lit) {   // 地下室的门（楼道口，2026-11-25�
   if (o < 0.6) {
     b.save(); b.globalAlpha *= 1 - o / 0.6;
     part(b, rectPts(x - 30, wb - 166, 60, 54), P.zbDoorLo, { w: 0.7, tex: 0.3, lc, seed: 525002 });
+    if (!lit) creepDoorSlab(b, x, wb - 182, wb + 4, 525050);   // 暗处：淌墨、抓痕、手印
     part(b, rectPts(x + 24, wb - 96, 10, 18), P.chrome, { w: 0.6, tex: 0, lc, seed: 525003 });   // 门把手（只有外面有）
     b.restore();
   }
@@ -4252,6 +4265,7 @@ function drawSchoolDoor(b, P, lit) {   // 教室的门：锁着的时候一整�
   if (k < 0.5) {
     part(b, rectPts(x - 28, wb - 178, w - 20, 70), P.aptDoorHi, { w: 0.7, tex: 0.3, lc, seed: 531404 });
     part(b, arcPts(x - 38 + w - 10, wb - 94, 4, 4, 0, TAU, 8), P.brass, { w: 0.5, tex: 0, lc, seed: 531405 });
+    if (!lit) creepDoorSlab(b, x - 38 + w / 2, wb - 198, wb + 4, 531450);   // 暗处：淌墨、抓痕、手印
   }
 }
 function drawSchoolKid(b, P, lit) {   // 窗边缩着的那件小孩的衣服：缩成一团，朝孩子这边伸一只袖子（2026-11-25 以前点它会坐直、抱着一盏灯，删了）
@@ -4462,6 +4476,7 @@ function drawGymDoor(b, P, lit) {   // 器材室的门：锁着的时候一整�
   if (k < 0.5) {
     part(b, rectPts(x - 28, wb - 178, w - 20, 70), P.aptDoorHi, { w: 0.7, tex: 0.3, lc, seed: 543304 });
     part(b, arcPts(x - 38 + w - 10, wb - 94, 4, 4, 0, TAU, 8), P.brass, { w: 0.5, tex: 0, lc, seed: 543305 });
+    if (!lit) creepDoorSlab(b, x - 38 + w / 2, wb - 198, wb + 4, 543350);   // 暗处：淌墨、抓痕、手印
   }
 }
 function drawGymWhistle(b, P, lit) {   // 运动服塌下去，口袋里掉出挂着钥匙的哨子：滚出来落在地上
@@ -4962,6 +4977,7 @@ function drawThDoor(b, P, lit) {   // 台口的小门：关着是一扇门板，
   const lc = lcOf(P, lit), wb = FL.down.wb, k = smooth(V.tdr), x = TDOOR.x, w = lerp(56, 10, k); b.seedN = 573700;
   fillPts(b, rectPts(x - 28, wb - 210, 56, 212), lit ? '#10131c' : '#04060b', 1);
   part(b, rectPts(x - 28, wb - 210, w, 212), P.woodHi, { w: 1, tex: 0.4, lc, seed: 573701 });
+  if (k < 0.7 && !lit) creepDoorSlab(b, x - 28 + w / 2, wb - 210, wb + 2, 573750);   // 暗处：淌墨、抓痕、手印
   if (k < 0.7) { ink(b, seg(x - 20, wb - 190, x - 20, wb - 20), { w: 0.7, col: lc, taper: 0, a: 0.5, seed: 573702, single: 1 }); part(b, arcPts(x + 16, wb - 100, 4, 4, 0, TAU, 6), P.brass, { w: 0.5, tex: 0, lc, seed: 573703 }); }
   if (S.tDoor) sceneItem(b, 'tBill', x - 22, FL.down.gy - 8, 34, P, lit, 573710);
 }
@@ -11463,7 +11479,7 @@ function paintRoomLayer(id, lit) {
   const c = mk(Math.ceil(w * RS), Math.ceil(h * RS)), b = c.getContext('2d');
   pen(b, P, RS, -bx.x0 * RS, -bx.y0 * RS);
   ROOM_PAINT[id](b, r, P, lit);
-  if (!lit) paintInkDecor(b, id);   // 暗处的墨（光照到的地方没有）
+  if (!lit) { paintInkDecor(b, id); creepRoom(b, id, r); }   // 暗处的墨（光照到的地方没有）
   for (const d of DOORS) if (d.x === r.x1 && d.fl === r.fl) { b.save(); paintDoorway(b, d, P, lit, 300000 + d.x * 3 + (d.fl === 'up' ? 1 : 2)); b.restore(); }
   const e = roomC[id] || (roomC[id] = { ...bx, w, h });
   e[lit ? 'lit' : 'dark'] = c;
