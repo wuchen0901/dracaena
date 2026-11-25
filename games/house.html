@@ -597,6 +597,7 @@ const START8 = {
   gWhis: 'floor',             // 挂着钥匙的哨子：运动服塌下去掉在地上 / 身上 / 钥匙插在器材室的门上（used）
   gDoor: 0,                   // 器材室的门开了没有
   gGive2: 0, gOut: 0,         // 器材室里跑圈的那件运动服怀里的灯点亮了没有（亮了，它站住，是一盏灯）；走出后门没有
+  gCall: 0,                   // 2026-11-25 吹哨子：器材室里跑圈的那件被哨子叫过来、站在靠门这头没有（站一阵它又接着跑，见 callEnds8）
 };
 const VALUES8 = { gWhis: ['floor', 'inv', 'used'] };
 const GATES8 = {
@@ -618,14 +619,18 @@ function act8(s, spot, held, R = reachL(L8, s)) {
     case 'gSw': if (held) return no('no'); if (!s.gGive1 || s.gSw) return no('look'); n.gSw = 1; return ok('swOn8');
     case 'gWhis': if (held || s.gWhis !== 'floor') return no(held ? 'no' : 'look'); n.gWhis = 'inv'; return ok('take:gWhis');
     // 器材室的门锁着：哨子上的钥匙插上去。空着手点：气泡里画哨子
-    case 'gDoor': if (s.gDoor) return no(held ? 'no' : 'look'); if (held === 'gWhis') { n.gWhis = 'used'; n.gDoor = 1; return ok('unlock8'); } if (held) return no('no'); return no('locked8');
+    // 钥匙从哨子上取下来插在门上，哨子还在手里（2026-11-25：哨子要留着吹）
+    case 'gDoor': if (s.gDoor) return no(held ? 'no' : 'look'); if (held === 'gWhis') { n.gDoor = 1; return ok('unlock8'); } if (held) return no('no'); return no('locked8');
     // 器材室里跑圈的运动服：它跑到靠门这头的时候点它（页面里才看它在哪儿，规则里不管）
-    case 'gHand': if (held) return no('no'); if (s.gGive2) return no('look'); n.gGive2 = 1; return ok('give8b');
-    case 'gExit': if (held) return no('no'); if (s.gOut) return ok('exit8'); n.gOut = 1; return ok('exit8');
+    // 举着哨子点它：吹一声，它停下、跑到靠门这头站好、朝着孩子（以前是干等它自己跑过来）；空着手点它：要先叫过来，不然气泡里画哨子
+    case 'gHand': if (held && held !== 'gWhis') return no('no'); if (s.gGive2) return no(held ? 'no' : 'look'); if (held) { if (s.gCall) return no('look'); n.gCall = 1; return ok('blow8'); } if (!s.gCall) return no('call8'); n.gGive2 = 1; return ok('give8b');
+    case 'gExit': if (held) return no('no'); if (n.gWhis === 'inv') n.gWhis = 'used'; if (s.gOut) return ok('exit8'); n.gOut = 1; return ok('exit8');
   }
   return no('no');
 }
-const L8 = mkLevel({ n: 8, name: '体育馆', START: START8, ITEMS: ITEMS8, VALUES: VALUES8, GATES: GATES8, LINKS: LINKS8, ENTRY: 'g0', SPOT_ZONE: SPOT_ZONE8, act: act8, GOAL: 'gOut' });
+// 哨声过后它站一阵又接着跑（不是点出来的：求解器不搜，check.mjs 另外查：变回去以后也走得出去，再吹一声就是）
+const callEnds8 = s => s.gCall === 1 && s.gGive2 === 0 ? { s: { ...s, gCall: 0 }, ev: ['callEnd8'] } : null;
+const L8 = mkLevel({ n: 8, name: '体育馆', START: START8, ITEMS: ITEMS8, VALUES: VALUES8, GATES: GATES8, LINKS: LINKS8, ENTRY: 'g0', SPOT_ZONE: SPOT_ZONE8, act: act8, GOAL: 'gOut', TIMED: [callEnds8] });
 // ---------- 第 9 关：夜市（转折以后：一件围裙抱着灯；第三条新规则第一次要看懂“这件在做什么”）----------
 // 体育馆后门的外面是夜市的入口：入口的灯泡串断着电（插头垂在柱子底下）；刨冰摊的柱子上挂着一把蒲扇；摊子边上一只炭炉，凉透了。
 // 插上灯泡串、拿蒲扇、把炭炉扇红：红光照到面摊摊主的围裙头上（它守着摊子在炉子和摊位之间来回摆），它塌下去，口袋里掉出一把杆秤，摊位上露出一碗凉了的面；
@@ -1506,6 +1511,7 @@ for (const [k, fn] of Object.entries({
   tick: (t, i) => tone(i ? 1500 : 1900, t, 0.02, 0.01, 'square', i ? 900 : 1100),
   pip: t => { noise(t, 0.07, 0.03, 1400, 2); tone(700, t, 0.06, 0.012, 'sawtooth', 420); },   // 火苗崽咳嗽
   fizz: t => { noise(t, 0.25, 0.04, 3000, 0.8, 'highpass'); tone(300, t, 0.2, 0.02, 'sine', 700); },   // 火苗崽扎回火里
+  whistle: t => { tone(2700, t, 0.16, 0.045, 'sine', 3200); tone(3000, t + 0.17, 0.34, 0.05, 'sine', 2500); tone(3010, t + 0.17, 0.34, 0.02, 'triangle', 2510); },   // 体育课的哨子：短一声，长一声
   squeak: t => { tone(1700, t, 0.1, 0.035, 'triangle', 2700); tone(2500, t + 0.07, 0.12, 0.022, 'triangle', 1600); },   // 灯崽吓了一跳
   patter: (t, fast) => tone(2300 + Math.random() * 900, t, 0.014, fast ? 0.012 : 0.007, 'square', 1500),   // 灯崽的小铜脚
   hop: t => { tone(900, t, 0.04, 0.02, 'triangle', 1400); noise(t, 0.03, 0.02, 3200, 3); },
@@ -2446,6 +2452,7 @@ const roofZoneAt = x => x < GATEPOS.rt1.x ? 'r0' : x < GATEPOS.rt2.x ? 'r1' : 'r
 const SCH = { x0: 21040, x1: 24340 }, SLAMP = { x: 21660, y: 640 }, SSW = { x: 21500, y: 884 }, SKEY_X = 21900, SDOOR = { x: 22140 }, SDOOR_STOP = 22096, SKID = { x: 22700 }, SPROJ = { x: 23130, y: 848 }, SEXIT = { x: 24230 };
 const schoolZoneAt = x => x < GATEPOS.sg1.x ? 's0' : x < SDOOR.x ? 's1' : x < GATEPOS.sg2.x ? 's2' : 's3';
 // 第 8 关：体育馆。长凳上小孩的外套、配电箱、球场顶上的大灯、器材室的门、递光的地方（孩子站在门里）、跑圈的运动服停下来站的地方、后门
+const GCALL_HOLD = 6;   // 哨声过后器材室里那件站好站几秒，又接着跑
 const GYM = { x0: 24340, x1: 27640 }, GKID = { x: 24650 }, GSW = { x: 24960, y: 884 }, GLAMP = { x: 25990, y: 520 }, GDOOR = { x: 26690 }, GDOOR_STOP = 26646, GHAND = { x: 26772 }, GR2_STAND = 26950, GEXIT = { x: 27540 };
 const gymZoneAt = x => x < GATEPOS.gg1.x ? 'g0' : x < GDOOR.x ? 'g1' : x < GATEPOS.gg2.x ? 'g2' : 'g3';
 // 第 9 关：夜市。入口柱子上的插座、刨冰摊柱子上的蒲扇、入口的炭炉、烤串摊的炭炉、递光的地方（孩子站在烤串摊那一片的外面）、烤串摊摊主扇火站的地方、后巷的铁栅门、出口
@@ -4290,6 +4297,7 @@ function gymUpdate(dt) {   // 大灯：配电箱扳下去就慢慢热起来（�
   V.gk1 = approach(V.gk1, S.gGive1, dt / 2.0); V.li.gk = clamp((V.gk1 - 0.35) / 0.35, 0, 1) * (0.94 + 0.06 * Math.sin(T * 2.3));
   V.gb = approach(V.gb, S.gGive2, dt / 1.6); V.li.gb = clamp((V.gb - 0.3) / 0.4, 0, 1) * (0.94 + 0.06 * Math.sin(T * 2.7));
   V.gsw = approach(V.gsw, S.gSw, dt / 0.25); V.gdoor = approach(V.gdoor, S.gDoor, dt / 0.7);
+  if (S.gCall === 1 && V.T >= (V.gCallUntil ?? -10)) { const r = callEnds8(S); if (r) S = r.s; }   // 哨声过后站一阵（GCALL_HOLD 秒），又接着跑
   const m1 = V.mon.gr1;
   if (!V.gSeen && S.gSw && m1.rise < 0.5) { V.gSeen = 1; V.gT1 = T; V.gX0 = m1.x; V.gWx = clamp(m1.x, 25760, 26480); }
 }
@@ -9007,7 +9015,7 @@ const GARB = {
   // 体育馆（第 8 关）：跑圈的运动服（第三条新规则：衣服照着它的人在做的事动）。不在窝里等，一圈一圈来回跑（lap：跑的那一段，lapSpeed：跑多快，lapRest：到头歇多久）；
   // 孩子走进它那一片、又不在光里，它朝孩子追过来（speed）。光照到头它就塌。gr2 接了小光（holds）就不跑了，站在 stand 抱着光
   gr1: { kind: 'runner', fl: 'down', home: 25640, terr: [25480, 26640], lap: [25640, 26590], lapSpeed: 170, lapRest: 1.2, speed: 150, h: 214, pal: { coat: 'g1c', coatLo: 'g1l', scarf: 'g1s', hat: 'rh' } },
-  gr2: { kind: 'runner', fl: 'down', home: 26890, terr: [26840, 27440], lap: [26890, 27300], lapSpeed: 150, lapRest: 1.6, speed: 140, h: 214, pal: { coat: 'g2c', coatLo: 'g2l', scarf: 'g2s', hat: 'rh' }, holds: () => S.gGive2 === 1, stand: GR2_STAND },
+  gr2: { kind: 'runner', fl: 'down', home: 26890, terr: [26840, 27440], lap: [26890, 27300], lapSpeed: 150, lapRest: 1.6, speed: 140, h: 214, pal: { coat: 'g2c', coatLo: 'g2l', scarf: 'g2s', hat: 'rh' }, holds: () => S.gGive2 === 1, stand: GR2_STAND, call: () => S.gCall === 1, callTo: 26930 },
   // 夜市（第 9 关）：摊主的围裙（第三条新规则：衣服照着它的人在做的事动）。守着摊子在 lap 这一段里来回摆，到头歇一会儿：炉子那头在扇火，摊位那头在招呼；
   // 孩子走进它那一片、又不在光里，它朝孩子追过来。光照到头它就塌。nr2 接了小光（holds）就不摆了，站在 stand（炉子边）抱着光
   nr1: { kind: 'apron', fl: 'down', keepDown: () => V.nSeen === 1, home: 28980, terr: [28730, 29420], lap: [28790, 29300], lapSpeed: 110, lapRest: 1.6, speed: 130, h: 214, pal: { coat: 'n1c', coatLo: 'n1l', scarf: 'n1s', hat: 'rh' } },
@@ -9114,7 +9122,8 @@ function garbUpdate(dt) {
       m.den = approach(m.den, !m.alert && Math.abs(m.x - G.home) < 6 ? 1 : 0, dt * 5);
     } else {
       let target = hunting ? kid.x : G.home, spd = hunting ? G.speed : G.speed * 0.6;
-      if (G.lap && !hunting && m.rise > 0.9) {   // 跑圈：在 lap 这一段里来回跑，到头歇一小会儿再掉头
+      if (G.call && G.call() && !hunting && m.rise > 0.9) { target = G.callTo; spd = G.lapSpeed * 1.4; m.pause = 0; }   // 被哨子叫过来：不跑圈了，跑到 callTo 站好
+      else if (G.lap && !hunting && m.rise > 0.9) {   // 跑圈：在 lap 这一段里来回跑，到头歇一小会儿再掉头
         m.dir = m.dir || 1; m.pause = m.pause || 0;
         const end = G.lap[m.dir > 0 ? 1 : 0];
         if (m.pause > 0) { m.pause -= dt; target = m.x; } else { target = end; spd = G.lapSpeed; if (Math.abs(end - m.x) < 2) { m.dir = -m.dir; m.pause = G.lapRest; } }
@@ -9129,6 +9138,7 @@ function garbUpdate(dt) {
       }
     }
     m.mv = Math.abs(m.x - x0);
+    if (G.call && G.call() && !hunting && Math.abs(m.x - G.callTo) < 3) m.face = Math.sign(kid.x - m.x) || m.face;   // 叫到跟前了：站好，朝着吹哨的孩子
     if (G.lap) m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
     if (G.face0 && !hunting && Math.abs(m.x - G.home) < 2) m.face = G.face0;   // 排队的大衣：回到原处又朝着公交车来的那边站好
     m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5);
@@ -11412,7 +11422,7 @@ function ACT(s, id, h) {
     if (!s.sOut) return { fail: 'far' };
     const R = reachL(L8, s); if (kid.x > GYM.x0) R.add(gymZoneAt(kid.x));
     const r = act8(s, id, h, R);
-    if (id === 'gHand' && r.s && V.mon.gr2.x > GHAND.x + 250) return { fail: 'far' };   // 第三条新规则：它一圈一圈地跑，要等它跑到靠门这头才递得出去（规则里不管它在哪儿）
+    if (id === 'gHand' && r.s && !h && V.mon.gr2.x > GHAND.x + 250) return { fail: 'far' };   // 哨声叫它过来，它还在路上的时候递不出去   // 第三条新规则：它一圈一圈地跑，要等它跑到靠门这头才递得出去（规则里不管它在哪儿）
     return r;
   }
   if (id in SPOT_ZONE7) {   // 学校（第 7 关）：走过木板才有。孩子人站在哪一块，那一块就算走得到
@@ -11524,6 +11534,7 @@ function perform(sp, h, r) {
     else if (f === 'cold9') { o.hx = NSTV.x - 8; o.hy = FL.down.gy - 104; o.pre = 0.3; o.hold = 0.25; o.onHit = bub(['nFan'], () => snd.tap()); }   // 夜市：炭炉是凉的，气泡里画蒲扇
     else if (f === 'wait9') { o.hx = kid.x + 40; o.hy = FL.down.gy - 110; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['stove'], () => snd.no()); }   // 夜市：烤串摊的摊主正朝着路招呼，递不出去，气泡里画炉子（要等它摆到炉子那头扇火）
     else if (f === 'high9') { o.hx = NGATE.x - 30; o.hy = FL.down.gy - 150; o.pre = 0.4; o.jump = true; o.onHit = bub(['nScale'], () => snd.no()); }   // 夜市：门闩在头顶上够不着，气泡里画杆秤
+    else if (f === 'call8') { o.hx = GHAND.x + 40; o.hy = FL.down.gy - 106; o.pre = 0.3; o.hold = 0.3; o.onHit = bub(['gWhis'], () => snd.tap()); }   // 体育馆：器材室里那件在跑，空着手点它它不理，气泡里画哨子
     else if (f === 'locked8') { o.hx = GDOOR.x - 20; o.hy = FL.down.gy - 96; o.pre = 0.25; o.hold = 0.25; o.onHit = bub(['gWhis'], () => snd.locked()); }   // 体育馆：器材室的门锁着，气泡里画哨子（钥匙挂在哨子上）
     else if (f === 'locked7') { o.hx = SDOOR.x - 20; o.hy = FL.down.gy - 96; o.pre = 0.25; o.hold = 0.25; o.onHit = bub(['sKey'], () => snd.locked()); }   // 学校：教室的门锁着，气泡里画钥匙
     else if (f === 'gap6') { o.hx = kid.x + 40; o.hy = FL.down.gy - 50; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['rPlank'], () => snd.no()); }   // 屋顶：缝太宽，跨不过去，气泡里画木板
@@ -11697,7 +11708,7 @@ function perform(sp, h, r) {
     case 'gSw': o.pre = 0.25; o.hold = 0.4; break;
     case 'gWhis': o.pre = 0.2; o.hold = 0.2; break;
     case 'gDoor': o.pre = 0.45; o.wiggle = true; o.hold = 0.4; snd.screw(); break;   // 手里举着哨子，把钥匙朝锁孔里插
-    case 'gHand': o.pre = 0.5; o.hold = 0.7; break;   // 朝跑过来的那件运动服伸出手，另一只小光飞过去
+    case 'gHand': if (h === 'gWhis') { o.pre = 0.3; o.hold = 0.4; } else { o.pre = 0.5; o.hold = 0.7; } break;   // 举着哨子：凑到嘴边吹一声；空着手：朝跑过来的那件运动服伸出手   // 朝跑过来的那件运动服伸出手，另一只小光飞过去
     case 'gExit': o.pre = 0.4; o.hold = 0.4; o.after = exitSeq8; break;
     // 学校（第 7 关）
     case 'sSwitch': o.pre = 0.25; o.hold = 0.4; break;
@@ -11864,7 +11875,9 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'swOn8': V.gswT = V.T; V.peek = { x: GLAMP.x - 140, t0: V.T, dur: 4.8 }; snd.clank(); snd.lightOn(); break;   // 配电箱扳下去：镜头过去看大灯慢慢热起来
       case 'give8a': V.give1T = V.T; V.give1X = kid.x - kid.face * 24; V.give1Y = kid.y - 150; snd.lightOn(); break;
       case 'give8b': V.give2T = V.T; V.give2X = kid.x - kid.face * 36; V.give2Y = kid.y - 168; snd.lightOn(); break;
-      case 'unlock8': drop('gWhis'); snd.clank(); snd.thump(); break;
+      case 'unlock8': snd.clank(); snd.thump(); break;   // 钥匙取下来开了门，哨子还在手里
+      case 'blow8': V.gCallUntil = V.T + GCALL_HOLD; snd.whistle(); puff(kid.x + kid.face * 26, kid.y - 150, C.lamp, 10); break;   // 吹哨子：器材室里那件跑圈的跑到靠门这头站好
+      case 'exit8': drop('gWhis'); break;   // 走出后门：哨子在门口放下
       // 学校（第 7 关）
       case 'swOn7': V.lt0.sa = V.T; V.sswT = V.T; V.peek = { x: GATEPOS.sg1.x - 40, t0: V.T, dur: 2.0 }; snd.clank(); snd.lightOn(); break;
       case 'unlock': drop('sKey'); snd.clank(); snd.thump(); break;
@@ -12025,6 +12038,7 @@ function hint() {
   else if (m.spot === 'zStomp') say(['stomp', '>'], 2.8);
   else if (m.spot === 'zClap') say(['clap', '>'], 2.8);
   else if (m.spot === 'rSwitch' || m.spot === 'sSwitch') say(['lever', '>'], 2.8);
+  else if (m.spot === 'gHand' && m.held) say([m.held, '>'], 2.8);   // 吹哨子那一步：气泡里画哨子
   else if (m.spot === 'sKid' || m.spot === 'gKidH' || m.spot === 'gHand' || m.spot === 'nHand') say(['orb', '>'], 2.8);
   else if (m.spot === 'nPlug') say(['plug', '>'], 2.8);
   else if (m.spot === 'uHand') say(['orb', '>'], 2.8);
@@ -12420,7 +12434,7 @@ function drawOverlays(lights) {
   ];
   const gglints = [   // 体育馆（第 8 关）
     [GKID.x - 30, FL.down.gy - 70, 0.5, !S.gGive1], [GSW.x, GSW.y, 1.6, S.gGive1 && !S.gSw], [V.gWx, FL.down.gy - 14, 2.7, S.gWhis === 'floor' && V.gSeen],
-    [GDOOR.x - 20, FL.down.gy - 96, 3.8, S.gWhis === 'inv'], [GHAND.x + 40, FL.down.gy - 106, 4.9, S.gDoor && !S.gGive2], [GEXIT.x - 10, FL.down.gy - 100, 0.9, S.gGive2],
+    [GDOOR.x - 20, FL.down.gy - 96, 3.8, S.gWhis === 'inv' && !S.gDoor], [GHAND.x + 40, FL.down.gy - 106, 4.9, S.gDoor && !S.gGive2], [GEXIT.x - 10, FL.down.gy - 100, 0.9, S.gGive2],
   ];
   const sglints = [   // 商店街（第 4 关）
     [POT.x - 4, POT.base - 30, 0.4, S.qKey === 'pot'], [BOXC.x, BOXC.y0 + 56, 2.8, S.qBox && !S.qNeon],
