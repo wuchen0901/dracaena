@@ -8354,6 +8354,7 @@ function drawDynamic(b, lit, vis) {
   drawXDyn(b, P, lit, vis);   // 后半：街上的人、末班车、一家人、狗、相机
   drawVsDyn(b, P, lit, vis);   // 变电站（第 15 关）
   drawWallDev(b, P, lit);   // 第 3、12 关墙上的闸箱、保险盒（第 6 关的插座 2026-11-25 起自己画，见 drawRoofOutlet）
+  for (const k of EXTRA_KEYS) { const m = V.mon[k]; if (inView(m.x, FL[GARB[k].fl].gy - 100, 360)) drawFear(b, P, lit, k); }   // 新的怪物（多出来的）：统一在这儿画，在孩子后面
   drawKid(b, P, lit);
   drawCatchExtra(b, P, lit);   // 被靴嘴咬住、被外套的墨手抓住：盖在孩子上面
 }
@@ -9468,15 +9469,10 @@ const GARB = {
   // wake 孩子走过这条线（出了门廊那片光）它才头一回从窝里扑出来
   dog: { kind: 'sweater', fl: 'down', home: KENNEL.x, terr: [4560, 5790], speed: 500, acc: 900, brk: 450, h: 110, fast: 1, headDx: 34, wake: 5100 },
   // 雨衣、稻草人的那一片（terr）都落在照它的那盏灯照得到的地方里面：灯一亮，它走到哪儿都塌（量过，见 README）
-  // 2026-11-25：车库里守着卷帘门的从“雨衣”换成“靴嘴”（钥匙还叫 rain：规则、门、提示都没动）。雨衣还挂在钩子上，只是不动了（drawRainHung 一直画）；
-  // 钩子底下摆着一双胶靴，暗处也不立起来，是整整齐齐的一双：孩子走到跟前（sleeper 以内）才醒。醒了一蹦一蹦地咬：先预兆（嘴张开、鞋带甩起来、咔哒响），再一蹦 hop.dist，落地以前不拐弯。
-  // 那一片（terr）还是车灯照得到的地方：灯一亮，它走到哪儿都塌（量过，见 docs/night-monsters.md）
-  rain: { kind: 'boot', fl: 'down', home: RAINHOOK.x, terr: [6640, 6850], speed: 0, h: 70, sleeper: 540, hop: { dist: 100, dur: 0.4, tell: 0.9, tell0: 2.4, rest: 0.5 } },
+  rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6690, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'] },
   // 巷子（第 3 关）：晾在绳子上的邻居的衣服。走法和第 1 关的一样（慢慢挪过来，光照到头就塌）
   nightie: { kind: 'robe', fl: 'down', home: 9300, terr: [9170, 9500], speed: 58, h: 214, cols: ['lnSh1', 'lnSh2'] },
-  // 2026-11-25：邻居门口的外套换成“有影子的大衣”（kind shdcoat；规则、门、走法一个字没动）：挂着、塌着的时候就是一件外套，可是灯照着它的时候，墙上的影子是一个人（有头、有帽子、举着一只手，眼睛长在影子里）；
-  // 灯一灭它醒过来，领口里升起来的就是那个人形的墨
-  jacket: { kind: 'shdcoat', fl: 'down', home: 10370, terr: [10230, 10560], speed: 64, h: 214, pal: { coat: 'jkC', coatLo: 'jkLo', scarf: 'jkS', hat: 'jkH' } },
+  jacket: { kind: 'coat', fl: 'down', home: 10370, terr: [10230, 10560], speed: 64, h: 214, pal: { coat: 'jkC', coatLo: 'jkLo', scarf: 'jkS', hat: 'jkH' } },
   apron: { kind: 'robe', fl: 'down', home: 11190, terr: [11060, 11350], speed: 58, h: 214, cols: ['apC1', 'apC2'], belt: 1 },
   // 商店街的地下室（第 4 关，2026-11-24）：五金店老板挂在柜台后面钩子上的一件灰大褂（长袍的走法），守着柜台后面的零件柜。
   // 它那一片（terr）全在地下室灯泡照得到的地方：灯一亮，走到哪儿都塌
@@ -9547,17 +9543,233 @@ const GARB = {
   // 广场（第 18 关）：cr1 木马上陪孩子的大人（ride：位置跟着木马转，不用自己走）。暗处醒着；光照到头它就塌，转出光了它又醒；停下来的时候醒着，朝孩子这边看，木马外面的孩子它够不着。
   // 刹车的时候要它停在光里，塌了就一直塌着（keepDown）
   cr1: { kind: 'coat', fl: 'sfc', ride: true, keepDown: () => V.cSeen === 1, get home() { return CPP.cx + CPP.ro; }, terr: [CPP.cx - 260, CPP.cx + 260], speed: 0, h: 292, face0: -1 },
+  // ===== 新的怪物（2026-11-25）：主人说雨衣、外套先留着当怪物，别所有怪物都一个行为——新的是多出来的，各有各的行为（docs/night-monsters.md）=====
+  // partner：它挂在这一关的哪一道门上。规则不动（同一盏灯照倒）；页面里这道门要等它也塌下去才算开（GATE_ALL，见下面）。
+  // sleeper：睡着的，暗处也不立起来，孩子走到这么近才醒。hop：一蹦一蹦地追（先预兆再一蹦）。
+  boots: { kind: 'boot', fl: 'down', partner: 'rain', home: 6800, terr: [6640, 6850], speed: 0, h: 70, sleeper: 540, ai: 'hop', hop: { dist: 100, dur: 0.4, tell: 0.9, tell0: 2.4, rest: 0.5 } },   // 第 2 关车库：雨衣后面（卷帘门边）的一双胶靴，和雨衣一起被车灯照倒
+  shdc: { kind: 'shdcoat', fl: 'down', partner: 'jacket', home: 10470, terr: [10400, 10560], speed: 90, h: 214, sleeper: 300, pal: { coat: 'mzCoat', coatLo: 'mzCoatLo', scarf: 'jkS', hat: 'jkH' } },   // 第 3 关：晾在外套右边的有影子的大衣，和外套一起被门廊灯照倒
+  // 第 6 关屋顶：伞嘴守在第一件衬衫那一片（挂在 rt1 这道门上：同一串灯，嘴张开的那一下被照到才塌）；披风蝠在天台上沿着一条固定的路来回飞，不挂在门上（extra）：第二串灯一亮它就掉下来
+  umb: { kind: 'umb', fl: 'down', partner: 'rt1', home: 18860, terr: [18800, 18920], speed: 0, h: 120, sleeper: 440, ai: 'snap', snap: { cycle: 3.2, open0: 2.35, open1: 3.0, reach: 62 } },
+  // 披风蝠：home 是它栖着的地方（晾杆上对折着）；path 是巡逻的一圈（每一段：到哪儿 x1、多高 a1、花几秒 dur；dive 是俯冲贴地的那一段；face 朝哪边）。离地不到 danger 的时候撞得到孩子
+  cloak: { kind: 'fly', fl: 'down', extra: 1, home: 20330, terr: [19640, 20080], speed: 0, h: 120, sleeper: 700, ai: 'fly', headAt: (m, fy) => fy - (m.alt || 150) - 78,
+    fly: { x0: 20080, a0: 170, danger: 95, reach: 40, roost: 262, path: [{ x1: 20080, a1: 170, dur: 0.9, hover: 1 }, { x1: 19950, a1: 170, dur: 1.0, face: -1 }, { x1: 19900, a1: 40, dur: 0.4, face: -1, dive: 1 }, { x1: 19800, a1: 40, dur: 0.7, face: -1, dive: 1 }, { x1: 19730, a1: 170, dur: 0.5, face: -1 }, { x1: 19700, a1: 170, dur: 0.25, face: -1 }, { x1: 19700, a1: 170, dur: 0.8, hover: 1 }, { x1: 20080, a1: 170, dur: 2.9, face: 1 }] } },
+  // 第 5 关公寓楼：都是“声音过后一阵子才追”（listen，和住户一样）。拉链嘴守在楼道里（挂在 zt2 这道门上），爬行的睡衣躺在大堂的地上（挂在 zt1 这道门上）。跟着住户一起塌（follow）
+  zip: { kind: 'zip', fl: 'down', partner: 'zt2', follow: 'zt2', home: 17010, terr: [16830, 17230], speed: 0, h: 214, sleeper: 560, listen: 1, ai: 'lunge', lunge: { tell: 1.0, dist: 170, dur: 0.3, stun: 1.5, reach: 56, back: 80 } },
+  pj: { kind: 'pj', fl: 'down', partner: 'zt1', follow: 'zt1', home: 15990, terr: [15850, 16130], speed: 0, h: 70, sleeper: 300, listen: 1, ai: 'dart', dart: { tell: 0.75, speed: 330, max: 0.8, reach: 44, back: 150 } },
+  // 第 10 关剧院：缝合怪守在台边戏服架后面（挂在 ta3 这道门上，追光一照一起塌）。一瘸一拐地走过来，够到一臂远（剪刀）先张开剪刀预兆，再咔嚓一合
+  patch: { kind: 'patch', fl: 'down', partner: 'ta3', follow: 'ta3', home: 34250, terr: [34020, 34400], speed: 55, h: 250, sleeper: 360, ai: 'snip', snip: { reach: 150, tell: 0.9, snap: 0.16, rest: 1.1 } },
+  // 第 13 关下水道：袖蛛用一根毛线吊在第二段管子上（挂在 wp2 这道门上，桶的光一照一起塌）。孩子走到它底下，线放下来（预兆），掉下来贴着地追一阵，追不到就爬回去
+  spider: { kind: 'spider', fl: 'down', partner: 'wp2', follow: 'wp2', home: 44520, terr: [44360, 44700], speed: 0, h: 150, sleeper: 420, ai: 'drop', drop: { ceil: 330, hang: 190, trig: 95, tell: 0.95, fall: 0.22, speed: 185, max: 2.2, hit: 54, climb: 1.4 } },
+  // 第 17 关百货大楼：叠好的衣服摆在过道上，在夜班店员前面（挂在 bs1 这道门上，射灯一照一起塌）。孩子看着它，它就不动；孩子一背过身，它就往孩子这边挪
+  stk: { kind: 'stk', fl: 'sfc', partner: 'bs1', follow: 'bs1', home: 57660, terr: [57525, 57720], speed: 0, h: 70, sleeper: 360, ai: 'watch', watch: { speed: 52, hit: 46 } },
+  // 第 18 关广场：长衣人站在木马这头（挂在 cs1 这道门上，木马的灯一亮一起塌）。站着不动，广场的灯闪一下，它就往孩子这边近一步
+  tall: { kind: 'tall', fl: 'sfc', partner: 'cs1', follow: 'cr1', home: 61300, terr: [60900, 61420], speed: 0, h: 340, sleeper: 520, ai: 'flick', flick: { step: 60, every: 4.6, dark: 0.34, hit: 52 } },
 };
 const GARB_KEYS = Object.keys(GARB);
+const EXTRA_KEYS = GARB_KEYS.filter(k => GARB[k].partner || GARB[k].extra);   // 新的怪物：统一在 drawDynamic 里画
+for (const k of EXTRA_KEYS) { if (!GARB[k].partner) continue; const g0 = GATE_ALL[GARB[k].partner]; GATE_ALL[GARB[k].partner] = s => g0(s) && (!V || !V.mon || V.mon[k].rise < 0.15); }   // 它挂的那道门：要它也塌下去了才算开
 const newMon = () => Object.fromEntries(GARB_KEYS.map(k => [k, { x: GARB[k].home, rise: GARB[k].sleeper ? 0 : 1, want: GARB[k].sleeper ? 0 : 1, woke: 0, hs: 'idle', ht: 0, air: 0, tell: 0, ph: 0, face: GARB[k].face0 ?? -1, reach: 0, hunt: 0, v: 0, mv: 0, dr: 0, alert: false, alertT: -10, den: 1, skid: 0, skidding: false, dustT: 0 }]));   // mv、dr：这一帧挪了多远、立起来多少（感应灯看它动没动）
 const garbHead = k => { const G = GARB[k], m = V.mon[k]; return [m.x + m.face * (G.headDx || 0), FL[G.fl].gy - G.h * 0.8]; };
 const pathOf = (k, pts) => { pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.moveTo(x, y)); k.closePath(); };
+// ----- 新的怪物各自的行为（G.ai 是名字）。每个：(k, G, m, dt, c)，c = { T, fy, hx, hy, lit, calm, kidLit, near }；
+// 进来的时候 m.rise 已经按“照到了没有”更新过了（照到头 rise 往 0，暗处往 1；睡着的在暗处也是 0）；这里管它自己怎么动、什么时候抓人 -----
+const AI = {};
+// 靴嘴：一蹦一蹦。孩子在它那一片（terr）里、在暗处，它才追：先预兆 tell 秒（嘴张大、鞋带甩、咔哒响；头一回 tell0 秒），再一蹦 dist 远，落地以前不拐弯；没人追的时候蹦回原处
+AI.hop = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, H = G.hop, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10, hunting = !calm && m.rise > 0.9 && inT && !kidLit;
+  m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5); m.reach = 0; m.mv = 0;
+  if (m.rise < 0.5) { m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = approach(m.tell, 0, dt * 4); }
+  else if (m.rise > 0.9) {
+    m.ht += dt;
+    const tgt = hunting ? kid.x : G.home, d = tgt - m.x;
+    if (m.hs === 'idle') {
+      m.tell = approach(m.tell, 0, dt * 3);
+      if (m.ht > H.rest && Math.abs(d) > (hunting ? 34 : 24)) { m.hs = 'tell'; m.ht = 0; m.face = Math.sign(d) || m.face; if (hunting && inView(m.x, hy, 120)) snd.clack(); }
+    } else if (m.hs === 'tell') {
+      const need = hunting && m.tellFirst ? H.tell0 : hunting ? H.tell : H.tell * 0.5;
+      m.tell = clamp(m.ht / need, 0, 1); m.face = Math.sign(d) || m.face;
+      if (hunting && m.ht < need && Math.floor(m.ht * 5) !== Math.floor((m.ht - dt) * 5) && inView(m.x, hy, 120) && m.ht > 0.2) snd.clack();
+      if (m.ht >= need) {
+        m.hs = 'air'; m.ht = 0; m.tellFirst = 0; m.hdir = Math.sign(d) || m.face; m.hx0 = m.x;
+        m.hx1 = clamp(m.x + m.hdir * Math.min(H.dist, Math.abs(d) + (hunting ? 28 : 0)), G.terr[0] - 80, G.terr[1]); if (inView(m.x, hy, 160)) snd.boing();
+      }
+    } else if (m.hs === 'air') {
+      const u = clamp(m.ht / H.dur, 0, 1), xn = lerp(m.hx0, m.hx1, u); m.mv = Math.abs(xn - m.x); m.x = xn; m.air = u; m.face = m.hdir;
+      if (u >= 1) { m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; if (inView(m.x, hy, 160)) { snd.thump(); for (let i = 0; i < 4; i++) parts.push({ x: m.x + (Math.random() - 0.5) * 50, y: fy - 2, vx: (Math.random() - 0.5) * 80, vy: -(10 + Math.random() * 30), life: 0.35, col: [130, 138, 158], s: 1.6 + Math.random() * 2 }); } }
+    }
+    if (hunting) c.near = Math.max(c.near, 1 - Math.abs(kid.x - m.x) / 400);
+    if (hunting && Math.abs(kid.x - m.x) < 46) caught(k);
+  }
+};
+// 伞嘴：守在原地，一张一合（cycle 秒一圈，open0–open1 是张开的那一下）。暗处孩子走到 reach 以内、它张开的时候，咬下去；光只在它张开的那一下才算（闭着的时候照着，它缩着不塌）
+AI.snap = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, lit } = c, S0 = G.snap, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2;
+  m.hunt = approach(m.hunt, 0, dt * 2.5); m.reach = 0; m.mv = 0;
+  if (m.rise < 0.5) { m.cyc = 0; m.open = approach(m.open || 0, 0, dt * 4); return; }
+  m.cyc = ((m.cyc || 0) + dt * (onF && Math.abs(kid.x - m.x) < 320 ? 1.25 : 1)) % S0.cycle;
+  const was = m.open || 0, ph = m.cyc, tgt = ph > S0.open0 && ph < S0.open1 ? 1 : 0.14 + 0.06 * Math.sin(T * 3 + m.x);   // 张开的那一下：快开、快合
+  m.open = approach(was, tgt, dt * (tgt > was ? 9 : 5)); m.face = Math.sign(kid.x - m.x) || m.face;
+  if (was < 0.55 && m.open >= 0.55 && inView(m.x, hy, 160)) snd.snap();
+  m.hunt = m.open > 0.5 ? 1 : 0;
+  if (!lit && !calm && onF && m.open > 0.7 && Math.abs(kid.x - m.x) < S0.reach) caught(k);
+};
+// 披风蝠：按 path 一圈一圈地飞，匀速，不追人，不拐弯。离地不到 danger 的那一段（俯冲贴地）撞得到孩子。
+// 照到兜帽它就掉下来（rise 往 0，停在原处），灯一直亮着就一直躺着；灯灭了接着从原处飞。睡着的时候栖在 home 那根晾杆上，孩子走到跟前它才醒、才起飞
+const flyAt = (F, pt, home) => {   // 巡逻到第 pt 秒的位置：{x, alt, dive, face, hover}
+  if (pt < 0) { const u = smooth((pt + 1.4) / 1.4); return { x: lerp(home, F.x0, u), alt: lerp(F.roost - 80, F.a0, u), dive: 0, face: -1, hover: 0 }; }   // 起飞：从晾杆飞到一圈的开头
+  let tot = 0; for (const sg of F.path) tot += sg.dur; pt %= tot;
+  let x0 = F.x0, a0 = F.a0;
+  for (const sg of F.path) { if (pt < sg.dur) { const u = pt / sg.dur, e = sg.dive || a0 !== sg.a1 ? smooth(u) : u; return { x: lerp(x0, sg.x1, sg.hover ? 0 : u), alt: lerp(a0, sg.a1, e), dive: sg.dive ? 1 : a0 !== sg.a1 ? 0.5 : 0, face: sg.face || 1, hover: sg.hover || 0 }; } pt -= sg.dur; x0 = sg.x1; a0 = sg.a1; }
+  return { x: F.x0, alt: F.a0, dive: 0, face: 1, hover: 0 };
+};
+AI.fly = (k, G, m, dt, c) => {
+  const { T, fy, calm } = c, F = G.fly;
+  m.hunt = 0; m.reach = 0; m.mv = 0;
+  if (m.rise < 0.05 && !m.woke) { m.x = G.home; m.pt = -1.4; m.alt = F.roost - 80; return; }   // 睡着：回到晾杆上
+  if (m.pt == null) m.pt = -1.4;
+  if (m.rise > 0.9) {   // 飞着
+    const was = m.x, p0 = flyAt(F, m.pt, G.home); m.pt += dt; const p = flyAt(F, m.pt, G.home);
+    m.x = p.x; m.alt = p.alt; m.dive = p.dive; m.hover = p.hover; m.face = p.face; m.mv = Math.abs(m.x - was);
+    if (m.pt > 0 && p0.hover !== 1 && p.hover === 1 && inView(m.x, fy - m.alt, 200)) snd.shriek();   // 到拐点悬一下，叫一声：预兆
+    m.flapT = ((m.flapT || 0) + dt * 1.3) % 1; if (Math.floor((m.flapT) * 2) !== Math.floor(((m.flapT) - dt * 1.3) * 2) && inView(m.x, fy - m.alt, 300)) snd.flap();
+    const onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2;
+    if (!calm && onF && m.alt < F.danger && Math.abs(kid.x - m.x) < F.reach) caught(k);
+    if (inView(m.x, fy - m.alt, 400) && m.alt < F.danger + 60 && m.dive === 1) c.near = Math.max(c.near, 0.6);
+  }
+};
+// 拉链嘴：守在原地。孩子在它那一片（terr）里、在暗处、声音过后（listen）：先拉开拉链（预兆 tell 秒，“嘶——”，嘴越张越大），再一扑到底（dist 远，又快又直），扑完嘴张着愣一会儿（stun），再慢慢退回原处。只有扑的那一下抓得到
+AI.lunge = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, L = G.lunge, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit && (!G.listen || T - V.soundT < ZHEAR);
+  m.hunt = approach(m.hunt, hunting || m.ls === 'lunge' ? 1 : 0, dt * 3); m.mv = 0; m.reach = approach(m.reach, m.ls === 'lunge' ? 0.9 : 0, dt * 6);
+  if (m.rise < 0.5) { m.ls = 'idle'; m.lt = 0; m.zip = 0.2; return; }
+  if (m.rise <= 0.9) return;
+  m.lt = (m.lt || 0) + dt; if (!m.ls) m.ls = 'idle';
+  if (m.ls === 'idle') { m.zip = approach(m.zip ?? 0.25, 0.25, dt * 2); if (hunting && m.lt > 0.4) { m.ls = 'tell'; m.lt = 0; m.face = Math.sign(kid.x - m.x) || m.face; if (inView(m.x, hy, 200)) snd.zipper(); } }
+  else if (m.ls === 'tell') {
+    m.zip = lerp(0.25, 1, smooth(m.lt / L.tell)); m.face = Math.sign(kid.x - m.x) || m.face;
+    if (!hunting && m.lt > 0.3) { m.ls = 'idle'; m.lt = 0; }
+    else if (m.lt >= L.tell) { m.ls = 'lunge'; m.lt = 0; m.lx0 = m.x; m.lx1 = clamp(m.x + (Math.sign(kid.x - m.x) || m.face) * L.dist, G.terr[0] - 60, G.terr[1] + 60); if (inView(m.x, hy, 200)) snd.boing(); }
+  } else if (m.ls === 'lunge') {
+    const u = clamp(m.lt / L.dur, 0, 1), xn = lerp(m.lx0, m.lx1, ease(u)); m.mv = Math.abs(xn - m.x); m.ph += m.mv / 50; m.x = xn; m.zip = 1; m.face = Math.sign(m.lx1 - m.lx0) || m.face;
+    if (u >= 1) { m.ls = 'stun'; m.lt = 0; if (inView(m.x, hy, 200)) snd.thump(); }
+  } else if (m.ls === 'stun') { m.zip = 1; if (m.lt >= L.stun) { m.ls = 'back'; m.lt = 0; } }   // 嘴张着愣着
+  else if (m.ls === 'back') {
+    const d = G.home - m.x, st = Math.min(Math.abs(d), L.back * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; m.zip = approach(m.zip, 0.25, dt * 1.5); m.face = Math.sign(d) || m.face;
+    if (Math.abs(d) < 3) { m.ls = 'idle'; m.lt = 0; }
+  }
+  if (hunting) c.near = Math.max(c.near, 0.5);
+  if (m.ls === 'lunge' && !calm && onF && Math.abs(kid.x - m.x) < L.reach) caught(k);
+};
+// 爬行的睡衣：躺在地上。孩子在它那一片里、在暗处、声音过后：先翻过身来（预兆 tell 秒：袖口勾动、领口里亮起眼睛），再贴着地面冲过去（speed，最多 max 秒），冲不到就缩回去（back）、躺回原处
+AI.dart = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, D = G.dart, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit && (!G.listen || T - V.soundT < ZHEAR);
+  m.hunt = approach(m.hunt, m.ds === 'dash' || m.ds === 'tell' ? 1 : 0, dt * 4); m.reach = 0; m.mv = 0;
+  if (m.rise < 0.5) { m.ds = 'idle'; m.dt0 = 0; return; }
+  if (m.rise <= 0.9) return;
+  m.dt0 = (m.dt0 || 0) + dt; if (!m.ds) m.ds = 'idle';
+  if (m.ds === 'idle') { if (hunting && m.dt0 > 0.5) { m.ds = 'tell'; m.dt0 = 0; m.face = Math.sign(kid.x - m.x) || m.face; if (inView(m.x, hy, 200)) snd.rustle(); } }
+  else if (m.ds === 'tell') { m.face = Math.sign(kid.x - m.x) || m.face; if (!hunting && m.dt0 > 0.3) { m.ds = 'idle'; m.dt0 = 0; } else if (m.dt0 >= D.tell) { m.ds = 'dash'; m.dt0 = 0; } }
+  else if (m.ds === 'dash') {
+    const d = kid.x - m.x, st = Math.min(Math.abs(d), D.speed * dt); m.x = clamp(m.x + Math.sign(d) * st, G.terr[0] - 120, G.terr[1] + 120); m.mv = st; m.ph += st / 70; m.face = Math.sign(d) || m.face;
+    if (m.dt0 >= D.max || !hunting) { m.ds = 'back'; m.dt0 = 0; }
+  } else if (m.ds === 'back') {
+    const d = G.home - m.x, st = Math.min(Math.abs(d), D.back * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 70; m.face = Math.sign(d) || m.face;
+    if (Math.abs(d) < 3) { m.ds = 'idle'; m.dt0 = 0; }
+  }
+  if (hunting) c.near = Math.max(c.near, 0.5);
+  if (m.ds === 'dash' && !calm && onF && Math.abs(kid.x - m.x) < D.reach) caught(k);
+};
+// 缝合怪：一瘸一拐地走过来（speed），走到剪刀够得着的地方（reach）停下，先把剪刀张得大大的预兆 tell 秒（咔嚓、咔嚓），再咔地一合（snap），合的那一下剪刀前面 reach 以内的都抓得到；合完歇 rest 秒
+AI.snip = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, Sn = G.snip, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit;
+  m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5); m.mv = 0;
+  if (m.rise < 0.5) { m.ss = 'walk'; m.st = 0; m.scis = 0.12; m.reach = 0; m.mouth = 0.12; return; }
+  if (m.rise <= 0.9) return;
+  m.st = (m.st || 0) + dt; if (!m.ss) m.ss = 'walk';
+  const d = kid.x - m.x, dir = Math.sign(d) || m.face;
+  if (m.ss === 'walk') {
+    m.scis = 0.12 + 0.1 * Math.sin(T * 2 + m.x); m.reach = approach(m.reach, 0.35, dt * 3); m.mouth = approach(m.mouth ?? 0.12, 0.12, dt * 3);
+    const tgt = hunting ? kid.x : G.home, dd = tgt - m.x, stop = hunting ? Sn.reach * 0.82 : 4;
+    if (Math.abs(dd) > stop) { const st = Math.min(Math.abs(dd) - stop, (hunting ? G.speed : G.speed * 0.6) * dt); m.x += Math.sign(dd) * st; m.mv = st; m.ph += st / 55; m.face = Math.sign(dd); }
+    if (hunting && Math.abs(d) < Sn.reach * 0.95 && m.st > 0.5) { m.ss = 'tell'; m.st = 0; m.face = dir; }
+  } else if (m.ss === 'tell') {
+    m.face = dir; const u = clamp(m.st / Sn.tell, 0, 1); m.reach = approach(m.reach, 1, dt * 4); m.mouth = approach(m.mouth, 0.7, dt * 2);
+    m.scis = 0.18 + 0.55 * Math.abs(Math.sin(u * Math.PI * 2.5));   // 咔嚓、咔嚓：张开合上两下，越来越大
+    if (Math.floor(m.st * 2.7) !== Math.floor((m.st - dt) * 2.7) && inView(m.x, hy, 200)) snd.snip();
+    if (!hunting && m.st > 0.4) { m.ss = 'walk'; m.st = 0; }
+    else if (m.st >= Sn.tell) { m.ss = 'snap'; m.st = 0; }
+  } else if (m.ss === 'snap') {
+    const u = clamp(m.st / Sn.snap, 0, 1); m.scis = lerp(0.8, 0.02, u); m.reach = 1; m.mouth = 0.9;
+    if (m.st < dt * 1.6 && inView(m.x, hy, 200)) snd.snip();
+    if (!calm && onF && Math.sign(kid.x - m.x) === m.face && Math.abs(kid.x - m.x) < Sn.reach && m.st < Sn.snap + dt) caught(k);
+    if (m.st >= Sn.snap + 0.1) { m.ss = 'rest'; m.st = 0; }
+  } else if (m.ss === 'rest') { m.scis = 0.02; m.reach = approach(m.reach, 0.5, dt * 2); m.mouth = approach(m.mouth, 0.2, dt * 2); if (m.st >= Sn.rest) { m.ss = 'walk'; m.st = 0; } }
+  if (hunting) c.near = Math.max(c.near, 0.5);
+};
+// 袖蛛：用一根毛线吊在天花板（管子）上，不动。孩子走到它底下 trig 以内、在暗处：线放下来（预兆 tell 秒：身子慢慢往下，袖子垂下来晃），再 fall 秒掉到地上，贴着地追（speed，最多 max 秒），追不到就爬回去（climb 秒）
+AI.drop = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, D = G.drop, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit;
+  m.hunt = approach(m.hunt, m.dsp === 'chase' || m.dsp === 'fall' ? 1 : 0, dt * 4); m.reach = 0; m.mv = 0; m.ceil = D.ceil;
+  if (m.rise < 0.5) { m.dsp = 'hang'; m.dtt = 0; m.lift = D.hang; m.x = G.home; return; }
+  if (m.rise <= 0.9) return;
+  m.dtt = (m.dtt || 0) + dt; if (!m.dsp) { m.dsp = 'hang'; m.lift = D.hang; }
+  const below = Math.abs(kid.x - m.x) < D.trig;
+  if (m.dsp === 'hang') { m.lift = D.hang + 3 * Math.sin(T * 1.3 + m.x); if (hunting && below && m.dtt > 0.6) { m.dsp = 'lower'; m.dtt = 0; if (inView(m.x, hy, 200)) snd.rustle(); } }
+  else if (m.dsp === 'lower') {
+    m.lift = lerp(D.hang, 96, smooth(m.dtt / D.tell)); m.face = Math.sign(kid.x - m.x) || m.face;
+    if (!hunting || !below) { if (m.dtt > 0.35) { m.dsp = 'climb'; m.dtt = 0; m.l0 = m.lift; } }
+    if (m.dtt >= D.tell) { m.dsp = 'fall'; m.dtt = 0; m.l0 = m.lift; }
+  } else if (m.dsp === 'fall') {
+    m.lift = lerp(m.l0, 0, ease(m.dtt / D.fall)); if (m.dtt >= D.fall) { m.dsp = 'chase'; m.dtt = 0; m.lift = 0; if (inView(m.x, hy, 200)) snd.thump(); }
+  } else if (m.dsp === 'chase') {
+    const d = kid.x - m.x, st = Math.min(Math.abs(d), D.speed * dt); m.x = clamp(m.x + Math.sign(d) * st, G.terr[0] - 80, G.terr[1] + 80); m.mv = st; m.ph += st / 90; m.face = Math.sign(d) || m.face;
+    if (m.dtt >= D.max || !hunting) { m.dsp = 'climb'; m.dtt = 0; m.l0 = 0; }
+  } else if (m.dsp === 'climb') {
+    const d = G.home - m.x; if (Math.abs(d) > 3 && m.lift < 20) { const st = Math.min(Math.abs(d), 160 * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 90; m.face = Math.sign(d); }
+    else m.lift = approach(m.lift, D.hang, (D.hang - 0) / D.climb * dt);
+    if (Math.abs(m.x - G.home) < 4 && m.lift >= D.hang - 1) { m.dsp = 'hang'; m.dtt = 0; m.lift = D.hang; }
+  }
+  if (hunting) c.near = Math.max(c.near, 0.5);
+  if ((m.dsp === 'chase' || m.dsp === 'fall' || m.dsp === 'lower') && !calm && onF && Math.abs(kid.x - m.x) < D.hit && m.lift < 70) caught(k);
+};
+// 叠好的衣服：孩子看着它（脸朝着它这边），它就不动，像一摞普通的衣服；孩子一背过身去（或者脸朝别处），它就往孩子这边挪（speed），一伸一缩像尺蠖。挪到 hit 以内就抓住
+AI.watch = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, W = G.watch, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit, d = kid.x - m.x, watched = Math.sign(-d) === kid.face || kid.mode === 'recoil';   // 孩子脸朝着它（它在孩子的 -d 那一边）就是在看着它
+  m.reach = 0; m.mv = 0;
+  if (m.rise < 0.5) { m.open = 0.1; m.hunt = 0; return; }
+  if (m.rise <= 0.9) return;
+  const go = hunting && !watched && Math.abs(d) > 20;
+  m.hunt = approach(m.hunt, go ? 1 : 0, dt * 5); m.open = approach(m.open ?? 0.1, go ? 0.5 + 0.25 * Math.abs(Math.sin(T * 7)) : watched && hunting ? 0.08 : 0.16, dt * 5);
+  if (go) { const st = Math.min(Math.abs(d), W.speed * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 90; m.face = Math.sign(d); c.near = Math.max(c.near, 0.4); }
+  else m.face = Math.sign(d) || m.face;
+  if (hunting && Math.abs(d) < W.hit) caught(k);
+};
+// 长衣人：站着不动。广场的灯每隔 every 秒闪一下（闪的那 dark 秒四下里一黑）：它趁黑往孩子这边近一步 step（孩子在它那一片里、在暗处才动）。近到 hit 以内就抓住
+AI.flick = (k, G, m, dt, c) => {
+  const { T, fy, hy, calm, kidLit } = c, F = G.flick, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const hunting = !calm && m.rise > 0.9 && inT && !kidLit;
+  m.reach = approach(m.reach, 0, dt * 2); m.mv = 0;
+  if (m.rise < 0.5) { m.fp = 0; m.hunt = 0; V.flick = 0; return; }
+  if (m.rise <= 0.9) return;
+  m.fp = ((m.fp || 0) + dt) % F.every; const dark = m.fp > F.every - F.dark, was = m.dk || 0;
+  m.dk = dark ? 1 : 0; V.flick = dark ? Math.sin(Math.PI * (m.fp - (F.every - F.dark)) / F.dark) : 0;   // 一黑一亮
+  if (dark && !was && hunting) { m.fs = 1; m.fx0 = m.x; m.fx1 = m.x + (Math.sign(kid.x - m.x) || m.face) * Math.min(F.step, Math.abs(kid.x - m.x)); m.fu = 0; m.face = Math.sign(kid.x - m.x) || m.face; if (inView(m.x, hy, 300)) snd.flicker(); }
+  if (m.fs) { m.fu = Math.min(1, m.fu + dt / 0.18); const xn = lerp(m.fx0, m.fx1, smooth(m.fu)); m.mv = Math.abs(xn - m.x); m.ph += m.mv / 70; m.x = xn; if (m.fu >= 1) m.fs = 0; }
+  m.hunt = approach(m.hunt, m.fs ? 0.7 : hunting ? 0.25 : 0.05, dt * 3);
+  if (hunting) c.near = Math.max(c.near, 0.5 * (1 - Math.abs(kid.x - m.x) / 400));
+  if (hunting && Math.abs(kid.x - m.x) < F.hit) caught(k);
+};
 // 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
 function garbUpdate(dt) {
   const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || V.xCalm || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
   for (const k of GARB_KEYS) {
-    const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55 || !!(G.keepDown && G.keepDown()), trapped = k === 'dog' && S.yDog === 1;
+    const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, hy = G.headAt ? G.headAt(m, fy) : fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55 || !!(G.keepDown && G.keepDown()) || !!(G.follow && V.mon[G.follow].want === 0 && V.mon[G.follow].rise < 0.5), trapped = k === 'dog' && S.yDog === 1;
     let want = lit ? 0 : 1;
     if (G.sleeper) {   // 睡着的（靴嘴）：暗处也不立起来，是整整齐齐的一双靴子；孩子走到跟前才醒，醒了一直醒着，直到光照倒；孩子走远了又睡回去
       const onF0 = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2 && kid.mode !== 'caught', dd = Math.abs(kid.x - m.x);
@@ -9566,6 +9778,7 @@ function garbUpdate(dt) {
       else if (m.woke && (dd > G.sleeper * 2.4 || !onF0) && kid.mode !== 'caught') m.woke = 0;
       want = m.woke ? 1 : 0;
     }
+    if (G.ai === 'snap') { const wasDown = m.want === 0 && m.rise < 0.5; if (lit) want = (m.open > 0.55 || wasDown) ? 0 : (m.rise > 0.9 ? 1 : want); }   // 伞嘴：光只在嘴张开的那一下才算（闭着的时候照着，它缩着不塌；塌下去了就一直塌着）
     if (G.holds && G.holds()) {   // 接了小光：不跑了，跑到 stand 抱着光站住，不塌、不追人（它自己是一盏灯）
       const dx = G.stand - m.x; m.mv = 0; m.dr = 0; m.want = 0; m.rise = 0; m.hunt = m.reach = 0; V.fig[k] = 1;
       if (Math.abs(dx) > 1.5) { const nx = m.x + Math.sign(dx) * Math.min(Math.abs(dx), G.lapSpeed * dt); m.ph += Math.abs(nx - m.x) / 60; m.mv = Math.abs(nx - m.x); m.x = nx; m.face = Math.sign(dx); } else m.face = G.faceEnd || -1;
@@ -9597,35 +9810,7 @@ function garbUpdate(dt) {
       m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
       continue;
     }
-    if (G.hop) {   // 靴嘴：一蹦一蹦。孩子在它那一片（terr）里、在暗处，它才追：先预兆 tell 秒（嘴张开、鞋带甩、咔哒响；头一回 tell0 秒），再一蹦 dist 远，落地以前不拐弯；没人追的时候蹦回原处
-      const H = G.hop, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10, hunting = !calm && m.rise > 0.9 && inT && !kidLit;
-      m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5); m.reach = 0; m.mv = 0;
-      if (m.rise < 0.5) { m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = approach(m.tell, 0, dt * 4); }
-      else if (m.rise > 0.9) {
-        m.ht += dt;
-        const tgt = hunting ? kid.x : G.home, d = tgt - m.x;
-        if (m.hs === 'idle') {
-          m.tell = approach(m.tell, 0, dt * 3);
-          if (m.ht > H.rest && Math.abs(d) > (hunting ? 34 : 24)) { m.hs = 'tell'; m.ht = 0; m.face = Math.sign(d) || m.face; if (hunting && inView(m.x, hy, 120)) snd.clack(); }
-        } else if (m.hs === 'tell') {
-          const need = hunting && m.tellFirst ? H.tell0 : hunting ? H.tell : H.tell * 0.5;
-          m.tell = clamp(m.ht / need, 0, 1); m.face = Math.sign(d) || m.face;
-          if (hunting && m.ht < need && Math.floor(m.ht * 5) !== Math.floor((m.ht - dt) * 5) && inView(m.x, hy, 120) && m.ht > 0.2) snd.clack();
-          if (!hunting && m.tellFirst === 0 && m.ht > 0.3 && Math.abs(d) < 24) { m.hs = 'idle'; m.ht = 0; }   // 孩子走开了，它也不动了
-          if (m.ht >= need) {
-            m.hs = 'air'; m.ht = 0; m.tellFirst = 0; m.hdir = Math.sign(d) || m.face; m.hx0 = m.x;
-            m.hx1 = clamp(m.x + m.hdir * Math.min(H.dist, Math.abs(d) + (hunting ? 28 : 0)), G.terr[0] - 80, G.terr[1]); if (inView(m.x, hy, 160)) snd.boing();
-          }
-        } else if (m.hs === 'air') {
-          const u = clamp(m.ht / H.dur, 0, 1), xn = lerp(m.hx0, m.hx1, u); m.mv = Math.abs(xn - m.x); m.x = xn; m.air = u; m.face = m.hdir;
-          if (u >= 1) { m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; if (inView(m.x, hy, 160)) { snd.thump(); for (let i = 0; i < 4; i++) parts.push({ x: m.x + (Math.random() - 0.5) * 50, y: fy - 2, vx: (Math.random() - 0.5) * 80, vy: -(10 + Math.random() * 30), life: 0.35, col: [130, 138, 158], s: 1.6 + Math.random() * 2 }); } }
-        }
-        if (hunting) near = Math.max(near, 1 - Math.abs(kid.x - m.x) / 400);
-        if (hunting && Math.abs(kid.x - m.x) < 46 && (m.hs === 'air' || m.hs === 'tell' || m.hs === 'idle')) caught(k);
-      }
-      V.fig[k] = 1 - m.rise;
-      continue;
-    }
+    if (G.ai) { const c = { T, fy, hx, hy, lit, calm, kidLit, near }; AI[G.ai](k, G, m, dt, c); near = c.near; V.fig[k] = 1 - m.rise; continue; }   // 新的怪物：各有各的行为（AI 表）
     const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
     // 狗的毛衣不等“被抓住以后那两秒半”（calm0）：它本来就要孩子过了 wake 那条线才扑出来；等的话，孩子一回到灯底下马上往右跑，它还没动人就过去了
     let hunting = !(G.fast ? calm0 : calm) && m.rise > 0.9 && inTerr && !kidLit && (!G.listen || T - V.soundT < ZHEAR);   // listen：睡着的住户，声音过后一阵子才醒
@@ -9696,6 +9881,21 @@ function lureDone(m) {
   m.v *= 0.5; V.dogX = clamp(m.x, SENSOR.zone[0] + 40, SENSOR.zone[1] + 30); V.ballDir = Math.abs(kid.x - m.x) < 130 ? -Math.sign(kid.x - m.x) || 1 : Math.sign(kid.x - m.x) || 1;
   commit(r, true);
 }
+// 被抓住的时候孩子怎么动，按是谁抓的：back 被撞得往后退多远，lift 离地多高（t 是被抓住以后过了几秒），fallAt 几秒的时候开始摔，alphaAt 几秒的时候墨盖上来，dur 几秒以后回到灯底下。
+// 每种怪物专门的那一段（咬脚踝、墨手扣头、被带到天上……）画在 drawCatchExtra
+const CATCH = {
+  default: { back: 38, lift: t => Math.sin(Math.PI * clamp(t / 0.3, 0, 1)) * 14, fallAt: 0.12, alphaAt: 0.7, dur: 1.1 },
+  boots: { extra: 1, back: 38, lift: t => Math.sin(Math.PI * clamp(t / 0.3, 0, 1)) * 14, fallAt: 0.12, alphaAt: 0.7, dur: 1.1 },   // 咬住脚踝，拖倒
+  shdc: { extra: 1, back: 10, lift: t => 30 * smooth(clamp(t / 0.25, 0, 1)) * (1 - smooth(clamp((t - 0.55) / 0.2, 0, 1))), fallAt: 0.6, alphaAt: 0.9, dur: 1.3 },   // 墨手扣住头，提起来一点，一松手摔
+  cloak: { extra: 1, back: 0, lift: t => 84 * smooth(clamp((t - 0.1) / 0.5, 0, 1)) * (1 - smooth(clamp((t - 0.85) / 0.2, 0, 1))), fallAt: 0.9, alphaAt: 1.1, dur: 1.5 },   // 被两只手套抓住肩膀带到天上，松手摔下来
+  umb: { extra: 1, back: 0, lift: t => 0, fallAt: 0.62, alphaAt: 0.75, dur: 1.2 },
+  tall: { extra: 1, hold: 1.35, back: 0, lift: t => 0, fallAt: 1.0, alphaAt: 1.15, dur: 1.55 },   // 弯下腰来，两只长手套捧住孩子的头，帽檐底下的竖瞳贴到脸跟前
+  stk: { extra: 1, hold: 1.15, back: 30, lift: t => Math.sin(Math.PI * clamp(t / 0.3, 0, 1)) * 10, fallAt: 0.14, alphaAt: 0.9, dur: 1.3 },   // 嘴咬住小腿，孩子倒下；叠好的衣服最上面多了一层
+  spider: { extra: 1, hold: 1.25, back: 0, lift: t => 0, fallAt: 0.35, alphaAt: 1.0, dur: 1.5 },   // 扑到头上，八条袖子缠住，一圈圈毛线把孩子裹起来
+  patch: { extra: 1, hold: 1.2, back: 6, lift: t => 0, fallAt: 0.5, alphaAt: 1.0, dur: 1.4 },   // 大剪刀咔地一合，剪住孩子；孩子被剪倒，身上缝上几个叉
+  zip: { extra: 1, hold: 1.05, back: 0, lift: t => 0, fallAt: 9, alphaAt: 0.3, dur: 1.5 },   // 拉链嘴扑过来整个罩住，孩子被吞进肚子里，拉链慢慢拉上
+  pj: { extra: 1, back: 22, lift: t => Math.sin(Math.PI * clamp(t / 0.3, 0, 1)) * 10, fallAt: 0.15, alphaAt: 0.9, dur: 1.4 },   // 睡衣扑到身上，孩子被按倒   // 伞罩下来，把头整个罩住，松开，摔
+};
 function caught(k) {
   if (kid.mode === 'caught') return;
   if (kid.mode === 'grab') { const O = PUSHABLE[kid.grab.id]; if (O.snap && O.T() > GRAB_SNAP) O.setT(1); grabEnd(); }   // 抓着东西被抓住：东西留在原处
@@ -9704,11 +9904,11 @@ function caught(k) {
   // 被扑倒的动画：怪物扑过来，孩子被撞得往后退一步、腾空一点，接着仰面摔倒（绕着脚转），摔在地上，墨涌上来盖住
   const mm = V.mon[k]; kid.cdir = kid.kind === 'floor' && mm ? (Math.sign(kid.x - mm.x) || -kid.face) : 0; kid.cx0 = kid.x; kid.rot = 0; kid.thumped = false;
   if (kid.cdir) kid.face = -kid.cdir;   // 脸朝着怪物
-  V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught(); if (k === 'rain') snd.chomp();
+  V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught(); if (k === 'boots') snd.chomp();
 }
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
   kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1; kid.rot = 0; kid.lift = 0; kid.alpha = 1; kid.cdir = 0; kid.thumped = false;
-  for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; m.x = GARB[k].home; m.v = 0; m.alert = false; m.dir = 1; m.pause = 0; if (GARB[k].sleeper) { m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; m.rise = 0; m.want = 0; } if (GARB[k].holds && GARB[k].holds()) m.x = GARB[k].stand; }   // 困在感应灯底下的狗毛衣留在原处；睡着的靴子回原处睡着
+  for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; m.x = GARB[k].home; m.v = 0; m.alert = false; m.dir = 1; m.pause = 0; m.ls = m.ds = 'idle'; m.lt = m.dt0 = 0; m.zip = 0.2; m.cyc = 0; if (GARB[k].sleeper) { m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; m.rise = 0; m.want = 0; if (GARB[k].ai === 'fly') { m.pt = -1.4; m.alt = 182; } } if (GARB[k].holds && GARB[k].holds()) m.x = GARB[k].stand; }   // 困在感应灯底下的狗毛衣留在原处；睡着的靴子回原处睡着
   V.grace = V.T + 2.5; [camFX, camFY] = camTarget();
 }
 
@@ -9916,7 +10116,7 @@ function mzSlitEye(b, x, y, rx, ry, hunt) {
 
 // ---------- ① 拉链嘴：连帽的厚外套。前襟的拉链从下往上拉开，两边的拉链齿是牙，里面是墨和一排眼睛 ----------
 function mzZip(b, P, lit, x, fy, f, t, m, seed) {
-  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, op = clamp(0.3 + hu * 0.66 + Math.sin(t * 2.2 + seed) * 0.05, 0, 1), sw = Math.sin(m.ph * TAU);
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, op = m.zip != null ? m.zip : clamp(0.3 + hu * 0.66 + Math.sin(t * 2.2 + seed) * 0.05, 0, 1), sw = Math.sin(m.ph * TAU);   // m.zip：游戏里拉链拉开多少由行为定
   b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
   b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 74, 6, 0, 0, 7); b.fill();
   for (const s of [-1, 1]) {   // 两条腿：粗粗的棉裤，脚上是黑的大靴子，墨顺着裤脚往下滴
@@ -9959,7 +10159,7 @@ function mzZip(b, P, lit, x, fy, f, t, m, seed) {
 // 拉链嘴睡着的时候：就是一件挂在钩子上的羽绒服，帽子耷拉着。拉链是拉到头的，只有帽口里黑得有点不对
 function mzZipHome(b, P, lit, x, fy, f, t, m, seed) {
   const lc = lcOf(P, lit), top = fy - 214; b.save(); b.seedN = seed;
-  mzWall(b, P, lit, x, fy, 420, 300, seed + 80);
+  if (!(m && m.game)) mzWall(b, P, lit, x, fy, 420, 300, seed + 80);   // 游戏里墙是关里自己的
   part(b, rectPts(x - 14, top - 50, 28, 12), P.wood, { w: 0.8, tex: 0, lc, seed: seed + 90 }); part(b, rectPts(x - 3, top - 40, 6, 22), P.woodHi, { w: 0.7, tex: 0, lc, seed: seed + 91 });   // 墙上的木头钩子
   for (const s of [-1, 1]) part(b, tube([[x + s * 34, top + 36], [x + s * 50, top + 96], [x + s * 46, top + 164]], [24, 22, 20]), P.mzParkaLo, { w: 0.9, tex: 0.3, lc });
   const body = curvePts([[x - 30, top + 10], [x + 30, top + 10], [x + 50, top + 40], [x + 56, top + 100], [x + 60, top + 150], [x, top + 156], [x - 60, top + 150], [x - 56, top + 100], [x - 50, top + 40]], true, 4);
@@ -9986,7 +10186,7 @@ function mzZipHeap(b, P, lit, x, fy, f, t, m, seed) {
 
 // ---------- ② 袖蛛：一团缠成球的旧毛衣和衬衫，八条袖子当腿。袖口是张着的，里面是墨；脸在前面那个小一点的疙瘩上，领口是嘴，扣子是牙 ----------
 function mzSpider(b, P, lit, x, fy, f, t, m, seed) {
-  const lc = lcOf(P, lit), hu = m.hunt, ph = m.ph, by = -84 + hu * 20 + Math.sin(t * 2.4 + seed) * 2 + Math.abs(Math.sin(ph * TAU * 2)) * -3 * (0.3 + hu);
+  const lc = lcOf(P, lit), hu = m.hunt, ph = m.ph, lift = m.lift || 0, by = -84 - lift + hu * 20 * (lift > 0 ? 0 : 1) + Math.sin(t * 2.4 + seed) * 2 + Math.abs(Math.sin(ph * TAU * 2)) * -3 * (0.3 + hu) * (lift > 0 ? 0 : 1);   // lift：吊在半空（游戏里挂在管子上）
   const HX = [-44, -24, -4, 14], OUT = [-82, -46, 48, 94], KN = [[-52, -90], [-30, -104], [26, -104], [52, -96]], COL = ['mzKnitA', 'mzKnitB', 'mzKnitC', 'mzKnitD'];
   b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
   b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(8, 3, 104, 6, 0, 0, 7); b.fill();
@@ -9994,11 +10194,13 @@ function mzSpider(b, P, lit, x, fy, f, t, m, seed) {
     const k = (far ? 4 : 0) + i, off = ((k % 2) ? 0.5 : 0) + i * 0.125, ang = TAU * (ph + off), atk = i === 3 ? smooth(hu) : 0;
     let fx = HX[i] + OUT[i] * (0.84 + 0.16 * hu) + Math.sin(ang) * 16 * (0.3 + hu) + (far ? 9 : 0), fyy = -Math.max(0, Math.cos(ang)) * 18 * (0.4 + hu) - (far ? 3 : 0);
     fx = lerp(fx, 120 + (far ? 16 : 0), atk); fyy = lerp(fyy, -100 - (far ? 20 : 0) + Math.sin(t * 7 + far) * 6, atk);   // 追人的时候最前面一条（两排各一条）高高举起来
+    if (lift > 0) { const q = clamp(lift / 50, 0, 1); fx = lerp(fx, HX[i] + OUT[i] * 0.4 + Math.sin(t * 2 + k) * 6, q); fyy = lerp(fyy, -lift - 14 + Math.sin(t * 3 + k * 1.7) * 8, q); }   // 吊着的时候腿垂下来晃
     const hx = HX[i] + (far ? 6 : 0), hy = by + 2 - (far ? 3 : 0), kx = hx + KN[i][0] * 0.4 + (fx - hx) * 0.18, ky = by + KN[i][1] - (far ? 6 : 0) - atk * 24;
     b.save(); if (far) b.globalAlpha *= 0.78;
     mzSleeve(b, P, lit, [[hx, hy], [kx, ky], [fx, fyy]], [19, 15, 12], P[COL[(i + (far ? 2 : 0)) % 4]], P.mzCuff, seed + 40 * k, 0.5 + atk * 0.5, k % 2 === 0);
     b.restore();
   };
+  if (lift > 6) ink(b, seg(4, by - 60, 4, -(m.ceil || 330)), { w: 0.8, col: P.mzCuff, a: 1 / b.pen.a, taper: 0, seed: seed + 480, single: 1 });   // 吊着的线（毛线）
   for (let i = 0; i < 4; i++) leg(i, true);
   const abd = curvePts([[-62, by + 2], [-64, by - 24], [-44, by - 50], [-12, by - 60], [20, by - 52], [36, by - 30], [34, by - 4], [14, by + 10], [-20, by + 12], [-46, by + 10]], true, 4);
   part(b, abd, P.mzKnitD, { w: 1.1, tex: 0.45, lc });
@@ -10014,6 +10216,20 @@ function mzSpider(b, P, lit, x, fy, f, t, m, seed) {
   inkEyes(b, [[44, by - 34, 4.4], [57, by - 36, 3.8], [34, by - 22, 3], [70, by - 30, 2.6], [50, by - 44, 2.4], [28, by - 34, 2.2]], m.hunt);
   inkDrips(b, [[-30, by + 10, 16], [0, by + 12, 28], [40, by + 10, 18], [64, by + 8, 22]], seed + 60);
   for (let i = 0; i < 4; i++) leg(i, false);
+  b.restore();
+}
+// 袖蛛睡着（游戏里）：一团旧毛衣用一根毛线吊在管子上，几条袖子垂着，偶尔晃一下
+function mzSpiderHang(b, P, lit, x, fy, t, seed, ceil) {
+  const lc = lcOf(P, lit), top = fy - ceil, sw = Math.sin(t * 0.9 + seed) * 2; b.save(); b.seedN = seed;
+  ink(b, seg(x, top, x + sw * 0.4, top + 112), { w: 0.8, col: P.mzCuff, a: 1 / b.pen.a, taper: 0, seed: seed + 1, single: 1 });
+  part(b, rectPts(x - 8, top - 6, 16, 6), P.iron, { w: 0.7, tex: 0, lc, seed: seed + 2 });   // 管子上的挂钩
+  b.translate(x + sw, top + 112);
+  part(b, curvePts([[-34, 22], [-36, -4], [-18, -26], [4, -30], [28, -20], [38, 2], [32, 26], [8, 36], [-18, 34]], true, 4), P.mzKnitD, { w: 1.1, tex: 0.45, lc, seed: seed + 3 });
+  part(b, curvePts([[-22, 20], [-24, -2], [-4, -18], [10, -2], [4, 24]], true, 4), P.mzKnitB, { w: 0.9, tex: 0.4, lc, seed: seed + 4 });
+  part(b, tube([[-18, 24], [-30, 54], [-26, 80]], [13, 12, 11]), P.mzKnitA, { w: 0.9, tex: 0.3, lc, seed: seed + 5 }); part(b, tube([[16, 26], [26, 56], [22, 84]], [13, 12, 11]), P.mzKnitC, { w: 0.9, tex: 0.3, lc, seed: seed + 6 });
+  part(b, tube([[-26, 70], [-26, 80]], [14, 14]), P.mzCuff, { w: 0.7, tex: 0, lc, seed: seed + 7 }); part(b, tube([[22, 74], [22, 84]], [14, 14]), P.mzCuff, { w: 0.7, tex: 0, lc, seed: seed + 8 });
+  hatch(b, k => pathOf(k, [[-34, 22], [-36, -4], [-18, -26], [4, -30], [28, -20], [38, 2], [32, 26], [8, 36], [-18, 34]]), [0, -30, 40, 66], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 14, seed: seed + 9 });
+  if (!lit) { inkDrips(b, [[-6, 34, 20], [14, 34, 30 + 6 * Math.sin(t * 1.5)]], seed + 10); if (Math.sin(t * 0.7 + seed) > 0.8) inkEyes(b, [[26, 4, 1.8]], 0); }
   b.restore();
 }
 // 袖蛛睡着、塌下去：地上一堆缠在一起的旧毛衣，几条袖子散着。睡着的时候袖口里有一点点亮（暗处）
@@ -10066,7 +10282,7 @@ function mzSeam(b, P, a, z, gap, seed, s = 2.6) { const L = Math.hypot(z[0] - a[
 
 // ---------- ③ 缝合怪：旧衣服的碎片缝起来的人形。头是个枕套，一只眼睛是掉了线的大纽扣；嘴是一道缝死的线，线崩开了，里面一嘴的针；右手是一把大剪刀 ----------
 function mzPatch(b, P, lit, x, fy, f, t, m, seed) {
-  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, sw = Math.sin(m.ph * TAU), op = clamp(0.1 + hu * 0.9 + Math.sin(t * 1.7 + seed) * 0.04, 0, 1), gap = op * 24;
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, sw = Math.sin(m.ph * TAU), op = m.mouth != null ? m.mouth : clamp(0.1 + hu * 0.9 + Math.sin(t * 1.7 + seed) * 0.04, 0, 1), gap = op * 24;
   b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
   b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 58, 6, 0, 0, 7); b.fill();
   part(b, tube([[-16, -88], [-20 + sw * 4, -46], [-22 + sw * 9, -10]], [30, 27, 25]), P.mzPants, { w: 0.9, tex: 0.3, lc });   // 左腿：一条宽裤腿
@@ -10112,7 +10328,7 @@ function mzPatch(b, P, lit, x, fy, f, t, m, seed) {
   // 右手：袖子，末端是一把大剪刀
   const ax = lerp(46, 100, rk), ay = lerp(-110, -148, rk), hx = lerp(52, 134, rk), hy = lerp(-62, -150, rk);
   part(b, tube([[34, -158], [ax, ay], [hx, hy]], [18, 16, 14]), P.mzKnitA, { w: 0.9, tex: 0.3, lc });
-  mzScissors(b, P, lit, hx, hy, lerp(1.35, 0.1, rk), 50, 0.16 + 0.5 * Math.abs(Math.sin(t * (2 + hu * 8))) * (0.3 + rk), seed + 310);
+  mzScissors(b, P, lit, hx, hy, lerp(1.35, 0.1, rk), 50, m.scis != null ? m.scis : 0.16 + 0.5 * Math.abs(Math.sin(t * (2 + hu * 8))) * (0.3 + rk), seed + 310);   // m.scis：游戏里剪刀张多大由行为定
   inkDrips(b, [[-36, -88, 16], [30, -90, 12], [-12, -90, 24], [10, -170, 20]], seed + 60);
   b.restore();
 }
@@ -10293,7 +10509,7 @@ function mzPjHome(b, P, lit, x, fy, f, t, m, seed, tell = true) {
 
 // ---------- ⑦ 伞嘴：一把黑伞，倒着撑开像一朵食人花；伞骨是牙，伞面里是墨和眼睛，用手柄的钩子一跳一跳。睡着的时候是挂在门边的一把收好的伞 ----------
 function mzUmb(b, P, lit, x, fy, f, t, m, seed) {
-  const lc = lcOf(P, lit), hu = m.hunt, o = clamp(0.3 + 0.1 * Math.sin(t * 1.6) + hu * (0.2 + 0.45 * (0.5 + 0.5 * Math.sin(t * 8))), 0.15, 1), th = o * 1.2, hop = Math.abs(Math.sin(m.ph * TAU)) * 24 * (0.15 + hu), yh = -126, L = 80;
+  const game = m.open != null, lc = lcOf(P, lit), hu = m.hunt, o = game ? m.open : clamp(0.3 + 0.1 * Math.sin(t * 1.6) + hu * (0.2 + 0.45 * (0.5 + 0.5 * Math.sin(t * 8))), 0.15, 1), th = o * 1.2, hop = game ? 0 : Math.abs(Math.sin(m.ph * TAU)) * 24 * (0.15 + hu), yh = -126, L = 80;   // game：游戏里张多大由行为定（m.open）
   b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(x, fy + 3, 40 - hop * 0.3, 5, 0, 0, 7); b.fill();
   b.save(); b.translate(x, fy - hop); b.scale(f, 1); b.rotate(0.08 + 0.1 * hu - Math.sin(m.ph * TAU) * 0.05 * hu); b.seedN = seed;
   part(b, tube(cubPts([0, -24], [0, -2], [19, 3], [21, -13], 8), [7, 7, 6.6, 6.2, 5.8, 5.4, 5, 4.6, 4.2]), P.mzHandle, { w: 0.9, tex: 0.2, lc });
@@ -10333,6 +10549,11 @@ function mzUmbHome(b, P, lit, x, fy, f, t, m, seed) {   // 睡着：挂在门边
   part(b, rectPts(x - 18, top - 10, 36, 14), P.wood, { w: 0.8, tex: 0, lc, seed: seed + 50 }); part(b, rectPts(x - 3, top - 4, 6, 22), P.woodHi, { w: 0.7, tex: 0, lc, seed: seed + 51 });
   b.translate(x + 4, top + 4); b.rotate(Math.sin(t * 0.7 + seed) * 0.02); mzUmbClosed(b, P, lit, 150, seed); if (!lit) inkDrips(b, [[0, 162, 20]], seed + 60);
   b.restore();
+}
+function mzUmbStand(b, P, lit, x, fy, seed) {   // 睡着（游戏里）：一把收好的伞立在墙脚，伞尖朝上，手柄在下；伞尖上滴着一滴墨
+  const lc = lcOf(P, lit); b.save(); b.translate(x, fy); b.seedN = seed; b.rotate(0.06); b.scale(1, -1);
+  mzUmbClosed(b, P, lit, 112, seed); b.restore();
+  if (!lit) { b.fillStyle = INK; b.beginPath(); b.ellipse(x + 8, fy + 3, 12, 2.6, 0, 0, 7); b.fill(); }
 }
 function mzUmbHeap(b, P, lit, x, fy, f, t, m, seed) {   // 塌下去：躺在地上的一把收起来的伞
   b.save(); b.translate(x + 70, fy - 8); b.rotate(Math.PI / 2 + 0.05); b.seedN = seed; mzUmbClosed(b, P, lit, 150, seed); b.restore();
@@ -10389,7 +10610,7 @@ const mzShdPlain = (b, P, lit, x, fy, f, t, m, seed) => mzShd(b, P, lit, x, fy, 
 
 // ---------- ⑨ 叠好的衣服：整整齐齐叠着的一摞衣服。每次回头它都离你近一点；等它张开，上面的几层是上颌，里面一排牙，袖子是手 ----------
 function mzStk(b, P, lit, x, fy, f, t, m, seed, dormant) {
-  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, ph = m.ph, ang = dormant ? 0 : clamp(0.2 + 0.46 * hu + Math.sin(t * 2) * 0.05 + hu * 0.22 * Math.abs(Math.sin(t * 9)), 0, 0.95), sq = 1 + Math.sin(ph * TAU) * 0.08 * (0.3 + hu);
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, ph = m.ph, ang = dormant ? 0 : m.open != null ? m.open : clamp(0.2 + 0.46 * hu + Math.sin(t * 2) * 0.05 + hu * 0.22 * Math.abs(Math.sin(t * 9)), 0, 0.95), sq = 1 + Math.sin(ph * TAU) * 0.08 * (0.3 + hu);
   const LY = [[96, 18, 'mzStk1', 0], [90, 17, 'mzStk2', 18], [86, 17, 'mzStk3', 35], [80, 16, 'mzStk4', 52]];
   b.save(); b.translate(x, fy); b.scale(f * sq, 1 / sq); b.seedN = seed;
   b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 64, 5, 0, 0, 7); b.fill();
@@ -10630,33 +10851,67 @@ function inkShdCoat(b, P, x, fy, f, t, m, seed) {
   b.restore();
 }
 // 墙上的影子：灯照着外套（它挂着、塌着）的时候，影子是一个人，眼睛亮着，头朝孩子这边转。灯在哪边影子往另一边落；灯一灭（亮的那一层看不见了），影子没了，外套醒过来
-function drawJacketShadow(b, P, lit) {
+function drawShdShadow(b, P, lit, k) {
   if (!lit) return;
-  const G = GARB.jacket, x = G.home, fy = FL.down.gy, T = V.T;
+  const G = GARB[k], x = G.home, fy = FL.down.gy, T = V.T;
   let w = 0, dir = 0; for (const [lx, I] of [[LPORCH.x, V.li.porch3 || 0], [STAIR3.x, V.li.stair3 || 0], [LAMP2.x + 30, V.li.lamp2 || 0]]) { w += I; dir += I * clamp((x - lx) / 160, -1, 1); }
   if (w < 0.05) return;
   dir = clamp(dir / w, -1, 1); if (Math.abs(dir) < 0.5) dir = dir < 0 ? -0.5 : 0.5;
   const a = clamp(w, 0, 1), sh = (kid.x < x ? -1 : 1);
   b.save(); b.globalAlpha *= a; b.seedN = 507900;
-  mzShadowPerson(b, x + dir * 104, fy, T, 507900, { w: 0, line: 0, tex: 0, fa: 0.8, wob: 1.2 }, 1, 0, 0, '#16120f');
+  mzShadowPerson(b, x + dir * 60, fy, T, 507900 + Math.round(x), { w: 0, line: 0, tex: 0, fa: 0.8, wob: 1.2 }, 1, 0, 0, '#16120f');
   b.restore();
 }
 // ----- 被抓住的专门的画面（2026-11-25）：靴嘴咬住脚踝不松口，外套的墨手从上面抓住孩子的头 -----
 function drawCatchExtra(b, P, lit) {
-  if (lit || kid.mode !== 'caught' || kid.alpha <= 0.01) return;
-  const k = V.caughtBy; if (k !== 'rain' && k !== 'jacket') return;
-  const T = V.T, t = kid.t, cd = kid.cdir || 1;
-  b.save(); b.globalAlpha *= kid.alpha; b.seedN = 650000;
-  if (k === 'rain') {   // 靴子跟着孩子的脚，嘴咬在脚踝上，一下一下地嚼，一抖一抖
+  if (lit || kid.mode !== 'caught') return;
+  const k = V.caughtBy, C = CATCH[k]; if (!C || !C.extra) return;
+  const T = V.T, t = kid.t, cd = kid.cdir || 1, al = C.hold ? 1 - smooth((t - C.hold) / 0.4) : kid.alpha;   // hold：怪物自己留到几秒才淡（孩子先没了）
+  if (al <= 0.01) return;
+  b.save(); b.globalAlpha *= al; b.seedN = 650000;
+  if (k === 'boots') {   // 靴子跟着孩子的脚，嘴咬在脚踝上，一下一下地嚼，一抖一抖
     const x = kid.x - cd * 40 + Math.sin(T * 38) * 1.4, chew = 0.5 + 0.5 * Math.sin(T * 17);
     mzBoot(b, DARK, false, x, kid.y, cd, T, { hunt: 1, air: 0, tell: 0.1 + 0.28 * chew }, 650100);
-  } else {   // 墨手：从外套的肩膀伸出来，越过孩子的头顶，五根手指扣住头；孩子被提起来一点，一松手摔下去
-    const m = V.mon.jacket, hx = kid.x + 112 * Math.sin(kid.rot || 0), hy = kid.y - kid.lift - 112 * Math.cos(kid.rot || 0), sx = m.x + m.face * 12, sy = kid.y - 156, g = smooth(clamp(t / 0.22, 0, 1));
+  } else if (k === 'shdc') {   // 墨手：从外套的肩膀伸出来，越过孩子的头顶，五根手指扣住头；孩子被提起来一点，一松手摔下去
+    const m = V.mon.shdc, hx = kid.x + 112 * Math.sin(kid.rot || 0), hy = kid.y - kid.lift - 112 * Math.cos(kid.rot || 0), sx = m.x + m.face * 12, sy = kid.y - 156, g = smooth(clamp(t / 0.22, 0, 1));
     const top = hy - 30 - 46 * (1 - g), pts = cubPts([sx, sy], [lerp(sx, hx, 0.35), sy - 70], [hx - cd * 14, top - 40], [hx, top], 16);
     ink(b, pts, { col: INK, w: 15 / b.pen.w, a: 1 / b.pen.a, taper: 0, prof: q => 1 - q * 0.3, amp: 0.5, seed: 650200 });
     ink(b, pts.slice(2, 10), { col: '#8d9cc4', w: 0.6, a: 0.3, taper: 10, seed: 650201 });
     for (let j = 0; j < 5; j++) { const dx = (j - 2) * 11, cl = smooth(clamp((t - 0.1) / 0.18, 0, 1)); ink(b, quadPts([hx, top], [hx + dx * 1.5, top + 10], [hx + dx, lerp(top + 14, hy + 2 + Math.abs(j - 2) * 3, cl)], 8), { col: INK, w: 3.4 / b.pen.w, a: 1 / b.pen.a, taper: 3, seed: 650210 + j }); }
     inkEyes(b, [[hx - 6, hy - 6, 1.2]], 1);
+  } else if (k === 'cloak') {   // 披风蝠：飞下来，两只空手套抓住孩子的肩膀，带着孩子往上飞，一松手摔下来
+    const up = smooth(clamp(t / 0.12, 0, 1)), cyB = lerp(kid.y - kid.lift - 60, kid.y - kid.lift - 150, up);
+    for (const sd of [-1, 1]) { const sx = kid.x + sd * 17, sy = kid.y - kid.lift - 96; part(b, tube([[kid.x + sd * 14, cyB - 46], [sx + sd * 10, (cyB - 46 + sy) / 2], [sx, sy - 4]], [12, 11, 9]), DARK.mzCloakLo, { w: 0.9, tex: 0.3, lc: DARK.ink, seed: 650300 + sd }); mzHand(b, DARK, false, sx, sy, Math.PI / 2, 0.9, 0.3, 0.9, 650310 + sd, DARK.mzGlove); }
+    mzCloak(b, DARK, false, kid.x, kid.y, cd, T, { alt: kid.y - cyB, flap: (T * 3.2) % 1, dive: 0.85, hunt: 1 }, 650320);
+  } else if (k === 'tall') {   // 长衣人：弯下腰，两只空手套捧住孩子的头，帽檐底下两条竖着的眼睛贴到脸跟前；孩子一动不动
+    const bend = smooth(clamp(t / 0.4, 0, 1)), mt = V.mon.tall;
+    mzTall(b, DARK, false, kid.x - cd * lerp(210, 150, bend), kid.y, cd, T, { hunt: 1, reach: 1, ph: 0 }, 650900);
+  } else if (k === 'stk') {   // 叠好的衣服：蹦到孩子脚边，嘴咬住小腿；孩子倒下以后，那摞衣服最上面多了一层（孩子的大衣，帽子上的绒球）
+    mzStk(b, DARK, false, kid.x - cd * 40, kid.y, cd, T, { hunt: 1, reach: 0, ph: 0, open: 0.4 + 0.3 * Math.abs(Math.sin(T * 12)) }, 650950, false);
+    if (t > 0.8) { const a3 = smooth(clamp((t - 0.8) / 0.2, 0, 1)); b.globalAlpha *= a3; const bx = kid.x - cd * 40, by = kid.y - 70; part(b, roundPts(bx - 36, by - 14, 72, 14, 5), DARK.mzCuff, { w: 1, tex: 0.4, lc: DARK.ink, seed: 650960 }); part(b, arcPts(bx + 6, by - 20, 6, 6, 0, TAU, 10), DARK.mzBone, { w: 0.7, tex: 0, lc: DARK.ink, seed: 650961 }); }
+  } else if (k === 'spider') {   // 袖蛛：扑到孩子身上，八条袖子扒住；一圈一圈的毛线从上往下把孩子裹起来
+    mzSpider(b, DARK, false, kid.x, kid.y - Math.max(0, kid.lift) - 20, cd, T, { hunt: 1, ph: (T * 1.8) % 1, lift: 0 }, 650800);
+    const wr = smooth(clamp((t - 0.15) / 0.8, 0, 1));
+    for (let i2 = 0; i2 < 9; i2++) { const u = i2 / 8; if (u > wr) break; const yy = kid.y - 18 - u * 100, ww = 24 - u * 6; ink(b, quadPts([kid.x - ww, yy + 4], [kid.x, yy + 12 + (i2 % 2) * 3], [kid.x + ww, yy - 4], 8), { col: DARK.mzCuff, w: 1.6, a: 0.95 / b.pen.a, taper: 2, seed: 650810 + i2, single: 1 }); }
+  } else if (k === 'patch') {   // 缝合怪：一把大剪刀张开卡在孩子腰上，咔地合上；孩子倒下以后，身上缝上一个个叉
+    const m = V.mon.patch, cl = smooth(clamp((t - 0.05) / 0.2, 0, 1)), y0 = kid.y - 56, ox = kid.x + cd * 4;
+    mzPatch(b, DARK, false, m.x, kid.y, m.face, T, { hunt: 1, reach: 1, ph: 0, scis: 0.02, mouth: 0.9 }, 650700);
+    b.save(); b.translate(ox, y0); b.scale(1.9, 1.9); b.translate(-ox, -y0); mzScissors(b, DARK, false, ox - cd * 38, y0, cd > 0 ? 0 : Math.PI, 38, lerp(0.9, 0.02, cl), 650710); b.restore();
+    if (t > 0.5) { const rot = kid.rot || 0, a2 = smooth(clamp((t - 0.55) / 0.25, 0, 1)); b.globalAlpha *= a2; for (let i2 = 0; i2 < 4; i2++) { const hh = 26 + i2 * 20, px = kid.x + hh * Math.sin(rot) * 1, py = kid.y - kid.lift - hh * Math.cos(rot); mzStitchX(b, DARK, px + (i2 % 2 ? 6 : -6), py, 5, 650720 + i2 * 2); } }
+  } else if (k === 'zip') {   // 拉链嘴：扑过来，整个罩在孩子身上，嘴大张着，孩子没进肚子里，拉链从下往上拉上，帽口里眼睛发红
+    const sl = smooth(clamp(t / 0.35, 0, 1)), z = 1 - 0.78 * smooth((t - 0.5) / 0.5);
+    mzZip(b, DARK, false, kid.x - cd * 90 * (1 - sl), kid.y, cd, T, { hunt: 1, reach: 0, ph: 0, zip: z }, 650500);
+  } else if (k === 'pj') {   // 爬行的睡衣：扑到孩子身上，趴在上面，四肢扒着地面，帽兜里的眼睛盯着
+    mzPj(b, DARK, false, kid.x - cd * 16, kid.y, cd, T, { hunt: 1, ph: (T * 1.6) % 1 }, 650600);
+  } else if (k === 'umb') {   // 伞嘴：伞罩下来，把头整个罩住（伞骨的尖朝下，是牙），伞里是墨和眼睛
+    const g = smooth(clamp(t / 0.3, 0, 1)), hy = kid.y - 116, ry = lerp(hy - 96, hy + 26, g), W = 62, top = ry - 50;
+    const dome = [[-W, 0], [-W * 0.8, -34], [-W * 0.4, -48], [0, -52], [W * 0.4, -48], [W * 0.8, -34], [W, 0]].map(([a2, c2]) => [kid.x + a2, ry + c2]);
+    part(b, [...dome, ...[...Array(9).keys()].map(i2 => [kid.x + W - (W * 2) * (i2 + 1) / 9, ry + 3 + (i2 % 2 ? 4 : 0)])], DARK.mzUmb, { w: 1, tex: 0.4, lc: DARK.ink, seed: 650400 });
+    for (let i2 = 0; i2 < 7; i2++) ink(b, seg(kid.x, top, kid.x - W + (W * 2) * i2 / 6, ry + 2), { w: 0.8, col: DARK.mzRib, a: 0.8, taper: 0, seed: 650410 + i2, single: 1 });
+    for (let i2 = 0; i2 < 8; i2++) { const fx = kid.x - W + 8 + (W * 2 - 16) * i2 / 7; part(b, [[fx - 3.4, ry + 2], [fx + 3.4, ry + 2], [fx, ry + 13 + 6 * Math.sin(i2 * 2.1)]], DARK.mzBone, { w: 0.5, tex: 0, lc: DARK.ink, seed: 650420 + i2, wob: 0.15 }); }
+    part(b, rectPts(kid.x - 2.6, top - 46, 5.2, 48), DARK.mzRib, { w: 0.7, tex: 0, lc: DARK.ink, seed: 650430 });   // 伞柄朝上，像有只看不见的手握着
+    part(b, tube(cubPts([kid.x, top - 46], [kid.x, top - 64], [kid.x + 18, top - 62], [kid.x + 18, top - 48], 8), [6, 6, 5.6, 5.2, 5, 4.6, 4.2, 4, 3.6]), DARK.mzHandle, { w: 0.8, tex: 0.2, lc: DARK.ink, seed: 650431 });
+    if (g > 0.5) inkEyes(b, [[kid.x - 14, ry + 14, 3.4], [kid.x + 12, ry + 15, 3], [kid.x - 1, ry + 22, 2.2]], 1);
   }
   b.restore();
 }
@@ -10896,6 +11151,7 @@ function drawScarecrow(b, P, lit) {   // 稻草人的那一身行头：旧大衣
 // 照亮了、又不在原处：掉在地上的一件衣服
 const HEAP_COLS = { gown: ['blanketHi', 'blanket'], towel: ['towel2', 'towel'], laundry: ['towel2', 'sheet'], chair: ['throw', 'throwHi'], sack: ['sack', 'sackHi'], boiler: ['cloth', 'cloth2'], stand: ['coat', 'coatLo'], dog: ['knit', 'knitHi'], rain: ['rainHi', 'rain'], scare: ['burlap', 'burlapLo'], nightie: ['lnSh1', 'lnSh2'], jacket: ['jkC', 'jkLo'], apron: ['apC1', 'apC2'] };
 QU_KEYS.forEach((k, i) => { HEAP_COLS[k] = ['qc' + i, 'qcl' + i]; });
+HEAP_COLS.shdc = ['mzCoat', 'mzCoatLo']; HEAP_COLS.boots = ['mzBoot', 'mzBootHi'];
 HEAP_COLS.q4dust = ['dustHi', 'dust'];   // 地下室的灰大褂
 HEAP_COLS.q4apron = ['lthHi', 'lth'];   // 钟表店二楼的皮围裙
 HEAP_COLS.zsh = ['shtHi', 'sht'];   // 公寓楼地下室的床单
@@ -10959,8 +11215,18 @@ function drawOverallsHung(b, P, lit) {   // 锅炉边上钉子上挂着的一套
   box(b, x - 9, top + 32, 18, 16, { w: 0.6, a: 0.7, over: 0 });
   hatch(b, k => k.rect(x + 2, top + 24, 22, 152), [x, top + 24, 26, 152], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 14 });
 }
-const GARB_HOME = { gown: drawGown, towel: drawTowels, laundry: drawLaundry, chair: drawThrowOnChair, sack: drawSack, boiler: drawOverallsHung, stand: drawStandCoat, dog: drawDogHome, rain: (b, P, lit) => mzBootHome(b, P, lit, GARB.rain.home - 21, FL.down.gy, 1, V.T, null, 279000, BOOT_HOME_SC), scare: drawScarecrow, nightie: (b, P, lit) => drawHungRobe(b, P, lit, 'nightie'), jacket: (b, P, lit) => drawHungJacket(b, P, lit, 'jacket'), apron: (b, P, lit) => drawHungRobe(b, P, lit, 'apron') };
+const GARB_HOME = { gown: drawGown, towel: drawTowels, laundry: drawLaundry, chair: drawThrowOnChair, sack: drawSack, boiler: drawOverallsHung, stand: drawStandCoat, dog: drawDogHome, rain: drawRainHung, scare: drawScarecrow, nightie: (b, P, lit) => drawHungRobe(b, P, lit, 'nightie'), jacket: (b, P, lit) => drawHungJacket(b, P, lit, 'jacket'), apron: (b, P, lit) => drawHungRobe(b, P, lit, 'apron') };
 for (const k of [...QU_KEYS, ...ZT_KEYS]) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);
+GARB_HOME.boots = (b, P, lit) => mzBootHome(b, P, lit, GARB.boots.home - 21, FL.down.gy, 1, V.T, null, 279000, BOOT_HOME_SC);   // 睡着：雨衣后面摆着一双胶靴
+GARB_HOME.shdc = (b, P, lit) => drawHungJacket(b, P, lit, 'shdc');
+GARB_HOME.stk = (b, P, lit) => mzStkHome(b, P, lit, GARB.stk.home, FL.sfc.gy, 1, V.T, null, 279965);   // 睡着：过道上一摞叠好的衣服，身后拖着几道痕
+GARB_HOME.tall = (b, P, lit) => mzTallHome(b, P, lit, GARB.tall.home, FL.sfc.gy, 1, V.T, null, 279975);   // 睡着：一件很长的大衣挂在一根很高的衣帽架上
+GARB_HOME.spider = (b, P, lit) => mzSpiderHang(b, P, lit, GARB.spider.home, FL.down.gy, V.T, 279950, GARB.spider.drop.ceil);   // 睡着：一团旧毛衣用一根毛线吊在管子上
+GARB_HOME.patch = (b, P, lit) => mzPatchHeap(b, P, lit, GARB.patch.home, FL.down.gy, 1, V.T, null, 279850, true);   // 睡着：戏服架后面丢着一团破布（枕套、裤腿、剪刀）
+GARB_HOME.zip = (b, P, lit) => mzZipHome(b, P, lit, GARB.zip.home, FL.down.gy, 1, V.T, { game: 1 }, 279650);   // 睡着：挂在楼道墙上钩子上的一件羽绒服
+GARB_HOME.pj = (b, P, lit) => mzPjHome(b, P, lit, GARB.pj.home + 56, FL.down.gy, 1, V.T, null, 279750, true);   // 睡着：大堂地上扔着的一套睡衣
+GARB_HOME.umb = (b, P, lit) => { b.save(); b.translate(GARB.umb.home, FL.down.gy); b.scale(0.8, 0.8); b.translate(-GARB.umb.home, -FL.down.gy); mzUmbStand(b, P, lit, GARB.umb.home, FL.down.gy, 279400); b.restore(); };   // 睡着：靠着墙脚的一把收好的伞（滴着一滴墨）
+GARB_HOME.cloak = (b, P, lit) => mzCloakRoost(b, P, lit, GARB.cloak.home, FL.down.gy, 1, V.T, null, 279500);   // 栖着：晾杆上对折着的一件黑斗篷   // 睡着：晾在绳子上的一件大衣
 GARB_HOME.q4dust = drawHungDust;   // 地下室的灰大褂：没醒的时候挂在柜台后面的钩子上
 GARB_HOME.q4apron = drawHungApron;
 GARB_HOME.zsh = drawHungSheet;   // 公寓楼地下室的床单：没醒的时候搭在晾衣绳上   // 钟表店二楼的皮围裙：没醒的时候挂在工作台前面的钩子上
@@ -10997,17 +11263,17 @@ function drawGarb(b, P, lit, k) {
   if (k === 'boiler') drawBoiler(b, P, lit);
   if (k === 'stand') drawBareStand(b, P, lit);
   if (k === 'scare') drawScarePole(b, P, lit);
-  if (k === 'rain') drawRainHung(b, P, lit);   // 钩子上的雨衣一直挂着（它不动了）；怪物是钩子底下的靴子
-  if (k === 'jacket') drawJacketShadow(b, P, lit);   // 灯照着的时候，墙上的影子是个人（在外套后面）
+  if (G.kind === 'shdcoat') drawShdShadow(b, P, lit, k);   // 灯照着的时候，墙上的影子是个人（在大衣后面）
   if (k === 'fb1') { drawFsCoat(b, P, lit); return; }   // 消防员的大衣：自己的画法（站着、捧着灯走）
   if (k === 'bs2' && G.holds()) { bpClerk(b, P, lit, k, true); return; }   // 百货大楼：抱着台灯站在人台中间的夜班店员
   if (G.seated) { drawUcBusker(b, P, lit); return; }   // 壁龛里弹琴的外套：醒着也好、分到光也好，都是坐着弹
   if (G.holds && G.holds()) { (G.kind === 'apron' ? drawApronHeld : drawRunnerHeld)(b, P, lit, k); return; }   // 接了小光、抱着光站着的那件
   const ga = b.globalAlpha, rest = lit && !G.queue ? 1 : 1 - m.rise;   // 排队的大衣：亮的那一层也只在塌下去以后才画那一摊（只开一盏灯时，还站着的两件脚下不该有一摊）
-  if (rest > 0.01) { b.globalAlpha = ga * rest; if (atHome) GARB_HOME[k](b, P, lit); else if (G.kind === 'boot') mzBootHeap(b, P, lit, m.x - 36, fy, 1, t, null, 279100, BOOT_SC); else drawGarbHeap(b, P, lit, k, m.x, fy); b.globalAlpha = ga; }
+  if (rest > 0.01) { b.globalAlpha = ga * rest; if (atHome) GARB_HOME[k](b, P, lit); else if (G.kind === 'boot') mzBootHeap(b, P, lit, m.x - 36, fy, 1, t, null, 279100, BOOT_SC); else if (G.kind === 'stk') mzStkHeap(b, P, lit, m.x, fy, 1, t, null, 279960); else if (G.kind === 'tall') mzTallHeap(b, P, lit, m.x - 20, fy, 1, t, null, 279970); else if (G.kind === 'spider') mzSpiderHeap(b, P, lit, m.x, fy, 1, t, null, 279900, false); else if (G.kind === 'patch') mzPatchHeap(b, P, lit, m.x, fy, 1, t, null, 279800, false); else if (G.kind === 'zip') mzZipHeap(b, P, lit, m.x, fy, 1, t, null, 279600); else if (G.kind === 'pj') mzPjHome(b, P, lit, m.x + 56, fy, 1, t, null, 279700, false); else if (G.kind === 'fly') mzCloakHeap(b, P, lit, m.x, fy, 1, t, null, 279200); else if (G.kind === 'umb') mzUmbHeap(b, P, lit, m.x - 70, fy, 1, t, null, 279300); else drawGarbHeap(b, P, lit, k, m.x, fy); b.globalAlpha = ga; }
   if (lit || m.rise < 0.01) return;
-  if (G.kind === 'boot' && kid.mode === 'caught' && V.caughtBy === k) return;   // 咬住脚踝的靴子盖在孩子上面画（drawCatchExtra）
+  if (kid.mode === 'caught' && V.caughtBy === k && CATCH[k] && CATCH[k].extra && G.kind !== 'shdcoat' && G.kind !== 'fly') return;   // 盖在孩子上面画的（drawCatchExtra）：这儿不再画   // 咬住脚踝的靴子、罩住头的伞盖在孩子上面画（drawCatchExtra）
   const r = smooth(m.rise), f = m.face, seed = 285000 + GARB_KEYS.indexOf(k) * 500;
+  if (G.kind === 'fly') { if (!(kid.mode === 'caught' && V.caughtBy === k)) mzCloak(b, P, false, m.x, fy, f, t, { alt: (m.alt || 150) * r, flap: m.flapT || 0, dive: m.dive === 1 ? 1 : m.dive || 0, hunt: m.dive === 1 ? 1 : 0 }, seed); return; }   // 会飞的：不“从一摊往上长”，落下来、升起来是高度在变
   if (G.fast && m.den > 0.01) {   // 还缩在窝里：门洞里只看得见几只眼睛
     b.save(); b.globalAlpha = ga * r * m.den; inkEyes(b, [[KENNEL.x - 9, KENNEL.base - 30, 3], [KENNEL.x + 4, KENNEL.base - 27, 2.4], [KENNEL.x - 2, KENNEL.base - 19, 1.6]], m.hunt); b.restore();
     if (m.den > 0.99) return;
@@ -11023,6 +11289,13 @@ function drawGarb(b, P, lit, k) {
   else if (G.kind === 'throw') inkThrow(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'overalls') inkOveralls(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'boot') mzBoot(b, P, false, m.x, fy, f, t, { hunt: m.hunt, air: m.air, tell: m.tell }, seed);
+  else if (G.kind === 'umb') mzUmb(b, P, false, m.x, fy, f, t, { hunt: m.hunt, open: m.open || 0.14, ph: 0 }, seed);
+  else if (G.kind === 'zip') mzZip(b, P, false, m.x, fy, f, t, { hunt: m.hunt, reach: m.reach, ph: m.ph, zip: m.zip ?? 0.25 }, seed);
+  else if (G.kind === 'pj') mzPj(b, P, false, m.x, fy, f, t, { hunt: m.hunt, ph: m.ph }, seed);
+  else if (G.kind === 'stk') mzStk(b, P, false, m.x, fy, f, t, { hunt: m.hunt, reach: m.reach, ph: m.ph, open: m.open ?? 0.1 }, seed, false);
+  else if (G.kind === 'tall') mzTall(b, P, false, m.x, fy, f, t, { hunt: m.hunt, reach: m.reach, ph: m.ph }, seed);
+  else if (G.kind === 'spider') mzSpider(b, P, false, m.x, fy, f, t, { hunt: m.hunt, ph: m.ph, lift: m.lift || 0, ceil: m.ceil }, seed);
+  else if (G.kind === 'patch') mzPatch(b, P, false, m.x, fy, f, t, { hunt: m.hunt, reach: m.reach, ph: m.ph, scis: m.scis, mouth: m.mouth }, seed);
   else if (G.kind === 'shdcoat') inkShdCoat(b, palOf(G, P), m.x, fy, f, t, m, seed);
   if (k === 'vw2' && S.vKeys === 'belt') sceneItem(b, 'vKeys', m.x - f * 12, fy - 92, 34, P, lit, 642070);   // 腰上别着的一串钥匙
   if (k === 'mw' && S.mBq === 'floor') sceneItem(b, 'mBq', m.x + f * 34, fy - 100, 62, P, lit, 586710);   // 怀里抱着的一束花
@@ -11038,7 +11311,7 @@ function garbEyes(k) {
   const G = GARB[k], m = V.mon[k], fy = FL[G.fl].gy, f = m.face;
   if (G.ride) return [m.x + f * 6, CPY - 126 - 11 * Math.sin(V.ca * 3 + 0) - 11 - 108];   // 木马上的大人：坐在马背上，眼睛在领口上面一点
   if (G.fast && m.den > 0.5) return [KENNEL.x - 3, KENNEL.base - 27];
-  const off = { robe: [14, -8 - G.h + 34], coat: [-1, -8 - 158], laundry: [6, -56], sack: [4, -84], throw: [12, -150], overalls: [0, -170], sweater: [52, -95], runner: [2, -8 - 164], apron: [2, -8 - 164], fire: [2, -8 - 164], boot: [-4, -50], shdcoat: [2, -8 - 196] }[G.kind];
+  const off = { robe: [14, -8 - G.h + 34], coat: [-1, -8 - 158], laundry: [6, -56], sack: [4, -84], throw: [12, -150], overalls: [0, -170], sweater: [52, -95], runner: [2, -8 - 164], apron: [2, -8 - 164], fire: [2, -8 - 164], boot: [-4, -50], shdcoat: [2, -8 - 196], umb: [0, -100], fly: [0, -8 - 160], zip: [16, -212], pj: [60, -50], patch: [12, -8 - 208], spider: [48, -86], stk: [20, -35], tall: [2, -8 - 304] }[G.kind];
   return [m.x + f * off[0], fy + off[1]];
 }
 
@@ -11607,6 +11880,13 @@ for (const [k, fn] of Object.entries({
   power: t => { tone(1800, t, 0.03, 0.06, 'square', 900); tone(55, t + 0.04, 0.7, 0.16, 'sine', 40); noise(t + 0.04, 0.3, 0.1, 200, 1, 'lowpass'); tone(110, t + 0.15, 1.8, 0.025, 'sawtooth', 110); },
   rise: t => { noise(t, 0.7, 0.05, 220, 1.5); tone(88, t, 0.6, 0.045, 'sawtooth', 58); },   // 衣服从地上立起来：湿的、低的一声
   heart: t => { tone(58, t, 0.12, 0.12, 'sine', 45); tone(56, t + 0.2, 0.1, 0.08, 'sine', 42); },
+  zipper: t => { noise(t, 0.9, 0.07, 3400, 6); tone(1800, t, 0.9, 0.02, 'sawtooth', 5200); },   // 拉链嘶——地一路拉开
+  rustle: t => { noise(t, 0.35, 0.07, 1400, 1.5); noise(t + 0.2, 0.3, 0.05, 2200, 2); },   // 睡衣窸窣地翻过身
+  flicker: t => { noise(t, 0.12, 0.08, 120, 1.5, 'lowpass'); tone(60, t, 0.14, 0.08, 'sawtooth', 40); noise(t + 0.02, 0.06, 0.05, 3000, 6); },   // 灯闪一下，滋啦
+  snip: t => { noise(t, 0.04, 0.12, 3600, 5); tone(2400, t, 0.05, 0.05, 'square', 1400); noise(t + 0.05, 0.05, 0.08, 4200, 5); },   // 剪刀咔嚓
+  snap: t => { noise(t, 0.05, 0.1, 2200, 4); tone(190, t, 0.07, 0.08, 'square', 90); noise(t + 0.06, 0.12, 0.05, 900, 1.5); },   // 伞骨啪地撑开
+  shriek: t => { tone(1500, t, 0.35, 0.05, 'sawtooth', 2600); tone(1100, t + 0.04, 0.3, 0.03, 'triangle', 2000); noise(t, 0.25, 0.03, 3200, 5); },   // 披风蝠在拐点叫一声
+  flap: t => { noise(t, 0.16, 0.05, 260, 1.2, 'lowpass'); noise(t + 0.09, 0.07, 0.04, 700, 2); },   // 布拍打：呼——啪
   chomp: t => { noise(t, 0.05, 0.14, 1500, 3); tone(120, t, 0.08, 0.1, 'square', 70); noise(t + 0.16, 0.05, 0.12, 1300, 3); tone(110, t + 0.16, 0.08, 0.08, 'square', 60); noise(t + 0.32, 0.05, 0.1, 1200, 3); },   // 靴嘴咬住脚踝：咔、咔、咔
   caught: t => { [61, 64.5, 92].forEach(f => tone(f, t, 1.2, 0.12, 'sawtooth', f * 0.7)); noise(t, 0.9, 0.16, 300, 0.8, 'lowpass'); tone(1400, t + 0.05, 0.5, 0.03, 'sine', 700); noise(t + 0.1, 0.6, 0.06, 2400, 4); },
   // 院子（第 2 关）
@@ -12321,14 +12601,13 @@ function kidUpdate(dt) {
   } else if (kid.mode === 'caught') {   // 被抓住了：墨一下子涌上来，画面黑下去，回到最近一盏亮着的灯底下
     kid.t += dt; kid.fearK = Math.min(1, kid.t / 0.15);
     if (kid.cdir) {
-      const grip = V.caughtBy === 'jacket', hit = clamp(kid.t / 0.22, 0, 1), fall = clamp((kid.t - (grip ? 0.6 : 0.12)) / 0.42, 0, 1);
-      kid.x = kid.cx0 + kid.cdir * (grip ? 10 : 38) * ease(hit);
-      kid.lift = grip ? 30 * smooth(clamp(kid.t / 0.25, 0, 1)) * (1 - smooth(clamp((kid.t - 0.55) / 0.2, 0, 1))) : Math.sin(Math.PI * clamp(kid.t / 0.3, 0, 1)) * 14;   // 外套的墨手提起来，一松手才摔
+      const C = CATCH[V.caughtBy] || CATCH.default, hit = clamp(kid.t / 0.22, 0, 1), fall = clamp((kid.t - C.fallAt) / 0.42, 0, 1);
+      kid.x = kid.cx0 + kid.cdir * C.back * ease(hit); kid.lift = C.lift(kid.t);
       kid.rot = kid.cdir * 1.5 * fall * fall;                                          // 越摔越快
       if (fall >= 1 && !kid.thumped) { kid.thumped = true; snd.thump(); if (inView(kid.x, kid.y, 120)) puff(kid.x, kid.y - 6, [130, 138, 158], 10); }
-      kid.alpha = 1 - smooth(clamp((kid.t - (grip ? 0.9 : 0.7)) / 0.4, 0, 1));          // 摔在地上，墨盖上来
+      kid.alpha = 1 - smooth(clamp((kid.t - C.alphaAt) / 0.4, 0, 1));                   // 摔在地上，墨盖上来
     }
-    if (kid.t > (V.caughtBy === 'jacket' ? 1.3 : 1.1)) { respawn(); if (V.caughtBy === 'dog' && !S.yDog && ++V.dogCaught >= 2) { ring = { id: 'yLure', t0: V.T }; say(['sweater', '>'], 2.8); } }   // 第二回让狗的毛衣抓住起：圈出感应灯，气泡里画它（和点 ? 一样的画，不算提示）
+    if (kid.t > (CATCH[V.caughtBy] || CATCH.default).dur) { respawn(); if (V.caughtBy === 'dog' && !S.yDog && ++V.dogCaught >= 2) { ring = { id: 'yLure', t0: V.T }; say(['sweater', '>'], 2.8); } }   // 第二回让狗的毛衣抓住起：圈出感应灯，气泡里画它（和点 ? 一样的画，不算提示）
   } else if (kid.mode === 'wait') {
     kid.t += dt;
     if (kid.t >= kid.waitFor) { kid.mode = 'idle'; const a = kid.after; kid.after = null; if (a) a(); }
@@ -13625,6 +13904,7 @@ function render() {
   }
   pen(g, DARK, K, -camX * K, -camY * K);
   drawOverlays(lights);
+  if (V.flick > 0.01) { g.setTransform(DPR, 0, 0, DPR, 0, 0); g.fillStyle = 'rgba(2,3,8,' + (0.66 * V.flick).toFixed(3) + ')'; g.fillRect(0, 0, W, H); g.setTransform(1, 0, 0, 1, 0, 0); }   // 长衣人在场：广场的灯闪一下，整个画面一黑
   texture(g, TEX.fine, 0.9, 'overlay'); texture(g, TEX.mott, 0.5, 'overlay');   // 纸的颗粒
   g.setTransform(DPR, 0, 0, DPR, 0, 0);   // 四周压暗
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.78);
