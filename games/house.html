@@ -9557,6 +9557,663 @@ function inkOveralls(b, P, x, fy, f, t, m, seed) {   // 锅炉边上挂着的一
   if (rk > 0.4) inkTendril(b, 18, base - 140, 18 + 76 * rk, base - 120, t, seed + 50, 8);
   b.restore();
 }
+// ===================== 新的怪物（图鉴：地址后面加 ?monsters=1）=====================
+// 2026-11-25 主人说：“能不能多设计几种怪物，最好有点恐怖可怕，让人一看就知道是怪物，有的怪物就是个衣服，甚至不太看得出来是怪物。”
+// 以前那 32 件追人的衣服长得一个样（衣服 + 领口一汪墨 + 几只眼睛 + 一只伸过来的袖子），没有牙、没有不对劲的身子，看着是“闹鬼的衣服”，不是怪物。
+// 这一段画九种新的，分三档：一眼就是怪物（拉链嘴、袖蛛、缝合怪、长衣人）/ 睡着的时候是别的东西（靴嘴、爬行的睡衣、伞嘴）/ 就是一件衣服（有影子的大衣、叠好的衣服）。
+// 只是图鉴：没有进任何一关，没有进 GARB，规则一个字没动。每只的画法和 inkCoat 那几个一样：(b, P, lit, x, fy, f, t, m, seed)，
+// 以后要放进哪一关，在 drawGarb 里加一行 kind 就行。设计文档：docs/night-monsters.md。
+// m：hunt（追人 0–1）、reach（伸手 0–1）、ph（走到哪一步 0–1）。lit 是亮的那一层（塌下去以后的普通衣服）还是暗的那一层（立起来的怪物）。
+const MZ_COLS = {   // [亮的一层, 暗的一层]。暗的一层里牙、线脚、扣子要比衣服亮，不然看不清
+  mzBone: ['#d8cfb6', '#aab4d2'], mzThread: ['#2a2420', '#8a97ba'], mzMetal: ['#aeb4bd', '#97a3c8'],
+  mzParka: ['#8a6a3c', '#2a3249'], mzParkaLo: ['#6b5230', '#1c2336'], mzFur: ['#cfc6b0', '#566180'], mzZip: ['#b9b2a2', '#8693b6'],
+  mzKnitA: ['#a0524a', '#303853'], mzKnitB: ['#5a7d6c', '#263248'], mzKnitC: ['#b09a52', '#37405a'], mzKnitD: ['#5f6f9c', '#2c3652'], mzCuff: ['#ddd2b4', '#56628a'],
+  mzPlaid: ['#80483c', '#2c3350'], mzPlaidLn: ['#d0b87c', '#4b5880'], mzDenim: ['#4c6384', '#222c46'], mzSack: ['#d3c8aa', '#3a4464'], mzPants: ['#56607a', '#232b40'], mzStrA: ['#c9c0a4', '#3a4566'], mzStrB: ['#8a5a5a', '#2a3046'],
+  mzTall: ['#2e2c33', '#1a2030'], mzTallLo: ['#1f1d24', '#121827'], mzGlove: ['#d6d0c0', '#8f9bc0'], mzScarf: ['#8a3a3a', '#3a3f60'],
+  mzBoot: ['#3f5a3c', '#233046'], mzBootHi: ['#5f7f55', '#33425f'], mzSole: ['#2a2622', '#101521'], mzLace: ['#c9bfa0', '#7d89ab'], mzNail: ['#a98a5a', '#9ba7c8'],
+  mzPjA: ['#b6c0d6', '#3a4566'], mzPjB: ['#6d7fb0', '#27314f'],
+  mzUmb: ['#2f3340', '#1f2638'], mzUmbHi: ['#4a5066', '#33405e'], mzHandle: ['#7a5532', '#2c364f'], mzRib: ['#9aa0a8', '#8b97bb'],
+  mzCoat: ['#6a5c48', '#252d42'], mzCoatLo: ['#524838', '#1a2132'], mzWallS: ['#a9a08c', '#161c2c'], mzShadow: ['#4d463a', '#04060b'],
+  mzStk1: ['#8e5a52', '#2e3652'], mzStk2: ['#5b7a8a', '#27354c'], mzStk3: ['#b0a67a', '#374160'], mzStk4: ['#6e6a9a', '#2d3252'],
+};
+for (const [k, [a, d]] of Object.entries(MZ_COLS)) { LIT[k] = a; DARK[k] = d; }
+
+// 一排牙：沿着 (x0,y0)→(x1,y1) 排 n 颗，朝线的 dir 那一边（1 或 -1）长出去 sz 长；中间的大，两头的小
+function mzTeeth(b, P, lit, x0, y0, x1, y1, n, sz, dir, seed, col) {
+  const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, nx = -uy * dir, ny = ux * dir, lc = lcOf(P, lit), w = L / n * 0.5;
+  for (let i = 0; i < n; i++) {
+    const q = (i + 0.5) / n, s = sz * (0.5 + 0.7 * Math.sin(q * Math.PI)) * (0.8 + 0.4 * hash(seed, i)), cx = x0 + dx * q, cy = y0 + dy * q;
+    part(b, [[cx - ux * w, cy - uy * w], [cx + nx * s + ux * w * 0.2, cy + ny * s + uy * w * 0.2], [cx + ux * w, cy + uy * w]], col || P.mzBone, { w: 0.55, tex: 0, lc, seed: seed + i * 3, wob: 0.2 });
+  }
+}
+// 一块墙（挂着的东西的背景）：宽 w、高 h，贴着地平线，墙脚一道踢脚线
+function mzWall(b, P, lit, x, fy, w, h, seed) {
+  fillPts(b, rectPts(x - w / 2, fy - h, w, h), P.mzWallS, lit ? 0.55 : 0.8);
+  ink(b, seg(x - w / 2, fy - 14, x + w / 2, fy - 14), { w: 1, a: 0.6, taper: 0, seed });
+}
+// 一圈毛边（兜帽上的毛、袖口的毛）：绕着椭圆一圈，半径一长一短
+function mzFurRing(b, P, lit, cx, cy, rx, ry, w, seed, col) {
+  const pts = []; for (let i = 0; i < 28; i++) { const a = i / 28 * TAU, k = 1 + (i % 2 ? 0.55 : -0.1) * (w / rx + 0.5) + 0.12 * hash(seed, i); pts.push([cx + Math.cos(a) * (rx + w * k), cy + Math.sin(a) * (ry + w * k)]); }
+  part(b, curvePts(pts, true, 3), col || P.mzFur, { w: 0.8, tex: 0.3, lc: lcOf(P, lit), seed });
+}
+// 一条袖子（或裤腿）：沿着几个点走，粗细 ws，末端是一圈罗纹袖口，袖口里是一个墨洞（open：袖口张多大 0–1）
+function mzSleeve(b, P, lit, pts, ws, col, cuffCol, seed, open = 0.6, stripe) {
+  const lc = lcOf(P, lit), e = pts.length - 1, a = pts[e - 1], z = pts[e], d = Math.hypot(z[0] - a[0], z[1] - a[1]) || 1, ux = (z[0] - a[0]) / d, uy = (z[1] - a[1]) / d, w = ws[e];
+  part(b, tube(pts, ws), col, { w: 0.9, tex: 0.3, lc, seed });
+  if (!lit) ink(b, pts.slice(0, -1).map(([px, py], i) => { const q = pts[i + 1], dd = Math.hypot(q[0] - px, q[1] - py) || 1; return [px + (q[1] - py) / dd * ws[i] * 0.32, py - (q[0] - px) / dd * ws[i] * 0.32]; }), { w: 0.7, col: DARK.hi, a: 0.22, taper: 8, seed: seed + 3 });   // 暗处：袖子一边一道淡淡的亮边，轮廓才托得出来
+  if (stripe) for (const q of [0.3, 0.5, 0.7]) { const i = Math.min(e - 1, Math.floor(q * e * 1.0)), p = pts[i], ww = ws[i] * 0.5; ink(b, seg(p[0] - uy * ww, p[1] + ux * ww, p[0] + uy * ww, p[1] - ux * ww), { w: 0.9, col: cuffCol, a: 0.8, taper: 0, seed: seed + 5 + i }); }
+  const c0 = [z[0] - ux * 11, z[1] - uy * 11];
+  part(b, tube([c0, z], [w + 2, w + 2]), cuffCol, { w: 0.8, tex: 0, lc, seed: seed + 9 });
+  for (let i = -2; i <= 2; i++) ink(b, seg(c0[0] - uy * i * w * 0.18, c0[1] + ux * i * w * 0.18, z[0] - uy * i * w * 0.18, z[1] + ux * i * w * 0.18), { w: 0.5, a: 0.5, taper: 0, seed: seed + 20 + i });
+  fillPts(b, arcPts(z[0] + ux * 1.5, z[1] + uy * 1.5, w * 0.5 * (0.3 + open * 0.7), w * 0.5, Math.atan2(uy, ux), Math.atan2(uy, ux) + TAU, 10).map(([px, py]) => [px, py]), INK);
+}
+// 一只眼睛（竖瞳的，长衣人用）
+function mzSlitEye(b, x, y, rx, ry, hunt) {
+  b.fillStyle = hunt > 0.5 ? '#f2d6cc' : '#e9edf6'; b.beginPath(); b.ellipse(x, y, rx, ry, 0, 0, 7); b.fill();
+  b.fillStyle = hunt > 0.5 ? '#8a0c08' : '#05060a'; b.beginPath(); b.ellipse(x, y, rx * 0.32, ry * 0.9, 0, 0, 7); b.fill();
+}
+
+// ---------- ① 拉链嘴：连帽的厚外套。前襟的拉链从下往上拉开，两边的拉链齿是牙，里面是墨和一排眼睛 ----------
+function mzZip(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, op = clamp(0.3 + hu * 0.66 + Math.sin(t * 2.2 + seed) * 0.05, 0, 1), sw = Math.sin(m.ph * TAU);
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 74, 6, 0, 0, 7); b.fill();
+  for (const s of [-1, 1]) {   // 两条腿：粗粗的棉裤，脚上是黑的大靴子，墨顺着裤脚往下滴
+    const w = sw * 7 * s * (0.3 + hu);
+    part(b, tube([[s * 24, -78], [s * 27 + w, -44], [s * 26 + w * 1.3, -12]], [30, 27, 26]), P.mzParkaLo, { w: 0.9, tex: 0.3, lc });
+    fillPts(b, arcPts(s * 26 + w * 1.3 + 6, -6, 24, 9, 0, TAU, 12), INK);
+  }
+  b.translate(0, -66); b.rotate(0.03 + 0.1 * hu); b.translate(0, 66);   // 驼着背，追人的时候往前扑
+  mzSleeve(b, P, lit, [[-44, -160], [-68, -112], [-66, -56], [-60, -14]], [26, 24, 22, 20], P.mzParka, P.mzParkaLo, seed + 100, 0.5);   // 后面那条袖子，垂到脚踝
+  const body = curvePts([[-34, -174], [34, -174], [54, -148], [62, -104], [68, -60], [34, -54], [0, -60], [-34, -54], [-68, -60], [-62, -104], [-54, -148]], true, 4);
+  part(b, body, P.mzParka, { w: 1.1, tex: 0.4, lc });
+  for (const [yy, hw] of [[-146, 54], [-122, 58], [-98, 62], [-74, 66]]) ink(b, quadPts([-hw, yy], [0, yy + 7], [hw, yy], 10), { w: 0.7, a: 0.6 });   // 羽绒服一格一格的缝
+  hatch(b, k => pathOf(k, [[-34, -174], [34, -174], [54, -148], [62, -104], [68, -60], [-68, -60], [-62, -104], [-54, -148]]), [-68, -174, 136, 118], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 20 });
+  // 拉链：下面拉开的那一段是嘴（楔子形），上面还没拉开的那一段是一道拉链
+  const yb = -58, yt = yb - 116 * op, hwMax = 12 + 36 * op, hw = y => hwMax * smooth((y - yt) / (yb - yt)) ** 0.8;
+  const L = [], R = []; for (let i = 0; i <= 12; i++) { const y = lerp(yt, yb, i / 12); L.push([-hw(y), y]); R.push([hw(y), y]); }
+  fillPts(b, [...L, ...R.reverse()], INK);
+  for (const s of [-1, 1]) ink(b, L.map(([px, py]) => [s * Math.abs(px) * 1.0 + s * 3, py]), { w: 1.6, col: P.mzZip, a: 1 / b.pen.a, taper: 0, seed: seed + 140 + s });   // 两边的拉链布带
+  for (let y = yt - 4; y > -170; y -= 7) { const o = ((y / 7) | 0) % 2 ? 2.2 : -2.2; ink(b, seg(-4.5 + o * 0.3, y, 4.5 + o * 0.3, y), { w: 0.9, col: P.mzZip, a: 1 / b.pen.a, taper: 0, seed: seed + 160 + ((y / 7) | 0) }); }   // 还拉着的那一段：交错的拉链齿
+  ink(b, seg(0, -174, 0, yt), { w: 0.8, col: lc, a: 0.7, taper: 0, seed: seed + 150 });
+  const nT = 9;   // 牙：两边拉链齿，朝嘴里长，下面的长、上面的短
+  for (const s of [-1, 1]) for (let i = 0; i < nT; i++) {
+    const q = (i + 0.5) / nT, y = lerp(yt + 4, yb - 2, q), hh = (yb - yt) / nT * 0.42, tl = (4 + 22 * smooth(q)) * (0.6 + 0.4 * op) * (0.85 + 0.3 * hash(seed + s, i)), ex = s * hw(y);
+    if (hw(y) > 3) part(b, [[ex, y - hh], [ex - s * tl, y + hh * 0.2], [ex, y + hh]], P.mzBone, { w: 0.55, tex: 0, lc, seed: seed + 200 + i * 3 + (s > 0 ? 40 : 0), wob: 0.2 });
+  }
+  if (op > 0.3) inkEyes(b, [[-1, yt + 30, 3.6], [3, yt + 52, 3], [-3, yt + 70, 2.4], [2, yb - 14, 2]].filter(([, ey, er]) => hw(ey) > er + 5), m.hunt);   // 肚子里的眼睛
+  ink(b, seg(0, yt - 2, 0, yt + 15), { w: 1.4, col: P.mzZip, a: 1 / b.pen.a, taper: 2, seed: seed + 170 }); part(b, roundPts(-3.5, yt + 12, 7, 14, 2), P.mzZip, { w: 0.6, tex: 0, lc, seed: seed + 171 });   // 拉链头：像舌头一样挂在牙缝上
+  // 兜帽：压得很低的一个大帽子，帽口一圈毛，里面是墨和一堆眼睛
+  const hood = curvePts([[-44, -166], [-50, -212], [-32, -250], [6, -264], [46, -246], [56, -204], [46, -166], [0, -176]], true, 4);
+  part(b, hood, P.mzParka, { w: 1.1, tex: 0.4, lc });
+  hatch(b, k => pathOf(k, [[-44, -166], [-50, -212], [-32, -250], [6, -264], [-8, -200], [-4, -166]]), [-50, -264, 54, 98], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 18 });
+  mzFurRing(b, P, lit, 16, -212, 24, 32, 7, seed + 230);
+  fillPts(b, arcPts(16, -212, 24, 32, 0, TAU, 20), INK);
+  inkEyes(b, [[8, -226, 4.6], [24, -224, 3.8], [16, -208, 3], [6, -204, 2.2], [26, -204, 2.4], [15, -190, 1.8]], m.hunt);
+  mzSleeve(b, P, lit, [[46, -160], [lerp(70, 92, rk), lerp(-112, -166, rk)], [lerp(70, 124, rk), lerp(-58, -170, rk)], [lerp(62, 160, rk), lerp(-16, -150, rk)]], [26, 24, 22, 20], P.mzParka, P.mzParkaLo, seed + 300, 0.9);   // 前面那条袖子：伸过来
+  if (rk > 0.4) inkTendril(b, lerp(62, 160, rk) + 4, lerp(-16, -150, rk), lerp(62, 160, rk) + 46 * rk, lerp(-16, -150, rk) + 14, t, seed + 50, 8);
+  inkDrips(b, [[-60, -8, 18], [-30, -56, 14], [40, -56, 20], [lerp(62, 160, rk), lerp(-16, -150, rk) + 8, 16 + 8 * Math.sin(t * 2)], [-10, -176, 30], [24, -184, 24]], seed + 60);
+  b.restore();
+}
+// 拉链嘴睡着的时候：就是一件挂在钩子上的羽绒服，帽子耷拉着。拉链是拉到头的，只有帽口里黑得有点不对
+function mzZipHome(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), top = fy - 214; b.save(); b.seedN = seed;
+  mzWall(b, P, lit, x, fy, 420, 300, seed + 80);
+  part(b, rectPts(x - 14, top - 50, 28, 12), P.wood, { w: 0.8, tex: 0, lc, seed: seed + 90 }); part(b, rectPts(x - 3, top - 40, 6, 22), P.woodHi, { w: 0.7, tex: 0, lc, seed: seed + 91 });   // 墙上的木头钩子
+  for (const s of [-1, 1]) part(b, tube([[x + s * 34, top + 36], [x + s * 50, top + 96], [x + s * 46, top + 164]], [24, 22, 20]), P.mzParkaLo, { w: 0.9, tex: 0.3, lc });
+  const body = curvePts([[x - 30, top + 10], [x + 30, top + 10], [x + 50, top + 40], [x + 56, top + 100], [x + 60, top + 150], [x, top + 156], [x - 60, top + 150], [x - 56, top + 100], [x - 50, top + 40]], true, 4);
+  part(b, body, P.mzParka, { w: 1.1, tex: 0.4, lc });
+  for (const [yy, hw] of [[top + 52, 50], [top + 78, 54], [top + 104, 57], [top + 130, 59]]) ink(b, quadPts([x - hw, yy], [x, yy + 6], [x + hw, yy], 10), { w: 0.7, a: 0.6 });
+  ink(b, seg(x, top + 14, x, top + 154), { w: 0.8, a: 0.7, taper: 0 }); for (let y = top + 18; y < top + 150; y += 7) ink(b, seg(x - 3.5, y, x + 3.5, y), { w: 0.7, col: P.mzZip, a: 0.9, taper: 0, seed: seed + 40 + y });
+  hatch(b, k => pathOf(k, [[x - 30, top + 10], [x + 30, top + 10], [x + 50, top + 40], [x + 56, top + 100], [x + 60, top + 150], [x - 60, top + 150], [x - 56, top + 100], [x - 50, top + 40]]), [x, top + 10, 62, 146], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 18 });
+  part(b, curvePts([[x - 36, top + 12], [x - 40, top - 8], [x - 18, top - 22], [x + 18, top - 22], [x + 40, top - 8], [x + 36, top + 12], [x, top + 2]], true, 4), P.mzParka, { w: 1.1, tex: 0.4, lc });   // 帽子：耷拉在肩上
+  mzFurRing(b, P, lit, x, top - 4, 22, 12, 5, seed + 60);
+  if (!lit) { fillPts(b, arcPts(x, top - 4, 20, 9, 0, TAU, 14), INK); if (Math.sin(t * 0.9 + seed) > 0.8) inkEyes(b, [[x - 5, top - 5, 1.6], [x + 6, top - 5, 1.4]], 0); }   // 暗处：帽口里黑得过头，偶尔亮一下
+  else fillPts(b, arcPts(x, top - 4, 20, 9, 0, TAU, 14), P.mzParkaLo, 0.9);
+  b.restore();
+}
+// 拉链嘴塌下去：一件羽绒服瘫在地上，帽子歪在一边，拉链是拉上的
+function mzZipHeap(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit); b.save(); b.translate(x, fy); b.seedN = seed;
+  part(b, curvePts([[-58, 3], [-52, -16], [-26, -28], [8, -26], [40, -18], [62, 3]], true, 4), P.mzParka, { w: 1, tex: 0.4, lc });
+  part(b, curvePts([[-6, -22], [24, -34], [44, -22], [26, -10], [4, -12]], true, 4), P.mzParkaLo, { w: 0.9, tex: 0.3, lc });
+  mzFurRing(b, P, lit, -34, -14, 14, 9, 4, seed + 7); part(b, curvePts([[-44, -6], [-36, -22], [-22, -14], [-28, 0]], true, 4), P.mzParkaLo, { w: 0.8, tex: 0, lc });
+  ink(b, quadPts([-30, -4], [0, -20], [44, -10], 8), { w: 0.7, a: 0.7 }); for (let i = 0; i < 9; i++) ink(b, seg(-24 + i * 7.5, -9 - Math.sin(i / 9 * 3) * 8 + 0, -21 + i * 7.5, -9 - Math.sin(i / 9 * 3) * 8 + 4), { w: 0.6, col: P.mzZip, a: 0.9, taper: 0, seed: seed + 30 + i });
+  hatch(b, k => pathOf(k, [[-58, 3], [-52, -16], [-26, -28], [8, -26], [40, -18], [62, 3]]), [0, -28, 60, 30], { ang: -0.3, gap: 3.4, a: lit ? 0.5 : 0.6, w: 0.7, len: 16 });
+  b.restore();
+}
+
+// ---------- ② 袖蛛：一团缠成球的旧毛衣和衬衫，八条袖子当腿。袖口是张着的，里面是墨；脸在前面那个小一点的疙瘩上，领口是嘴，扣子是牙 ----------
+function mzSpider(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, ph = m.ph, by = -84 + hu * 20 + Math.sin(t * 2.4 + seed) * 2 + Math.abs(Math.sin(ph * TAU * 2)) * -3 * (0.3 + hu);
+  const HX = [-44, -24, -4, 14], OUT = [-82, -46, 48, 94], KN = [[-52, -90], [-30, -104], [26, -104], [52, -96]], COL = ['mzKnitA', 'mzKnitB', 'mzKnitC', 'mzKnitD'];
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(8, 3, 104, 6, 0, 0, 7); b.fill();
+  const leg = (i, far) => {   // i：第几条（0 最后面，3 最前面），far：是不是对面那一排（画在身子后面、暗一点）
+    const k = (far ? 4 : 0) + i, off = ((k % 2) ? 0.5 : 0) + i * 0.125, ang = TAU * (ph + off), atk = i === 3 ? smooth(hu) : 0;
+    let fx = HX[i] + OUT[i] * (0.84 + 0.16 * hu) + Math.sin(ang) * 16 * (0.3 + hu) + (far ? 9 : 0), fyy = -Math.max(0, Math.cos(ang)) * 18 * (0.4 + hu) - (far ? 3 : 0);
+    fx = lerp(fx, 120 + (far ? 16 : 0), atk); fyy = lerp(fyy, -100 - (far ? 20 : 0) + Math.sin(t * 7 + far) * 6, atk);   // 追人的时候最前面一条（两排各一条）高高举起来
+    const hx = HX[i] + (far ? 6 : 0), hy = by + 2 - (far ? 3 : 0), kx = hx + KN[i][0] * 0.4 + (fx - hx) * 0.18, ky = by + KN[i][1] - (far ? 6 : 0) - atk * 24;
+    b.save(); if (far) b.globalAlpha *= 0.78;
+    mzSleeve(b, P, lit, [[hx, hy], [kx, ky], [fx, fyy]], [19, 15, 12], P[COL[(i + (far ? 2 : 0)) % 4]], P.mzCuff, seed + 40 * k, 0.5 + atk * 0.5, k % 2 === 0);
+    b.restore();
+  };
+  for (let i = 0; i < 4; i++) leg(i, true);
+  const abd = curvePts([[-62, by + 2], [-64, by - 24], [-44, by - 50], [-12, by - 60], [20, by - 52], [36, by - 30], [34, by - 4], [14, by + 10], [-20, by + 12], [-46, by + 10]], true, 4);
+  part(b, abd, P.mzKnitD, { w: 1.1, tex: 0.45, lc });
+  part(b, curvePts([[-46, by + 4], [-50, by - 28], [-22, by - 46], [-6, by - 24], [-14, by + 6]], true, 4), P.mzKnitB, { w: 0.9, tex: 0.4, lc });   // 缠在里头的一件绿毛衣
+  part(b, curvePts([[-68, by - 6], [-62, by - 32], [-50, by - 28], [-56, by - 4]], true, 4), P.mzCuff, { w: 0.8, tex: 0.2, lc });                 // 一截白衬衫的下摆
+  for (let i = 0; i < 5; i++) ink(b, quadPts([-54 + i * 17, by - 46 + (i % 2) * 6], [-52 + i * 17, by - 24], [-56 + i * 17, by + 2], 8), { w: 0.6, a: 0.5 });   // 毛线的纹
+  hatch(b, k => pathOf(k, [[-62, by + 2], [-64, by - 24], [-44, by - 50], [-12, by - 60], [20, by - 52], [36, by - 30], [34, by - 4], [-20, by + 12], [-46, by + 10]]), [-10, by - 60, 70, 74], { ang: -1.1, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 14 });
+  const head = curvePts([[22, by - 2], [22, by - 30], [38, by - 46], [62, by - 40], [78, by - 18], [72, by + 4], [48, by + 12]], true, 4);
+  part(b, head, P.mzKnitC, { w: 1.1, tex: 0.45, lc });
+  hatch(b, k => pathOf(k, [[22, by - 2], [22, by - 30], [38, by - 46], [62, by - 40], [78, by - 18], [72, by + 4], [48, by + 12]]), [30, by - 46, 40, 56], { ang: -1.1, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 12 });
+  const mx = 66, my = by - 12; fillPts(b, arcPts(mx, my, 11, 15, 0, TAU, 16), INK);
+  for (let i = 0; i < 9; i++) { const a = i / 9 * TAU, px = mx + Math.cos(a) * 11, py = my + Math.sin(a) * 15; part(b, arcPts(px, py, 3.2, 3.2, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 400 + i }); ink(b, seg(px - 1, py, px + 1, py), { w: 0.4, a: 0.8, taper: 0, seed: seed + 420 + i }); }
+  inkEyes(b, [[44, by - 34, 4.4], [57, by - 36, 3.8], [34, by - 22, 3], [70, by - 30, 2.6], [50, by - 44, 2.4], [28, by - 34, 2.2]], m.hunt);
+  inkDrips(b, [[-30, by + 10, 16], [0, by + 12, 28], [40, by + 10, 18], [64, by + 8, 22]], seed + 60);
+  for (let i = 0; i < 4; i++) leg(i, false);
+  b.restore();
+}
+// 袖蛛睡着、塌下去：地上一堆缠在一起的旧毛衣，几条袖子散着。睡着的时候袖口里有一点点亮（暗处）
+function mzSpiderHeap(b, P, lit, x, fy, f, t, m, seed, asleep) {
+  const lc = lcOf(P, lit); b.save(); b.translate(x, fy); b.seedN = seed;
+  part(b, curvePts([[-62, 4], [-58, -14], [-34, -30], [0, -34], [34, -28], [60, -12], [66, 4]], true, 4), P.mzKnitD, { w: 1, tex: 0.45, lc });
+  part(b, curvePts([[-34, -10], [-18, -34], [10, -40], [30, -24], [10, -8]], true, 4), P.mzKnitB, { w: 0.9, tex: 0.4, lc });
+  part(b, tube([[34, -12], [66, -4], [96, -8]], [14, 13, 12]), P.mzKnitA, { w: 0.9, tex: 0.3, lc }); part(b, tube([[88, -8], [96, -8]], [15, 15]), P.mzCuff, { w: 0.7, tex: 0, lc });
+  part(b, tube([[-40, -8], [-76, -2], [-100, -10]], [14, 13, 12]), P.mzKnitC, { w: 0.9, tex: 0.3, lc }); part(b, tube([[-92, -8], [-100, -10]], [15, 15]), P.mzCuff, { w: 0.7, tex: 0, lc });
+  part(b, tube([[-6, -30], [-8, -52], [14, -58]], [13, 12, 11]), P.mzKnitB, { w: 0.9, tex: 0.3, lc });
+  hatch(b, k => pathOf(k, [[-62, 4], [-58, -14], [-34, -30], [0, -34], [34, -28], [60, -12], [66, 4]]), [0, -34, 66, 38], { ang: -0.3, gap: 3.4, a: lit ? 0.5 : 0.6, w: 0.7, len: 16 });
+  if (asleep && !lit && Math.sin(t * 0.7 + seed) > 0.78) inkEyes(b, [[96 + 3, -8, 1.8]], 0);
+  b.restore();
+}
+
+// 一只空手（手套）：手掌一块，四根细长的手指往 ang 那边伸（sz 大小，spread 岔多开，curl 弯多少）
+function mzHand(b, P, lit, x, y, ang, sz, spread, curl, seed, col) {
+  const lc = lcOf(P, lit), c = col || P.mzGlove, ca = Math.cos(ang), sa = Math.sin(ang), L = 24 * sz;
+  part(b, tube([[x - ca * 3 * sz, y - sa * 3 * sz], [x + ca * 6 * sz, y + sa * 6 * sz]], [12 * sz, 10 * sz]), c, { w: 0.6, tex: 0, lc, seed });
+  for (let j = 0; j < 4; j++) {
+    const a = ang + (j - 1.5) * spread, bx = x + ca * 6 * sz - sa * (j - 1.5) * 3.2 * sz, by = y + sa * 6 * sz + ca * (j - 1.5) * 3.2 * sz, m1 = [bx + Math.cos(a) * L * 0.55, by + Math.sin(a) * L * 0.55], a2 = a + curl * (j % 2 ? 1 : 0.7);
+    part(b, tube([[bx, by], m1, [m1[0] + Math.cos(a2) * L * 0.5, m1[1] + Math.sin(a2) * L * 0.5]], [3.6 * sz, 3.1 * sz, 2.4 * sz]), c, { w: 0.5, tex: 0, lc, seed: seed + 3 + j * 2 });
+  }
+  const ta = ang - 1.0 - spread * 0.5; part(b, tube([[x - sa * -5 * sz, y + ca * -5 * sz], [x + Math.cos(ta) * 9 * sz - sa * -5 * sz, y + Math.sin(ta) * 9 * sz + ca * -5 * sz], [x + Math.cos(ta - 0.3) * 17 * sz - sa * -5 * sz, y + Math.sin(ta - 0.3) * 17 * sz + ca * -5 * sz]], [4 * sz, 3.4 * sz, 2.6 * sz]), c, { w: 0.5, tex: 0, lc, seed: seed + 30 });
+}
+// 剪刀（缝合怪的右手）：柄在 (x,y)，刃朝 ang 伸出去 len 长，open 是两片刃岔开多大
+function mzScissors(b, P, lit, x, y, ang, len, open, seed) {
+  const lc = lcOf(P, lit), px = x + Math.cos(ang) * 12, py = y + Math.sin(ang) * 12;
+  for (const s of [-1, 1]) {
+    const a = ang + s * open * 0.5, nx = -Math.sin(a), ny = Math.cos(a), tx = px + Math.cos(a) * len, ty = py + Math.sin(a) * len, ha = ang - s * 0.45;
+    part(b, [[px - Math.cos(a) * 14 + nx * 2.4, py - Math.sin(a) * 14 + ny * 2.4], [tx, ty], [px + nx * -2.4 + Math.cos(a) * 8, py + ny * -2.4 + Math.sin(a) * 8]], P.mzMetal, { w: 0.6, tex: 0, lc, seed: seed + (s > 0 ? 5 : 0) });   // 刃
+    part(b, arcPts(x - Math.cos(ha) * 4, y - Math.sin(ha) * 4 + s * 5, 7, 5.4, 0, TAU, 12), null, { w: 0.9, lc, seed: seed + 10 + (s > 0 ? 5 : 0) });   // 柄上的环
+  }
+  part(b, arcPts(px, py, 2.4, 2.4, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 20 });
+}
+// 一排叉子样的针：沿着嘴的上唇、下唇，针尖朝嘴里，针帽是一颗圆珠
+function mzPins(b, P, lit, x0, x1, y, dir, len, n, seed, colors) {
+  const lc = lcOf(P, lit);
+  for (let i = 0; i < n; i++) {
+    const cx = lerp(x0, x1, (i + 0.5) / n), l = len * (0.7 + 0.5 * hash(seed, i)), tilt = (hash(seed + 3, i) - 0.5) * 0.35;
+    part(b, [[cx - 1.5, y], [cx + 1.5, y], [cx + tilt * l, y + dir * l]], P.mzMetal, { w: 0.5, tex: 0, lc, seed: seed + i * 3, wob: 0.1 });
+    part(b, arcPts(cx, y - dir * 1.2, 2.5, 2.5, 0, TAU, 8), colors[i % colors.length], { w: 0.5, tex: 0, lc, seed: seed + 100 + i });
+  }
+}
+function mzStitchX(b, P, cx, cy, s, seed) {
+  ink(b, seg(cx - s, cy - s, cx + s, cy + s), { w: 0.9, col: P.mzThread, a: 1 / b.pen.a, taper: 0, seed, single: 1 });
+  ink(b, seg(cx - s, cy + s, cx + s, cy - s), { w: 0.9, col: P.mzThread, a: 1 / b.pen.a, taper: 0, seed: seed + 1, single: 1 });
+}
+function mzSeam(b, P, a, z, gap, seed, s = 2.6) { const L = Math.hypot(z[0] - a[0], z[1] - a[1]), n = Math.max(1, Math.round(L / gap)); for (let i = 0; i < n; i++) mzStitchX(b, P, lerp(a[0], z[0], (i + 0.5) / n), lerp(a[1], z[1], (i + 0.5) / n), s, seed + i * 3); }
+
+// ---------- ③ 缝合怪：旧衣服的碎片缝起来的人形。头是个枕套，一只眼睛是掉了线的大纽扣；嘴是一道缝死的线，线崩开了，里面一嘴的针；右手是一把大剪刀 ----------
+function mzPatch(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, sw = Math.sin(m.ph * TAU), op = clamp(0.1 + hu * 0.9 + Math.sin(t * 1.7 + seed) * 0.04, 0, 1), gap = op * 24;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 58, 6, 0, 0, 7); b.fill();
+  part(b, tube([[-16, -88], [-20 + sw * 4, -46], [-22 + sw * 9, -10]], [30, 27, 25]), P.mzPants, { w: 0.9, tex: 0.3, lc });   // 左腿：一条宽裤腿
+  mzSeam(b, P, [-30 + sw * 2, -56], [-12 + sw * 2, -52], 6, seed + 50, 2);
+  part(b, roundPts(-42 + sw * 9, -13, 40, 14, 6), P.mzSole, { w: 0.8, tex: 0, lc });
+  part(b, tube([[18, -88], [26, -58], [22 - sw * 3, -20]], [13, 12, 11]), P.mzStrA, { w: 0.9, tex: 0.3, lc });   // 右腿：一只细细的长袜子，短一截，所以一瘸一拐
+  for (const yy of [-78, -66, -54, -42, -30]) ink(b, seg(16 + (yy + 88) * 0.12, yy, 30 + (yy + 88) * 0.1, yy), { w: 0.9, col: P.mzStrB, a: 0.9, taper: 0, seed: seed + 70 + yy });
+  part(b, roundPts(14 - sw * 3, -22, 20, 10, 4), P.mzSole, { w: 0.8, tex: 0, lc });
+  b.translate(0, -88); b.rotate(0.05 - sw * 0.02 + 0.1 * hu); b.translate(0, 88);   // 短的那条腿落地的时候，身子往那边歪
+  // 左手：一条塞满了东西的裤腿，拖到地上，末端是一只空手套
+  part(b, tube([[-34, -160], [-54, -112], [-52, -52], [-44, -14 + Math.sin(t * 1.5) * 3]], [26, 24, 22, 20]), P.mzPants, { w: 0.9, tex: 0.3, lc });
+  mzSeam(b, P, [-50, -140], [-44, -100], 8, seed + 90, 2.2);
+  mzHand(b, P, lit, -43, -10, Math.PI / 2 + 0.12, 1.05, 0.42, 0.25, seed + 110, P.mzSack);
+  // 身子：三块不一样的布缝起来
+  const T = [[-32, -168], [32, -168], [37, -122], [31, -86], [-31, -86], [-37, -124]];
+  part(b, curvePts([[-32, -168], [2, -168], [-2, -126], [-37, -124]], true, 3), P.mzPlaid, { w: 1, tex: 0.4, lc });
+  for (const yy of [-156, -142]) ink(b, seg(-32, yy, 0, yy), { w: 0.6, col: P.mzPlaidLn, a: 0.8, taper: 0, seed: seed + 130 + yy }); for (const xx of [-22, -10]) ink(b, seg(xx, -168, xx - 2, -126), { w: 0.6, col: P.mzPlaidLn, a: 0.8, taper: 0, seed: seed + 140 + xx });
+  part(b, curvePts([[2, -168], [32, -168], [37, -122], [-2, -126]], true, 3), P.mzDenim, { w: 1, tex: 0.4, lc });
+  part(b, curvePts([[-37, -124], [-2, -126], [37, -122], [31, -86], [-31, -86]], true, 3), P.mzStrA, { w: 1, tex: 0.4, lc });
+  for (let i = 0; i < 6; i++) ink(b, seg(-32 + i * 12.5, -126 + (i > 2 ? 0 : 0), -30 + i * 12.5, -88), { w: 0.9, col: P.mzStrB, a: 0.7, taper: 0, seed: seed + 150 + i });
+  hatch(b, k => pathOf(k, T), [-37, -168, 74, 82], { ang: -1.15, gap: 4.6 / HD, a: 0.45, w: 0.7, len: 18 });
+  mzSeam(b, P, [2, -168], [-2, -126], 7, seed + 160); mzSeam(b, P, [-37, -124], [-2, -126], 7, seed + 170); mzSeam(b, P, [-2, -126], [37, -122], 7, seed + 180);
+  part(b, [[-39, -118], [-52, -116], [-51, -104], [-38, -106]], P.mzBone, { w: 0.6, tex: 0, lc, seed: seed + 190 });   // 侧缝上露出来的洗衣标签
+  // 脖子上一圈麻绳，头：枕套
+  ink(b, quadPts([-14, -170], [0, -164], [14, -170], 8), { w: 1.6, col: P.mzThread, a: 1 / b.pen.a, taper: 0, seed: seed + 200 });
+  const head = curvePts([[-26, -174], [-31, -206], [-18, -232], [2, -240], [22, -230], [31, -204], [26, -174], [0, -168]], true, 4);
+  part(b, head, P.mzSack, { w: 1.1, tex: 0.4, lc });
+  ink(b, quadPts([-22, -222], [-8, -216], [-20, -200], 8), { w: 0.6, a: 0.5, seed: seed + 205 }); ink(b, quadPts([18, -226], [10, -214], [22, -196], 8), { w: 0.6, a: 0.5, seed: seed + 206 });
+  hatch(b, k => pathOf(k, [[-26, -174], [-31, -206], [-18, -232], [2, -240], [8, -200], [4, -170]]), [-30, -240, 36, 70], { ang: -1.1, gap: 4.6 / HD, a: 0.4, w: 0.7, len: 14 });
+  part(b, [[-6, -240], [6, -240], [10, -252], [0, -258], [-10, -252]], P.mzSack, { w: 0.9, tex: 0.3, lc, seed: seed + 210 }); ink(b, seg(-7, -242, 7, -240), { w: 1.2, col: P.mzThread, a: 1 / b.pen.a, taper: 0, seed: seed + 211 });   // 枕套顶上扎起来的结
+  // 眼睛：左边一颗大纽扣，用一根线吊着；右边是破洞里一只墨的眼睛
+  const bw = Math.sin(t * 3.1 + seed) * 1.5 * (0.3 + hu);
+  ink(b, quadPts([-12, -198], [-14 + bw, -184], [-9 + bw, -172], 8), { w: 0.8, col: P.mzThread, a: 1 / b.pen.a, taper: 4, seed: seed + 220, single: 1 });
+  part(b, arcPts(-12, -208 + bw * 0.4, 10, 10, 0, TAU, 14), P.mzBone, { w: 0.8, tex: 0, lc, seed: seed + 221 });
+  for (const [ox, oy] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) fillPts(b, arcPts(-12 + ox, -208 + oy + bw * 0.4, 1.5, 1.5, 0, TAU, 6), INK);
+  mzStitchX(b, P, -12, -208 + bw * 0.4, 4, seed + 222);
+  fillPts(b, curvePts([[3, -212], [10, -216], [19, -213], [20, -205], [12, -200], [5, -204]], true, 3), INK); inkEyes(b, [[12, -208, 3.6]], m.hunt);
+  mzSeam(b, P, [3, -214], [19, -214], 5, seed + 230, 1.6);
+  // 嘴：一道缝死的线，崩开了，嘴里是墨和两排针
+  const my = -186, mw = 19;
+  if (gap > 2) { fillPts(b, [...quadPts([-mw, my], [0, my - gap * 0.9], [mw, my], 8), ...quadPts([mw, my], [0, my + gap * 1.1], [-mw, my], 8)], INK); mzPins(b, P, lit, -mw + 3, mw - 3, my - gap * 0.45, 1, 7 + gap * 0.3, 6, seed + 240, [P.mzStrB, P.mzPlaidLn, P.mzDenim]); mzPins(b, P, lit, -mw + 4, mw - 4, my + gap * 0.5, -1, 6 + gap * 0.3, 5, seed + 260, [P.mzPlaidLn, P.mzStrB, P.mzDenim]); }
+  for (let i = 0; i < 5; i++) { const px = lerp(-mw, mw, i / 4), tilt = Math.abs(px) > mw * 0.6 ? 1 : 0; if (tilt || gap < 2) mzStitchX(b, P, px, my, 2.6, seed + 280 + i * 2); else ink(b, seg(px - 2, my - gap * 0.4, px + 2, my + gap * 0.4), { w: 0.7, col: P.mzThread, a: 1 / b.pen.a, taper: 0, seed: seed + 290 + i }); }
+  // 右手：袖子，末端是一把大剪刀
+  const ax = lerp(46, 100, rk), ay = lerp(-110, -148, rk), hx = lerp(52, 134, rk), hy = lerp(-62, -150, rk);
+  part(b, tube([[34, -158], [ax, ay], [hx, hy]], [18, 16, 14]), P.mzKnitA, { w: 0.9, tex: 0.3, lc });
+  mzScissors(b, P, lit, hx, hy, lerp(1.35, 0.1, rk), 50, 0.16 + 0.5 * Math.abs(Math.sin(t * (2 + hu * 8))) * (0.3 + rk), seed + 310);
+  inkDrips(b, [[-36, -88, 16], [30, -90, 12], [-12, -90, 24], [10, -170, 20]], seed + 60);
+  b.restore();
+}
+function mzPatchHeap(b, P, lit, x, fy, f, t, m, seed, asleep) {
+  const lc = lcOf(P, lit); b.save(); b.translate(x, fy); b.seedN = seed;
+  part(b, tube([[10, -6], [50, -3], [92, -8]], [24, 22, 20]), P.mzPants, { w: 0.9, tex: 0.3, lc });
+  part(b, tube([[-20, -4], [-50, -2], [-80, -7]], [13, 12, 11]), P.mzStrA, { w: 0.9, tex: 0.3, lc });
+  part(b, curvePts([[-26, 2], [-22, -18], [6, -26], [30, -18], [34, 2]], true, 3), P.mzPlaid, { w: 1, tex: 0.4, lc });
+  part(b, curvePts([[-4, -14], [18, -30], [36, -18], [26, -6]], true, 3), P.mzDenim, { w: 0.9, tex: 0.4, lc }); mzSeam(b, P, [-4, -14], [18, -28], 7, seed + 20);
+  part(b, curvePts([[-100, 3], [-98, -16], [-78, -30], [-58, -22], [-56, 2]], true, 4), P.mzSack, { w: 1, tex: 0.4, lc });   // 枕套
+  part(b, arcPts(-82, -14, 7, 7, 0, TAU, 12), P.mzBone, { w: 0.7, tex: 0, lc, seed: seed + 30 }); mzStitchX(b, P, -82, -14, 3.2, seed + 31);
+  mzHand(b, P, lit, 100, -6, 0, 0.9, 0.5, 0.3, seed + 40, P.mzSack);
+  mzScissors(b, P, lit, 58, -24, -0.2, 40, 0.12, seed + 60);
+  hatch(b, k => pathOf(k, [[-26, 2], [-22, -18], [6, -26], [30, -18], [34, 2]]), [0, -26, 34, 30], { ang: -0.3, gap: 3.4, a: lit ? 0.5 : 0.6, w: 0.7, len: 14 });
+  if (asleep && !lit) { fillPts(b, curvePts([[-71, -20], [-64, -23], [-58, -18], [-64, -14]], true, 3), INK); if (Math.sin(t * 0.8 + seed) > 0.75) inkEyes(b, [[-64, -19, 2]], 0); }
+  b.restore();
+}
+
+// ---------- ④ 长衣人：比门还高，细得不对。一件长大衣，一条拉长了的围巾当脖子，帽檐底下是墨和两条竖着的眼睛；手套是空的，手指太长 ----------
+function mzTall(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, sw = Math.sin(t * 0.8 + seed) * 0.015;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 40, 5, 0, 0, 7); b.fill();
+  for (const s of [-1, 1]) { const w = Math.sin(m.ph * TAU) * 5 * s * (0.3 + hu); part(b, tube([[s * 8, -116], [s * 9 + w * 0.5, -60], [s * 9 + w, -9]], [14, 12, 11]), P.mzTallLo, { w: 0.9, tex: 0.3, lc }); part(b, curvePts([[s * 9 + w - 7, -6], [s * 9 + w + 14, -8], [s * 9 + w + 26, -1], [s * 9 + w - 7, 1]], true, 3), INK, { w: 0.6, tex: 0, lc }); }
+  b.translate(0, -112); b.rotate(sw + 0.05 + 0.34 * hu); b.translate(0, 112);   // 从腰上弯过来，脖子钩着
+  const arm = (s, far) => {
+    const a = far ? 0.5 : 1, ex = lerp(26, 74, rk * a), ey = lerp(-190, -236, rk * a), mx = lerp(24, 138, rk * a), my = lerp(-122, -226, rk * a), hx = lerp(22, 206, rk * a), hy = lerp(-44, -178, rk * a);
+    b.save(); if (far) b.globalAlpha *= 0.8;
+    part(b, tube([[s * 14, -246], [s * 1 * ex, ey], [s * 1 * mx, my], [s * 1 * hx, hy]], [15, 13, 11, 10]), P.mzTall, { w: 0.9, tex: 0.3, lc, seed: seed + 400 + (far ? 20 : 0) });
+    mzHand(b, P, lit, hx * s, hy, lerp(Math.PI / 2, 0.05, rk * a), 1.25, 0.34 + hu * 0.2, 0.3 + 0.2 * Math.sin(t * 2.4 + far), seed + 430 + (far ? 20 : 0));
+    b.restore();
+  };
+  arm(-1, true);
+  const coat = curvePts([[-17, -252], [17, -252], [22, -212], [25, -152], [32, -100], [10, -92], [0, -99], [-10, -92], [-32, -100], [-25, -152], [-22, -212]], true, 4);
+  part(b, coat, P.mzTall, { w: 1.1, tex: 0.4, lc });
+  hatch(b, k => pathOf(k, [[-17, -252], [17, -252], [22, -212], [25, -152], [32, -100], [-32, -100], [-25, -152], [-22, -212]]), [-32, -252, 64, 154], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 22 });
+  ink(b, seg(2, -248, 4, -96), { w: 0.8, a: 0.8, taper: 0 }); for (const yy of [-222, -190, -158, -126]) part(b, arcPts(8, yy, 2.4, 2.4, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 440 + yy });
+  part(b, [[-17, -252], [-4, -252], [-2, -224], [-19, -230]], P.mzTallLo, { w: 0.8, tex: 0, lc, seed: seed + 450 }); part(b, [[17, -252], [4, -252], [2, -224], [19, -230]], P.mzTallLo, { w: 0.8, tex: 0, lc, seed: seed + 451 });   // 翻领
+  ink(b, [[24, -150], [34, -102]], { col: DARK.hi, w: 0.8, a: lit ? 0 : 0.25, taper: 0 });
+  // 脖子：一条拉长了的围巾；头：一顶高帽子，帽檐底下是墨
+  const neck = Math.sin(t * 1.1 + seed) * 2 + hu * 8;
+  part(b, tube([[0, -250], [1 + neck * 0.5, -276], [2 + neck, -300]], [20, 15, 15]), P.mzScarf, { w: 0.9, tex: 0.3, lc, seed: seed + 460 });
+  for (const yy of [-262, -274, -286]) ink(b, seg(-6 + (yy + 262) * -0.05, yy, 8 + (yy + 262) * -0.05, yy + 1), { w: 0.9, col: P.mzBone, a: 0.5, taper: 0, seed: seed + 465 + yy });
+  b.save(); b.translate(neck, 0);
+  fillPts(b, arcPts(2, -304, 17, 14, 0, TAU, 16), INK); mzSlitEye(b, -4, -305, 2.8, 8, m.hunt); mzSlitEye(b, 9, -306, 2.4, 7.4, m.hunt);
+  part(b, curvePts([[-26, -312], [-8, -318], [14, -318], [30, -312], [14, -309], [-8, -309]], true, 4), P.mzTallLo, { w: 0.9, tex: 0, lc, seed: seed + 470 });   // 帽檐
+  part(b, [[-17, -314], [-15, -354], [19, -354], [21, -314]], P.mzTallLo, { w: 0.9, tex: 0.3, lc, seed: seed + 471 }); part(b, [[-16, -322], [20, -322], [20, -327], [-16, -327]], P.mzScarf, { w: 0.6, tex: 0, lc, seed: seed + 472 });
+  b.restore();
+  arm(1, false);
+  inkDrips(b, [[-28, -100, 26], [6, -94, 34], [30, -100, 20], [3 + neck, -296, 18]], seed + 60);
+  b.restore();
+}
+// 睡着：一件很长的大衣挂在一根很高的衣帽架上，帽子搭在最上面的钩子上。哪儿都不对劲的只有一样：比门还高
+function mzTallHome(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit); b.save(); b.seedN = seed;
+  for (const [ex, ey, i] of [[-34, 0, 0], [34, 0, 1], [7, 5, 2]]) part(b, tube(quadPts([x, fy - 24], [x + ex * 0.2, fy - 4], [x + ex, fy + ey], 6), [6, 5.5, 5, 4.5, 4, 3.6, 3.2]), P.wood, { w: 0.8, tex: 0, lc, seed: seed + i });
+  part(b, rectPts(x - 3.5, fy - 350, 7, 332), P.wood, { w: 0.9, tex: 0, lc, seed: seed + 10 }); part(b, arcPts(x, fy - 353, 5.5, 5.5, 0, TAU, 10), P.woodHi, { w: 0.8, tex: 0, lc, seed: seed + 11 });
+  for (const s of [-1, 1]) ink(b, quadPts([x, fy - 330], [x + s * 15, fy - 328], [x + s * 22, fy - 340], 8), { w: 1.6, col: P.brass, taper: 3, a: 1 / b.pen.a, seed: seed + 20 + s });
+  for (const s of [-1, 1]) part(b, tube([[x + s * 17, fy - 322], [x + s * 24, fy - 270], [x + s * 22, fy - 216]], [14, 12, 10]), P.mzTall, { w: 0.9, tex: 0.3, lc, seed: seed + 30 + s });
+  const coat = curvePts([[x - 17, fy - 328], [x + 17, fy - 328], [x + 22, fy - 290], [x + 25, fy - 230], [x + 32, fy - 180], [x + 10, fy - 172], [x, fy - 179], [x - 10, fy - 172], [x - 32, fy - 180], [x - 25, fy - 230], [x - 22, fy - 290]], true, 4);
+  part(b, coat, P.mzTall, { w: 1.1, tex: 0.4, lc, seed: seed + 40 });
+  hatch(b, k => pathOf(k, [[x - 17, fy - 328], [x + 17, fy - 328], [x + 22, fy - 290], [x + 25, fy - 230], [x + 32, fy - 180], [x - 32, fy - 180], [x - 25, fy - 230], [x - 22, fy - 290]]), [x - 32, fy - 328, 64, 150], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 22 });
+  for (const yy of [-300, -268, -236, -204]) part(b, arcPts(x + 8, fy + yy, 2.4, 2.4, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 50 + yy });
+  part(b, [[x - 16, fy - 360], [x - 14, fy - 400], [x + 18, fy - 400], [x + 20, fy - 360]], P.mzTallLo, { w: 0.9, tex: 0.3, lc, seed: seed + 60 }); part(b, curvePts([[x - 25, fy - 358], [x - 8, fy - 364], [x + 14, fy - 364], [x + 29, fy - 358], [x + 14, fy - 355], [x - 8, fy - 355]], true, 4), P.mzTallLo, { w: 0.9, tex: 0, lc, seed: seed + 61 });
+  b.restore();
+}
+function mzTallHeap(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit); b.save(); b.translate(x, fy); b.seedN = seed;
+  part(b, curvePts([[-96, 3], [-94, -8], [-60, -17], [0, -20], [70, -14], [96, -8], [98, 3], [40, 5], [-40, 5]], true, 4), P.mzTall, { w: 1, tex: 0.4, lc });
+  part(b, tube([[-60, -10], [-100, -16], [-134, -8]], [12, 11, 10]), P.mzTall, { w: 0.9, tex: 0.3, lc }); mzHand(b, P, lit, -136, -8, Math.PI, 1.0, 0.3, 0.2, seed + 20);
+  part(b, tube([[60, -10], [112, -18], [150, -10]], [12, 11, 10]), P.mzTall, { w: 0.9, tex: 0.3, lc }); mzHand(b, P, lit, 152, -10, 0, 1.0, 0.3, 0.2, seed + 40);
+  part(b, tube([[96, -10], [124, -6]], [18, 15]), P.mzScarf, { w: 0.8, tex: 0.3, lc, seed: seed + 60 });
+  part(b, roundPts(-30, -34, 34, 22, 4), P.mzTallLo, { w: 0.9, tex: 0.3, lc, seed: seed + 70 }); part(b, arcPts(-13, -12, 28, 5, 0, TAU, 14), P.mzTallLo, { w: 0.9, tex: 0, lc, seed: seed + 71 });
+  hatch(b, k => pathOf(k, [[-96, 3], [-94, -8], [-60, -17], [0, -20], [70, -14], [96, -8], [98, 3]]), [0, -20, 96, 24], { ang: -0.3, gap: 3.4, a: lit ? 0.5 : 0.6, w: 0.7, len: 18 });
+  b.restore();
+}
+
+// ---------- ⑤ 靴嘴：一只胶靴，鞋头的皮掀开了，像一张嘴；嘴里是锈钉子和墨，鞋带是两条长舌头 ----------
+// 靴子的画法：ang 是鞋头张开多少（0 是合着的），eyes 画不画眼睛和鞋带
+function mzBootBody(b, P, lit, ang, t, hu, seed, eyes) {
+  const lc = lcOf(P, lit), H = [10, -30];
+  const lower = curvePts([[-34, -82], [4, -82], [9, -48], [14, -15], [70, -15], [78, -7], [72, 3], [-36, 3], [-39, -32]], true, 3);
+  part(b, lower, P.mzBoot, { w: 1.1, tex: 0.4, lc, seed });
+  part(b, rectPts(-39, -4, 112, 7), P.mzSole, { w: 0.8, tex: 0, lc, seed: seed + 1 });   // 鞋底
+  ink(b, [[-37, -78], [-37, -32]], { col: DARK.hi, w: 0.8, a: lit ? 0 : 0.28, taper: 4, seed: seed + 2 });
+  hatch(b, k => pathOf(k, [[-34, -82], [4, -82], [9, -48], [14, -15], [-36, 3], [-39, -32]]), [-36, -82, 46, 86], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.4 : 0.5, w: 0.7, len: 16 });
+  fillPts(b, arcPts(-15, -81, 19, 5, 0, TAU, 14), INK);   // 靴口
+  const th = -ang, c = Math.cos(th), s = Math.sin(th), R = ([px, py]) => [H[0] + (px - H[0]) * c - (py - H[1]) * s, H[1] + (px - H[0]) * s + (py - H[1]) * c];
+  if (ang > 0.04) {   // 嘴里：墨、锈钉子
+    fillPts(b, [[H[0] + 2, H[1] + 6], R([74, -13]), [72, -15], [14, -15]], INK);
+    const a0 = R([14, -15]), a1 = R([72, -15]);
+    mzTeeth(b, P, lit, 16, -15, 68, -15, 6, 4 + 13 * Math.min(1, ang * 1.6), 1, seed + 20, P.mzNail);   // 下唇：钉子朝上
+    mzTeeth(b, P, lit, a0[0], a0[1], a1[0], a1[1], 6, 4 + 13 * Math.min(1, ang * 1.6), -1, seed + 40, P.mzNail);   // 上唇
+    if (eyes) { const lx = 40, tw = Math.sin(t * 5) * 2; ink(b, quadPts([26, -16], [lx, -22 + tw], [lx + 18, -14], 8), { w: 3, col: P.mzLace, a: 1 / b.pen.a, taper: 4, seed: seed + 60 }); }   // 舌头：鞋舌头伸出来
+  }
+  const up = [[10, -52], [28, -48], [52, -39], [68, -26], [74, -15], [14, -15], [8, -30]].map(R);
+  part(b, curvePts(up, true, 3), P.mzBootHi, { w: 1.1, tex: 0.4, lc, seed: seed + 3 });
+  hatch(b, k => pathOf(k, up), [R([40, -30])[0], R([40, -30])[1], 40, 30], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.3 : 0.45, w: 0.7, len: 12 });
+  for (let i = 0; i < 4; i++) { const p = R([16 + i * 10, -46 + i * 7]); part(b, arcPts(p[0], p[1], 2.2, 2.2, 0, TAU, 8), P.mzLace, { w: 0.5, tex: 0, lc, seed: seed + 70 + i }); }   // 鞋带孔
+  if (eyes) {
+    const lace = (k, ph) => { const p0 = R([22, -48 + k * 6]); ink(b, cubPts(p0, [p0[0] + 16, p0[1] - 36 + Math.sin(t * 3 + ph) * 10], [p0[0] + 40, p0[1] - 30 + Math.cos(t * 2.4 + ph) * 12], [p0[0] + 54 + Math.sin(t * 3.4 + ph) * 8, p0[1] - 56 + Math.sin(t * 2 + ph) * 8], 14), { w: 1.7, col: P.mzLace, a: 1 / b.pen.a, taper: 6, seed: seed + 80 + k }); };
+    lace(0, 0); lace(1, 2.2);
+    inkEyes(b, [[-12, -62, 4.4], [2, -58, 3.4], [-22, -48, 2.6]], hu);
+    inkDrips(b, [[-30, -82, 16], [-8, -80, 26]], seed + 90);
+  }
+}
+function mzBoot(b, P, lit, x, fy, f, t, m, seed) {
+  const hu = m.hunt, ang = clamp(0.28 + 0.55 * hu + Math.sin(t * 3) * 0.08 + hu * 0.4 * (0.5 + 0.5 * Math.sin(t * 9)), 0, 1.15), hop = Math.abs(Math.sin(m.ph * TAU)) * 24 * (0.2 + hu);
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(x + 20 * f, fy + 3, 52 - hop * 0.4, 5, 0, 0, 7); b.fill();
+  b.save(); b.translate(x, fy - hop); b.scale(f, 1); b.rotate(-0.08 * (hop / 24)); b.seedN = seed;
+  mzBootBody(b, P, lit, ang, t, hu, seed, true);
+  b.restore();
+}
+function mzBootHome(b, P, lit, x, fy, f, t, m, seed) {   // 睡着：门口两只胶靴摆得整整齐齐，一只的鞋头朝着另一边；一只靴子底下有一小滩墨
+  b.save(); b.seedN = seed; const lc = lcOf(P, lit);
+  b.save(); b.translate(x - 36, fy); mzBootBody(b, P, lit, 0, t, 0, seed, false); b.restore();
+  b.save(); b.translate(x + 78, fy); b.scale(-1, 1); mzBootBody(b, P, lit, 0, t, 0, seed + 300, false); b.restore();
+  if (!lit) { b.fillStyle = INK; b.beginPath(); b.ellipse(x + 20, fy + 3, 56, 5, 0, 0, 7); b.fill(); }
+  b.restore();
+}
+function mzBootHeap(b, P, lit, x, fy, f, t, m, seed) {   // 塌下去：一只靴子倒在地上，鞋带散着
+  b.save(); b.translate(x + 46, fy - 38); b.rotate(-1.45); b.seedN = seed;   // 往后倒了，靠在靴筒上，鞋头朝天
+  mzBootBody(b, P, lit, 0, t, 0, seed, false); b.restore();
+  ink(b, cubPts([x + 2, fy - 66], [x + 8, fy - 30], [x + 26, fy - 6], [x + 58, fy - 4], 12), { w: 1.7, col: P.mzLace, a: 1 / b.pen.a, taper: 6, seed: seed + 5 });
+}
+
+// ---------- ⑥ 爬行的睡衣：肚子朝天，四肢反着弯，像蜘蛛一样横着爬。头从领口垂下来，帽口里是墨和两排牙。睡着的时候是地上一套扔着的睡衣 ----------
+function mzPj(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, ph = m.ph, by = -66 + hu * 6 + Math.sin(ph * TAU * 2) * 2.5;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(8, 3, 96, 6, 0, 0, 7); b.fill();
+  const limb = (sx, dir, k, far, arm) => {
+    const ang = TAU * (ph + k), reach = arm ? 62 : 66, fx = sx + dir * reach + Math.sin(ang) * 20 * (0.3 + hu) + (far ? 7 : 0), fyy = -Math.max(0, Math.cos(ang)) * 22 * (0.4 + hu) - (far ? 3 : 0);
+    b.save(); if (far) b.globalAlpha *= 0.78;
+    mzSleeve(b, P, lit, [[sx, by], [sx + dir * 18 + (far ? 4 : 0), by - 56 - (arm ? 8 : 0)], [fx, fyy]], [16, 14, 12], arm ? P.mzPjA : P.mzPjB, arm ? P.mzPjB : P.mzPjA, seed + 40 * (k * 8 + (far ? 4 : 0)), arm ? 0.9 : 0.4, true);
+    b.restore();
+  };
+  limb(34, 1, 0.5, true, true); limb(-38, -1, 0, true, false);
+  part(b, roundPts(-62, by - 14, 50, 28, 10), P.mzPjB, { w: 1, tex: 0.4, lc });   // 裤子
+  for (let i = 0; i < 5; i++) ink(b, seg(-56 + i * 10, by - 12, -56 + i * 10, by + 12), { w: 0.7, col: P.mzPjA, a: 0.8, taper: 0, seed: seed + 200 + i });
+  part(b, roundPts(-20, by - 17, 66, 32, 12), P.mzPjA, { w: 1, tex: 0.4, lc });   // 上衣：肚子朝天，扣子在上面一排
+  for (let i = 0; i < 5; i++) ink(b, seg(-12 + i * 11, by - 16, -12 + i * 11, by + 14), { w: 0.7, col: P.mzPjB, a: 0.8, taper: 0, seed: seed + 210 + i });
+  for (let i = 0; i < 5; i++) { part(b, arcPts(-8 + i * 11, by - 10, 3, 3, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 220 + i }); }
+  hatch(b, k => k.rect(-62, by - 17, 108, 32), [-62, by - 17, 108, 32], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.3 : 0.4, w: 0.7, len: 12 });
+  // 头：帽兜从领口垂下来，朝前，里面是墨、眼睛、一排牙
+  const hd = Math.sin(t * 2 + seed) * 2 + hu * 4;
+  part(b, curvePts([[40, by - 14], [60, by - 20], [82, by - 6 + hd], [88, by + 16 + hd], [72, by + 34 + hd], [46, by + 24], [40, by + 6]], true, 4), P.mzPjB, { w: 1.1, tex: 0.4, lc, seed: seed + 230 });
+  fillPts(b, arcPts(68, by + 10 + hd, 15, 18, 0, TAU, 18), INK);
+  mzTeeth(b, P, lit, 56, by + 26 + hd, 80, by + 26 + hd, 6, 10, -1, seed + 240); mzTeeth(b, P, lit, 56, by - 4 + hd, 80, by - 4 + hd, 5, 7, 1, seed + 260);
+  inkEyes(b, [[64, by + 6 + hd, 3.8], [75, by + 9 + hd, 3.1], [66, by + 15 + hd, 2.4], [76, by + 17 + hd, 2.2]], m.hunt);
+  limb(34, 1, 0, false, true); limb(-38, -1, 0.5, false, false);
+  inkDrips(b, [[-50, by + 12, 14], [20, by + 14, 20], [70, by + 36 + hd, 20 + 8 * Math.sin(t * 2)]], seed + 60);
+  b.restore();
+}
+// 睡着：地上扔着一套睡衣，摆成一个人躺着的样子，领口那儿是黑的。袖口朝孩子这边微微勾着
+function mzPjHome(b, P, lit, x, fy, f, t, m, seed, tell = true) {
+  const lc = lcOf(P, lit); b.save(); b.translate(x - 66, fy); b.scale(1.3, 1.3); b.seedN = seed;
+  if (!lit && tell) { b.fillStyle = INK; b.beginPath(); b.ellipse(54, 3, 88, 6, 0, 0, 7); b.fill(); }
+  part(b, tube([[54, -18], [86, -30], [118, -26]], [20, 18, 15]), P.mzPjB, { w: 0.9, tex: 0.3, lc });
+  part(b, tube([[54, -7], [90, -3], [122, 2]], [20, 18, 15]), P.mzPjB, { w: 0.9, tex: 0.3, lc });
+  for (const q of [0.5, 0.75]) { ink(b, seg(54 + q * 64, -26, 54 + q * 64 + 2, -12), { w: 0.7, col: P.mzPjA, a: 0.8, taper: 0, seed: seed + 5 + q * 10 }); ink(b, seg(54 + q * 64, -9, 54 + q * 64 + 2, 4), { w: 0.7, col: P.mzPjA, a: 0.8, taper: 0, seed: seed + 8 + q * 10 }); }
+  part(b, roundPts(30, -24, 34, 26, 8), P.mzPjB, { w: 1, tex: 0.4, lc });
+  part(b, tube([[8, -20], [-8, -36], [-30, -42]], [16, 14, 12]), P.mzPjA, { w: 0.9, tex: 0.3, lc });   // 一只袖子扔向一边
+  part(b, tube([[8, -4], [-14, 2], [-34 - (tell ? 4 : 0), -2 + (tell ? -6 : 0)]], [16, 14, 12]), P.mzPjA, { w: 0.9, tex: 0.3, lc });   // 另一只，袖口朝上勾着
+  part(b, curvePts([[-4, -3], [-6, -20], [14, -27], [38, -24], [40, -6], [20, 1]], true, 3), P.mzPjA, { w: 1, tex: 0.4, lc });
+  for (let i = 0; i < 4; i++) ink(b, seg(4 + i * 9, -25, 3 + i * 9, -2), { w: 0.7, col: P.mzPjB, a: 0.8, taper: 0, seed: seed + 20 + i });
+  for (let i = 0; i < 4; i++) part(b, arcPts(8 + i * 9, -15, 2.2, 2.2, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 30 + i });
+  fillPts(b, arcPts(-2, -13, 5, 8, 0, TAU, 10), lit ? P.mzPjB : INK);   // 领口
+  hatch(b, k => k.rect(-6, -30, 130, 34), [-6, -30, 130, 34], { ang: -0.3, gap: 3.4, a: lit ? 0.4 : 0.5, w: 0.7, len: 14 });
+  if (!lit && tell && Math.sin(t * 0.8 + seed) > 0.8) inkEyes(b, [[-2, -14, 1.6]], 0);
+  b.restore();
+}
+
+// ---------- ⑦ 伞嘴：一把黑伞，倒着撑开像一朵食人花；伞骨是牙，伞面里是墨和眼睛，用手柄的钩子一跳一跳。睡着的时候是挂在门边的一把收好的伞 ----------
+function mzUmb(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt, o = clamp(0.3 + 0.1 * Math.sin(t * 1.6) + hu * (0.2 + 0.45 * (0.5 + 0.5 * Math.sin(t * 8))), 0.15, 1), th = o * 1.2, hop = Math.abs(Math.sin(m.ph * TAU)) * 24 * (0.15 + hu), yh = -126, L = 80;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(x, fy + 3, 40 - hop * 0.3, 5, 0, 0, 7); b.fill();
+  b.save(); b.translate(x, fy - hop); b.scale(f, 1); b.rotate(0.08 + 0.1 * hu - Math.sin(m.ph * TAU) * 0.05 * hu); b.seedN = seed;
+  part(b, tube(cubPts([0, -24], [0, -2], [19, 3], [21, -13], 8), [7, 7, 6.6, 6.2, 5.8, 5.4, 5, 4.6, 4.2]), P.mzHandle, { w: 0.9, tex: 0.2, lc });
+  part(b, rectPts(-2.6, yh, 5.2, 104), P.mzRib, { w: 0.8, tex: 0, lc });
+  const cy = yh - L * Math.cos(th), rx = L * Math.sin(th), ry = rx * 0.3, rimPt = a => [Math.cos(a) * (rx + Math.sin(a * 8) * 2.2), cy + Math.sin(a) * (ry + Math.sin(a * 8) * 0.8)];
+  const front = []; for (let i = 0; i <= 20; i++) front.push(rimPt(Math.PI - i / 20 * Math.PI));   // 前面那半圈伞边，从左到右
+  part(b, curvePts([[0, yh], front[0], ...front.slice(1, -1), front[20]], true, 3), P.mzUmb, { w: 1.1, tex: 0.4, lc });
+  hatch(b, k => pathOf(k, [[0, yh], front[0], ...front.slice(1, -1), front[20]]), [-rx, cy, rx * 2, L], { ang: -1.2, gap: 4.6 / HD, a: 0.45, w: 0.7, len: 14 });
+  const rim = []; for (let i = 0; i < 28; i++) rim.push(rimPt(i / 28 * TAU));
+  fillPts(b, rim, INK); ink(b, [...rim, rim[0]], { w: 1, col: lit ? undefined : DARK.hi, a: 0.35, taper: 0, seed: seed + 5 });
+  if (rx > 17) inkEyes(b, [[-rx * 0.45, cy - 2, clamp(rx * 0.12, 2.4, 5.2)], [rx * 0.1, cy + ry * 0.25, clamp(rx * 0.14, 2.6, 6)], [rx * 0.5, cy - ry * 0.2, clamp(rx * 0.1, 2.2, 4.4)]], m.hunt);
+  const ribs = []; for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + 0.2, tp = [Math.cos(a) * rx, cy + Math.sin(a) * ry]; ribs.push([a, tp]); }
+  for (const [a, tp] of ribs) {
+    const d = Math.hypot(tp[0], tp[1] - yh) || 1, ex = (tp[0]) / d, ey = (tp[1] - yh) / d, nx = -ey, ny = ex;
+    ink(b, seg(0, yh, tp[0], tp[1]), { w: 0.9, col: P.mzRib, a: Math.sin(a) > 0 ? 1 / b.pen.a : 0.55, taper: 0, seed: seed + 20 + (a * 10 | 0), single: 1 });
+    part(b, [[tp[0] - nx * 2.2, tp[1] - ny * 2.2], [tp[0] + ex * (10 + 8 * o), tp[1] + ey * (10 + 8 * o)], [tp[0] + nx * 2.2, tp[1] + ny * 2.2]], P.mzRib, { w: 0.5, tex: 0, lc, seed: seed + 40 + (a * 10 | 0), wob: 0.1 });
+  }
+  if (rx > 12) { ink(b, seg(0, yh, 0, cy - 2), { w: 1.2, col: P.mzRib, a: 1 / b.pen.a, taper: 0, seed: seed + 70 }); part(b, arcPts(0, cy - 4, 2.8, 3.6, 0, TAU, 8), P.mzRib, { w: 0.5, tex: 0, lc, seed: seed + 71 }); }   // 伞顶的尖头，像小舌头
+  inkDrips(b, [[front[3][0], front[3][1], 14], [front[12][0], front[12][1], 22], [front[17][0], front[17][1], 12]], seed + 60);
+  b.restore();
+}
+// 画一把收好的伞（朝下挂着，伞尖朝下）：伞柄在 (0,0)，往下 len 长；挂在门边钩子上或躺在地上都用这个
+function mzUmbClosed(b, P, lit, len, seed) {
+  const lc = lcOf(P, lit);
+  part(b, tube(cubPts([-17, 4], [-17, -14], [0, -17], [0, 0], 8), [7, 7, 6.6, 6.2, 5.8, 5.4, 5, 4.6, 4.2]), P.mzHandle, { w: 0.9, tex: 0.2, lc, seed });
+  part(b, rectPts(-2.4, 0, 4.8, 26), P.mzRib, { w: 0.7, tex: 0, lc, seed: seed + 1 });
+  const cv_ = curvePts([[-2.4, 22], [-9, 40], [-12, 84], [-9, len - 20], [-1, len], [1, len], [9, len - 20], [12, 84], [9, 40], [2.4, 22]], true, 3);
+  part(b, cv_, P.mzUmb, { w: 1.1, tex: 0.4, lc, seed: seed + 2 });
+  for (let i = 0; i < 4; i++) ink(b, quadPts([-8 + i * 5.4, 34], [-10 + i * 6.6, 84], [-4 + i * 3, len - 6], 8), { w: 0.6, col: lit ? P.mzUmbHi : P.mzUmbHi, a: 0.8, taper: 3, seed: seed + 10 + i });
+  hatch(b, k => pathOf(k, [[-2.4, 22], [-9, 40], [-12, 84], [-9, len - 20], [-1, len], [1, len], [9, len - 20], [12, 84], [9, 40], [2.4, 22]]), [0, 20, 26, len - 20], { ang: -1.2, gap: 4.6 / HD, a: lit ? 0.4 : 0.5, w: 0.7, len: 14, seed: seed + 20 });
+  part(b, rectPts(-11, 62, 22, 8), P.mzUmbHi, { w: 0.7, tex: 0, lc, seed: seed + 30 }); part(b, arcPts(0, 66, 2.2, 2.2, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 31 });   // 收伞的带子和扣子
+  part(b, [[-1.6, len], [1.6, len], [0, len + 12]], P.mzRib, { w: 0.5, tex: 0, lc, seed: seed + 32 });
+}
+function mzUmbHome(b, P, lit, x, fy, f, t, m, seed) {   // 睡着：挂在门边墙上的钩子上，收得好好的。伞尖上滴着一滴墨
+  const lc = lcOf(P, lit), top = fy - 214; b.save(); b.seedN = seed;
+  mzWall(b, P, lit, x, fy, 420, 300, seed + 80);
+  part(b, rectPts(x - 18, top - 10, 36, 14), P.wood, { w: 0.8, tex: 0, lc, seed: seed + 50 }); part(b, rectPts(x - 3, top - 4, 6, 22), P.woodHi, { w: 0.7, tex: 0, lc, seed: seed + 51 });
+  b.translate(x + 4, top + 4); b.rotate(Math.sin(t * 0.7 + seed) * 0.02); mzUmbClosed(b, P, lit, 150, seed); if (!lit) inkDrips(b, [[0, 162, 20]], seed + 60);
+  b.restore();
+}
+function mzUmbHeap(b, P, lit, x, fy, f, t, m, seed) {   // 塌下去：躺在地上的一把收起来的伞
+  b.save(); b.translate(x + 70, fy - 8); b.rotate(Math.PI / 2 + 0.05); b.seedN = seed; mzUmbClosed(b, P, lit, 150, seed); b.restore();
+}
+
+// ---------- ⑧ 有影子的大衣：就是一件挂在钩子上的大衣，哪儿都没毛病。可是墙上的影子是一个人：有头、有帽子，一只手举着 ----------
+// mode：'wrong' 影子是个人；'plain' 影子就是大衣的形状（塌下去以后）。m.reach、m.hunt 大于 0 就是醒着：影子里亮起两只眼睛；追人：影子的手从墙上一直伸到地上
+function mzShd(b, P, lit, x, fy, f, t, m, seed, mode) {
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, wake = (rk > 0 || hu > 0) && mode === 'wrong', sx = 64, sw = Math.sin(t * 0.8 + seed);
+  b.save(); b.seedN = seed;
+  fillPts(b, rectPts(x - 175, fy - 300, 350, 300), P.mzWallS, 1); ink(b, seg(x - 175, fy - 14, x + 175, fy - 14), { w: 1, a: 0.7, taper: 0, seed: seed + 1 });
+  const lampX = x - 128, lampY = fy - 236, gr = b.createRadialGradient(lampX, lampY, 4, lampX, lampY, 270);   // 墙上的壁灯：影子是它照出来的
+  gr.addColorStop(0, lit ? 'rgba(255,214,150,0.5)' : 'rgba(255,200,130,0.3)'); gr.addColorStop(1, 'rgba(255,200,130,0)'); b.fillStyle = gr; b.fillRect(x - 175, fy - 300, 350, 300);
+  part(b, [[lampX - 9, lampY - 8], [lampX + 9, lampY - 8], [lampX + 14, lampY + 8], [lampX - 14, lampY + 8]], P.mzCoatLo, { w: 0.8, tex: 0, lc, seed: seed + 2 }); fillPts(b, arcPts(lampX, lampY + 9, 8, 3.4, 0, TAU, 8), lit ? '#fff3d6' : '#ffe2a6');
+  // 影子（在大衣后面）
+  const col = P.mzShadow, fa = lit ? 0.5 : 0.88, o = { w: 0, line: 0, tex: 0, fa, wob: 1.4 };
+  if (mode === 'wrong') {
+    const hx = sx + sw * 2 * (wake ? 1 : 0.3) + (wake ? 5 : 0);   // 醒着的时候，头慢慢朝孩子这边转
+    part(b, curvePts([[hx - 36, -232], [hx - 20, -238], [hx - 6, -246], [hx, -250], [hx + 6, -246], [hx + 20, -238], [hx + 38, -232], [hx + 40, -170], [hx + 34, -108], [hx - 34, -108], [hx - 40, -170]], true, 3).map(([a, c]) => [x + a, fy + c]), col, { ...o, seed: seed + 10 });   // 肩膀和身子
+    part(b, arcPts(x + hx, fy - 268, 17, 21, 0, TAU, 16), col, { ...o, seed: seed + 11 });   // 头
+    part(b, curvePts([[hx - 28, -284], [hx - 6, -290], [hx + 22, -286], [hx + 30, -282], [hx + 6, -278], [hx - 18, -279]], true, 3).map(([a, c]) => [x + a, fy + c]), col, { ...o, seed: seed + 12 });   // 帽檐
+    part(b, rectPts(x + hx - 14, fy - 316, 26, 34), col, { ...o, seed: seed + 13 });   // 帽顶
+    part(b, tube([[x + hx - 38, fy - 226], [x + hx - 48, fy - 164], [x + hx - 44, fy - 100]], [16, 14, 12]), col, { ...o, seed: seed + 14 });   // 一只手垂着
+    for (let j = 0; j < 4; j++) part(b, tube([[x + hx - 44 + (j - 1.5) * 3.2, fy - 100], [x + hx - 45 + (j - 1.5) * 4.4, fy - 84 + sw * 1.5], [x + hx - 45 + (j - 1.5) * 5, fy - 66]], [3.4, 3, 2.2]), col, { ...o, seed: seed + 20 + j });
+    // 另一只手：平时举到下巴那儿；追人的时候一路伸出去，爬过墙角，爬到地上
+    const rx0 = hx + 36, rpts = hu < 0.05 ? [[rx0, -228], [rx0 + 16, -222], [rx0 + 18, -250], [rx0 + 4, -258]] : [[rx0, -228], [rx0 + 36 * rk, -214], [rx0 + 96 * rk, -150], [rx0 + 140 * rk, -76], [rx0 + 160 * rk, -14]];
+    part(b, tube(rpts.map(([a, c]) => [x + a, fy + c]), rpts.map((_, i) => [14, 13, 12, 10, 8][i] ?? 8)), col, { ...o, seed: seed + 30 });
+    const [ex, ey] = rpts[rpts.length - 1]; for (let j = 0; j < 4; j++) { const a = (hu < 0.05 ? -1.9 : 0.5) + (j - 1.5) * 0.3 + sw * 0.05; part(b, tube([[x + ex, fy + ey], [x + ex + Math.cos(a) * 14, fy + ey + Math.sin(a) * 14], [x + ex + Math.cos(a + 0.3) * 30, fy + ey + Math.sin(a + 0.3) * 30]], [4, 3.4, 2.4]), col, { ...o, seed: seed + 40 + j }); }
+    if (wake) inkEyes(b, [[x + hx - 6, fy - 268, 2.8], [x + hx + 8, fy - 269, 2.3]], hu);
+  } else {
+    part(b, curvePts([[-22, -238], [22, -238], [36, -202], [38, -130], [40, -90], [-40, -90], [-38, -130], [-36, -202]], true, 3).map(([a, c]) => [x + sx + a, fy + c]), col, { ...o, seed: seed + 10 });
+    for (const s of [-1, 1]) part(b, tube([[x + sx + s * 32, fy - 228], [x + sx + s * 44, fy - 170], [x + sx + s * 42, fy - 110]], [18, 16, 15]), col, { ...o, seed: seed + 15 + s });
+  }
+  // 大衣：挂在钩子上，袖子垂着，扣子，翻领；醒着、追人的时候一只袖口微微抬起来
+  const lift = wake ? 6 + 30 * hu : 0;
+  part(b, rectPts(x - 9, fy - 262, 18, 9), P.wood, { w: 0.8, tex: 0, lc, seed: seed + 50 }); ink(b, quadPts([x, fy - 254], [x + 2, fy - 246], [x + 9, fy - 246], 6), { w: 1.6, col: P.mzMetal, a: 1 / b.pen.a, taper: 2, seed: seed + 51 });
+  part(b, tube([[x - 30, fy - 226], [x - 42, fy - 170], [x - 40, fy - 112]], [18, 16, 15]), P.mzCoatLo, { w: 0.9, tex: 0.3, lc, seed: seed + 52 });
+  const coat = curvePts([[x - 24, fy - 238], [x + 24, fy - 238], [x + 34, fy - 202], [x + 36, fy - 132], [x + 38, fy - 94], [x, fy - 90], [x - 38, fy - 94], [x - 36, fy - 132], [x - 34, fy - 202]], true, 4);
+  part(b, coat, P.mzCoat, { w: 1.1, tex: 0.45, lc, seed: seed + 53 });
+  hatch(b, k => pathOf(k, [[x - 24, fy - 238], [x + 24, fy - 238], [x + 34, fy - 202], [x + 36, fy - 132], [x + 38, fy - 94], [x - 38, fy - 94], [x - 36, fy - 132], [x - 34, fy - 202]]), [x - 38, fy - 238, 76, 146], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.4 : 0.5, w: 0.7, len: 20, seed: seed + 54 });
+  ink(b, seg(x, fy - 234, x + 1, fy - 92), { w: 0.8, a: 0.8, taper: 0, seed: seed + 55 }); for (const yy of [-208, -178, -148, -118]) part(b, arcPts(x + 9, fy + yy, 2.6, 2.6, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 56 + yy });
+  part(b, [[x - 24, fy - 238], [x - 4, fy - 238], [x, fy - 206], [x - 26, fy - 214]], P.mzCoatLo, { w: 0.8, tex: 0, lc, seed: seed + 57 }); part(b, [[x + 24, fy - 238], [x + 4, fy - 238], [x, fy - 206], [x + 26, fy - 214]], P.mzCoatLo, { w: 0.8, tex: 0, lc, seed: seed + 58 });
+  part(b, tube([[x + 30, fy - 226], [x + 42 + lift * 0.6, fy - 170 - lift * 0.4], [x + 40 + lift, fy - 112 - lift]], [18, 16, 15]), P.mzCoatLo, { w: 0.9, tex: 0.3, lc, seed: seed + 59 });
+  if (!lit) inkDrips(b, [[x - 40, fy - 108, 14], [x + 40 + lift, fy - 108 - lift, 18]], seed + 60);
+  b.restore();
+}
+const mzShdWrong = (b, P, lit, x, fy, f, t, m, seed) => mzShd(b, P, lit, x, fy, f, t, m, seed, 'wrong');
+const mzShdPlain = (b, P, lit, x, fy, f, t, m, seed) => mzShd(b, P, lit, x, fy, f, t, m, seed, 'plain');
+
+// ---------- ⑨ 叠好的衣服：整整齐齐叠着的一摞衣服。每次回头它都离你近一点；等它张开，上面的几层是上颌，里面一排牙，袖子是手 ----------
+function mzStk(b, P, lit, x, fy, f, t, m, seed, dormant) {
+  const lc = lcOf(P, lit), hu = m.hunt, rk = m.reach, ph = m.ph, ang = dormant ? 0 : clamp(0.2 + 0.46 * hu + Math.sin(t * 2) * 0.05 + hu * 0.22 * Math.abs(Math.sin(t * 9)), 0, 0.95), sq = 1 + Math.sin(ph * TAU) * 0.08 * (0.3 + hu);
+  const LY = [[96, 18, 'mzStk1', 0], [90, 17, 'mzStk2', 18], [86, 17, 'mzStk3', 35], [80, 16, 'mzStk4', 52]];
+  b.save(); b.translate(x, fy); b.scale(f * sq, 1 / sq); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 64, 5, 0, 0, 7); b.fill();
+  const layer = (i) => {
+    const [w, h, c, y0] = LY[i], y = -y0 - h, hw = w / 2;
+    part(b, roundPts(-hw, y, w, h, 5), P[c], { w: 1, tex: 0.4, lc, seed: seed + 10 + i * 10 });
+    ink(b, quadPts([-hw + 4, y + h * 0.55], [0, y + h * 0.55 + (i % 2 ? 3 : -2)], [hw - 4, y + h * 0.5], 8), { w: 0.6, a: 0.7, seed: seed + 11 + i * 10 });   // 折痕
+    hatch(b, k => k.rect(-hw, y, w, h), [0, y, w, h], { ang: -0.2, gap: 3.4, a: lit ? 0.35 : 0.5, w: 0.6, len: 14, seed: seed + 12 + i * 10 });
+  };
+  // 一只手：从最下面一层的侧边伸出来的袖子，袖口张着
+  const hx = lerp(100, 150, rk);
+  if (!dormant && ang > 0.05) { mzSleeve(b, P, lit, [[40, -12], [lerp(66, 80, rk), -8], [hx, -9]], [15, 13, 12], P.mzStk2, P.mzCuff, seed + 200, 0.9); }
+  layer(0); layer(1);
+  const H = [-46, -35], c = Math.cos(-ang), s = Math.sin(-ang), R = ([px, py]) => [H[0] + (px - H[0]) * c - (py - H[1]) * s, H[1] + (px - H[0]) * s + (py - H[1]) * c];
+  if (ang > 0.04) {   // 嘴里：墨、眼睛、扣子牙
+    const q = R([46, -35]); fillPts(b, [[-46, -35], [46, -35], q, R([-46, -35])], INK);
+    mzTeeth(b, P, lit, -36, -35, 44, -35, 7, 4 + 14 * Math.min(1, ang * 1.5), 1, seed + 300); const a0 = R([-36, -35]), a1 = R([44, -35]); mzTeeth(b, P, lit, a0[0], a0[1], a1[0], a1[1], 7, 4 + 14 * Math.min(1, ang * 1.5), -1, seed + 320);
+    if (ang > 0.3) { const gh = Math.sin(ang) * 46; inkEyes(b, [[-6, -35 - gh * 0.35, 3.2], [14, -35 - gh * 0.5, 2.8], [30, -35 - gh * 0.55, 2.2]], m.hunt); }
+  }
+  b.save(); b.translate(H[0], H[1]); b.rotate(-ang); b.translate(-H[0], -H[1]); layer(2); layer(3);
+  // 最上面那件衬衫：翻领、一只扣子，一只叠进去的袖口
+  part(b, roundPts(-36, -66, 32, 8, 4), P.mzCuff, { w: 0.7, tex: 0.2, lc, seed: seed + 400 }); ink(b, quadPts([-30, -58], [-20, -53], [-10, -58], 8), { w: 0.6, a: 0.6, seed: seed + 401 }); part(b, arcPts(0, -61, 2.4, 2.4, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 402 });   // 领口一圈领子、一粒扣子
+  part(b, roundPts(20, -66, 22, 10, 4), P.mzCuff, { w: 0.7, tex: 0.2, lc, seed: seed + 403 });
+  b.restore();
+  if (dormant && !lit) { for (const [dx, dy, i] of [[-74, 3, 0], [-92, 2, 1], [-112, 3, 2]]) ink(b, quadPts([dx, dy], [dx - 6, dy - 3], [dx - 12, dy], 6), { w: 0.8, col: DARK.hi, a: 0.28, taper: 3, seed: seed + 420 + i }); if (Math.sin(t * 0.8 + seed) > 0.8) inkEyes(b, [[47, -26, 1.5]], 0); }   // 暗处：身后拖出来的几道痕，缝里偶尔亮一下
+  inkDrips(b, [[-40, -2, 8], [40, -2, 10]].filter(() => !dormant && !lit), seed + 60);
+  b.restore();
+}
+const mzStkHome = (b, P, lit, x, fy, f, t, m, seed) => mzStk(b, P, lit, x, fy, f, t, { hunt: 0, reach: 0, ph: 0 }, seed, true);
+const mzStkHeap = (b, P, lit, x, fy, f, t, m, seed) => mzStk(b, P, lit, x, fy, f, t, { hunt: 0, reach: 0, ph: 0 }, seed, true);
+
+// ---------- 图鉴页：house.html?monsters=1（=all 总览，=zip 之类直接翻到那一只；左右键、点左右两边翻页，点中间回总览）----------
+// 每只四格：睡着（原处的样子）/ 醒着 / 追人 / 照到头塌下去（亮的那一层，普通衣服）。每格里的画就是游戏里那一层的画法，不是另画的效果图
+const MZ_TIERS = [['一眼就是怪物', '#c96a5e'], ['睡着的时候是别的东西', '#c9a35e'], ['就是一件衣服', '#7fa3c9']];
+const MZ_LIST = [
+  { id: 'zip', name: '拉链嘴', tier: 0, h: 268, w: 250, ox: -34, awake: mzZip, home: mzZipHome, heap: mzZipHeap,
+    line: '羽绒服的拉链从下往上拉开，两排拉链齿是牙，肚子里一排眼睛。',
+    tell: '睡着：挂在钩子上的一件羽绒服，帽口里黑得过头。醒着：拉链开了一道缝，露出一点牙。', move: '驼着背慢慢挪；追人：拉链整个拉开，嘴越张越大，一条长袖子伸过来。', beat: '光照到头它塌；嘴张开的时候，光照进肚子里也算。' },
+  { id: 'spider', name: '袖蛛', tier: 0, h: 210, w: 270, ox: -8, awake: mzSpider, home: (...a) => mzSpiderHeap(...a, true), heap: (...a) => mzSpiderHeap(...a, false),
+    line: '一团缠成球的旧毛衣，八条袖子当腿，领口是嘴，扣子是牙。',
+    tell: '睡着：地上一堆旧毛衣，一只袖口里有点亮。', move: '八条腿轮着走，会爬墙、爬天花板；追人：前面两条袖子高高举起，袖口张开。', beat: '要照到身子（头在最前面）；会爬到灯够不着的高处，所以灯要往上挪。' },
+  { id: 'patch', name: '缝合怪', tier: 0, h: 268, w: 230, ox: -26, awake: mzPatch, home: (...a) => mzPatchHeap(...a, true), heap: (...a) => mzPatchHeap(...a, false),
+    line: '旧衣服的碎片缝起来的人形：枕套头，一只眼睛是掉了线的大纽扣，嘴是缝死的线，崩开了是一嘴的针；右手是一把大剪刀。',
+    tell: '睡着：墙角里一团破布，线脚粗得不像缝衣服的。', move: '一瘸一拐（左腿是裤腿，右腿是长袜子）；追人：嘴上的线一根根崩开，剪刀一开一合。', beat: '光照到头塌；剪刀够得到的地方不能站（先听见剪刀响，这是预兆）。' },
+  { id: 'tall', name: '长衣人', tier: 0, h: 372, w: 260, ox: -46, awake: mzTall, home: mzTallHome, heap: mzTallHeap,
+    line: '比门还高，细得不对：长大衣，拉长了的围巾当脖子，帽檐底下是墨和两条竖着的眼睛；手套是空的，手指太长。',
+    tell: '睡着：挂在很高的衣帽架上的一件大衣，帽子在最上面。哪儿都对，就是比门还高。', move: '站着不动，灯闪一下它近一步；追人：弯下腰，脖子钩过来，长手往前探。', beat: '头太高，灯要吊到高处才照得到帽子底下；它一步顶孩子三步，所以不能让它走近。' },
+  { id: 'boot', name: '靴嘴', tier: 1, h: 150, w: 190, ox: -8, awake: mzBoot, home: mzBootHome, heap: mzBootHeap,
+    line: '一只胶靴，鞋头的皮掀开像一张嘴，嘴里是锈钉子和墨，鞋带是两条会甩的舌头。',
+    tell: '睡着：门口两只胶靴摆得整整齐齐，只是有一只的鞋头朝着另一边，底下一小滩墨。', move: '一蹦一蹦，专门咬脚踝；追人：嘴一张一合，咔嗒咔嗒。', beat: '很矮，光要照在地上；它蹦起来落地以前不能拐弯，躲在这一下。' },
+  { id: 'pj', name: '爬行的睡衣', tier: 1, h: 150, w: 260, ox: -4, awake: mzPj, home: mzPjHome, heap: (...a) => mzPjHome(...a, false),
+    line: '肚子朝天，四肢反着弯，横着爬；头从领口垂下来，帽兜里是墨和两排尖牙。',
+    tell: '睡着：地上扔着一套睡衣，摆成人躺着的样子，一只袖口朝孩子这边勾着。', move: '像蜘蛛一样横着爬，快；追人：贴着地面蹿，会钻进床底、柜子底下。', beat: '贴着地跑，光要照在地上；钻进缝里就是躲起来了，要把缝堵上。' },
+  { id: 'umb', name: '伞嘴', tier: 1, h: 200, w: 170, ox: 0, awake: mzUmb, home: mzUmbHome, heap: mzUmbHeap,
+    line: '一把黑伞，倒着撑开像一朵食人花；伞骨是牙，伞面里是墨和眼睛，用手柄的钩子一跳一跳。',
+    tell: '睡着：挂在门边钩子上的一把收好的伞，伞尖上滴着一滴墨。', move: '蹦着走；追人：一张一合（咔、咔），张开的那一下露出里面的眼睛。', beat: '只有张开的时候才照得到里面；合着的时候要等它咬空一口。' },
+  { id: 'shd', name: '有影子的大衣', tier: 2, h: 330, w: 350, ox: -34, awake: mzShdWrong, home: mzShdWrong, heap: mzShdPlain,
+    line: '就是一件挂在钩子上的大衣。可是墙上的影子是一个人：有头、有帽子，一只手举着。',
+    tell: '只有一样：影子和大衣对不上。没有灯、没有影子的地方，它就只是一件大衣。', move: '醒着：影子的头慢慢转过来，影子里亮起两只眼睛；追人：影子的手顺着墙爬到地上，一直爬到孩子脚边。', beat: '关掉那盏灯，影子就没了；或者把灯挪到大衣背后，让影子投向别处。' },
+  { id: 'stk', name: '叠好的衣服', tier: 2, h: 130, w: 250, ox: -34, awake: mzStk, home: mzStkHome, heap: mzStkHeap,
+    line: '整整齐齐叠好的一摞衣服。每次回头它都离你近一点；张开了，上面几层是上颌，里面一排牙，袖子是手。',
+    tell: '睡着：一摞叠好的衣服，身后的地上拖出几道痕；缝里偶尔亮一下。', move: '孩子不看它的时候才挪；追人：上面两层掀起来，像尺蠖一伸一缩。', beat: '孩子转身看着它，它就不动；光照进张开的嘴里才塌。' },
+];
+const MZ_STATE = { page: qs.get('monsters') && qs.get('monsters') !== '1' ? qs.get('monsters') : 'all' };
+function mzPage() { return MZ_STATE.page === 'all' ? -1 : Math.max(0, MZ_LIST.findIndex(o => o.id === MZ_STATE.page)); }
+function mzGo(i) { MZ_STATE.page = i < 0 || i >= MZ_LIST.length ? 'all' : MZ_LIST[i].id; }
+// 画一格：(px,py,pw,ph) 是这一格在屏幕上的位置（CSS 像素），gy 是地平线在格子里多高（0–1），s 是一个世界单位几个 CSS 像素，cx 是怪物放在格子里的横向位置（0–1）
+function mzCell(px, py, pw, ph, o) {
+  const lit = o.lit, P = lit ? LIT : DARK, gy = py + ph * (o.gy ?? 0.84), cx = px + pw * (o.cx ?? 0.5), s = o.s;
+  g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.beginPath(); g.rect(px, py, pw, ph); g.clip();
+  const bg = g.createLinearGradient(0, py, 0, py + ph);
+  if (lit) { bg.addColorStop(0, '#6e6552'); bg.addColorStop(1, '#8a7a5a'); } else { bg.addColorStop(0, '#0b0f1a'); bg.addColorStop(1, '#141b2c'); }
+  g.fillStyle = bg; g.fillRect(px, py, pw, ph);
+  const gl = g.createRadialGradient(cx, gy - 110 * s, 10, cx, gy - 110 * s, 220 * s);   // 身后一圈很淡的冷光（暗的）或一圈暖光（亮的），把轮廓托出来
+  if (lit) { gl.addColorStop(0, 'rgba(255,214,150,0.34)'); gl.addColorStop(1, 'rgba(255,214,150,0)'); } else { gl.addColorStop(0, 'rgba(120,140,200,0.13)'); gl.addColorStop(1, 'rgba(120,140,200,0)'); }
+  g.fillStyle = gl; g.fillRect(px, py, pw, ph);
+  g.fillStyle = lit ? '#4c4030' : '#0a0d16'; g.fillRect(px, gy, pw, py + ph - gy);   // 地
+  pen(g, P, DPR * s, cx * DPR, gy * DPR);
+  ink(g, seg(-pw / 2 / s, 0, pw / 2 / s, 0), { w: 1.1, col: lit ? LIT.ink : DARK.hi, a: lit ? 0.9 : 0.35, taper: 0, seed: 7 });
+  if (o.draw) o.draw(g, P, lit);
+  g.restore(); g.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+function mzFont(px, w = 400) { g.font = `${w} ${px}px "PingFang SC","Noto Sans CJK SC","WenQuanYi Zen Hei","Microsoft YaHei",sans-serif`; }
+function mzText(s, x, y, px, col, o = {}) { mzFont(px, o.w); g.fillStyle = col; g.textAlign = o.al || 'left'; g.textBaseline = 'alphabetic'; g.fillText(s, x, y); }
+// 把一句话按宽度折行
+function mzWrap(s, x, y, maxW, px, lh, col) {
+  mzFont(px); g.fillStyle = col; g.textAlign = 'left'; let ln = '', yy = y;
+  for (const ch of s) { if (g.measureText(ln + ch).width > maxW) { g.fillText(ln, x, yy); yy += lh; ln = ch; } else ln += ch; }
+  if (ln) g.fillText(ln, x, yy); return yy + lh;
+}
+const mzSt = (k, t) => ({ asleep: { hunt: 0, reach: 0, ph: 0 }, awake: { hunt: 0, reach: 0.12 + 0.1 * Math.sin(t * 1.3), ph: (t * 0.22) % 1 }, hunt: { hunt: 1, reach: 0.85 + 0.15 * Math.sin(t * 3), ph: (t * 0.8) % 1 } })[k];
+function mzFrame() {
+  const t = performance.now() / 1000; V.T = t;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#06080e'; g.fillRect(0, 0, cv.width, cv.height);
+  const pg = mzPage(), M = Math.max(10, W * 0.02), narrow = W < H * 0.9;
+  if (pg < 0) {   // 总览：上排醒着，下排睡着；同一个比例尺，一根 150 高的尺子是孩子
+    const n = MZ_LIST.length, LP = 22, cw = (W - 2 * M - LP) / n, rowH = (H - 130) / 2, S = Math.min(cw / 215, rowH * 0.88 / 275);
+    mzText('新的怪物', M, 40, 26, '#e6ebf8', { w: 600 }); mzText('上排：醒着　下排：睡着的时候　（左边的竖线是孩子，150 高）', M + 130, 40, 14, '#8d99b8');
+    [['awake', 0], ['home', 1]].forEach(([k, r]) => {
+      const y0 = 60 + r * (rowH + 8);
+      MZ_LIST.forEach((o, i) => {
+        const x0 = M + LP + i * cw, stt = mzSt(k === 'awake' ? 'awake' : 'asleep', t);
+        mzCell(x0, y0, cw - 4, rowH, { s: S, gy: 0.9, draw: (b, P, lit) => (k === 'awake' ? o.awake : o.home)(b, P, lit, o.ox || 0, 0, 1, t, stt, 5000 + i * 700) });
+        if (r === 0) mzText(o.name, x0 + 8, y0 + 20, 15, MZ_TIERS[o.tier][1], { w: 600 });
+      });
+      g.strokeStyle = '#8d99b8'; g.globalAlpha = 0.7; g.lineWidth = 1.5; g.beginPath(); g.moveTo(M + 8, y0 + rowH * 0.9); g.lineTo(M + 8, y0 + rowH * 0.9 - 150 * S); g.moveTo(M + 3, y0 + rowH * 0.9 - 150 * S); g.lineTo(M + 13, y0 + rowH * 0.9 - 150 * S); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1;
+    });
+    MZ_TIERS.forEach(([nm, col], i) => { mzText('■ ' + nm, M + i * 240, H - 14, 13, col); });
+    return;
+  }
+  const o = MZ_LIST[pg], cols = narrow ? 2 : 4, rows = narrow ? 2 : 1, top = narrow ? 96 : 84, ch = narrow ? (H - top - 150) / 2 : Math.min(H - top - 150, (W - 2 * M) / 4 * 1.7), cw = (W - 2 * M - (cols - 1) * 6) / cols, S = Math.min(cw / (o.w + 30), ch * 0.82 / (o.h + 10));
+  const ts = narrow ? 28 : 34; mzText(o.name, M, 44, ts, '#e6ebf8', { w: 700 }); mzFont(ts, 700); mzText(MZ_TIERS[o.tier][0], M + g.measureText(o.name).width + 16, 44, 15, MZ_TIERS[o.tier][1], { w: 600 });
+  mzText(`${pg + 1} / ${MZ_LIST.length}`, W - M, 36, 14, '#8d99b8', { al: 'right' }); mzWrap(o.line, M, 70, W - 2 * M, narrow ? 14 : 16, 20, '#b8c2dc');
+  const cells = [['睡着（原处）', 'home', 'asleep', false], ['醒着', 'awake', 'awake', false], ['追人', 'awake', 'hunt', false], ['照到头：塌了', 'heap', 'asleep', true]];
+  cells.forEach(([nm, fn, st, lit], i) => {
+    const cx = M + (i % cols) * (cw + 6), cy = top + Math.floor(i / cols) * (ch + 30);
+    mzCell(cx, cy, cw, ch, { lit, s: S, gy: 0.88, draw: (b, P, l) => o[fn](b, P, l, o.ox || 0, 0, 1, t, mzSt(st, t), 5000 + pg * 700) });
+    mzText(nm, cx + 4, cy + ch + 18, 14, '#9aa6c6');
+  });
+  const ny = top + rows * (ch + 30) + 8, cwid = (W - 2 * M) / (narrow ? 1 : 3);
+  [['怎么认', o.tell], ['怎么动', o.move], ['怎么对付', o.beat]].forEach(([k, v], i) => { const nx = narrow ? M : M + i * cwid, yy = ny + (narrow ? i * 54 : 0); mzText(k, nx, yy + 14, 13, '#e0b86a', { w: 600 }); mzWrap(v, nx, yy + 34, cwid - 16, 13, 18, '#aab4d0'); });
+}
+function mzStart() {
+  paused = true; document.title = '夜里的房子 · 新的怪物';
+  // 游戏本身的点击、按键都不要：这一页只翻图鉴（捕获阶段先接住，别的监听器就收不到了）
+  for (const ev of ['pointerup', 'pointermove', 'pointercancel', 'touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'click', 'keyup', 'wheel', 'contextmenu']) addEventListener(ev, e => e.stopImmediatePropagation(), true);
+  addEventListener('keydown', e => { e.stopImmediatePropagation(); const p = mzPage(); if (e.key === 'ArrowRight' || e.key === 'd') mzGo(p + 1); else if (e.key === 'ArrowLeft' || e.key === 'a') mzGo(p < 0 ? MZ_LIST.length - 1 : p - 1); else if (e.key === 'Escape' || e.key === '0') mzGo(-1); else if (/^[1-9]$/.test(e.key)) mzGo(+e.key - 1); }, true);
+  addEventListener('pointerdown', e => {
+    e.stopImmediatePropagation();
+    const p = mzPage(), r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+    if (p < 0) { const M = Math.max(10, W * 0.02); mzGo(clamp(Math.floor((e.clientX - r.left - M - 22) / ((W - 2 * M - 22) / MZ_LIST.length)), 0, MZ_LIST.length - 1)); }
+    else if (x < 0.3) mzGo(p - 1 < 0 ? MZ_LIST.length : p - 1); else if (x > 0.7) mzGo(p + 1); else mzGo(-1);
+  }, true);
+  buildTex(); const loop = () => { mzFrame(); requestAnimationFrame(loop); }; loop();
+}
 // ----- 院子（第 2 关）里会动的东西 -----
 const ROLL_OPEN_Y = 806;   // 卷帘门撑住的时候，门底离地多高（耙子那么长）：孩子走得过去，车灯从底下照出去
 const rollBottom = () => lerp(FL.down.ff, ROLL_OPEN_Y, smooth(V.rollK));
@@ -13305,6 +13962,7 @@ if (qs.get('lv') === '21') {
   let s20 = { ...START20, ...s19 }; for (const m of solveL(L20, s20).path) s20 = act20(s20, m.spot, m.held, new Set(['h0', 'h1', 'h2', 'h3'])).s;
   snapTo({ ...s20, ...START21 }, []); placeKid(JP.in, TWY2, 1); V.safe = { x: JP.in, y: TWY2 }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; V.gymDone = 1; V.mktDone = 1; V.thDone = 1; V.ucDone = 1; V.mtDone = 1; V.wsDone = 1; V.dsDone = 1; V.vCT = -10; V.vTop = 1; V.fsDone = 1; V.bpDone = 1; V.cpDone = 1; V.klDone = 1; V.klw = null; V.klfar = 1; taps = 1;
 }
+if (qs.has('monsters')) mzStart();   // 图鉴页：地址后面加 ?monsters=1
 </script>
 </body>
 </html>
