@@ -577,15 +577,17 @@ const START7 = {
   sDoor: 0,                   // 教室的门开了没有
   sGive: 0,                   // 窗边那件小孩的衣服怀里的灯点亮了没有（亮了，它就是一盏小灯，一直亮）
   sLP: 0, sOut: 0,            // 幻灯机开了没有（一直亮）；走出楼梯口没有
+  sLamp: 0,                   // 2026-11-25 教室里的两盏灯亮了没有（扳左边墙上的开关；右边那个开关是“学人精”学着扳的，它站在右边那盏灯底下，灯一亮它就塌，见 docs/night-level-7.md）
 };
 const VALUES7 = { sKey: ['floor', 'inv', 'used'] };
 const GATES7 = {
   sg1: s => s.sLA === 1,      // 走廊里的外套（走廊的灯照着）
   sd: s => s.sDoor === 1,     // 教室的门
   sg2: s => s.sLP === 1,      // 后面走廊里的围裙（幻灯机的光照着）
+  sm1: s => s.sLamp === 1,    // 教室中间的学人精（它学着扳右边的开关，右边那盏灯亮，它塌下去；规则里只记灯亮了没有，它真的塌了页面里才让过）
 };
-const LINKS7 = [['s0', 's1', 'sg1'], ['s1', 's2', 'sd'], ['s2', 's3', 'sg2']];
-const SPOT_ZONE7 = { sSwitch: 's0', sKey: 's1', sDoor: 's1', sKid: 's2', sProj: 's2', sExit: 's3' };
+const LINKS7 = [['s0', 's1', 'sg1'], ['s1', 's2', 'sd'], ['s2', 's2b', 'sm1'], ['s2b', 's3', 'sg2']];
+const SPOT_ZONE7 = { sSwitch: 's0', sKey: 's1', sDoor: 's1', sLampSw: 's2', sKid: 's2', sProj: 's2b', sExit: 's3' };
 function act7(s, spot, held, R = reachL(L7, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
@@ -597,6 +599,8 @@ function act7(s, spot, held, R = reachL(L7, s)) {
     case 'sKey': if (held || s.sKey !== 'floor') return no(held ? 'no' : 'look'); n.sKey = 'inv'; return ok('take:sKey');
     // 教室的门锁着：钥匙插上去。空着手点：门把手纹丝不动，气泡里画钥匙
     case 'sDoor': if (s.sDoor) return no(held ? 'no' : 'look'); if (held === 'sKey') { n.sKey = 'used'; n.sDoor = 1; return ok('unlock'); } if (held) return no('no'); return no('locked7');
+    // 教室左边墙上的开关：扳下去，左边的灯亮；右边墙上的那个开关，站在那儿的学人精学着扳，右边的灯也亮
+    case 'sLampSw': if (held) return no('no'); if (s.sLamp) return no('look'); n.sLamp = 1; return ok('lamp7');
     // 窗边缩着的那件小孩的衣服：空着手点，它怀里的灯亮起来
     case 'sKid': if (held) return no('no'); if (s.sGive) return no('look'); n.sGive = 1; return ok('give');
     // 后半边的幻灯机：小灯亮起来才看得见；开了就一直亮
@@ -1724,7 +1728,7 @@ const GATEPOS = {
   nightie: { e: 5, x: 9300 }, jacket: { e: 5, x: 10370 }, apron: { e: 5, x: 11190 },   // 巷子（第 3 关）：晾在绳子上的睡裙、外套、围裙
   zt1: { e: 5, x: 16100 }, zt2: { e: 5, x: 16760 }, zt3: { e: 5, x: 17620 },   // 公寓楼（第 5 关）：大堂、楼道、楼梯间口的三位住户
   rt1: { e: 5, x: 19010 }, rt3: { e: 5, x: 19540 }, rt2: { e: 5, x: 20150 },   // 屋顶（第 6 关）：晾着的三件衬衫（第三件 2026-11-25 加的，晾在天窗上面；第二件往右挪了）
-  sg1: { e: 5, x: 21700 }, sg2: { e: 5, x: 23900 },   // 学校（第 7 关）：走廊里的外套、后面走廊里的围裙
+  sg1: { e: 5, x: 21700 }, sm1: { e: 5, x: 22900 }, sg2: { e: 5, x: 23900 },   // 学校（第 7 关）：走廊里的外套、后面走廊里的围裙
   vc1: { e: 10, x: 51560 }, vc2: { e: 10, x: 52170 },
   hg1: { e: 10, x: TWP.g1 }, hg2: { e: 12, x: TWP.g2 }, hg3: { e: 12, x: TWP.g3 },   // 钟楼里面（第 20 关）：楼梯脚下的旧工作服（底层，10 号路）、一层过道上的旧工作服、放不下来的软梯（一层，12 号路）
   kg1: { e: 10, x: 65900 },   // 钟楼脚下（第 19 关）：挤满拱门口的一街衣服，孩子停在它们前面（在街面这一条路上，10 号路）
@@ -1754,6 +1758,7 @@ GATE_ALL.cs1 = s => GATES18.cs1(s) && (!V || V.cSeen === 1);   // 广场：木�
 GATE_ALL.fc1 = s => GATES16.fc1(s) && (!V || V.fSeen1 === 1); GATE_ALL.fc2 = s => GATES16.fc2(s) && (!V || V.fSeen2 === 1);   // 消防站：雨衣塌下去了，孩子才敢走过去
 GATE_ALL.vc1 = s => GATES15.vc1(s) && (!V || V.vSeen1 === 1); GATE_ALL.vc2 = s => GATES15.vc2(s) && (!V || V.vSeen2 === 1);   // 变电站：工作服塌下去了，孩子才敢走过去（灯一暗它醒过来，又不敢了）
 GATE_ALL.gg1 = s => GATES8.gg1(s) && (!V || V.gSeen === 1);
+GATE_ALL.sm1 = s => GATES7.sm1(s) && (!V || V.sSeenM === 1);   // 学校：教室里的学人精塌下去了，孩子才敢走过去
 GATE_ALL.ng1 = s => GATES9.ng1(s) && (!V || V.nSeen === 1);
 GATE_ALL.ta1 = s => GATES10.ta1(s) && (!V || V.tSeen1 === 1); GATE_ALL.ta2 = s => GATES10.ta2(s) && (!V || V.tSeen2 === 1); GATE_ALL.ta3 = s => GATES10.ta3(s) && (!V || V.tSeen3 === 1);   // 剧院：衣服塌下去了，孩子才敢走过去（规则里只记灯扳过了没有）   // 面摊的摊主：炭炉扇红了、它塌下去了，孩子才敢走过去（规则里只记炉子扇红了没有）   // 球场上跑圈的运动服：大灯要热够了、它塌下去了，孩子才敢走进球场（规则里只记配电箱扳了没有）
 for (const k in GATEPOS) { const g = GATEPOS[k]; if (g.e === 5 && g.x != null && g.x > Q4.hx) g.e = 16; if (g.e === 16 && g.x != null && g.x > CK.foot) g.e = 20; if (g.e === 20 && g.x != null && g.x > ZB.top) g.e = 23; }   // 2026-11-25：外楼梯脚右边的再挪到 20 号路上   // 5 号路在地窖口断开以后：地窖口右边的（第 4 关的排队起，往后几关的）都在 16 号路上
@@ -2474,8 +2479,12 @@ const RSKY = { x0: 19448, x1: 19620, base: 958, top: 900, stand: 19404, cord: 19
 const RBULB_X = 19232, RPLANK = { x: (RSKY.x0 + RSKY.x1) / 2 }, RGAP = { x0: 20440, x1: 20640 }, RGAP_STOP = 20400, RTOWER = { x: 20120, base: 946 };
 const roofZoneAt = x => x < GATEPOS.rt1.x ? 'r0' : x < GATEPOS.rt3.x ? 'r1' : x < GATEPOS.rt2.x ? 'r3' : 'r2';
 // 第 7 关：学校。走廊的日光灯、电闸、钥匙掉的地方、教室的门、窗边小孩的衣服、幻灯机、楼梯口的门
+// 第 7 关的学人精（2026-11-25）：c 是它学孩子的那条线（孩子在 x，它在 2c − x，两边挤到 lo、hi 为止）；sw1、sw2 是左右两个开关（正好隔着那条线对称），
+// 孩子站在 sw1 左边 40（22540），它就站在 sw2 右边 40（22980）；两盏灯各在开关上头。SMI_LAG：它学着扳开关，比孩子慢半秒
+const SMI_LAG = 0.5;
+const SMI = { c: 22760, lo: 22800, hi: 23300, sw1: 22580, sw2: 22940 };
 const SCH = { x0: 21040, x1: 24340 }, SLAMP = { x: 21660, y: 640 }, SSW = { x: 21500, y: 884 }, SKEY_X = 21900, SDOOR = { x: 22140 }, SDOOR_STOP = 22096, SKID = { x: 22700 }, SPROJ = { x: 23130, y: 848 }, SEXIT = { x: 24230 };
-const schoolZoneAt = x => x < GATEPOS.sg1.x ? 's0' : x < SDOOR.x ? 's1' : x < GATEPOS.sg2.x ? 's2' : 's3';
+const schoolZoneAt = x => x < GATEPOS.sg1.x ? 's0' : x < SDOOR.x ? 's1' : x < GATEPOS.sm1.x ? 's2' : x < GATEPOS.sg2.x ? 's2b' : 's3';
 // 第 8 关：体育馆。长凳上小孩的外套、配电箱、球场顶上的大灯、器材室的门、递光的地方（孩子站在门里）、跑圈的运动服停下来站的地方、后门
 const GCALL_HOLD = 6;   // 哨声过后器材室里那件站好站几秒，又接着跑
 const GYM = { x0: 24340, x1: 27640 }, GKID = { x: 24650 }, GSW = { x: 24960, y: 884 }, GLAMP = { x: 25990, y: 520 }, GDOOR = { x: 26690 }, GDOOR_STOP = 26646, GHAND = { x: 26772 }, GR2_STAND = 26950, GEXIT = { x: 27540 };
@@ -4108,25 +4117,37 @@ function drawSchoolDoor(b, P, lit) {   // 教室的门：锁着的时候一整�
     part(b, arcPts(x - 38 + w - 10, wb - 94, 4, 4, 0, TAU, 8), P.brass, { w: 0.5, tex: 0, lc, seed: 531405 });
   }
 }
-function drawSchoolKid(b, P, lit) {   // 窗边缩着的那件小孩的衣服：先是一团，朝孩子这边伸一只袖子；接了光，慢慢坐直，两只袖子抱着那点光。孩子走近，它抬头、跟着孩子的步子挪（学你）
-  const lc = lcOf(P, lit), p = { coat: P.skc, coatLo: P.skl, scarf: P.sks }, k = smooth(V.sk), x0 = SKID.x, gy = FL.down.gy; b.seedN = 531500;
-  const off = V.skx || 0, x = x0 + off, look = (V.skLook || 0) * (1 - k), rr = V.skR || 0, fc = V.skFace || -1, vx = V.skVx || 0;
-  const moving = Math.abs(vx) > 4 ? 1 : 0, bob = moving * Math.abs(Math.sin((V.skStep || 0) * Math.PI)) * 4, lean = clamp(vx / 70, -1, 1) * 4;   // 挪的时候一颠一颠，朝挪的方向歪一点
-  const hgt = lerp(70, 128, k) + look * 16 + bob;
-  part(b, curvePts([[x - 30, gy + 2], [x - 26, gy - hgt * 0.62], [x - 14 + lean, gy - hgt], [x + 14 + lean, gy - hgt], [x + 26, gy - hgt * 0.62], [x + 32, gy + 2]], true, 4), p.coat, { w: 1.1, tex: 0.45, lc, seed: 531501 });   // 身子
-  part(b, [[x - 16 + lean, gy - hgt], [x - 6 + lean, gy - hgt + 14], [x + lean, gy - hgt + 4], [x + 6 + lean, gy - hgt + 14], [x + 16 + lean, gy - hgt]], p.scarf, { w: 0.8, tex: 0, lc, seed: 531502 });   // 领口
-  part(b, arcPts(x + lean + look * fc * 5, gy - hgt - 10 - look * 2, 15, 11, 0, TAU, 14), P.skHood, { w: 1, tex: 0.3, lc, seed: 531503 });   // 帽子：里面没有脸；朝孩子那边偏一点、抬一点
-  const ext = Math.max(look * 0.35, rr), ax = lerp(x - 78 - 26 * ext, x - 14, k), ay = lerp(gy - hgt * 0.52 - 16 * rr, gy - hgt * 0.4, k);   // 朝孩子伸的那只袖子；孩子伸手它也伸得更远、抬得更高；接了光以后收回来抱在胸前
+function drawSchoolKid(b, P, lit) {   // 窗边缩着的那件小孩的衣服：先是一团，朝孩子这边伸一只袖子；接了光，慢慢坐直，两只袖子抱着那点光
+  const lc = lcOf(P, lit), p = { coat: P.skc, coatLo: P.skl, scarf: P.sks }, k = smooth(V.sk), x = SKID.x, gy = FL.down.gy; b.seedN = 531500;
+  const hgt = lerp(70, 128, k);
+  part(b, curvePts([[x - 30, gy + 2], [x - 26, gy - hgt * 0.62], [x - 14, gy - hgt], [x + 14, gy - hgt], [x + 26, gy - hgt * 0.62], [x + 32, gy + 2]], true, 4), p.coat, { w: 1.1, tex: 0.45, lc, seed: 531501 });   // 身子
+  part(b, [[x - 16, gy - hgt], [x - 6, gy - hgt + 14], [x, gy - hgt + 4], [x + 6, gy - hgt + 14], [x + 16, gy - hgt]], p.scarf, { w: 0.8, tex: 0, lc, seed: 531502 });   // 领口
+  part(b, arcPts(x, gy - hgt - 10, 15, 11, 0, TAU, 14), P.skHood, { w: 1, tex: 0.3, lc, seed: 531503 });   // 帽子：里面没有脸
+  const ax = lerp(x - 78, x - 14, k), ay = lerp(gy - hgt * 0.52, gy - hgt * 0.4, k);   // 朝孩子伸的那只袖子，接了光以后收回来抱在胸前
   part(b, tube([[x - 18, gy - hgt * 0.72], [(x - 18 + ax) / 2, ay - 6], [ax, ay]], [11, 10, 9]), p.coatLo, { w: 0.9, tex: 0.3, lc, seed: 531504 });
   part(b, tube([[x + 18, gy - hgt * 0.72], [x + 24, gy - hgt * 0.5], [x + 4, lerp(gy - 14, gy - hgt * 0.4, k)]], [11, 10, 9]), p.coatLo, { w: 0.9, tex: 0.3, lc, seed: 531505 });
   hatch(b, kk => kk.rect(x - 30, gy - hgt, 62, hgt), [x - 30, gy - hgt, 62, hgt], { ang: -1.15, gap: 4.6 / HD, a: lit ? 0.4 : 0.55, w: 0.7, len: 16, seed: 531506 });
   // 座位：一张小课桌，桌上一张画了一半的画；桌边一个书包
-  part(b, rectPts(x0 + 54, gy - 58, 64, 8), P.schDesk, { w: 0.9, tex: 0.3, lc, seed: 531510 });
-  for (const lx of [-26, 26]) ink(b, seg(x0 + 86 + lx, gy - 50, x0 + 86 + lx, gy + 8), { w: 1.2, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 531511 + lx });
-  part(b, rectPts(x0 + 66, gy - 66, 34, 8), P.schPaper, { w: 0.7, tex: 0.2, lc, seed: 531512 });
-  ink(b, curvePts([[x0 + 70, gy - 63], [x0 + 80, gy - 62], [x0 + 90, gy - 64]], false, 4), { w: 0.9, col: P.awnA, taper: 0, a: 0.8, seed: 531513, single: 1 });
-  part(b, roundPts(x0 + 124, gy - 44, 38, 52, 10), P.schBag, { w: 1, tex: 0.3, lc, seed: 531514 });
-  part(b, rectPts(x0 + 130, gy - 24, 26, 16), P.schDeskHi, { w: 0.7, tex: 0.2, lc, seed: 531515 });
+  part(b, rectPts(x + 54, gy - 58, 64, 8), P.schDesk, { w: 0.9, tex: 0.3, lc, seed: 531510 });
+  for (const lx of [-26, 26]) ink(b, seg(x + 86 + lx, gy - 50, x + 86 + lx, gy + 8), { w: 1.2, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 531511 + lx });
+  part(b, rectPts(x + 66, gy - 66, 34, 8), P.schPaper, { w: 0.7, tex: 0.2, lc, seed: 531512 });
+  ink(b, curvePts([[x + 70, gy - 63], [x + 80, gy - 62], [x + 90, gy - 64]], false, 4), { w: 0.9, col: P.awnA, taper: 0, a: 0.8, seed: 531513, single: 1 });
+  part(b, roundPts(x + 124, gy - 44, 38, 52, 10), P.schBag, { w: 1, tex: 0.3, lc, seed: 531514 });
+  part(b, rectPts(x + 130, gy - 24, 26, 16), P.schDeskHi, { w: 0.7, tex: 0.2, lc, seed: 531515 });
+}
+function drawSchoolPair(b, P, lit) {   // 教室里的两盏吊灯和两个墙上的开关（左右对称）：左边的开关孩子扳，右边的那个学人精学着扳
+  const lc = lcOf(P, lit); b.seedN = 531800;
+  for (const [i, lx] of [[0, SMI.sw1], [1, SMI.sw2]]) {
+    const on = (i ? V.li.sm : V.li.sl) > 0.3, y = SLAMP.y;
+    ink(b, seg(lx, APT_Y + 4, lx, y - 8), { w: 0.9, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 531801 + i, single: 1 });
+    part(b, [[lx - 28, y + 14], [lx - 10, y - 8], [lx + 10, y - 8], [lx + 28, y + 14]], P.iron, { w: 0.8, tex: 0.2, lc, seed: 531803 + i });   // 灯罩
+    part(b, rectPts(lx - 18, y + 12, 36, 5), on ? (lit ? '#f4f0dc' : '#c9c8b0') : P.lampHead, { w: 0.5, tex: 0, lc, seed: 531805 + i });
+    const k = smooth(i ? V.ssw2 : V.ssw1), by = SSW.y, ang = lerp(-0.7, 0.7, k);   // 开关在灯正下面的墙上：扳手朝上是断开的，扳下去是合上的
+    part(b, rectPts(lx - 5, by - 18, 10, 36), P.rfShedLo, { w: 0.7, tex: 0, lc, seed: 531810 + i });
+    const ex = lx + Math.sin(ang) * 24, ey = by - Math.cos(ang) * 24;
+    ink(b, seg(lx, by, ex, ey), { w: 3.2, col: P.awnA, taper: 0, a: 1 / b.pen.a, seed: 531812 + i }); ink(b, seg(lx, by, ex, ey), { w: 0.6, col: lc, taper: 0, seed: 531814 + i });
+    part(b, arcPts(ex, ey, 4, 4, 0, TAU, 8), P.awnA, { w: 0.5, tex: 0, lc, seed: 531816 + i });
+  }
 }
 function drawSchoolProj(b, P, lit) {   // 后半边的幻灯机：一辆小推车，上面一台方方的机器，镜头朝右；开了以后镜头里是白的
   const lc = lcOf(P, lit), x = SPROJ.x, gy = FL.down.gy, on = V.li.sp > 0.3; b.seedN = 531600;
@@ -4146,19 +4167,20 @@ function drawSchoolOrb(b, P, lit) {   // 小孩的衣服怀里的灯（光在 dr
 }
 function schoolOrb() {   // 怀里的灯：点了窗边那件小孩的衣服以后，在它怀里亮起来（以前是孩子肩头那只小光飞过去；跟着孩子的小光去掉了）
   if (!S.sGive) return null;
-  const T = V.T, hx = SKID.x + (V.skx || 0) - 6, hy = FL.down.gy - lerp(60, 90, smooth(V.sk));
+  const T = V.T, hx = SKID.x - 6, hy = FL.down.gy - lerp(60, 90, smooth(V.sk));
   return { x: hx, y: hy + Math.sin(T * 2.2) * 3, a: smooth((T - V.giveT) / 0.7) };
 }
 function drawSchoolDyn(b, P, lit, vis) {   // 学校（第 7 关）
   if (vis.schA) { drawSchoolLamp(b, P, lit); drawSwitchBox7(b, P, lit); drawFear(b, P, lit, 'sg1'); drawSKeyFloor(b, P, lit); }
   if (vis.schA || vis.schB) drawSchoolDoor(b, P, lit);
-  if (vis.schB) { drawSchoolKid(b, P, lit); drawSchoolProj(b, P, lit); }
+  if (vis.schB) { drawSchoolKid(b, P, lit); drawSchoolProj(b, P, lit); drawSchoolPair(b, P, lit); drawFear(b, P, lit, 'sm1'); }
   if (vis.schB || vis.schC) drawFear(b, P, lit, 'sg2');
   if (vis.schA || vis.schB || vis.schC) drawSchoolOrb(b, P, lit);
 }
 function drawSchoolGlow() {   // 日光灯的灯管、小灯、幻灯机的镜头、小孩的衣服抱着的那点光；教室后半边顶上的夜光星星
   if (V.li.sa > 0.02 && inView(SLAMP.x, SLAMP.y, 400)) { glowAt(SLAMP.x, SLAMP.y + 8, 110, C.lamp, 0.26 * V.li.sa); glowAt(SLAMP.x, SLAMP.y + 8, 30, C.hot, 0.8 * V.li.sa); }
   if (V.li.sp > 0.02 && inView(SPROJ.x, SPROJ.y, 200)) { glowAt(SPROJ.x + 52, SPROJ.y, 40, C.lamp, 0.3 * V.li.sp); glowAt(SPROJ.x + 52, SPROJ.y, 10, C.hot, 0.85 * V.li.sp); }
+  for (const [lx, a] of [[SMI.sw1, V.li.sl || 0], [SMI.sw2, V.li.sm || 0]]) if (a > 0.02 && inView(lx, SLAMP.y, 400)) { glowAt(lx, SLAMP.y + 20, 100, C.lamp, 0.26 * a); glowAt(lx, SLAMP.y + 20, 26, C.hot, 0.8 * a); }
   const o = schoolOrb();
   if (o && inView(o.x, o.y, 200)) { glowAt(o.x, o.y, 34, C.lamp, 0.3 * o.a); glowAt(o.x, o.y, 9, C.hot, 0.9 * o.a); }
   if (V.li.sk > 0.02 && inView(SKID.x, 700, 700)) {   // 夜光星星：一把贴在教室后半边顶上的小星星，小灯亮起来以后跟着亮一阵
@@ -4169,22 +4191,14 @@ function schoolUpdate(dt) {   // 日光灯：电闸扳下去就一直亮；小�
   const T = V.T;
   V.li.sa = S.sLA ? flick(T - V.lt0.sa) : Math.max(0, V.li.sa - dt * 6);
   V.sk = approach(V.sk, S.sGive, dt / 2.2);
-  // 2026-11-25 它在学你（规划里的 E 友好版，只是动画，规则不碰）：孩子走近，它抬头朝孩子转过来；孩子往它这边走，它也往孩子那边挪（最多 45，不出它那一块地）；
-  // 孩子停，它停；孩子退，它也退；孩子伸手（点它），它也把袖子伸得更远。接了光以后它坐直抱着灯，就不再挪了
-  {
-    const onF = kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 6 && kid.mode !== 'caught', dist0 = SKID.x - kid.x;
-    const sp = V.skPx != null && onF ? Math.abs(kid.x - V.skPx) / Math.max(dt, 1e-3) : 0;   // 孩子这一帧的速度（被抓、读档那种一下跳很远的不算）
-    V.skPx = kid.x; V.skx = V.skx || 0; V.skLook = V.skLook || 0; V.skStep = V.skStep || 0; V.skR = V.skR || 0; V.skFace = V.skFace || -1;
-    const near = onF && dist0 > -60 && dist0 < 560;
-    V.skLook = approach(V.skLook, near && dist0 < 420 ? 1 : 0, dt * 2.2);
-    if (near) V.skFace = dist0 > 10 ? -1 : 1;   // 朝孩子那边看
-    const want = S.sGive ? V.skx : -45 * clamp((400 - dist0) / 320, 0, 1) * (near ? 1 : 0);
-    const move = sp < 700 ? clamp(sp * 0.35, 0, 100) : 0, x0 = V.skx;
-    V.skx = approach(V.skx, want, move * dt);
-    V.skVx = (V.skx - x0) / Math.max(dt, 1e-3); V.skStep += Math.abs(V.skx - x0) / 34;
-    const reaching = kid.mode === 'reach' && kid.r && Math.abs(kid.r.tx - SKID.x) < 140;
-    V.skR = approach(V.skR, reaching && !S.sGive ? 1 : 0, dt * 4);
-  }
+  // 教室里的两盏灯：孩子扳左边的开关，左边的灯马上亮；右边的开关是学人精学着扳的，慢半拍（SMI_LAG 秒），右边的灯跟着亮
+  { const lt = V.lt0.sl ?? -10, lm = lt + SMI_LAG;
+    V.ssw1 = approach(V.ssw1 || 0, S.sLamp, dt / 0.25); V.ssw2 = approach(V.ssw2 || 0, S.sLamp && T >= lm - 0.25 ? 1 : 0, dt / 0.25);
+    V.li.sl = S.sLamp ? flick(T - lt) : Math.max(0, (V.li.sl || 0) - dt * 6);
+    V.li.sm = S.sLamp && T >= lm ? flick(T - lm) : Math.max(0, (V.li.sm || 0) - dt * 6);
+    if (S.sLamp && !V.smSnd && T >= lm && T - lt < 5) { V.smSnd = 1; snd.clank(); snd.lightOn(); }
+    if (!S.sLamp) V.smSnd = 0;
+    if (!V.sSeenM && V.mon.sm1.rise < 0.5) V.sSeenM = 1; }
   V.li.sk = clamp((V.sk - 0.35) / 0.35, 0, 1) * (0.94 + 0.06 * Math.sin(T * 2.3));
   V.li.sp = S.sLP ? flick(T - V.lt0.sp) : Math.max(0, V.li.sp - dt * 6);
   V.ssw = approach(V.ssw, S.sLA, dt / 0.25); V.sdoor = approach(V.sdoor, S.sDoor, dt / 0.7);
@@ -8614,6 +8628,8 @@ const LIGHTS = [
   { id: 'rsky', off: 0.45, up: 0.9, wd: 0.5, nosafe: 1, at: () => ({ x: (RSKY.x0 + RSKY.x1) / 2, y: RSKY.top + 26, R: 420, I: V.li.sky || 0, rot: Math.PI, clip: [RSKY.x0 - 40, 480, RSKY.x1 + 40, 1060] }) },
   // 学校（第 7 关）。走廊的日光灯：电闸扳下去就一直亮，照得到外套；教室后半边的小灯：小光递过去以后亮；幻灯机：一长条光，从教室后门照到后面的走廊（照得到围裙）
   { id: 'ssa', off: 0.4, up: 0.6, at: () => ({ x: SLAMP.x, y: SLAMP.y + 50, R: 470, I: V.li.sa, clip: [21060, 250, 22120, 1060] }) },
+  { id: 'ssl', off: 0.4, up: 0.6, at: () => ({ x: SMI.sw1, y: SLAMP.y + 50, R: 330, I: V.li.sl || 0, clip: [22340, 250, 22830, 1060] }) },   // 教室左边的灯（孩子扳的开关）
+  { id: 'ssm', off: 0.4, up: 0.6, at: () => ({ x: SMI.sw2, y: SLAMP.y + 50, R: 330, I: V.li.sm || 0, clip: [22740, 250, 23340, 1060] }) },   // 教室右边的灯（学人精学着扳的开关）：它站在这盏灯底下
   { id: 'ssk', off: 0.6, up: 0.9, at: () => ({ x: SKID.x, y: 860, R: 430, I: V.li.sk, clip: [22340, 450, 23340, 1060] }) },
   { id: 'ssp', off: 0.8, up: 1, wd: 0.42, nosafe: 1, at: () => V.li.sp < 0.01 ? null : ({ x: SPROJ.x + 52, y: SPROJ.y - 16, R: 760, I: V.li.sp, rot: Math.PI / 2 - 0.03, clip: [SPROJ.x + 46, 560, SCH.x1, 1060] }) },
   // 体育馆（第 8 关）。门厅里小孩的外套抱着光：照亮配电箱那一角；球场顶上的大灯：扳了配电箱以后慢慢热起来（V.li.ga 几秒里从 0 爬到 1），亮够了才照得倒场上的运动服；器材室里那件运动服抱着光：照亮器材室
@@ -9124,6 +9140,9 @@ const GARB = {
   rt3: { kind: 'coat', fl: 'down', home: 19540, terr: [19460, 19640], speed: 60, h: 214, pal: { coat: 'r3c', coatLo: 'r3l', scarf: 'r3s', hat: 'rh' } },   // 2026-11-25：天窗上面晾着的第三件
   // 学校（第 7 关）：走廊里挂着的外套、后面走廊里挂着的围裙。走法还是同一种（转折以前的规则：光照到头就塌）
   sg1: { kind: 'coat', fl: 'down', home: 21700, terr: [21580, 21840], speed: 62, h: 214, pal: { coat: 's1c', coatLo: 's1l', scarf: 's1s', hat: 'rh' } },
+  // 教室里的学人精（第 7 关，2026-11-25）：醒着，孩子往哪边走它往反方向走（孩子在 x，它在 2c − x，不出 lo 到 hi），孩子伸手它也伸手；
+  // 面对面撞上就是被抓住；怕光：右边那盏灯亮起来，照到头它就塌（一直塌着）。孩子扳左边的开关，它学着扳右边的，灯就亮在它自己头上
+  sm1: { kind: 'coat', fl: 'down', keepDown: () => V.sSeenM === 1, home: 23300, terr: [22790, 23300], speed: 0, h: 214, face0: -1, pal: { coat: 's2c', coatLo: 's2l', scarf: 's2s', hat: 'rh' }, mirror: { c: SMI.c, lo: SMI.lo, hi: SMI.hi, sp: 520, hit: 44 } },
   sg2: { kind: 'coat', fl: 'down', home: 23900, terr: [23780, 24040], speed: 62, h: 214, pal: { coat: 's2c', coatLo: 's2l', scarf: 's2s', hat: 'rh' } },
   // 体育馆（第 8 关）：跑圈的运动服（第三条新规则：衣服照着它的人在做的事动）。不在窝里等，一圈一圈来回跑（lap：跑的那一段，lapSpeed：跑多快，lapRest：到头歇多久）；
   // 孩子走进它那一片、又不在光里，它朝孩子追过来（speed）。光照到头它就塌。gr2 接了小光（holds）就不跑了，站在 stand 抱着光
@@ -9197,6 +9216,18 @@ function garbUpdate(dt) {
       const look = stopped && m.rise > 0.9 && onF && Math.abs(d) < 480 && !kidLit;
       m.hunt = approach(m.hunt, look ? 1 : 0, dt * 2.5); m.reach = approach(m.reach, look && Math.abs(d) < 220 && Math.sign(d) === m.face ? 1 : 0, dt * 3);
       if (stopped && m.rise > 0.9 && !calm && onF && !kidLit && Math.abs(d) < 40) caught(k);
+      continue;
+    }
+    if (G.mirror) {   // 学人精：孩子往哪边走它往反方向走，孩子伸手它也伸手；面对面撞上就抓住
+      const M = G.mirror, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2;
+      m.mv = 0; m.dr = 0; m.hunt = 0;
+      if (m.rise > 0.9) {
+        const tgt = clamp(2 * M.c - kid.x, M.lo, M.hi), d = tgt - m.x, st = Math.min(Math.abs(d), M.sp * dt);
+        m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; m.face = Math.sign(kid.x - m.x) || m.face;
+        m.reach = approach(m.reach, kid.mode === 'reach' && kid.r && kid.r.k > 0.15 ? 1 : 0, dt * 5);
+        if (!calm && onF && Math.abs(kid.x - m.x) < M.hit) caught(k);
+      } else m.reach = approach(m.reach, 0, dt * 5);
+      m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
       continue;
     }
     const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
@@ -9671,7 +9702,7 @@ QU_KEYS.forEach((k, i) => { HEAP_COLS[k] = ['qc' + i, 'qcl' + i]; });
 HEAP_COLS.q4dust = ['dustHi', 'dust'];   // 地下室的灰大褂
 HEAP_COLS.q4apron = ['lthHi', 'lth'];   // 钟表店二楼的皮围裙
 HEAP_COLS.zsh = ['shtHi', 'sht'];   // 公寓楼地下室的床单
-HEAP_COLS.zt1 = ['zr1', 'zr2']; HEAP_COLS.zt2 = ['zc', 'zcl']; HEAP_COLS.zt3 = ['zr3', 'zr4']; HEAP_COLS.rt1 = ['r1c', 'r1l']; HEAP_COLS.rt3 = ['r3c', 'r3l']; HEAP_COLS.rt2 = ['r2c', 'r2l']; HEAP_COLS.sg1 = ['s1c', 's1l']; HEAP_COLS.sg2 = ['s2c', 's2l']; HEAP_COLS.gr1 = ['g1c', 'g1l']; HEAP_COLS.gr2 = ['g2c', 'g2l']; HEAP_COLS.nr1 = ['n1c', 'n1l']; HEAP_COLS.nr2 = ['n2c', 'n2l']; HEAP_COLS.ta1 = ['t1c', 't1l']; HEAP_COLS.ta2 = ['t2c', 't2l']; HEAP_COLS.ta3 = ['t3c', 't3l']; HEAP_COLS.uc1 = ['uBc', 'uBl']; HEAP_COLS.mp1 = ['mtC1', 'mtC1l']; HEAP_COLS.mp2 = ['mtC2', 'mtC2l']; HEAP_COLS.mp3 = ['mtC3', 'mtC3l']; HEAP_COLS.mw = ['mtC4', 'mtC4l']; HEAP_COLS.wp1 = ['wsC1', 'wsC1l']; HEAP_COLS.wp2 = ['wsC2', 'wsC2l']; HEAP_COLS.wp3 = ['wsC3', 'wsC3l'];   // 公寓楼的三位住户塌下去
+HEAP_COLS.zt1 = ['zr1', 'zr2']; HEAP_COLS.zt2 = ['zc', 'zcl']; HEAP_COLS.zt3 = ['zr3', 'zr4']; HEAP_COLS.rt1 = ['r1c', 'r1l']; HEAP_COLS.rt3 = ['r3c', 'r3l']; HEAP_COLS.rt2 = ['r2c', 'r2l']; HEAP_COLS.sg1 = ['s1c', 's1l']; HEAP_COLS.sg2 = ['s2c', 's2l']; HEAP_COLS.sm1 = ['s2c', 's2l']; HEAP_COLS.gr1 = ['g1c', 'g1l']; HEAP_COLS.gr2 = ['g2c', 'g2l']; HEAP_COLS.nr1 = ['n1c', 'n1l']; HEAP_COLS.nr2 = ['n2c', 'n2l']; HEAP_COLS.ta1 = ['t1c', 't1l']; HEAP_COLS.ta2 = ['t2c', 't2l']; HEAP_COLS.ta3 = ['t3c', 't3l']; HEAP_COLS.uc1 = ['uBc', 'uBl']; HEAP_COLS.mp1 = ['mtC1', 'mtC1l']; HEAP_COLS.mp2 = ['mtC2', 'mtC2l']; HEAP_COLS.mp3 = ['mtC3', 'mtC3l']; HEAP_COLS.mw = ['mtC4', 'mtC4l']; HEAP_COLS.wp1 = ['wsC1', 'wsC1l']; HEAP_COLS.wp2 = ['wsC2', 'wsC2l']; HEAP_COLS.wp3 = ['wsC3', 'wsC3l'];   // 公寓楼的三位住户塌下去
 function drawGarbHeap(b, P, lit, k, x, fy) {
   const lc = lcOf(P, lit), [c1, c2] = HEAP_COLS[k]; b.seedN = 282000 + GARB_KEYS.indexOf(k) * 100;
   const hsc = k === 'dog' ? 0.7 : GARB[k].queue ? 0.62 : 1;   // 狗的毛衣：小小的一摊；排队的大衣一件隔 60，一摊也小一点
@@ -9739,6 +9770,7 @@ GARB_HOME.zsh = drawHungSheet;   // 公寓楼地下室的床单：没醒的时�
 GARB_HOME.ta1 = drawThSeatHome('ta1'); GARB_HOME.ta2 = drawThSeatHome('ta2'); GARB_HOME.ta3 = drawThRackCoat;   // 剧院：后排、前排的坐在座位上，台边的挂在戏服架上
 for (const k of ['nr1', 'nr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 夜市的围裙：没醒的时候就是地上的一摊
 for (const k of ['gr1', 'gr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 体育馆的运动服：跑圈的，没醒的时候就是地上的一摊
+GARB_HOME.sm1 = (b, P, lit) => drawGarbHeap(b, P, lit, 'sm1', GARB.sm1.home, FL.down.gy);   // 学人精没塌的时候是醒着的，塌下去就是地上一摊
 for (const k of ['rt1', 'rt3', 'rt2', 'sg1', 'sg2']) GARB_HOME[k] = (b, P, lit) => drawHungShirt(b, P, lit, k);   // 屋顶的衬衫：没醒的时候晾在绳子上   // 公寓楼的住户也一样   // 排队的大衣塌下去：就在它站的地方一摊
 // 旧地铁：站着的人没醒的时候坐在座位上（车一晃跟着晃）；塌了以后是座位上的一摊；抱花的大衣没醒的时候是地上的一摊，花搁在上面
 for (const [k, sk, i] of [['mp1', 'mSeen1', 0], ['mp2', 'mSeen2', 1], ['mp3', 'mSeen2', 2]]) GARB_HOME[k] = (b, P, lit) => {
@@ -11027,6 +11059,7 @@ function gateHint(k) {
     case 'gg1': return !S.gGive1 ? ['orb'] : !S.gSw ? ['lever'] : null;   // 体育馆：球场上跑圈的运动服要大灯照；配电箱在黑着的角落里，先把小光递给长凳上的外套；大灯在热了，等着
     case 'gg2': return ['orb'];   // 器材室里跑圈的运动服：把小光递给它
     case 'sg1': return ['lever'];   // 学校：走廊里的外套要走廊的灯照（扳电闸）
+    case 'sm1': return ['lever'];   // 学校：教室里的学人精要灯照：扳左边墙上的开关，它学着扳右边的，灯亮在它头上
     case 'sg2': return S.sGive ? ['proj'] : ['orb'];   // 后面走廊里的围裙要幻灯机的光照；幻灯机在黑着的后半边，先把小光递给窗边那件小孩的衣服
     case 'rt1': return ['lever'];   // 屋顶：第一件衬衫要第一串灯照（扳总闸）
     case 'rt3': return ['sky'];   // 第三件衬衫要天窗里照上来的光（2026-11-25）
@@ -11365,6 +11398,7 @@ function spots() {
     add('sSwitch', [SSW.x - 36, SSW.y - 56, SSW.x + 36, SSW.y + 56], SSW.x - 34, 'down', 1, [SSW.x, SSW.y - 8]);
     if (S.sKey === 'floor' && V.sSeen1 && V.T - V.sT1 > 0.6) add('sKey', [SKEY_X - 28, dn - 40, SKEY_X + 28, FL.down.ff - 4], SKEY_X - 36, 'down', 1, [SKEY_X, dn - 14]);
     add('sDoor', [SDOOR.x - 52, dn - 200, SDOOR.x + 30, FL.down.ff], SDOOR_STOP - 6, 'down', 1, [SDOOR.x - 20, dn - 100]);
+    add('sLampSw', [SMI.sw1 - 36, SSW.y - 56, SMI.sw1 + 36, SSW.y + 56], SMI.sw1 - 40, 'down', 1, [SMI.sw1, SSW.y - 8]);
     add('sKid', [SKID.x - 64, dn - 150, SKID.x + 64, FL.down.ff], SKID.x - 110, 'down', 1, [SKID.x - 40, dn - 80]);
     add('sProj', [SPROJ.x - 50, dn - 170, SPROJ.x + 66, FL.down.ff], SPROJ.x - 80, 'down', 1, [SPROJ.x - 10, SPROJ.y - 20]);
     add('sExit', [SEXIT.x - 56, dn - 200, SEXIT.x + 56, FL.down.ff], SEXIT.x - 76, 'down', 1, [SEXIT.x - 10, dn - 94]);
@@ -11839,6 +11873,7 @@ function perform(sp, h, r) {
     case 'gExit': o.pre = 0.4; o.hold = 0.4; o.after = exitSeq8; break;
     // 学校（第 7 关）
     case 'sSwitch': o.pre = 0.25; o.hold = 0.4; break;
+    case 'sLampSw': o.pre = 0.25; o.hold = 0.5; break;   // 扳教室左边墙上的开关（学人精也伸手，扳它那边的）
     case 'sKey': o.pre = 0.2; o.hold = 0.2; break;
     case 'sDoor': o.pre = 0.45; o.wiggle = true; o.hold = 0.4; snd.screw(); break;   // 手里举着钥匙，朝锁孔里插
     case 'sKid': o.pre = 0.5; o.hold = 0.7; break;   // 朝窗边那件小孩的衣服伸出手，身后那点小光飞过去
@@ -12009,6 +12044,7 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'blow8': V.gCallUntil = V.T + GCALL_HOLD; snd.whistle(); puff(kid.x + kid.face * 26, kid.y - 150, C.lamp, 10); break;   // 吹哨子：器材室里那件跑圈的跑到靠门这头站好
       case 'exit8': drop('gWhis'); break;   // 走出后门：哨子在门口放下
       // 学校（第 7 关）
+      case 'lamp7': V.lt0.sl = V.T; V.smSnd = 0; snd.clank(); snd.lightOn(); break;   // 左边的灯亮；右边的慢半拍（schoolUpdate）
       case 'swOn7': V.lt0.sa = V.T; V.sswT = V.T; V.peek = { x: GATEPOS.sg1.x - 40, t0: V.T, dur: 2.0 }; snd.clank(); snd.lightOn(); break;
       case 'unlock': drop('sKey'); snd.clank(); snd.thump(); break;
       case 'give': V.giveT = V.T; V.giveX = kid.x - kid.face * 24; V.giveY = kid.y - 150; snd.lightOn(); break;   // 小光从孩子肩头飞到小孩的衣服那儿，先记下它飞出去的地方
@@ -12172,7 +12208,7 @@ function hint() {
   else if (m.spot === 'qMain') say(['neon', '>'], 2.8);
   else if (m.spot === 'zStomp') say(['stomp', '>'], 2.8);
   else if (m.spot === 'zClap') say(['clap', '>'], 2.8);
-  else if (m.spot === 'rSwitch' || m.spot === 'sSwitch') say(['lever', '>'], 2.8);
+  else if (m.spot === 'rSwitch' || m.spot === 'sSwitch' || m.spot === 'sLampSw') say(['lever', '>'], 2.8);
   else if (m.spot === 'gHand' && m.held) say([m.held, '>'], 2.8);   // 吹哨子那一步：气泡里画哨子
   else if (m.spot === 'rTarp') say(['>'], 2.8);   // 屋顶（2026-11-25）：掀开天窗上的油布
   else if (m.spot === 'rCord') say(['sky', '>'], 2.8);   // 伸手进天窗拉灯绳
@@ -12516,7 +12552,7 @@ function drawOverlays(lights) {
   ];
   const kglints = [   // 学校（第 7 关）
     [SSW.x, SSW.y, 0.5, !S.sLA], [SKEY_X, FL.down.gy - 14, 1.6, S.sKey === 'floor' && V.sSeen1], [SDOOR.x - 20, FL.down.gy - 96, 2.7, S.sKey === 'inv'],
-    [SKID.x - 30, FL.down.gy - 70, 3.8, S.sDoor && !S.sGive], [SPROJ.x + 30, SPROJ.y - 30, 4.9, S.sGive && !S.sLP], [SEXIT.x - 10, FL.down.gy - 94, 0.9, S.sLP],
+    [SMI.sw1, SSW.y, 3.0, S.sDoor && !S.sLamp], [SKID.x - 30, FL.down.gy - 70, 3.8, S.sDoor && !S.sGive], [SPROJ.x + 30, SPROJ.y - 30, 4.9, S.sGive && !S.sLP], [SEXIT.x - 10, FL.down.gy - 94, 0.9, S.sLP],
   ];
   const mglints = [   // 旧地铁（第 12 关）
     [MHOOK.x, MHOOK.y + 6, 0.5, S.mHandle === 'wall'], [MCART[0] - 51, FL.down.gy - 52, 1.6, S.mHandle === 'inv' && !S.mLamp], [MCART[0] - 20, FL.down.gy - 50, 2.7, S.mLamp && S.mAt === 0], [MLEV.x, MLEV.y - 20, 3.8, S.mAt >= 1 && !S.mSig],
@@ -12815,7 +12851,8 @@ function snapTo(s, b) {
   Object.assign(V, { rsw: S.rLA, rbr: S.rBr, rSeen1: S.rBulb !== 'floor' ? 1 : 0, rT1: -10, rSeen3: S.rBulb2 !== 'floor' ? 1 : 0, rT3: -10, tarpT: -10, tarpTug: 0, skyVent: 0, rbTug: 0, reelInT: -10, rReelT: -10, aptDone: S.zOut ? 1 : 0 });
   V.li.ra = S.rLA ? 1 : 0; V.li.rb = S.rLB ? 1 : 0; V.li.sky = S.rSky ? 1 : 0;
   // 学校（第 7 关）：电闸、门、小灯一步到位；钥匙拿了就不再掉出来
-  Object.assign(V, { ssw: S.sLA, sdoor: S.sDoor, sk: S.sGive, sSeen1: S.sKey !== 'floor' ? 1 : 0, sT1: -10, giveT: -10, roofDone: S.rOut ? 1 : 0 });
+  Object.assign(V, { ssw: S.sLA, sdoor: S.sDoor, sk: S.sGive, sSeen1: S.sKey !== 'floor' ? 1 : 0, sT1: -10, giveT: -10, roofDone: S.rOut ? 1 : 0, sSeenM: S.sLamp ? 1 : 0, ssw1: S.sLamp, ssw2: S.sLamp, smSnd: S.sLamp ? 1 : 0 });
+  V.li.sl = V.li.sm = S.sLamp ? 1 : 0; V.lt0.sl = -10;
   V.li.sa = S.sLA ? 1 : 0; V.li.sk = S.sGive ? 1 : 0; V.li.sp = S.sLP ? 1 : 0;
   // 体育馆（第 8 关）：大灯、扳手、门、小灯一步到位（大灯不再慢慢热）；哨子拿了就不再掉出来
   Object.assign(V, { ga: S.gSw, gsw: S.gSw, gk1: S.gGive1, gb: S.gGive2, gdoor: S.gDoor, gSeen: S.gSw ? 1 : 0, gT1: -10, gX0: GARB.gr1.home, gWx: 25760, give1T: -10, give2T: -10, schoolDone: S.sOut ? 1 : 0 });
@@ -12963,7 +13000,7 @@ if (qs.get('lv') === '8') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   snapTo({ ...s7, ...START8 }, []); placeKid(SEXIT.x + 100, FL.down.gy, 1); V.safe = { x: SEXIT.x + 100, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; taps = 1;
 }
 // 地址后面加 ?lv=9：直接从第 9 关开头玩（前八关照最短的解法当作走完，孩子站在夜市的入口）。不读也不写存档
@@ -12974,7 +13011,7 @@ if (qs.get('lv') === '9') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   snapTo({ ...s8, ...START9 }, []); placeKid(GEXIT.x + 90, FL.down.gy, 1); V.safe = { x: GEXIT.x + 90, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; V.gymDone = 1; taps = 1;
 }
@@ -12986,7 +13023,7 @@ if (qs.get('lv') === '10') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   snapTo({ ...s9, ...START10 }, []); placeKid(NEXIT.x + 90, FL.down.gy, 1); V.safe = { x: NEXIT.x + 90, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; V.gymDone = 1; V.mktDone = 1; taps = 1;
@@ -12999,7 +13036,7 @@ if (qs.get('lv') === '11') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13013,7 +13050,7 @@ if (qs.get('lv') === '12') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13028,7 +13065,7 @@ if (qs.get('lv') === '13') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13044,7 +13081,7 @@ if (qs.get('lv') === '14') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13061,7 +13098,7 @@ if (qs.get('lv') === '15') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13079,7 +13116,7 @@ if (qs.get('lv') === '16') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13098,7 +13135,7 @@ if (qs.get('lv') === '17') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13118,7 +13155,7 @@ if (qs.get('lv') === '18') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13139,7 +13176,7 @@ if (qs.get('lv') === '19') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13161,7 +13198,7 @@ if (qs.get('lv') === '20') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
@@ -13184,7 +13221,7 @@ if (qs.get('lv') === '21') {
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
   let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2', 'r3'])).s;
-  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
+  let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's2b', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
   let s9 = { ...START9, ...s8 }; for (const m of solveL(L9, s9).path) s9 = act9(s9, m.spot, m.held, new Set(['n0', 'n1', 'n2', 'n3'])).s;
   let s10 = { ...START10, ...s9 }; for (const m of solveL(L10, s10).path) s10 = act10(s10, m.spot, m.held, new Set(['t0', 't1', 't2', 't3', 't4'])).s;
