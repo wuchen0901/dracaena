@@ -14330,7 +14330,401 @@ if (qs.get('lv') === '21') {
   let s20 = { ...START20, ...s19 }; for (const m of solveL(L20, s20).path) s20 = act20(s20, m.spot, m.held, new Set(['h0', 'h1', 'h2', 'h3'])).s;
   snapTo({ ...s20, ...START21 }, []); placeKid(JP.in, TWY2, 1); V.safe = { x: JP.in, y: TWY2 }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; V.gymDone = 1; V.mktDone = 1; V.thDone = 1; V.ucDone = 1; V.mtDone = 1; V.wsDone = 1; V.dsDone = 1; V.vCT = -10; V.vTop = 1; V.fsDone = 1; V.bpDone = 1; V.cpDone = 1; V.klDone = 1; V.klw = null; V.klfar = 1; taps = 1;
 }
+// ===================== 货梯（试玩关：地址后面加 ?lift=1）=====================
+// 2026-11-25 主人说：“可以设计一个那种需要升降机的关卡，比如怪物在一楼巡逻挡住路了，通过一个按钮把它用升降机升到二楼去，人物就可以通过那座关卡。”
+// 设计在 docs/night-level-lift.md。这一段是能玩的试玩关，不接进 21 关的主线（主线是一条横轴连起来的图，中间插一关要挪后面所有关的坐标）：
+// 孩子、墨里的大衣、铅笔的画法都是游戏自己的（drawKid、inkCoat、ink / part / hatch），规则和画面都在这一段里，名字都用 lift / LIFT 开头。
+// 一座两层的货仓，剖开来看：一楼的走廊被一件巡逻的大衣挡住，走廊正中是一台剪叉式的货梯（平台和地面一样平）。
+//   合上墙上的闸刀（货梯才有电）→ 等大衣走到平台上 → 按按钮（平台连着它一起升到二楼，它走开了）→ 等它走远 → 再按一下把平台放下来 → 走过去，出门。
+Object.assign(LIT, { lfHazY: '#c9a227', lfSteel: '#767b80', lfSteelLo: '#52575c', lfCab: '#6c7a6a', lfGreen: '#79d6a2', lfOff: '#3c4046', lfPaper: '#e9dfc4' });
+Object.assign(DARK, { lfHazY: '#3b3521', lfSteel: '#2d3648', lfSteelLo: '#1e2536', lfCab: '#222b3b', lfGreen: '#4f9a7c', lfOff: '#171c28', lfPaper: '#8a93ad' });
+const LIFT = {
+  WW: 2400, WH: 900, F1: 840, F2: 470, SLAB: 30, X0: 50, X1: 2340,   // 世界宽高；一楼、二楼的地面（脚踩的 y）；二楼地板厚；楼的左右墙
+  P0: 1330, P1: 1530, PC: 1430,                                      // 货梯平台的左右边、中心（二楼地板在这里有个同样大的口）
+  SW: { x: 470, stand: 398, hx: 462, hy: 704, box: [418, 636, 522, 772] },      // 墙上的闸刀盒
+  BT: { x: 900, stand: 832, hx: 892, hy: 742, box: [862, 688, 940, 796] },      // 按钮盒（在大衣巡逻的范围外面）
+  EX: { x: 2300, stand: 2205, hx: 2262, hy: 700, box: [2258, 590, 2338, 840] },  // 出口的门
+  START: 190,
+  LAMPS: [{ x: 300, y: 585, r: 340 }, { x: 900, y: 650, r: 215 }],   // 一楼亮着的两盏灯（亮的那一层只在这两圈里；大衣巡逻的地方一盏也够不着）
+  MON1: [[1195, 1.2], [1430, 2.6], [1690, 1.2], [1430, 2.6]],          // 大衣在一楼巡逻：[停的地方, 停几秒]，在平台正中（1430）停得最久
+  MON2: [[1700, 1.6], [2020, 1.6]],                                    // 升到二楼以后在仓库里来回，再也不靠近平台的口
+  MONL: [[1195, 1.2], [1275, 1.2]], MONR: [[1585, 1.2], [1690, 1.2]],  // 平台升走以后，坑把一楼的走廊断成两截：它只在自己这一截里来回
+  MON_V: 90, SAFE: 225,                                                // 大衣走多快；孩子离它这么近就不敢再往前
+  PRE: 0.8, RISE: 3.4,                                                 // 按下去到平台动起来（信号灯先闪、喇叭先响）；升到顶要几秒
+  HINT: 45,                                                            // 卡住这么多秒以后，能用的东西才慢慢闪
+};
+let lf = null;
+const liftNew = () => ({
+  T: 0, pow: 0, swK: 0, up: false, platY: LIFT.F1, mv: null, btnT: -10, lampBlink: 0,
+  mon: { x: LIFT.MON1[0][0], y: LIFT.F1, fl: 1, f: 1, list: null, i: 0, tx: 0, wait: 0, hunt: 0, reach: 0.1, ride: false },
+  goal: null, keys: {}, cam: 0, idle: 0, bub: null, done: 0, doneT: 0, doorK: 0, blockT: -10, ratT: 0, taps: 0, st: null,
+});
+// ---------- 规则（一点一点：谁在哪儿、平台在哪儿）----------
+const liftOnPlat = x => x >= LIFT.P0 && x <= LIFT.P1;                 // 大衣的中心在平台上
+function liftStops() {   // 大衣现在这一层、这一边的巡逻点
+  const m = lf.mon;
+  if (m.fl === 2) return LIFT.MON2;
+  if (lf.platY >= LIFT.F1 - 1) return LIFT.MON1;                       // 平台在一楼：走廊整条
+  return m.x < LIFT.P0 ? LIFT.MONL : LIFT.MONR;                        // 平台升走了：地上是个坑，把走廊断成两半
+}
+function liftLimit() {   // 孩子最远走得到哪儿
+  let lim = LIFT.EX.stand + 4;
+  if (lf.mon.fl === 1) lim = Math.min(lim, lf.mon.x - LIFT.SAFE);      // 不敢走近醒着的大衣
+  if (lf.platY < LIFT.F1 - 2) lim = Math.min(lim, LIFT.P0 - 70);       // 平台不在地上：坑
+  return lim;
+}
+function liftPress() {   // 按钮：平台在下面就升上去，在上面就放下来；按下去那一刻平台上站着的大衣，跟着走
+  const L = LIFT, m = lf.mon, dir = lf.up ? -1 : 1, ride = liftOnPlat(m.x) && m.fl === (dir > 0 ? 1 : 2);
+  lf.mv = { t: 0, dir, y0: lf.platY, y1: dir > 0 ? L.F2 : L.F1, ride, ratT: 0 };
+  if (ride) { m.ride = true; m.hunt = 1; m.reach = 0.9; }
+  lf.btnT = lf.T; lf.idle = 0; snd.liftHorn();
+}
+function liftSpotHit(id) {   // 孩子的手碰到了
+  lf.idle = 0;
+  if (id === 'sw') { if (lf.pow) return; lf.pow = 1; snd.latch(); snd.buzz(); return; }
+  if (id === 'btn') {
+    if (!lf.pow) { kid.mode = 'no'; kid.t = 0; snd.no(); liftSay('lever'); return; }
+    if (lf.mv) { snd.tap(); return; }
+    liftPress();
+  }
+}
+const LIFT_SPOTS = { sw: LIFT.SW, btn: LIFT.BT, exit: LIFT.EX };
+function liftSay(icon, dur = 2.2) { lf.bub = { icon, t0: lf.T, dur }; }
+function liftHintTarget() {   // 现在能做、该做的一处（卡住以后才闪）
+  const m = lf.mon;
+  if (lf.done || lf.mv) return null;
+  if (!lf.pow) return 'sw';
+  if (!lf.up) { if (m.fl === 2) return 'exit'; return liftOnPlat(m.x) ? 'btn' : null; }   // 平台在下：大衣站到平台上的时候按；它走开了就去出口
+  if (m.fl === 1) return 'btn';                                                          // 平台空着升上去了：放下来重来
+  return m.x > LIFT.P1 + 40 ? 'btn' : null;                                              // 大衣在二楼：等它走远了再放下来
+}
+// ---------- 每帧 ----------
+function liftMonUpdate(dt) {
+  const L = LIFT, m = lf.mon, T = lf.T, kd = m.fl === 1 && kid.alpha > 0.5 ? Math.abs(kid.x - m.x) : 9999;
+  const wantHunt = m.ride ? 1 : kd < L.SAFE + 260 ? 1 : 0;
+  m.hunt += (wantHunt - m.hunt) * (1 - Math.exp(-dt * 4)); m.reach += ((wantHunt ? 0.62 + 0.2 * Math.sin(T * 3) : 0.14 + 0.1 * Math.sin(T * 1.3)) - m.reach) * (1 - Math.exp(-dt * 5));
+  if (m.ride) return;
+  const S = liftStops();
+  if (m.list !== S) {   // 巡逻的路变了（平台升走了、放回来了、到了二楼）：就近接上
+    m.list = S; let bi = 0; S.forEach((p, k) => { if (Math.abs(p[0] - m.x) < Math.abs(S[bi][0] - m.x)) bi = k; });
+    m.i = bi; m.tx = S[bi][0]; if (m.wait < 0.2) m.wait = 0;
+  }
+  if (m.wait > 0) { m.wait -= dt; if (kd < 700) m.f = Math.sign(kid.x - m.x) || m.f; return; }   // 停着：朝孩子这边看
+  const dx = m.tx - m.x;
+  if (Math.abs(dx) < 2) { m.x = m.tx; m.wait = S[m.i][1]; m.i = (m.i + 1) % S.length; m.tx = S[m.i][0]; return; }
+  m.f = Math.sign(dx); m.x += m.f * Math.min(Math.abs(dx), L.MON_V * dt);
+  const mv = lf.mv;   // 平台在动（喇叭一响就算）：没被带走的大衣留在它原来的那一边，不往平台上走（平台一走地上是个坑）
+  if (m.fl === 1 && mv && !mv.ride) { if (mv.side == null) mv.side = m.x < L.PC ? -1 : 1; m.x = mv.side < 0 ? Math.min(m.x, L.P0 - 4) : Math.max(m.x, L.P1 + 4); }
+}
+function liftMoveUpdate(dt) {
+  const L = LIFT, mv = lf.mv, m = lf.mon; if (!mv) return;
+  mv.t += dt;
+  if (mv.t < L.PRE) return;
+  const u = clamp((mv.t - L.PRE) / L.RISE, 0, 1);
+  lf.platY = lerp(mv.y0, mv.y1, smooth(u));
+  if (mv.ride) m.y = lf.platY;
+  if (mv.t - mv.ratT > 0.16 && u < 1) { mv.ratT = mv.t; snd.ratchet(); }
+  if (u >= 1) {
+    lf.platY = mv.y1; lf.up = mv.dir > 0; lf.mv = null; lf.idle = 0; snd.unlock();
+    if (mv.ride) { m.fl = mv.dir > 0 ? 2 : 1; m.y = mv.y1; m.ride = false; m.wait = 1.0; m.list = null; }
+  }
+}
+function liftKidUpdate(dt) {
+  const L = LIFT, T = lf.T, lim = liftLimit();
+  let moving = false;
+  if (lf.done) {   // 出口：门开了，孩子走进去，画面黑下去
+    const t = T - lf.doneT; lf.doorK = smooth(t / 0.9);
+    if (t > 0.7 && t < 2.0) { const dx = Math.min(110 * dt, L.EX.x - 10 - kid.x); if (dx > 0) { moveKid(dx, 0, 'floor'); moving = true; } kid.alpha = 1 - smooth((t - 1.3) / 0.6); }
+    kid.walk += ((moving ? 1 : 0) - kid.walk) * (1 - Math.exp(-dt * 14)); return;
+  }
+  if (kid.mode === 'reach') {   // 伸手：伸出去 →（停一下）→ 碰到 → 收回来（和游戏里的伸手一个节奏）
+    const r = kid.r, EXT = 0.2, RET = 0.24, tHit = EXT + (r.pre || 0), tEnd = tHit + (r.hold == null ? 0.14 : r.hold);
+    r.t += dt; r.k = r.t < tEnd ? ease(r.t / EXT) : 1 - smooth((r.t - tEnd) / RET); r.tx = r.hx; r.ty = r.hy;
+    if (!r.hit && r.t >= tHit) { r.hit = true; if (r.onHit) r.onHit(); }
+    if (r.t >= tEnd + RET) { kid.mode = 'idle'; kid.r = null; }
+  } else if (kid.mode === 'no') {
+    kid.t += dt; kid.shake = Math.sin(kid.t * 24) * 2.8 * Math.max(0, 1 - kid.t / 0.55);
+    if (kid.t > 0.55) { kid.mode = 'idle'; kid.shake = 0; }
+  } else if (kid.mode === 'recoil') {   // 不敢过去：退两步，缩着发抖
+    kid.t += dt; kid.x = kid.x0 + kid.rdir * 38 * ease(kid.t / 0.32);
+    if (kid.t < 0.32) kid.ph = (kid.ph + 1 - dt * 3.2) % 1;
+    kid.fearK = kid.t < 0.12 ? kid.t / 0.12 : kid.t < 0.95 ? 1 : Math.max(0, 1 - (kid.t - 0.95) / 0.3);
+    kid.shake = Math.sin(kid.t * 24) * 2.8 * Math.max(0, 1 - kid.t / 0.55);
+    if (kid.t > 0.55) { kid.mode = 'idle'; kid.shake = 0; }
+  } else {
+    const g0 = lf.goal;
+    if (g0) {
+      const tgt = clamp(Math.min(g0.x, lim), 60, L.EX.stand + 4), dx = tgt - kid.x, rem = Math.abs(dx);
+      if (rem < 3) {
+        lf.goal = null; kid.mode = 'idle';
+        if (g0.x > lim + 6) liftBlocked();
+        else if (g0.spot) liftUse(g0.spot);
+      } else {
+        kid.mode = 'walk'; moving = true;
+        kid.gait += ((g0.run && rem > 140 ? 1 : 0) - kid.gait) * (1 - Math.exp(-dt * 7));
+        const vmax = lerp(128, 360, kid.gait), vt = Math.min(vmax, 36 + rem * 7);
+        kid.v += (vt - kid.v) * (1 - Math.exp(-dt * 12)); moveKid(Math.sign(dx) * Math.min(rem, kid.v * dt), 0, 'floor');
+      }
+    } else { if (kid.mode === 'walk') kid.mode = 'idle'; kid.gait += (0 - kid.gait) * (1 - Math.exp(-dt * 7)); kid.v = 0; }
+  }
+  if (kid.x > lim + 1 && kid.mode !== 'recoil') {   // 大衣朝这边走过来了：孩子往后退，不让它碰着
+    kid.x = Math.max(lim, kid.x - 240 * dt); kid.face = 1; moving = false;
+    kid.fearK = Math.min(1, kid.fearK + dt * 8); kid.ph = (kid.ph + 1 - dt * 1.4) % 1; kid.walk += (0.6 - kid.walk) * (1 - Math.exp(-dt * 10)); return;
+  }
+  if (kid.mode !== 'recoil' && kid.fearK > 0) kid.fearK = Math.max(0, kid.fearK - dt * 6);
+  kid.walk += ((moving ? 1 : 0) - kid.walk) * (1 - Math.exp(-dt * 14));
+}
+function liftBlocked() {   // 走到头了：前面是醒着的大衣，或者是平台升走了留下的坑
+  const T = lf.T, monLim = lf.mon.fl === 1 ? lf.mon.x - LIFT.SAFE : Infinity, pitLim = lf.platY < LIFT.F1 - 2 ? LIFT.P0 - 70 : Infinity;
+  if (monLim === Infinity && pitLim === Infinity) return;   // 只是点在了出口外面
+  if (T - lf.blockT < 0.8) return; lf.blockT = T; kid.face = 1;
+  if (monLim <= pitLim) { kid.mode = 'recoil'; kid.t = 0; kid.x0 = kid.x; kid.rdir = -1; kid.r = null; snd.fear(); return; }   // 前面是醒着的大衣
+  kid.mode = 'no'; kid.t = 0; snd.no(); liftSay('plat');                                                                      // 前面是坑
+}
+function liftUse(id) {   // 走到了：伸手去碰
+  const sp = LIFT_SPOTS[id]; kid.face = Math.sign(sp.x - kid.x) || 1;
+  if (id === 'exit') { lf.done = 1; lf.doneT = lf.T; snd.unlock(); snd.win(); return; }
+  kid.mode = 'reach'; kid.r = { t: 0, k: 0, hit: false, tx: sp.hx, ty: sp.hy, hx: sp.hx, hy: sp.hy, pre: 0.1, hold: 0.22, onHit: () => liftSpotHit(id) };
+}
+function liftTick(dt) {
+  const T = lf.T += dt; V.T = T; lf.idle += dt;
+  kid.blinkT -= dt; if (kid.blinkT < 0) { kid.blink = 0.13; kid.blinkT = 2 + hash(T, 5) * 4; } kid.blink = Math.max(0, kid.blink - dt);
+  const k = lf.keys, dir = (k.ArrowRight || k.d ? 1 : 0) - (k.ArrowLeft || k.a ? 1 : 0);
+  if (dir && !lf.done && (kid.mode === 'idle' || kid.mode === 'walk')) lf.goal = { x: kid.x + dir * 300, spot: null };
+  else if (!dir && lf.keyGo) lf.goal = null;
+  lf.keyGo = !!dir;
+  liftMonUpdate(dt); liftMoveUpdate(dt); liftKidUpdate(dt);
+  lf.swK += ((lf.pow ? 1 : 0) - lf.swK) * (1 - Math.exp(-dt * 7));
+  if (lf.done && T - lf.doneT > 2.4 && lf.restartAt == null) lf.restartAt = T;
+}
+// ---------- 画：不会动的（一次画好，暗的一张、亮的一张）----------
+function lfCrate(b, P, x, y, w, h, seed) {   // 木箱（y 是箱底）
+  part(b, rectPts(x, y - h, w, h), P.wood, { w: 1, tex: 0.35, wob: 0.5, lc: P.ink, seed });
+  box(b, x + 5, y - h + 5, w - 10, h - 10, { w: 0.6, a: 0.5, j: 0.8, over: 0, seed: seed + 3 });
+  ink(b, seg(x + 5, y - h + 5, x + w - 5, y - 5), { w: 0.5, a: 0.4, taper: 0, seed: seed + 5, single: 1 });
+}
+function lfBarrel(b, P, x, y, seed) {   // 铁桶（x 是中心，y 是桶底）
+  part(b, roundPts(x - 24, y - 70, 48, 70, 6), P.iron, { w: 1, tex: 0.35, wob: 0.5, lc: P.ink, seed });
+  for (const yy of [y - 54, y - 16]) ink(b, seg(x - 24, yy, x + 24, yy), { w: 0.8, a: 0.7, taper: 0, seed: seed + 1 + yy, single: 1 });
+  ink(b, arcPts(x, y - 70, 24, 5, 0, TAU, 14), { w: 0.7, a: 0.7, taper: 0, seed: seed + 9, single: 1 });
+}
+function lfShelf(b, P, x, y, w, rows, seed, lit) {   // 货架：两根立柱、几层板、板上的纸箱（y 是柱脚）
+  const h = rows * 92 + 16;
+  for (const xx of [x, x + w - 8]) part(b, rectPts(xx, y - h, 8, h), P.iron, { w: 0.9, tex: 0.2, wob: 0.4, lc: P.ink, seed: seed + xx % 13 });
+  for (let i = 0; i <= rows; i++) {
+    const yy = y - i * 92 - 8; part(b, rectPts(x, yy, w, 8), P.wood, { w: 0.9, tex: 0.3, wob: 0.4, lc: P.ink, seed: seed + 20 + i });
+    if (i < rows) { let bx = x + 14 + hash(seed, i) * 14; for (let j = 0; bx < x + w - 50; j++) { const bw = 38 + hash(seed + i, j) * 34, bh = 30 + hash(seed + j, i) * 38; part(b, rectPts(bx, yy - bh, bw, bh), lit ? '#9a845c' : '#1d2436', { w: 0.8, tex: 0.3, wob: 0.5, lc: P.ink, seed: seed + 50 + i * 9 + j }); ink(b, seg(bx + 3, yy - bh + 8, bx + bw - 3, yy - bh + 8), { w: 0.5, a: 0.5, taper: 0, seed: seed + 90 + i * 9 + j, single: 1 }); bx += bw + 10 + hash(i, j) * 12; } }
+  }
+}
+function lfLampOn(b, P, x, y, lit, wall) {   // 亮着的灯：吊线 + 铁罩（wall：墙上的防爆灯）
+  if (wall) { part(b, rectPts(x - 18, y - 12, 36, 24), P.iron, { w: 1, tex: 0.2, wob: 0.3, lc: P.ink, seed: 71000 + x }); fillPts(b, arcPts(x, y, 10, 10, 0, TAU, 12), lit ? '#fff0c8' : '#7a7468'); for (let i = -1; i <= 1; i++) ink(b, seg(x - 14, y + i * 8, x + 14, y + i * 8), { w: 0.7, a: 0.8, taper: 0, seed: 71010 + i, single: 1 }); return; }
+  ink(b, seg(x, LIFT.F2 + LIFT.SLAB, x, y - 18), { w: 0.9, a: 0.9, taper: 0, seed: 71100 + x, single: 1 });
+  part(b, [[x - 26, y - 6], [x - 12, y - 24], [x + 12, y - 24], [x + 26, y - 6]], P.iron, { w: 1, tex: 0.2, wob: 0.3, lc: P.ink, seed: 71101 + x });
+  fillPts(b, arcPts(x, y - 4, 9, 9, 0, TAU, 12), lit ? '#fff0c8' : '#7a7468');
+}
+function lfLampDead(b, P, x, y, lit) {   // 坏了的灯：灯泡碎了，只剩灯口和几片玻璃
+  ink(b, seg(x, LIFT.F2 + LIFT.SLAB, x, y - 16), { w: 0.8, a: 0.85, taper: 0, seed: 71200 + x, single: 1 });
+  part(b, rectPts(x - 8, y - 18, 16, 14), P.iron, { w: 0.9, tex: 0, wob: 0.2, lc: P.ink, seed: 71201 + x });
+  fillPts(b, [[x - 6, y - 4], [x, y + 10], [x + 6, y - 4]], lit ? '#9ab0c0' : '#33405a', 0.6);
+  for (const [dx, dy] of [[-22, 150], [14, 154], [30, 150]]) fillPts(b, [[x + dx, LIFT.F1 - 2], [x + dx + 5, LIFT.F1 - 8], [x + dx + 9, LIFT.F1 - 2]], lit ? '#9ab0c0' : '#33405a', 0.7);
+}
+function liftPaintStatic(b, P, lit) {
+  const L = LIFT, lc = P.ink, F1 = L.F1, F2 = L.F2, SL = L.SLAB, P0 = L.P0, P1 = L.P1, X0 = L.X0, X1 = L.X1;
+  const pt = (pts, col, o = {}) => part(b, pts, col, { w: 1, tex: 0.3, wob: 0.6, lc, ...o });
+  const rc = (x, y, w, h, col, o) => pt(rectPts(x, y, w, h), col, o);
+  const fade = (x, y0, w, y1, a) => { const gr = b.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, rgba(DARK.mass, a)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x, Math.min(y0, y1), w, Math.abs(y1 - y0)); };
+  // 夜、楼外
+  const sky = b.createLinearGradient(0, 0, 0, L.WH); sky.addColorStop(0, lit ? '#3b476e' : '#0b1020'); sky.addColorStop(1, lit ? '#2a3350' : '#05070d');
+  b.fillStyle = sky; b.fillRect(0, 0, L.WW, L.WH); b.fillStyle = lit ? '#2d3340' : '#080b12'; b.fillRect(0, F1, X0, 60); b.fillRect(X1, F1, L.WW - X1, 60);
+  // 墙：水泥砌块，两层一整面
+  b.save(); b.beginPath(); b.rect(X0, 126, X1 - X0, F1 - 126); b.clip();
+  b.fillStyle = P.concrete; b.fillRect(X0, 126, X1 - X0, F1 - 126); texture(b, TEX.blot, lit ? 0.55 : 0.5); texture(b, TEX.blot2, lit ? 0.4 : 0.3);
+  const r0 = rnd(77); b.seedN = 9000;
+  for (let y = 156, i = 0; y < F1; y += 44, i++) {
+    ink(b, seg(X0, y, X1, y), { w: 0.6, a: lit ? 0.4 : 0.55, taper: 0, col: P.brickLine, single: 1 });
+    for (let x = X0 + (i % 2 ? 0 : 60) + r0() * 8; x < X1; x += 120) ink(b, seg(x, y, x + 1, y + 44), { w: 0.55, a: lit ? 0.36 : 0.5, taper: 0, col: P.brickLine, seed: 9100 + i * 53 + ((x / 120) | 0), single: 1 });
+  }
+  fade(X0, 126, X1 - X0, 270, lit ? 0.3 : 0.4); fade(X0, F2 + SL, X1 - X0, F2 + SL + 140, lit ? 0.3 : 0.4);
+  for (const [x0, x1] of [[X0, X0 + 130], [X1 - 130, X1]]) { const gr = b.createLinearGradient(x0 === X0 ? X0 : X1, 0, x0 === X0 ? X0 + 130 : X1 - 130, 0); gr.addColorStop(0, rgba(DARK.mass, lit ? 0.3 : 0.45)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x0, 126, x1 - x0, F1 - 126); }
+  b.restore();
+  // 二楼后墙的窗：外面是月亮的冷光（不算光，只是好看）
+  for (const wx of [330, 1030, 1570]) {
+    rc(wx, 186, 78, 144, lit ? '#6b7ca6' : '#1b2a4a', { tex: 0.2, w: 1.1, seed: 72000 + wx });
+    ink(b, seg(wx + 39, 186, wx + 39, 330), { w: 0.8, a: 0.8, taper: 0, seed: 72010 + wx, single: 1 }); ink(b, seg(wx, 258, wx + 78, 258), { w: 0.8, a: 0.8, taper: 0, seed: 72020 + wx, single: 1 });
+    fillPts(b, [[wx + 8, 330], [wx + 70, 330], [wx + 230, F2], [wx + 110, F2]], '#aebde8', lit ? 0.05 : 0.07);
+  }
+  // 屋顶、二楼地板（中间有个口）、一楼地面（中间有个坑）
+  rc(30, 92, 2330, 34, P.cornice, { seed: 72100 }); hatch(b, k => k.rect(30, 92, 2330, 34), [30, 92, 2330, 34], { ang: -0.8, gap: 5, a: 0.5, w: 0.7, len: 22, seed: 72101 });
+  for (const [x, w] of [[X0, P0 - X0], [P1, X1 - P1]]) {
+    rc(x, F2, w, SL, P.front, { seed: 72200 + x, tex: 0.4 }); hatch(b, k => k.rect(x, F2, w, SL), [x, F2, w, SL], { ang: -0.8, gap: 5, a: 0.6, w: 0.7, len: 22, seed: 72210 + x });
+    ink(b, seg(x, F2, x + w, F2), { w: 1.3, taper: 0, seed: 72220 + x, single: 1 });
+    rc(x, F1, w, 60, P.concrete, { seed: 72300 + x, tex: 0.45 }); hatch(b, k => k.rect(x, F1, w, 60), [x, F1, w, 60], { ang: -0.9, gap: 6, a: 0.45, w: 0.7, len: 26, seed: 72310 + x });
+    ink(b, seg(x, F1, x + w, F1), { w: 1.4, taper: 0, seed: 72320 + x, single: 1 });
+  }
+  fillPts(b, rectPts(P0, F1, P1 - P0, 60), lit ? '#1b1a18' : '#020307'); ink(b, seg(P0, F1, P0, F1 + 60), { w: 1.2, taper: 0, seed: 72330, single: 1 }); ink(b, seg(P1, F1, P1, F1 + 60), { w: 1.2, taper: 0, seed: 72331, single: 1 });
+  // 二楼地板口的边：黄黑的踢脚板和两根立柱、一道链子
+  for (const [x, s] of [[P0 - 4, -1], [P1 + 4, 1]]) { rc(x - 3, F2 - 66, 6, 66, P.lfSteel, { tex: 0, seed: 72400 + x }); fillPts(b, [[x - 3, F2 - 66], [x + 3, F2 - 66], [x + 3, F2 - 60], [x - 3, F2 - 60]], P.lfHazY); }
+  // 二楼：左边的货架、纸箱；右边是大衣的仓库：衣架杆上挂着几件旧大衣
+  lfShelf(b, P, 130, F2, 300, 3, 73000, lit); lfCrate(b, P, 640, F2, 90, 70, 73100); lfCrate(b, P, 740, F2, 80, 56, 73110); lfCrate(b, P, 700, F2 - 70, 70, 50, 73120);
+  ink(b, seg(950, 440, 1220, 440), { w: 1.2, a: 0.9, taper: 0, seed: 73200, single: 1 });
+  lfShelf(b, P, 2110, F2, 210, 3, 73300, lit); lfCrate(b, P, 1620, F2, 76, 60, 73400);
+  ink(b, seg(1740, 232, 2030, 232), { w: 1.3, a: 0.9, taper: 0, seed: 73500, single: 1 });
+  for (let i = 0; i < 4; i++) { const cx = 1775 + i * 70, sw = [0, 4, -3, 2][i]; ink(b, seg(cx, 232, cx + sw * 0.3, 240), { w: 0.7, a: 0.8, taper: 0, seed: 73510 + i, single: 1 }); part(b, curvePts([[cx - 8, 242], [cx + 8, 242], [cx + 22, 262], [cx + 26, 340], [cx + 32, 396], [cx - 30, 396], [cx - 24, 340], [cx - 20, 262]], true, 4), P.coat, { w: 0.9, tex: 0.35, wob: 0.5, lc, seed: 73520 + i }); }
+  // 一楼：墙上的闸刀盒、按钮盒，管线
+  const sb = L.SW.box; rc(sb[0], sb[1], sb[2] - sb[0], sb[3] - sb[1], P.lfCab, { seed: 74000, tex: 0.35 }); rc(sb[0] + 8, sb[1] + 8, sb[2] - sb[0] - 16, 34, P.lfSteelLo, { seed: 74010, tex: 0.1, w: 0.8 });
+  for (let i = 0; i < 3; i++) fillPts(b, arcPts(sb[0] + 30 + i * 22, sb[1] + 25, 5, 5, 0, TAU, 8), i === 0 ? P.lfGreen : P.lfOff);
+  part(b, rectPts(sb[0] + 20, sb[1] + 52, 64, 72, 2), P.lfSteelLo, { w: 0.9, tex: 0.1, wob: 0.3, lc, seed: 74020 }); fillPts(b, [[sb[0] + 30, sb[1] + 64], [sb[0] + 74, sb[1] + 64], [sb[0] + 74, sb[1] + 70], [sb[0] + 30, sb[1] + 70]], P.lfHazY);
+  const bb = L.BT.box; rc(bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1], P.lfCab, { seed: 74100, tex: 0.35 }); fillPts(b, arcPts(bb[0] + 39, bb[1] + 52, 21, 21, 0, TAU, 14), P.lfSteelLo); ink(b, arcPts(bb[0] + 39, bb[1] + 52, 21, 21, 0, TAU, 14), { w: 0.9, a: 0.8, taper: 0, seed: 74110, single: 1 });
+  rc(L.P1 + 18, 690, 70, F1 - 690, P.lfCab, { seed: 74200, tex: 0.35 }); for (let i = 0; i < 4; i++) ink(b, seg(L.P1 + 28, 728 + i * 12, L.P1 + 78, 728 + i * 12), { w: 0.6, a: 0.7, taper: 0, seed: 74210 + i, single: 1 });   // 平台边上的控制柜（里面是电机）
+  const cx0 = sb[0] + 52, bx0 = bb[0] + 39, cxr = L.P1 + 53, yc = 524;   // 管线：从闸刀盒、按钮盒的顶上上去，沿着天花板走到控制柜，再下来
+  for (const [pts, sd] of [[[[cx0, sb[1]], [cx0, yc], [cxr, yc], [cxr, 690]], 74300], [[[bx0, bb[1]], [bx0, yc]], 74310]]) ink(b, pts, { w: 2.0, a: 0.85, taper: 0, seed: sd, single: 1, col: P.pipe });
+  for (let x = 520; x < cxr; x += 170) part(b, rectPts(x - 4, yc - 6, 8, 12), P.iron, { w: 0.6, tex: 0, wob: 0.2, lc, seed: 74320 + x });
+  lfLampOn(b, P, L.LAMPS[0].x, L.LAMPS[0].y, lit, false); lfLampOn(b, P, L.LAMPS[1].x, 640, lit, true);
+  for (const x of [1250, 1470, 1650]) lfLampDead(b, P, x, 586 + (x % 3) * 8, lit);
+  lfCrate(b, P, 610, F1, 100, 76, 75000); lfCrate(b, P, 630, F1 - 76, 74, 54, 75010); lfBarrel(b, P, 1060, F1, 75100); lfBarrel(b, P, 1112, F1, 75110);
+  lfShelf(b, P, 1790, F1, 260, 3, 75200, lit); lfCrate(b, P, 2100, F1, 96, 64, 75300);
+  // 出口：右边墙上一扇铁门，门楣上的绿灯（冷光，不算光）
+  const eb = L.EX.box; rc(eb[0] - 10, eb[1] - 12, eb[2] - eb[0] + 20, F1 - eb[1] + 12, P.lfSteelLo, { seed: 75400, tex: 0.3 });
+  fillPts(b, rectPts(eb[0] + 14, eb[1] - 30, 52, 12), P.lfOff);
+  if (!lit) {   // 暗处才有的：淌墨、墨的脚印、抓痕（大衣巡逻的地方、二楼大衣的仓库）
+    inkDrips(b, [[1215, F2 + SL, 54], [1590, F2 + SL, 72], [1980, F2 + SL, 42], [1760, 126, 70], [1930, 126, 96], [2200, 126, 50], [210, 126, 40]], 76000);
+    creepMarks(b, 1150, 1780, 560, 790, 76100); creepMarks(b, 1700, 2300, 200, 420, 76200); creepMarks(b, 1000, 1330, 190, 330, 76300);
+    for (const [x, rx] of [[1195, 64], [1690, 64], [1700, 56]]) { const y = x === 1700 ? F2 : F1; b.fillStyle = INK; b.beginPath(); b.ellipse(x, y + 1, rx, 5, 0, 0, 7); b.fill(); }
+  }
+}
+// ---------- 画：会动的 ----------
+function lfGlow(b, x, y, r, rgb, a) { const gr = b.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`); b.save(); b.globalCompositeOperation = 'lighter'; b.fillStyle = gr; b.beginPath(); b.arc(x, y, r, 0, 7); b.fill(); b.restore(); }
+function liftDrawPlat(b, P, lit) {   // 剪叉式的货梯：底座、三节交叉的臂、平台板（黄黑斜纹的边）
+  const L = LIFT, py = lf.platY, xl = L.P0 + 22, xr = L.P1 - 22, by = 888, top = py + 16, n = 3, hh = (by - top) / n, lc = P.ink;
+  b.seedN = 61000;
+  part(b, rectPts(L.P0 + 8, by - 2, L.P1 - L.P0 - 16, 8), P.lfSteelLo, { w: 0.9, tex: 0, wob: 0.2, lc });
+  for (let i = 0; i < n; i++) {
+    const y0 = by - i * hh, y1 = by - (i + 1) * hh;
+    part(b, tube([[xl, y0], [xr, y1]], [9, 9]), P.lfSteelLo, { w: 0.9, tex: 0, wob: 0.2, lc });
+    part(b, tube([[xr, y0], [xl, y1]], [9, 9]), P.lfSteel, { w: 0.9, tex: 0, wob: 0.2, lc });
+    for (const [px, py2] of [[xl, y0], [xr, y0], [xl, y1], [xr, y1], [(xl + xr) / 2, (y0 + y1) / 2]]) fillPts(b, arcPts(px, py2, 4.5, 4.5, 0, TAU, 8), P.iron);
+  }
+  part(b, rectPts(L.P0, py, L.P1 - L.P0, 16), P.lfSteel, { w: 1.1, tex: 0, wob: 0.3, lc });
+  for (let x = L.P0 + 6; x < L.P1 - 14; x += 22) fillPts(b, [[x, py + 2], [x + 9, py + 2], [x + 3, py + 14], [x - 6, py + 14]], P.lfHazY, 0.95);
+  ink(b, seg(L.P0, py, L.P1, py), { w: 1.1, taper: 0, seed: 61100, single: 1 });
+}
+function liftDrawParts(b, P, lit) {   // 闸刀的拨杆、按钮盒的灯和按钮、控制柜上的信号灯、出口的门扇
+  const L = LIFT, T = lf.T, lc = P.ink, sb = L.SW.box, bb = L.BT.box, mv = lf.mv;
+  b.seedN = 62000;
+  const px = sb[0] + 52, py = sb[1] + 88, an = lerp(-0.62, 0.62, lf.swK);   // 拨杆：朝上是断开的，扳下去是合上的
+  part(b, tube([[px, py], [px + Math.sin(an) * 40, py - Math.cos(an) * 40]], [6, 6]), P.lfSteel, { w: 0.9, tex: 0, wob: 0.2, lc }); fillPts(b, arcPts(px + Math.sin(an) * 42, py - Math.cos(an) * 42, 6, 6, 0, TAU, 8), lf.pow ? P.lfGreen : '#b0463a');
+  const blink = mv && mv.t < LIFT.PRE + LIFT.RISE ? (Math.floor(T * 5) % 2 ? 1 : 0.25) : 0;
+  const lampCol = !lf.pow ? P.lfOff : mv ? P.lfGreen : P.lfGreen, la = !lf.pow ? 1 : mv ? 0.25 + 0.75 * blink : 1;
+  const bx = bb[0] + 39, by = bb[1] + 52, press = clamp(1 - (T - lf.btnT) / 0.25, 0, 1) * 3;
+  fillPts(b, arcPts(bx, by + press, 16, 16, 0, TAU, 14), lf.pow ? '#a8352c' : P.lfOff); ink(b, arcPts(bx, by + press, 16, 16, 0, TAU, 14), { w: 0.8, a: 0.8, taper: 0, seed: 62100, single: 1 });
+  const ar = lf.up ? -1 : 1;   // 按钮上的箭头：平台在下面是往上的，在上面是往下的
+  ink(b, [[bx, by + press + 8 * ar], [bx, by + press - 8 * ar]], { w: 1, a: 0.95, taper: 0, seed: 62110, single: 1, col: '#f0e6cc' }); ink(b, [[bx - 6, by + press - 2 * ar], [bx, by + press - 8 * ar], [bx + 6, by + press - 2 * ar]], { w: 1, a: 0.95, taper: 0, seed: 62111, single: 1, col: '#f0e6cc' });
+  fillPts(b, arcPts(bb[0] + 39, bb[1] + 14, 5, 5, 0, TAU, 8), lampCol, la);
+  const cx = L.P1 + 53, cy = 706;   // 控制柜上的信号灯：绿的（冷光，不算光），动起来的时候闪
+  fillPts(b, arcPts(cx, cy, 7, 7, 0, TAU, 10), lf.pow ? P.lfGreen : P.lfOff, lf.pow ? (mv ? 0.3 + 0.7 * blink : 0.7) : 1);
+  const eb = L.EX.box, dk = lf.doorK;   // 出口的门：往一边收起来
+  if (dk < 1) part(b, rectPts(eb[0] + 2 + (eb[2] - eb[0] - 4) * dk, eb[1], (eb[2] - eb[0] - 4) * (1 - dk), eb[3] - eb[1]), P.lfSteel, { w: 1, tex: 0.15, wob: 0.3, lc, seed: 62200 });
+  else fillPts(b, rectPts(eb[0] + 2, eb[1], eb[2] - eb[0] - 4, eb[3] - eb[1]), '#000');
+  fillPts(b, rectPts(eb[0] + 14, eb[1] - 30, 52, 12), lf.done ? P.lfGreen : P.lfOff);
+}
+function liftDrawMon(b, P, lit) {   // 大衣：只在暗的那一层
+  const m = lf.mon; if (lit) return;
+  b.save(); b.seedN = 63000; inkCoat(b, DARK, m.x, m.y, m.f, lf.T, { hunt: m.hunt, reach: m.reach, ph: 0 }, 63100); b.restore();
+}
+function liftIcon(b, icon, x, y, s) {   // 气泡里的小图（不出字）
+  b.save(); b.translate(x, y); b.scale(s, s); b.strokeStyle = '#2a2420'; b.fillStyle = '#2a2420'; b.lineWidth = 2.6; b.lineCap = 'round'; b.lineJoin = 'round';
+  if (icon === 'lever') { b.strokeRect(-15, -10, 30, 26); b.beginPath(); b.moveTo(0, 4); b.lineTo(10, -16); b.stroke(); b.beginPath(); b.arc(10, -18, 3.4, 0, 7); b.fill(); }
+  else if (icon === 'plat') { b.strokeRect(-18, 8, 36, 7); b.beginPath(); b.moveTo(-8, 0); b.lineTo(0, -12); b.lineTo(8, 0); b.moveTo(0, -12); b.lineTo(0, 4); b.stroke(); }
+  b.restore();
+}
+// ---------- 一帧 ----------
+function liftFrame(dt) {
+  liftTick(dt);
+  const L = LIFT, S_ = Math.min(W / 1200, H / 900), VWu = W / S_, VHu = H / S_, K_ = S_ * DPR;
+  const camT = VWu >= L.WW ? (L.WW - VWu) / 2 : clamp(kid.x - VWu * 0.4, 0, L.WW - VWu);
+  lf.cam += (camT - lf.cam) * (lf.camInit ? 1 - Math.exp(-dt * 4) : 1); lf.camInit = 1;
+  const ox = -lf.cam * K_, oy = Math.max(0, (VHu - L.WH) / 2) * K_;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#05070d'; g.fillRect(0, 0, cv.width, cv.height);
+  const layer = (b, P, lit, st) => {
+    pen(b, P, K_, ox, oy); b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'high'; b.drawImage(st, 0, 0, L.WW, L.WH);
+    liftDrawPlat(b, P, lit); liftDrawParts(b, P, lit); liftDrawMon(b, P, lit);
+    b.seedN = 64000; drawKid(b, P, lit);
+  };
+  layer(g, DARK, false, lf.stD);
+  // 绿色的信号灯、出口的光：只是好看（暗的那一层上加一点光晕）
+  pen(g, DARK, K_, ox, oy);
+  if (lf.pow) lfGlow(g, L.P1 + 53, 706, 46, '120,214,162', lf.mv ? 0.3 + 0.4 * (Math.floor(lf.T * 5) % 2) : 0.28);
+  if (lf.doorK > 0.05) lfGlow(g, L.EX.x - 20, 730, 260 * lf.doorK, '255,224,170', 0.5 * lf.doorK);
+  const lc2 = lf.lc, lg = lc2.getContext('2d'), mg = lf.mc.getContext('2d');
+  for (const [c, ctx] of [[lc2, lg], [lf.mc, mg]]) { if (c.width !== cv.width || c.height !== cv.height) { c.width = cv.width; c.height = cv.height; } ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, c.width, c.height); }
+  layer(lg, LIT, true, lf.stL);
+  mg.globalCompositeOperation = 'lighter';
+  const lamps = lf.doorK > 0.05 ? [...L.LAMPS, { x: L.EX.x - 30, y: 740, r: 230 * lf.doorK }] : L.LAMPS;
+  for (const lp of lamps) { const gx = lp.x * K_ + ox, gy = lp.y * K_ + oy, gr = mg.createRadialGradient(gx, gy, 0, gx, gy, lp.r * K_); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.88)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); mg.fillStyle = gr; mg.beginPath(); mg.arc(gx, gy, lp.r * K_, 0, 7); mg.fill(); }
+  lg.setTransform(1, 0, 0, 1, 0, 0); lg.globalCompositeOperation = 'destination-in'; lg.drawImage(lf.mc, 0, 0); lg.globalCompositeOperation = 'source-over';
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(lc2, 0, 0);
+  // 灯的暖光（盖在最上面一点点）
+  pen(g, DARK, K_, ox, oy); for (const lp of L.LAMPS) lfGlow(g, lp.x, lp.y, lp.r * 0.8, '255,214,150', 0.1);
+  // 气泡、卡住以后闪的圈、通关后的黑幕
+  const T = lf.T;
+  const ht = lf.idle > L.HINT ? liftHintTarget() : null;
+  if (ht) { const sp = LIFT_SPOTS[ht], a = 0.25 + 0.2 * Math.sin(T * 3.2); lfGlow(g, sp.x, (sp.box[1] + sp.box[3]) / 2, 120, '255,230,170', Math.max(0, a)); }
+  if (lf.bub && T - lf.bub.t0 < lf.bub.dur) {
+    const bx = kid.x, by = kid.y - 232 - 4 * Math.sin(T * 3), k = smooth((T - lf.bub.t0) / 0.15) * (1 - smooth((T - lf.bub.t0 - lf.bub.dur + 0.3) / 0.3));
+    g.save(); g.globalAlpha = k; g.fillStyle = '#efe6cc'; g.beginPath(); g.moveTo(bx - 4, by + 36); g.lineTo(bx + 4, by + 54); g.lineTo(bx + 14, by + 36); g.closePath(); g.fill(); rr(bx - 40, by - 34, 80, 72, 18); g.fill(); liftIcon(g, lf.bub.icon, bx, by + 2, 1.4); g.restore();
+  }
+  if (lf.done) {
+    const t = T - lf.doneT, a = smooth((t - 1.5) / 0.8);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = `rgba(3,4,8,${a})`; g.fillRect(0, 0, cv.width, cv.height);
+    if (t > 2.4) {   // 再来一遍：一个转圈的箭头（不出字）
+      const k = smooth((t - 2.4) / 0.6), cx = cv.width / 2, cy = cv.height / 2, r = Math.min(cv.width, cv.height) * 0.06;
+      g.strokeStyle = `rgba(233,223,196,${k * 0.9})`; g.fillStyle = g.strokeStyle; g.lineWidth = r * 0.14; g.lineCap = 'round';
+      g.beginPath(); g.arc(cx, cy, r, -2.6, 2.6 - 0.2); g.stroke(); const ex = cx + Math.cos(2.4) * r, ey = cy + Math.sin(2.4) * r; g.beginPath(); g.moveTo(ex + r * 0.3, ey - r * 0.1); g.lineTo(ex - r * 0.1, ey - r * 0.38); g.lineTo(ex - r * 0.28, ey + r * 0.16); g.closePath(); g.fill();
+    }
+  }
+}
+function liftBuild() {
+  const L = LIFT, RSL = 1.2, mkSt = (P, lit) => { const c = mk(Math.ceil(L.WW * RSL), Math.ceil(L.WH * RSL)), b = c.getContext('2d'); pen(b, P, RSL, 0, 0); liftPaintStatic(b, P, lit); return c; };
+  lf.stD = mkSt(DARK, false); lf.stL = mkSt(LIT, true); lf.lc = mk(2, 2); lf.mc = mk(2, 2);
+}
+function liftReset() {
+  const keep = lf ? { stD: lf.stD, stL: lf.stL, lc: lf.lc, mc: lf.mc, cam: lf.cam } : null;
+  lf = liftNew(); if (keep) Object.assign(lf, keep);
+  V = newView(); kid = newKid(); kid.x = LIFT.START; kid.y = LIFT.F1; kid.face = 1; kid.alpha = 1;
+}
+function liftStart() {
+  paused = true; document.title = '夜里的房子 · 货梯（试玩）';
+  // 游戏本身的点击、按键都不要：这一页只玩货梯（捕获阶段先接住，别的监听器就收不到了）
+  for (const ev of ['pointerup', 'pointermove', 'pointercancel', 'touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) addEventListener(ev, e => e.stopImmediatePropagation(), true);
+  buildTex(); lf = null; liftReset(); liftBuild(); lf.cam = 0; lf.camInit = 0;
+  snd.liftHorn = () => { if (AC && !muted) { const t = AC.currentTime; tone(196, t, 0.28, 0.06, 'sawtooth', 190); tone(196, t + 0.36, 0.28, 0.06, 'sawtooth', 190); tone(98, t + 0.7, 2.6, 0.03, 'sawtooth', 120); } };
+  addEventListener('keydown', e => {
+    e.stopImmediatePropagation(); audio();
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (key === 'r') { liftReset(); return; }
+    if (lf.done) { if (lf.restartAt != null) liftReset(); return; }
+    lf.keys[key] = 1; lf.idle = 0;
+    if (key === ' ' || key === 'Enter' || key === 'e') { e.preventDefault(); const near = Object.keys(LIFT_SPOTS).map(id => [id, Math.abs(LIFT_SPOTS[id].stand - kid.x)]).sort((a, b) => a[1] - b[1])[0]; if (near) liftClick(near[0]); }
+    if (e.key.startsWith('Arrow')) e.preventDefault();
+  }, true);
+  addEventListener('keyup', e => { e.stopImmediatePropagation(); delete lf.keys[e.key.length === 1 ? e.key.toLowerCase() : e.key]; }, true);
+  addEventListener('blur', () => { lf.keys = {}; });
+  addEventListener('pointerdown', e => {
+    e.stopImmediatePropagation(); audio(); lf.idle = 0;
+    if (lf.done) { if (lf.restartAt != null) liftReset(); return; }
+    const r = cv.getBoundingClientRect(), S_ = Math.min(W / 1200, H / 900), VWu = W / S_, VHu = H / S_;
+    const wx = (e.clientX - r.left) / S_ + lf.cam, wy = (e.clientY - r.top) / S_ - Math.max(0, (VHu - LIFT.WH) / 2);
+    for (const id in LIFT_SPOTS) { const b = LIFT_SPOTS[id].box; if (wx > b[0] - 22 && wx < b[2] + 22 && wy > b[1] - 30 && wy < b[3] + 20) return liftClick(id); }
+    if (kid.mode === 'idle' || kid.mode === 'walk') lf.goal = { x: wx, spot: null, run: true };
+  }, true);
+  let last = performance.now();
+  const loop = now => { const dt = clamp((now - last) / 1000, 0, 0.05); last = now; liftFrame(dt); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  window.__lift = { get lf() { return lf; }, get kid() { return kid; }, click: liftClick, reset: liftReset, LIFT, step: liftFrame, tick: liftTick };   // 给自动试玩、检查用
+}
+function liftClick(id) { if (lf.done || (kid.mode !== 'idle' && kid.mode !== 'walk')) return; lf.goal = { x: LIFT_SPOTS[id].stand, spot: id, run: true }; }
 if (qs.has('monsters')) mzStart();   // 图鉴页：地址后面加 ?monsters=1
+if (qs.has('lift')) liftStart();   // 货梯的试玩关：地址后面加 ?lift=1
 </script>
 </body>
 </html>
