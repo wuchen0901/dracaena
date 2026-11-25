@@ -448,21 +448,32 @@ const L4 = mkLevel({ n: 4, name: '商店街', START: START4, ITEMS: ITEMS4, VALU
 // 一种新的“衣服”：楼道里的住户，睡着的，听见声音才醒（页面里的事：声音过后一阵子它们才会追人；规则里还是“光照到头就塌”，三位住户各站在一盏灯底下）。
 // 三位住户一位拦一段：跺脚让大堂的灯亮、第一位塌下去，掉下一只拖鞋；在楼道口拍手让楼道的灯亮、第二位塌下去，门口有一袋垃圾；
 // 最后一位守着楼梯间，离得太远，要把拖鞋朝楼梯间丢过去（啪的一声，那盏灯才亮）；防火门有闭门器，拿垃圾袋压在门缝里才撑得住。
-const ITEMS5 = ['zSlip', 'zBag'];
+// 2026-11-25 加深（docs/night-level-5.md“地下室”）：楼道左边那扇门改成地下室的门（有闭门器、里面没把手：拖鞋塞在门缝里撑住才敢下去，下来以后再拿回去丢）；
+// 地下室是洗衣房和电表间：第一位住户的睡袍口袋里滚出来的硬币投进烘干机，滚筒的小窗亮了，晾衣绳上的床单塌下去；后面电表间里合上闸，楼梯间那盏灯才有电，
+// 钥匙箱里是防火门上那根链子的钥匙。回头的路：楼道那头敲 103 的门、楼梯间里拽一下锁着的防火门，都是声音，那一段的灯会亮
+const ITEMS5 = ['zSlip', 'zBag', 'zCoin', 'zFkey'];
 const START5 = {
-  zSlip: 'floor',             // 拖鞋：第一位住户塌下去，掉在他右边的地上 / 身上 / 丢到楼梯间那头去了（far，还能再捡回来）
+  zSlip: 'floor',             // 拖鞋：第一位住户塌下去，掉在他右边的地上 / 身上 / 丢到楼梯间那头去了（far，还能再捡回来）；zBD 是 1 的时候 far 是塞在地下室的门缝里
   zBag: 'floor',              // 垃圾袋：第二位住户塌下去，门口放着的一袋 / 身上 / 压在防火门缝里（used）
+  zCoin: 'floor',             // 硬币：第一位住户塌下去，睡袍口袋里滚出来，落在楼道口 / 身上 / 投进烘干机了（used）
+  zFkey: 'box',               // 防火门链子的钥匙：地下室电表间墙上的钥匙箱里 / 身上 / 插在锁上（used）
   zLA: 0, zLB: 0, zLC: 0,     // 大堂的灯、楼道的灯、楼梯间的灯亮着没有（有声音就亮一阵，自己灭，见 laEnds 这几个）
+  zBD: 0,                     // 地下室的门撑住没有（拖鞋塞在门缝里）
+  zDry: 0,                    // 烘干机转起来没有（投了硬币：滚筒的小窗一直亮着，晾衣绳上的床单塌下去）
+  zPow: 0,                    // 电表间的闸合上没有：楼梯间那盏声控灯有电了
+  zChain: 1,                  // 防火门的推杠上缠着链子、挂着锁（钥匙开）
   zDoor: 0, zOut: 0,          // 防火门压住没有；走出防火门没有
 };
-const VALUES5 = { zSlip: ['floor', 'inv', 'far'], zBag: ['floor', 'inv', 'used'] };
+const VALUES5 = { zSlip: ['floor', 'inv', 'far'], zBag: ['floor', 'inv', 'used'], zCoin: ['floor', 'inv', 'used'], zFkey: ['box', 'inv', 'used'] };
 const GATES5 = {
   zt1: s => s.zLA === 1,      // 大堂里的住户（大堂的灯照着）
   zt2: s => s.zLB === 1,      // 楼道里的住户（楼道的灯照着）
   zt3: s => s.zLC === 1,      // 楼梯间口的住户（楼梯间的灯照着）
+  zbd: s => s.zBD === 1,      // 地下室的门：有闭门器、里面没把手，撑住了才敢下去
+  zsh: s => s.zDry === 1,     // 地下室晾衣绳上的床单（烘干机转着，滚筒的小窗照着）
 };
-const LINKS5 = [['z0', 'z1', 'zt1'], ['z1', 'z2', 'zt2'], ['z2', 'z3', 'zt3']];
-const SPOT_ZONE5 = { zStomp: 'z0', zSlip: 'z1', zClap: 'z1', zBag: 'z2', zToss: 'z2', zSlipB: 'z2', zDoor: 'z3' };
+const LINKS5 = [['z0', 'z1', 'zt1'], ['z1', 'z2', 'zt2'], ['z2', 'z3', 'zt3'], ['z1', 'b0', 'zbd'], ['b0', 'b1', 'zsh']];
+const SPOT_ZONE5 = { zSlip: 'z1', zCoinH: 'z1', zBDoor: 'z1', zDryer: 'b0', zBrk: 'b1', zFkeyH: 'b1', zBag: 'z2', zSlipB: 'z2', zDoor: 'z3', zStomp: 'z0', zClap: 'z1', zKnock: 'z2', zToss: 'z2' };   // 顺序也是提示的先后（一样多步的时候）：弄出声音（灯只亮一阵）的几处放在最后，要过去了才叫孩子跺脚、拍手、敲门、丢拖鞋
 function act5(s, spot, held, R = reachL(L5, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
@@ -472,14 +483,33 @@ function act5(s, spot, held, R = reachL(L5, s)) {
     // 大堂地板上有一块会响的木板：跺一脚，灯亮。已经亮着，再跺没用（页面里不续）
     case 'zStomp': if (held) return no('no'); if (s.zLA) return no('look'); n.zLA = 1; return ok('stomp');
     case 'zSlip': if (held || s.zSlip !== 'floor') return no(held ? 'no' : 'look'); n.zSlip = 'inv'; return ok('take:zSlip');
+    case 'zCoinH': if (held || s.zCoin !== 'floor') return no(held ? 'no' : 'look'); n.zCoin = 'inv'; return ok('take:zCoin');
     // 楼道口的墙上贴着“请保持安静”的海报：偏要在它旁边拍手
     case 'zClap': if (held) return no('no'); if (s.zLB) return no('look'); n.zLB = 1; return ok('clap');
+    // 地下室的门（楼道口，以前是 101）：一松手闭门器就把它拉上，里面没把手（气泡里画拖鞋）；拿着拖鞋点：塞在门缝里撑住。撑着的时候点它：拿回拖鞋，门关上
+    case 'zBDoor':
+      if (s.zBD) { if (held) return no('no'); n.zBD = 0; n.zSlip = 'inv'; return ok('bdShut', 'take:zSlip'); }
+      if (held === 'zSlip') { n.zSlip = 'far'; n.zBD = 1; return ok('bdProp'); }
+      if (held) return no('no'); return no('bdShuts');
     case 'zBag': if (held || s.zBag !== 'floor') return no(held ? 'no' : 'look'); n.zBag = 'inv'; return ok('take:zBag');
-    // 楼梯间的灯离得太远，空着手拍手它听不见；把拖鞋朝那边丢过去，啪的一声，灯亮。拖鞋落在住户这边的地上，没赶上还能捡回来
-    case 'zToss': if (s.zLC) return no(held ? 'no' : 'look'); if (held === 'zSlip') { n.zSlip = 'far'; n.zLC = 1; return ok('toss'); } if (held) return no('no'); return no('tooFar5');
-    case 'zSlipB': if (held || s.zSlip !== 'far') return no(held ? 'no' : 'look'); n.zSlip = 'inv'; return ok('take:zSlip');
-    // 防火门：闭门器会把门拉上。拿垃圾袋压在门缝里，门撑住了；已经撑着：就是走出去
-    case 'zDoor': if (s.zDoor) return held ? no('no') : ok('exit5'); if (held === 'zBag') { n.zBag = 'used'; n.zDoor = 1; n.zOut = 1; if (s.zSlip === 'inv') n.zSlip = 'far'; return ok('doorProp', 'exit5'); }   // 身上还有没用上的拖鞋（丢了又捡回来的）：在门口放下 if (held) return no('no'); return no('doorShuts');
+    // 楼道那头 103 的门：敲几下，也是声音，楼道的灯亮（从楼道那头回来的路）
+    case 'zKnock': if (held) return no('no'); if (s.zLB) return no('look'); n.zLB = 1; return ok('knock5');
+    // 地下室的烘干机：投硬币，转起来，滚筒的小窗一直亮着（气泡里画硬币）
+    case 'zDryer': if (s.zDry) return no(held ? 'no' : 'look'); if (held === 'zCoin') { n.zCoin = 'used'; n.zDry = 1; return ok('dryOn'); } if (held) return no('no'); return no('nocoin5');
+    // 电表间的闸：合上，楼梯间那盏声控灯有电了（一直合着）
+    case 'zBrk': if (held) return no('no'); if (s.zPow) return no('look'); n.zPow = 1; return ok('pow5');
+    case 'zFkeyH': if (held || s.zFkey !== 'box') return no(held ? 'no' : 'look'); n.zFkey = 'inv'; return ok('take:zFkey');
+    // 楼梯间的灯离得太远，空着手拍手它听不见；把拖鞋朝那边丢过去，啪的一声，灯亮。拖鞋落在住户这边的地上，没赶上还能捡回来。
+    // 电表间的闸没合（2026-11-25 起）：那盏灯没电，丢过去也不亮——孩子举起拖鞋又放下（气泡里画闪电）
+    case 'zToss': if (s.zLC) return no(held ? 'no' : 'look'); if (held === 'zSlip') { if (!s.zPow) return no('dead5'); n.zSlip = 'far'; n.zLC = 1; return ok('toss'); } if (held) return no('no'); return no('tooFar5');
+    case 'zSlipB': if (held || s.zSlip !== 'far' || s.zBD) return no(held ? 'no' : 'look'); n.zSlip = 'inv'; return ok('take:zSlip');
+    // 防火门：推杠上缠着链子、挂着锁（2026-11-25 起）。拿着钥匙点：开锁、解下链子。空着手拽一下：哐啷一声（楼梯间的灯亮了：回去的路），气泡里画钥匙。
+    // 闭门器会把门拉上：拿垃圾袋压在门缝里，门撑住了；已经撑着：就是走出去
+    case 'zDoor':
+      if (s.zChain) { if (held === 'zFkey') { n.zFkey = 'used'; n.zChain = 0; return ok('unchain5'); } if (held) return no('no'); if (!s.zLC) { n.zLC = 1; return ok('rattle5'); } return no('chained'); }
+      if (s.zDoor) return held ? no('no') : ok('exit5');
+      if (held === 'zBag') { n.zBag = 'used'; n.zDoor = 1; n.zOut = 1; if (s.zSlip === 'inv') n.zSlip = 'far'; return ok('doorProp', 'exit5'); }   // 身上还有没用上的拖鞋（丢了又捡回来的）：在门口放下
+      if (held) return no('no'); return no('doorShuts');
   }
   return no('no');
 }
@@ -1525,7 +1555,7 @@ for (const [k, fn] of Object.entries({
 // ---------- 房子：楼层、屋子、门、能走的路 ----------
 // 世界坐标：x 往右、y 往下，孩子大约 150 高。一张连着的图，镜头跟着孩子走，不切屏幕。
 // 三层：楼上（脚踩在 y = 240）、楼下（1000）、地下室（1590）。每一层：天花板 ceil，墙脚 wb，地板前沿 ff，前脸到 fr
-const FL = { up: { gy: 240, ceil: -410 }, down: { gy: 1000, ceil: 350 }, cel: { gy: 1590, ceil: 1110 }, sfc: { gy: 700, ceil: 250 }, tw1: { gy: 340, ceil: 40 }, tw2: { gy: -20, ceil: -340 }, qb: { gy: 1310, ceil: 1066 }, ck: { gy: 620, ceil: 384 } };   // ck：第 4 关钟表店二楼的工作间（外楼梯上去，2026-11-25）   // qb：第 4 关五金店的地下室（街面底下，2026-11-24）   // sfc：第 15 关的街面（地下最深处爬上来的斜坡通到这儿，比楼下高 300）；tw1、tw2：第 20 关钟楼里面的一层、钟房（每层 360 高，往上排）
+const FL = { up: { gy: 240, ceil: -410 }, down: { gy: 1000, ceil: 350 }, cel: { gy: 1590, ceil: 1110 }, sfc: { gy: 700, ceil: 250 }, tw1: { gy: 340, ceil: 40 }, tw2: { gy: -20, ceil: -340 }, qb: { gy: 1310, ceil: 1066 }, ck: { gy: 620, ceil: 384 }, zb: { gy: 1380, ceil: 1110 } };   // zb：第 5 关公寓楼的地下室（楼道口的门后面一跑楼梯下去，2026-11-25）   // ck：第 4 关钟表店二楼的工作间（外楼梯上去，2026-11-25）   // qb：第 4 关五金店的地下室（街面底下，2026-11-24）   // sfc：第 15 关的街面（地下最深处爬上来的斜坡通到这儿，比楼下高 300）；tw1、tw2：第 20 关钟楼里面的一层、钟房（每层 360 高，往上排）
 for (const k in FL) { const f = FL[k]; f.wb = f.gy - 42; f.ff = f.gy + 42; f.fr = f.ff + 18; }
 // 商店街（第 4 关）：巷口外面接着往右。QU：公交站排队的一排大衣（五件，从排尾 x0 往排头一件隔 sp，都朝右等车），pole 是站牌杆
 const STREET = { x0: 12000, x1: 15200 }, QU = { x0: 13500, sp: 60, n: 5, pole: 13800 };
@@ -1556,6 +1586,7 @@ const ROOMS = {
   aptA: { x0: 15200, x1: 16300, fl: 'down', top: 250, name: '公寓楼的大堂' },
   aptB: { x0: 16300, x1: 17400, fl: 'down', top: 250, name: '楼道' },
   aptC: { x0: 17400, x1: 18240, fl: 'down', top: 250, name: '楼梯间' },
+  zbA: { x0: 16300, x1: 17700, fl: 'zb', top: 1110, name: '公寓楼的地下室' },   // 楼道底下（2026-11-25）：洗衣房和电表间，楼道口那扇门后面一跑楼梯下去
   // 屋顶（第 6 关）：防火门外面，裙楼的天台，三块（出口的棚子和第一件衬衫；水箱和第二件衬衫；天台尽头的缝和隔壁的屋顶）
   roofA: { x0: 18240, x1: 19240, fl: 'down', top: 250, out: 1, name: '天台' },
   roofB: { x0: 19240, x1: 20240, fl: 'down', top: 250, out: 1, name: '晾衣绳和灯串' },
@@ -1623,7 +1654,7 @@ const ROOMS = {
 };
 for (const k in ROOMS) { const r = ROOMS[k], f = FL[r.fl]; Object.assign(r, { id: k, top: r.top ?? f.ceil, wb: f.wb, gy: f.gy, ff: f.ff, fr: f.fr, ix0: r.x0 + 20, ix1: r.x1 - 20 }); }
 ROOMS.jA.fr = ROOMS.jB.fr = 560;
-ROOMS.qbA.fr = 1480;   // 五金店的地下室：画布往下多留一截（地下室底下的土；人在地下室的时候镜头看得到这么低）
+ROOMS.qbA.fr = 1480; ROOMS.zbA.fr = 1560;   // 五金店的地下室：画布往下多留一截（地下室底下的土；人在地下室的时候镜头看得到这么低）
 const roomAt = (x, y) => Object.values(ROOMS).find(r => x >= r.x0 && x < r.x1 && y >= r.top - 40 && y <= r.fr + 40) || null;
 // 隔墙上的门洞（门框 26 宽），门厅里的楼梯，厨房地板上的地窖口
 const DOORS = [{ x: 1400, fl: 'up' }, { x: 2700, fl: 'up', spring: 1 }, { x: 1400, fl: 'down' }, { x: 2700, fl: 'down' }, { x: 4500, fl: 'down' }];
@@ -1664,18 +1695,24 @@ const CK = { foot: 12480, top: 12760, door: 12884, x0: 12900, x1: 13400, brk: 12
 const CK_RUN = [[CK.foot, FL.down.gy], [CK.top, FL.ck.gy]], CK_BENCH_Y = FL.ck.wb - 66, CK_DECK = [FL.ck.gy - 14, FL.ck.gy + 14];   // 外楼梯这一跑；工作台的台面多高；门口平台的铁板（后沿、前沿：比屋里的地窄，看着才像一个小平台）
 // 人字梯立在电线杆底下：梯子在杆子右边（x），孩子站上去脚踩的那一级多高（h）
 const LAD4 = { x: 12352, h: 112 };
+// 第 5 关公寓楼的地下室（2026-11-25）：楼道口那扇门（door，以前是 101）后面一跑楼梯（top 楼道这头、bot 地下室这头，16 级，和钟表店的外楼梯一样陡）；
+// 地下室（墙里 x0–x1）：左边两台洗衣机（wash 第一台）、楼梯脚右边的烘干机（dry），晾衣绳上的床单守着的那一条线（gate）和它挂的地方（sheet）；
+// 后面电表间：闸（brk）、钥匙箱（keys）。knock：楼道那头 103 的门（敲门）
+const ZB = { door: 16596, top: 16556, bot: 16836, x0: 16320, x1: 17680, wash: 16392, dry: 17000, gate: 17096, sheet: 17210, brk: 17470, keys: 17566, knock: 17290 };
+const ZB_RUN = [[ZB.top, FL.down.gy], [ZB.bot, FL.zb.gy]], ZCOIN_X = 16352;   // 这一跑楼梯；第一位住户口袋里滚出来的硬币停在哪儿
 // 能走的路：几个点，点和点之间一段段的路（floor 平地、stairs 楼梯、ladder 梯子）。影子（GATES）卡在路上的某一点
 // 梯子：孩子背对着我们，正对着梯子爬
 const LADDER_X = HATCH.x;
 const NODES = [[60, 240], [2900, 240], [3300, 620], [2900, 1000], [60, 1000], [LADDER_X, 1000], [VS.portal, 1000], [LADDER_X, 1590], [60, 1590], [2640, 1590], [VS.top, FL.sfc.gy], [YARD_END, FL.sfc.gy], [TWP.top1, TWY1], [TWP.lad, TWY1], [TWP.lad, TWY2], [TWP.exit, TWY2], [JP.in, TWY2], [JP.end, TWY2],
-  [Q4.hx, FL.down.gy], [Q4.hx, FL.qb.gy], [Q4.x0 + 24, FL.qb.gy], [Q4.x1 - 24, FL.qb.gy], [CK.foot, FL.down.gy], [CK.top, FL.ck.gy], [CK.x1 - 24, FL.ck.gy]];   // 22–24：第 4 关钟表店的外楼梯脚、楼梯顶（二楼门口的平台）、二楼工作间的右头   // 11 号点以后：楼梯顶、软梯下、软梯上、钟房尽头；6 号点：地下那一层走到隧道口；10、11：斜坡爬到街面、街面走到铁塔底下；18–21：第 4 关的地窖口、梯子脚、地下室两头
+  [Q4.hx, FL.down.gy], [Q4.hx, FL.qb.gy], [Q4.x0 + 24, FL.qb.gy], [Q4.x1 - 24, FL.qb.gy], [CK.foot, FL.down.gy], [CK.top, FL.ck.gy], [CK.x1 - 24, FL.ck.gy], [ZB.top, FL.down.gy], [ZB.bot, FL.zb.gy], [ZB.x0 + 24, FL.zb.gy], [ZB.x1 - 24, FL.zb.gy]];   // 25–28：第 5 关楼道口的地下室楼梯顶、楼梯脚、地下室两头   // 22–24：第 4 关钟表店的外楼梯脚、楼梯顶（二楼门口的平台）、二楼工作间的右头   // 11 号点以后：楼梯顶、软梯下、软梯上、钟房尽头；6 号点：地下那一层走到隧道口；10、11：斜坡爬到街面、街面走到铁塔底下；18–21：第 4 关的地窖口、梯子脚、地下室两头
 // 5 号路原来是一整条（门厅一直到隧道口），2026-11-24 在第 4 关的地窖口（18 号点）断成两段：5 号路到地窖口为止，16 号路从地窖口接着往右。
 // 只认 5 号路的地方（门、回不去的墙）都改成认 STREET_E；GATEPOS 里在地窖口右边的，下面挪到 16 号路上
 // 2026-11-25 16 号路又在钟表店的外楼梯脚（22 号点）断开：16 号路到楼梯脚为止，20 号路从楼梯脚接着往右；21 号路是外楼梯，22 号路是二楼（门口的平台和工作间）
+// 同一天 20 号路又在公寓楼楼道口的地下室楼梯顶（25 号点）断开：20 号路到那儿为止，23 号路接着往右；24 号路是下地下室的楼梯，25、26 号路是地下室（楼梯脚往左、往右）
 const EDGES = [[0, 1, 'floor'], [1, 2, 'stairs'], [2, 3, 'stairs'], [4, 5, 'floor'], [5, 3, 'floor'], [3, 18, 'floor'], [5, 7, 'ladder'], [8, 7, 'floor'], [7, 9, 'floor'], [6, 10, 'floor'], [10, 11, 'floor'], [11, 12, 'floor'], [12, 13, 'floor'], [13, 14, 'ladder'], [14, 15, 'floor'], [16, 17, 'floor'],
-  [18, 22, 'floor'], [18, 19, 'ladder'], [20, 19, 'floor'], [19, 21, 'floor'], [22, 6, 'floor'], [22, 23, 'stairs'], [23, 24, 'floor']]
+  [18, 22, 'floor'], [18, 19, 'ladder'], [20, 19, 'floor'], [19, 21, 'floor'], [22, 25, 'floor'], [22, 23, 'stairs'], [23, 24, 'floor'], [25, 6, 'floor'], [25, 26, 'stairs'], [27, 26, 'floor'], [26, 28, 'floor']]
   .map(([a, b, kind], i) => ({ i, a, b, kind, A: NODES[a], B: NODES[b], len: Math.hypot(NODES[b][0] - NODES[a][0], NODES[b][1] - NODES[a][1]) }));
-const STREET_E = new Set([5, 16, 20]);   // 街面（楼下那一层的那一长条）：地窖口左边一段、地窖口到钟表店的外楼梯脚、楼梯脚往右
+const STREET_E = new Set([5, 16, 20, 23]);   // 街面（楼下那一层的那一长条）：地窖口左边一段、地窖口到钟表店的外楼梯脚、到公寓楼的地下室楼梯顶、再往右
 // 影子卡在哪条路的哪一点（t 从 a 到 b），影子本身站在哪儿（fx）
 const GATEPOS = {
   gown: { e: 0, x: 1265 }, towel: { e: 0, x: 2215 }, laundry: { e: 0, x: 2790 },
@@ -1699,6 +1736,7 @@ const GATEPOS = {
   ng1: { e: 5, x: 28690 }, ng2: { e: 5, x: 30010 },   // 夜市（第 9 关）：面摊摊主（孩子停在炉子这头）、烤串摊摊主（孩子停在它那一片的外面）
   gg1: { e: 5, x: 25470 }, gg2: { e: 5, x: 26850 },   // 体育馆（第 8 关）：球场上跑圈的运动服（孩子停在球场入口）、器材室里跑圈的运动服
   queue: { e: 5, x: QU.x0 },   // 商店街（第 4 关）：公交站排队的一排大衣（孩子从排尾这头走过来，停在最左边那件跟前）
+  zbd: { e: 24, y: FL.down.gy + 22 }, zsh: { e: 26, x: ZB.gate },   // 公寓楼的地下室（第 5 关，2026-11-25）：楼梯顶的门（没撑住：孩子停在门口）、晾衣绳上的床单
   q4door: { e: 22, x: CK.door + 18 }, q4apron: { e: 22, x: CK.gate },   // 钟表店二楼（第 4 关，2026-11-25）：门（锁着：孩子停在门口）、工作台前面的皮围裙
   q4dark: { e: 17, y: FL.down.gy + 22 }, q4dust: { e: 19, x: Q4.counter - 30 },   // 商店街的地下室（第 4 关）：地窖口的梯子（黑着不敢下）、柜台跟前（灰大褂守着柜台后面）
   rain: { e: 5, x: 6722 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
@@ -1715,7 +1753,7 @@ GATE_ALL.vc1 = s => GATES15.vc1(s) && (!V || V.vSeen1 === 1); GATE_ALL.vc2 = s =
 GATE_ALL.gg1 = s => GATES8.gg1(s) && (!V || V.gSeen === 1);
 GATE_ALL.ng1 = s => GATES9.ng1(s) && (!V || V.nSeen === 1);
 GATE_ALL.ta1 = s => GATES10.ta1(s) && (!V || V.tSeen1 === 1); GATE_ALL.ta2 = s => GATES10.ta2(s) && (!V || V.tSeen2 === 1); GATE_ALL.ta3 = s => GATES10.ta3(s) && (!V || V.tSeen3 === 1);   // 剧院：衣服塌下去了，孩子才敢走过去（规则里只记灯扳过了没有）   // 面摊的摊主：炭炉扇红了、它塌下去了，孩子才敢走过去（规则里只记炉子扇红了没有）   // 球场上跑圈的运动服：大灯要热够了、它塌下去了，孩子才敢走进球场（规则里只记配电箱扳了没有）
-for (const k in GATEPOS) { const g = GATEPOS[k]; if (g.e === 5 && g.x != null && g.x > Q4.hx) g.e = 16; if (g.e === 16 && g.x != null && g.x > CK.foot) g.e = 20; }   // 2026-11-25：外楼梯脚右边的再挪到 20 号路上   // 5 号路在地窖口断开以后：地窖口右边的（第 4 关的排队起，往后几关的）都在 16 号路上
+for (const k in GATEPOS) { const g = GATEPOS[k]; if (g.e === 5 && g.x != null && g.x > Q4.hx) g.e = 16; if (g.e === 16 && g.x != null && g.x > CK.foot) g.e = 20; if (g.e === 20 && g.x != null && g.x > ZB.top) g.e = 23; }   // 2026-11-25：外楼梯脚右边的再挪到 20 号路上   // 5 号路在地窖口断开以后：地窖口右边的（第 4 关的排队起，往后几关的）都在 16 号路上
 for (const k in GATEPOS) { const g = GATEPOS[k], E = EDGES[g.e]; g.t = g.x != null ? (g.x - E.A[0]) / (E.B[0] - E.A[0]) : (g.y - E.A[1]) / (E.B[1] - E.A[1]); }
 const edgePt = (e, t) => { const E = EDGES[e]; return [lerp(E.A[0], E.B[0], t), lerp(E.A[1], E.B[1], t)]; };
 // 最近的一条路上的一点（点在屋子里哪儿，就走到那一层的那儿）
@@ -2395,6 +2433,8 @@ Object.assign(LIT, { dustHi: '#a7a497', dust: '#87857a', qbCab: '#8a7a62', qbCab
 Object.assign(DARK, { dustHi: '#2e3242', dust: '#232634', qbCab: '#262230', qbCabLo: '#1c1924', qbHatch: '#22252e', qbHatchLo: '#181a22', qbBox: '#2e2a30', qbBoxLo: '#221f26', qbCounter: '#241e24' });
 Object.assign(LIT, { ckWall: '#a89a80', ckStripe: '#978a70', ckMotif: '#7a6248', lth: '#7a5034', lthHi: '#94643f', benchT: '#8a6a48', benchLo: '#6a5038', ladW: '#b0925e', ladLo: '#8a6c40', ckBrk: '#66706c', ckBrkLo: '#4e5654', ckIron: '#4a4e54', ckIronHi: '#6a6e72', ckShade: '#3e6a5a' });   // 钟表店二楼（第 4 关，2026-11-25）
 Object.assign(DARK, { ckWall: '#1c2030', ckStripe: '#161a28', ckMotif: '#1c2030', lth: '#241c22', lthHi: '#2e242a', benchT: '#221c22', benchLo: '#1a161c', ladW: '#2c2a32', ladLo: '#222028', ckBrk: '#1e2430', ckBrkLo: '#161b26', ckIron: '#1a1f2c', ckIronHi: '#262c3c', ckShade: '#1a2630' });
+Object.assign(LIT, { zbWash: '#c9cdc8', zbWashLo: '#a5aaa6', zbDoor: '#6f7d76', zbDoorLo: '#58645e', shtHi: '#ebe6da', sht: '#cbc5b6', zbBox: '#7c8279', zbBoxLo: '#61665f', zbBasket: '#a8865a', zbCoin: '#c9c9c0' });   // 公寓楼的地下室（第 5 关，2026-11-25）
+Object.assign(DARK, { zbWash: '#2a3042', zbWashLo: '#202536', zbDoor: '#1e2534', zbDoorLo: '#171c29', shtHi: '#3e4660', sht: '#30374e', zbBox: '#232838', zbBoxLo: '#1a1e2c', zbBasket: '#2a2630', zbCoin: '#4a5068' });
 const YARD = { x0: 4520, x1: 8760 }, STEPS = { x: 8530, w: 62, h: 0, n: 0 };   // STEPS：院门外的石板路（原来是三级往下的石阶，第 3 关接着往右走，改成和院子一样高）
 const PORCH = { x1: 5016, post: 4996, roof: [[4520, 652], [5044, 690]] }, SENSOR = { x: 4800, y: 716, zone: [4545, 5075], hold: 3.2 };
 const KENNEL = { x: 5700, base: 980 }, TREE1 = { x: 5330 };
@@ -2420,7 +2460,7 @@ const streetZoneAt = (x, y = kid.y) => y > FL.down.fr + 30 && x > Q4.x0 - 60 && 
 // 第 5 关：公寓楼。大堂地板上会响的木板、三盏声控灯、楼道口“请保持安静”的海报、拖鞋和垃圾袋掉的地方、拖鞋丢出去落的地方、防火门
 const ZSTOMP = { x: 15900 }, ZLA = { x: 16080, y: 668 }, ZPOSTER = { x: 16440, y: 800 }, ZLB = { x: 16700, y: 668 }, ZLC = { x: 17720, y: 668 };
 const ZT_KEYS = ['zt1', 'zt2', 'zt3'], ZSLIP_X = 16270, ZBAG_X = 16980, ZTOSS_X = 17470, ZDOOR = { x: 18180 }, ZDOOR_STOP = 18140, SND_HOLD = 4.2, ZVEND = { x: 15400 }, ZHEAR = 7;   // ZHEAR：声音过后住户多久才睡回去
-const aptZoneAt = x => x < GATEPOS.zt1.x ? 'z0' : x < GATEPOS.zt2.x ? 'z1' : x < GATEPOS.zt3.x ? 'z2' : 'z3';
+const aptZoneAt = (x, y = kid.y) => y > FL.down.fr + 30 ? (x < ZB.gate ? 'b0' : 'b1') : x < GATEPOS.zt1.x ? 'z0' : x < GATEPOS.zt2.x ? 'z1' : x < GATEPOS.zt3.x ? 'z2' : 'z3';   // 地下室（2026-11-25）：按高度认出来
 // 第 6 关：屋顶。棚子（楼梯间的出口）、总闸箱、挂着的马灯、两串灯（A、B）、第二串第一只空着的灯座、掉出来的灯泡落的地方、木板、天台尽头的缝、远处的钟楼
 const ROOF = { x0: 18240, x1: 21040 }, RSHED = { x1: 18700 }, RLAN = { x: 18410, y: 808 }, RSW = { x: 18590, y: 884 }, RLINE = [[18920, 19100], [19880, 20060]];
 const RA = { x0: 18730, y0: 756, x1: 19340, y1: 732, sag: 34, n: 7 }, RB = { x0: 19620, y0: 744, x1: 20300, y1: 730, sag: 34, n: 6 }, RHOLD = { x: 19640, y: 808 };
@@ -3510,7 +3550,11 @@ function paintLobby(b, P, lit, r) {
 function paintCorridor(b, P, lit, r) {
   const lc = lcOf(P, lit), wb = FL.down.wb; b.seedN = 520400;
   aptLampMount(b, P, lit, ZLB.x, 520901);
-  for (const [dx, i] of [[16590, 0], [17000, 1], [17290, 2]]) {   // 三扇住户的门：门框、门板、一块门牌、一个猫眼、把手，门口一块地垫
+  // 2026-11-25：楼道口那扇（以前是 101）改成地下室的门：门框、门顶一块小牌子（一道往下的楼梯），门板在会动的那一层
+  part(b, rectPts(ZB.door - 52, wb - 190, 104, 194), P.trim, { w: 1, tex: 0.3, lc, seed: 520410 });
+  part(b, rectPts(ZB.door - 20, wb - 214, 40, 18), P.zbBox, { w: 0.7, tex: 0, lc, seed: 520414 });
+  ink(b, [[ZB.door - 13, wb - 211], [ZB.door - 13, wb - 205], [ZB.door - 5, wb - 205], [ZB.door - 5, wb - 199], [ZB.door + 3, wb - 199], [ZB.door + 3, wb - 205], [ZB.door + 11, wb - 205]].map(([u, v]) => [u, v]), { w: 1, col: lit ? '#e8e2cf' : lc, taper: 0, a: 0.9, seed: 520415, single: 1 });
+  for (const [dx, i] of [[17000, 1], [17290, 2]]) {   // 两扇住户的门（第三扇 103 在楼道那头：敲它的门，楼道的灯也会亮）：门框、门板、一块门牌、一个猫眼、把手，门口一块地垫
     part(b, rectPts(dx - 52, wb - 190, 104, 194), P.trim, { w: 1, tex: 0.3, lc, seed: 520410 + i * 20 });
     part(b, rectPts(dx - 42, wb - 182, 84, 188), P.aptDoor, { w: 1, tex: 0.4, lc, seed: 520411 + i * 20 });
     part(b, rectPts(dx - 30, wb - 168, 60, 62), P.aptDoorHi, { w: 0.7, tex: 0.3, lc, seed: 520412 + i * 20 }); part(b, rectPts(dx - 30, wb - 92, 60, 66), P.aptDoorHi, { w: 0.7, tex: 0.3, lc, seed: 520413 + i * 20 });
@@ -3543,6 +3587,70 @@ function paintStairHall(b, P, lit, r) {
   part(b, rectPts(dx - 20, wb - 216, 40, 14), P.awnA, { w: 0.6, tex: 0, lc, seed: 520701 });   // 门上的一块红牌子（没有字）
   // 墙角的一只灭火器
   part(b, roundPts(17520, wb - 76, 24, 74, 8), P.awnA, { w: 0.9, tex: 0.2, lc, seed: 520710 }); part(b, rectPts(17526, wb - 90, 12, 16), P.cageC, { w: 0.7, tex: 0, lc, seed: 520711 });
+}
+// 公寓楼的地下室（第 5 关，2026-11-25）：楼道底下。四周是土；砖墙、水泥地，天花板上走着几根管子、两盏不亮的灯泡；
+// 楼道口的门后面一跑水泥楼梯下来（楼道的地板在那儿开着口）；左边两台洗衣机，楼梯底下一只洗衣篮；楼梯脚右边一台投币的烘干机（小窗、滚筒在会动的那一层）；
+// 一根晾衣绳（床单在会动的那一层）；后面电表间：两只电表、闸盒（拨杆在会动的那一层）、钥匙箱（钥匙在会动的那一层）
+function paintZB(b, r, P, lit) {
+  const lc = lcOf(P, lit), top = r.top, wb = FL.zb.wb, ff = FL.zb.ff, gy = FL.zb.gy, x0 = ZB.x0, x1 = ZB.x1, below = FL.down.fr;
+  b.save(); b.beginPath(); b.rect(r.x0 - 10, below, r.x1 - r.x0 + 20, r.fr + 70 - below); b.clip();
+  b.fillStyle = P.soil; b.fillRect(r.x0 - 10, below, r.x1 - r.x0 + 20, r.fr + 70 - below); texture(b, TEX.blot, lit ? 0.5 : 0.45); texture(b, TEX.blot2, 0.35);
+  b.seedN = 526000; hatch(b, k => k.rect(r.x0 - 10, below, r.x1 - r.x0 + 20, r.fr + 70 - below), [r.x0 - 10, below, r.x1 - r.x0 + 20, r.fr + 70 - below], { ang: -0.5, gap: 7 / HD, a: lit ? 0.25 : 0.45, w: 0.7, len: 26 });
+  const rr0 = rnd(526010); for (let i = 0; i < 30; i++) { const sx = r.x0 + rr0() * (r.x1 - r.x0), sy = below + 20 + rr0() * (r.fr - below); if (sx > x0 - 30 && sx < x1 + 30 && sy < ff + 20) continue; part(b, arcPts(sx, sy, 5 + rr0() * 9, 4 + rr0() * 6, 0, TAU, 9), P.stone, { w: 0.7, tex: 0.2, lc, seed: 526020 + i }); }
+  b.restore();
+  const room = { ...r, ix0: x0, ix1: x1, top, wb, ff, fr: ff + 18 };
+  paintShell(b, room, P, lit, { seed: 526100, brick: true });
+  paintFloor(b, room, P, lit, 'concrete', 526200);
+  for (const [a, w] of [[x0 - 16, 16], [x1, 16]]) part(b, rectPts(a, top - 4, w, ff + 18 - top + 4), P.stone, { w: 1, tex: 0.4, lc, seed: 526300 + a });   // 两边的墙身
+  part(b, rectPts(x0 - 16, top - 50, x1 - x0 + 32, 50), P.aptOutLo, { w: 1, tex: 0.3, lc, seed: 526310 });   // 顶上：楼道的楼板
+  b.save(); b.beginPath(); b.rect(x0, top, x1 - x0, wb - top); b.clip(); b.seedN = 526400;
+  for (const y of [top + 12, top + 26]) ink(b, seg(x0, y, x1, y), { w: 2.4, col: P.ckIron, taper: 0, a: 1 / b.pen.a, seed: 526410 + y });   // 天花板上的管子
+  for (const x of [16760, 17300]) { ink(b, seg(x, top + 26, x, top + 52), { w: 1.1, col: P.wire, taper: 0 }); part(b, rectPts(x - 6, top + 48, 12, 10), P.iron, { w: 0.8, tex: 0, lc, seed: 526420 + x }); part(b, arcPts(x, top + 66, 7, 9, 0, TAU, 12), P.lampHead, { w: 0.7, tex: 0, lc, seed: 526430 + x }); }   // 两盏灯泡（不亮）
+  // 两台洗衣机：白的铁柜子，上沿一条按钮，当中一只圆窗（里面黑着）
+  for (const [x, i] of [[ZB.wash, 0], [ZB.wash + 96, 1]]) {
+    part(b, rectPts(x - 42, wb - 92, 84, 96), P.zbWash, { w: 1, tex: 0.3, lc, seed: 526500 + i * 10 });
+    part(b, rectPts(x - 42, wb - 92, 84, 16), P.zbWashLo, { w: 0.8, tex: 0, lc, seed: 526501 + i * 10 });
+    part(b, arcPts(x, wb - 38, 26, 26, 0, TAU, 20), P.zbWashLo, { w: 0.9, tex: 0, lc, seed: 526502 + i * 10 });
+    part(b, arcPts(x, wb - 38, 19, 19, 0, TAU, 18), lit ? '#202634' : DARK.ink, { w: 0.7, tex: 0, lc, seed: 526503 + i * 10 });
+  }
+  // 楼梯底下一只洗衣篮
+  part(b, [[16668, wb - 50], [16748, wb - 50], [16740, wb + 4], [16676, wb + 4]], P.zbBasket, { w: 0.9, tex: 0.3, lc, seed: 526600 });
+  for (let i = 0; i < 4; i++) ink(b, seg(16674 + i * 2, wb - 38 + i * 12, 16742 - i * 2, wb - 38 + i * 12), { w: 0.5, col: lc, taper: 0, a: 0.5, seed: 526610 + i, single: 1 });
+  part(b, curvePts([[16672, wb - 50], [16690, wb - 66], [16712, wb - 58], [16736, wb - 70], [16748, wb - 50]], false, 4).concat([[16748, wb - 50]]), P.sht, { w: 0.8, tex: 0, lc, seed: 526620 });
+  // 烘干机：铁柜子（小窗、滚筒在会动的那一层），左边一只投币盒
+  const dx = ZB.dry;
+  part(b, rectPts(dx - 46, wb - 108, 92, 112), P.zbWash, { w: 1, tex: 0.3, lc, seed: 526700 });
+  part(b, rectPts(dx - 46, wb - 108, 92, 16), P.zbWashLo, { w: 0.8, tex: 0, lc, seed: 526701 });
+  part(b, arcPts(dx, wb - 46, 32, 32, 0, TAU, 22), P.zbWashLo, { w: 0.9, tex: 0, lc, seed: 526702 });
+  part(b, rectPts(dx - 70, wb - 84, 20, 30), P.zbBox, { w: 0.8, tex: 0, lc, seed: 526710 }); fillPts(b, rectPts(dx - 63, wb - 78, 6, 2), lit ? '#161a22' : DARK.ink);   // 投币盒、投币口
+  // 晾衣绳：两头钉在墙上的钩子，中间往下垂；绳上一双袜子
+  const ly = wb - 172, l0 = ZB.gate + 14, l1 = ZB.gate + 300;
+  ink(b, quadPts([l0, ly], [(l0 + l1) / 2, ly + 16], [l1, ly], 20), { w: 1, col: P.wire, taper: 0, a: 0.9, seed: 526800 });
+  for (const x of [l0, l1]) part(b, rectPts(x - 3, ly - 8, 6, 12), P.iron, { w: 0.6, tex: 0, lc, seed: 526810 + x });
+  for (const [x, c] of [[l1 - 60, P.zr1], [l1 - 40, P.zr1]]) part(b, [[x - 5, ly + 10], [x + 5, ly + 10], [x + 6, ly + 40], [x + 14, ly + 46], [x + 12, ly + 52], [x - 5, ly + 48]], c, { w: 0.7, tex: 0, lc, seed: 526820 + x });
+  // 电表间：两只电表、闸盒的底板（拨杆在会动的那一层）、钥匙箱（一只木头小柜子，门开着，几只钩子）
+  for (const [x, i] of [[17370, 0], [17410, 1]]) { part(b, rectPts(x - 15, wb - 210, 30, 40), P.zbBox, { w: 0.8, tex: 0.2, lc, seed: 526900 + i }); part(b, arcPts(x, wb - 196, 9, 9, 0, TAU, 12), P.clockFace, { w: 0.6, tex: 0, lc, seed: 526905 + i }); }
+  ink(b, seg(17370, wb - 170, ZB.brk - 10, wb - 156), { w: 1, col: P.wire, taper: 0, seed: 526910 }); ink(b, seg(ZB.brk, top + 30, ZB.brk, wb - 156), { w: 1, col: P.wire, taper: 0, seed: 526911 });
+  part(b, rectPts(ZB.brk - 20, wb - 156, 40, 74), P.zbBox, { w: 1, tex: 0.3, lc, seed: 526920 });
+  part(b, rectPts(ZB.brk - 13, wb - 148, 26, 56), P.zbBoxLo, { w: 0.8, tex: 0, lc, seed: 526921 });
+  part(b, rectPts(ZB.keys - 22, wb - 164, 44, 60), P.zbBasket, { w: 1, tex: 0.3, lc, seed: 526930 });
+  fillPts(b, rectPts(ZB.keys - 17, wb - 158, 34, 48), lit ? '#2a2018' : DARK.ink);
+  for (const dx2 of [-9, 0, 9]) ink(b, seg(ZB.keys + dx2, wb - 154, ZB.keys + dx2, wb - 148), { w: 1.2, col: P.brass, taper: 0, a: 1 / b.pen.a, seed: 526940 + dx2 });
+  part(b, rectPts(ZB.keys - 36, wb - 166, 14, 64), P.zbBasket, { w: 0.8, tex: 0.2, lc, seed: 526950 });   // 钥匙箱的门（开着）
+  b.restore();
+  paintZBStair(b, P, lit);
+}
+function paintZBStair(b, P, lit) {   // 楼道口的门后面一跑水泥楼梯下到地下室：楼道的地板在那儿开着口，一根斜梁、一级级踏板、一道扶手
+  const lc = lcOf(P, lit), [A, B] = ZB_RUN, n = 16, dx = (B[0] - A[0]) / n, dy = (B[1] - A[1]) / n, F = FL.down; b.seedN = 527000;
+  fillPts(b, [[A[0] - 6, F.wb], [ZB.door + 44, F.wb], [ZB.door + 44, F.fr + 50], [A[0] + 60, F.fr + 50]], lit ? '#14161c' : DARK.ink);   // 地板上开着的口（往下黑着）
+  part(b, [[A[0] - 4, A[1] + 10], [B[0], B[1] + 10], [B[0], B[1] + 46], [A[0] + 30, A[1] + 10]], P.stone, { w: 1.1, tex: 0.4, lc });   // 斜梁
+  for (let i = 0; i < n; i++) {
+    const x = A[0] + dx * i, y = A[1] + dy * i, tread = [[x, y], [x + dx, y], [x + dx, y + dy + 10], [x, y + 10]];
+    b.fillStyle = P.concrete; b.beginPath(); tread.forEach(([px, py], j) => j ? b.lineTo(px, py) : b.moveTo(px, py)); b.fill();
+    ink(b, seg(x, y, x + dx, y), { w: 0.9, taper: 0, col: lc, seed: 527010 + i }); ink(b, seg(x + dx, y, x + dx, y + dy), { w: 0.7, a: 0.8, taper: 0, col: lc, seed: 527040 + i });
+    if (i % 3 === 1) ink(b, seg(x + dx * 0.5, y, x + dx * 0.5, y - 88), { w: 1, col: P.ckIron, taper: 0, a: 1 / b.pen.a, seed: 527070 + i, single: 1 });
+  }
+  ink(b, [[A[0] + 20, A[1] - 92], [B[0], B[1] - 92]], { w: 2.2, col: P.ckIron, taper: 0, a: 1 / b.pen.a, seed: 527100 }); ink(b, [[A[0] + 20, A[1] - 92], [B[0], B[1] - 92]], { w: 0.7, col: lc, taper: 0, seed: 527101 });   // 扶手
 }
 function paintApt(b, r, P, lit) {
   const F = FL.down;
@@ -3591,15 +3699,70 @@ function drawFireDoor(b, P, lit) {   // 防火门：铁灰的一扇，推杠、�
     ink(b, [[x + 24, wb - 192], [x + 36, wb - 178], [x + 42, wb - 190]], { w: 1.2, col: P.cageC, taper: 0, a: 1 / b.pen.a, seed: 521505, single: 1 });
     b.restore();
   }
+  // 推杠上缠着的链子和挂锁（2026-11-25）：拽一下哗啦一抖；开了锁链子滑下来，掉在门脚
+  const ch = V.zchain ?? 1, sh = (V.T - (V.zchainT ?? -10)) < 0.45 ? Math.sin((V.T - V.zchainT) * 46) * 2.4 * (1 - (V.T - V.zchainT) / 0.45) : 0;
+  if (ch > 0.01) {
+    const cy = lerp(FL.down.gy - 14, wb - 94, smooth(ch)) + sh;
+    b.save(); b.globalAlpha *= Math.min(1, ch * 3);
+    for (let i = 0; i < 9; i++) { const u = i / 8, cx = lerp(x - 36, x + 36, u), yy = cy + Math.sin(u * Math.PI) * 10 * (1.4 - ch); ink(b, arcPts(cx, yy, 5.6, 3.8, 0, TAU, 8), { w: 2.6, col: lc, taper: 0, a: 1 / b.pen.a, seed: 521540 + i }); ink(b, arcPts(cx, yy, 5.6, 3.8, 0, TAU, 8), { w: 1.6, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 521520 + i }); }
+    if (ch > 0.5) { part(b, roundPts(x + sh, cy + 12, 22, 22, 4), P.brass, { w: 0.9, tex: 0, lc, seed: 521530 }); ink(b, arcPts(x + 11 + sh, cy + 12, 6.5, 9, Math.PI, TAU, 8), { w: 2, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 521531 }); b.fillStyle = lc; b.fillRect(x + 10 + sh, cy + 20, 2.4, 6); }
+    b.restore();
+  }
   if (S.zBag === 'used') sceneItem(b, 'zBag', x - 14, FL.down.gy - 10 - 4, 44, P, lit, 521510);   // 压在门缝里的垃圾袋
 }
 function drawAptDyn(b, P, lit, vis) {   // 公寓楼（第 5 关）
+  if (vis.aptA || vis.aptB) drawZCoinFloor(b, P, lit);
+  if (vis.aptB) drawZBDoor(b, P, lit);
+  if (vis.zbA) drawZBDyn(b, P, lit);
   if (vis.aptA) { drawAptBulb(b, P, lit, ZLA.x, V.li.za); drawStompBoard(b, P, lit); drawFear(b, P, lit, 'zt1'); drawZSlipFloor(b, P, lit); }
   if (vis.aptB) { drawAptBulb(b, P, lit, ZLB.x, V.li.zb); drawFear(b, P, lit, 'zt2'); drawZBagFloor(b, P, lit); }
   if (vis.aptB || vis.aptC) drawZFlight(b, P, lit);
   if (vis.aptC) { drawAptBulb(b, P, lit, ZLC.x, V.li.zc); drawFear(b, P, lit, 'zt3'); drawFireDoor(b, P, lit); }
 }
+function drawZCoinFloor(b, P, lit) {   // 第一位住户塌下去，睡袍口袋里滚出一枚硬币：一路滚到楼道口（2026-11-25）
+  if (S.zCoin !== 'floor' || !V.zSeen1) return;
+  const e = ease(clamp((V.T - V.zT1 - 0.15) / 1.1, 0, 1)), x = lerp(GARB.zt1.home + 24, ZCOIN_X, e), y = FL.down.gy - 6 - Math.abs(Math.sin(e * Math.PI * 3)) * 10 * (1 - e);
+  b.save(); b.translate(x, y); b.rotate(e * 14); sceneItem(b, 'zCoin', 0, 0, 22, P, lit, 525100); b.restore();
+}
+function drawZBDoor(b, P, lit) {   // 地下室的门（楼道口，2026-11-25）：铁皮门，门顶的闭门器；撑住了朝里开着，门缝里塞着拖鞋；空着手推：开一点又被拉上
+  const lc = lcOf(P, lit), x = ZB.door, wb = FL.down.wb, pe = V.T - (V.zbdPulse ?? -10), o = smooth(Math.max(V.zbd || 0, pe >= 0 && pe < 0.5 ? Math.sin(pe / 0.5 * Math.PI) * 0.3 : 0)); b.seedN = 525000;
+  fillPts(b, rectPts(x - 42, wb - 182, 84, 186), lit ? '#0e1018' : DARK.ink);   // 门里黑着：往下的楼梯
+  if (o > 0.05) for (let i = 0; i < 4; i++) { b.save(); b.globalAlpha *= o * 0.6; ink(b, seg(x - 30 + i * 6, wb - 40 + i * 14, x + 34, wb - 40 + i * 14), { w: 0.8, col: lit ? '#3a3e48' : '#232838', taper: 0, a: 1 / b.pen.a, seed: 525005 + i, single: 1 }); b.restore(); }
+  const lx = lerp(x - 42, x - 48, o), rx = lerp(x + 42, x - 32, o);
+  part(b, rectPts(lx, wb - 182, Math.max(8, rx - lx), 186), P.zbDoor, { w: 1, tex: 0.3, lc, seed: 525001 });
+  if (o < 0.6) {
+    b.save(); b.globalAlpha *= 1 - o / 0.6;
+    part(b, rectPts(x - 30, wb - 166, 60, 54), P.zbDoorLo, { w: 0.7, tex: 0.3, lc, seed: 525002 });
+    part(b, rectPts(x + 24, wb - 96, 10, 18), P.chrome, { w: 0.6, tex: 0, lc, seed: 525003 });   // 门把手（只有外面有）
+    b.restore();
+  }
+  part(b, rectPts(x - 26, wb - 194, 52, 8), P.cageC, { w: 0.7, tex: 0, lc, seed: 525004 });   // 门顶的闭门器
+  ink(b, [[x - 20, wb - 190], [lerp(x - 6, x - 30, o), wb - 176], [lerp(x + 6, x - 36, o), wb - 186]], { w: 1.2, col: P.cageC, taper: 0, a: 1 / b.pen.a, seed: 525006, single: 1 });
+  if (S.zBD) sceneItem(b, 'zSlip', x - 36, FL.down.gy - 14, 34, P, lit, 525010);   // 门缝里塞着的拖鞋
+}
+function drawZBDyn(b, P, lit) {   // 地下室（2026-11-25）会动的那一层：烘干机的小窗和滚筒、闸的拨杆、钥匙箱里的钥匙、晾衣绳上的床单
+  const lc = lcOf(P, lit), wb = FL.zb.wb, on = V.li.zdry || 0, T = V.T; b.seedN = 525200;
+  const dx = ZB.dry, wy = wb - 46;
+  part(b, arcPts(dx, wy, 25, 25, 0, TAU, 20), on > 0.05 ? (lit ? '#ffd98a' : '#8a7448') : (lit ? '#262c38' : DARK.ink), { w: 0.8, tex: 0, lc, seed: 525201 });
+  if (on > 0.05) for (let i = 0; i < 4; i++) { const a = T * 4.2 + i * TAU / 4, r = 12 + (i % 2) * 5; part(b, arcPts(dx + Math.cos(a) * r, wy + Math.sin(a) * r * 0.8, 7, 5, a, a + TAU, 8), [P.zr1, P.sht, P.zc, P.awnA][i], { w: 0.5, tex: 0, lc, seed: 525210 + i }); }   // 滚筒里翻着的衣服
+  ink(b, arcPts(dx, wy, 27, 27, 0, TAU, 20), { w: 1.6, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 525202 });
+  const k = smooth(V.zbrk || 0), px = ZB.brk, py = wb - 120, ty = py + lerp(20, -20, k);
+  ink(b, seg(px, py, px, ty), { w: 3.2, col: P.chrome, taper: 0, a: 1 / b.pen.a, seed: 525220 }); ink(b, seg(px, py, px, ty), { w: 0.6, col: lc, taper: 0, seed: 525221 });
+  part(b, roundPts(px - 6, ty - 5, 12, 10, 4), P.awnA, { w: 0.6, tex: 0, lc, seed: 525222 });
+  if (S.zFkey === 'box') { ink(b, seg(ZB.keys + 9, wb - 148, ZB.keys + 9, wb - 140), { w: 0.8, col: P.wire, taper: 0, seed: 525230 }); sceneItem(b, 'zFkey', ZB.keys + 8, wb - 128, 22, P, lit, 525231); }
+  drawFear(b, P, lit, 'zsh');
+}
+function drawHungSheet(b, P, lit) {   // 地下室晾衣绳上搭着的一条床单（第 5 关，2026-11-25）：对折搭在绳上，几个夹子，下摆垂到快挨着地
+  const lc = lcOf(P, lit), x = ZB.sheet, t = FL.zb.wb - 166; b.seedN = 278700;
+  const body = curvePts([[x - 52, t], [x + 52, t + 4], [x + 56, t + 90], [x + 50, t + 160], [x - 50, t + 158], [x - 56, t + 88]], true, 4);
+  part(b, body, P.shtHi, { w: 1.1, tex: 0.4, lc });
+  part(b, [[x - 52, t], [x + 52, t + 4], [x + 50, t + 26], [x - 50, t + 22]], P.sht, { w: 0.8, tex: 0, lc, seed: 278701 });   // 搭过来的那一层
+  for (const dx of [-30, 2, 34]) ink(b, seg(x + dx, t + 26, x + dx + 3, t + 154), { w: 0.6, col: lc, taper: 0, a: 0.4, seed: 278710 + dx, single: 1 });   // 褶子
+  for (const dx of [-40, 0, 40]) part(b, rectPts(x + dx - 3, t - 8, 6, 14), P.woodHi, { w: 0.6, tex: 0, lc, seed: 278720 + dx });   // 夹子
+  hatch(b, k => pathOf(k, body), [x - 56, t, 112, 160], { ang: -1.15, gap: 4.8 / HD, a: lit ? 0.32 : 0.5, w: 0.7, len: 20 });
+}
 function drawAptGlow() {   // 灯泡自己发光；自动售货机的一片光
+  if ((V.li.zdry || 0) > 0.02 && inView(ZB.dry, FL.zb.wb - 46, 400)) { glowAt(ZB.dry, FL.zb.wb - 46, 80, C.lamp, 0.3 * V.li.zdry); glowAt(ZB.dry, FL.zb.wb - 46, 22, C.hot, 0.55 * V.li.zdry); }   // 烘干机的小窗（2026-11-25）
   for (const [x, on] of [[ZLA.x, V.li.za], [ZLB.x, V.li.zb], [ZLC.x, V.li.zc]]) if (on > 0.02 && inView(x, ZLA.y, 400)) { glowAt(x, APT_Y + 52, 44, C.lamp, 0.34 * on); glowAt(x, APT_Y + 52, 12, C.hot, 0.9 * on); }
   if (inView(ZVEND.x, 820, 400)) glowAt(ZVEND.x - 10, 800, 120, [150, 205, 255], 0.14);
 }
@@ -7720,7 +7883,7 @@ function xSnap() {   // 直接摆到后半的某个局面（?lv、截图、读�
   }
 }
 
-const ROOM_PAINT = { ckA: paintCK, jA: paintJ, jB: paintJ, twA: paintTw, twB: paintTw, twC: paintTw, ktA: paintKl, ktB: paintKl, ktC: paintKl, cpA: paintCp, cpB: paintCp, cpC: paintCp, bpA: paintBp, bpB: paintBp, bpC: paintBp, fsA: paintFire, fsB: paintFire, fsC: paintFire, vsA: paintSub, vsB: paintSub, vsC: paintSub, dsA: paintDeep, dsB: paintDeep, dsC: paintDeep, wsA: paintSewer, wsB: paintSewer, wsC: paintSewer, mtA: paintMetro, mtB: paintMetro, mtC: paintMetro, ucA: paintUnder, ucB: paintUnder, ucC: paintUnder, thtA: paintTheatre, thtB: paintTheatre, thtC: paintTheatre, thtD: paintTheatre, mktA: paintMkt, mktB: paintMkt, mktC: paintMkt, gymA: paintGym, gymB: paintGym, gymC: paintGym, schA: paintSchool, schB: paintSchool, schC: paintSchool, roofA: paintRoof, roofB: paintRoof, roofC: paintRoof, aptA: paintApt, aptB: paintApt, aptC: paintApt, streetA: paintStreet, streetB: paintStreet, streetC: paintStreet, laneA: paintLane, laneB: paintLane, laneC: paintLane, bedroom: paintBedroom, bath: paintBath, hall: paintHall, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar, porch: paintPorch, garage: paintGarage, drive: paintDrive, qbA: paintQB };
+const ROOM_PAINT = { zbA: paintZB, ckA: paintCK, jA: paintJ, jB: paintJ, twA: paintTw, twB: paintTw, twC: paintTw, ktA: paintKl, ktB: paintKl, ktC: paintKl, cpA: paintCp, cpB: paintCp, cpC: paintCp, bpA: paintBp, bpB: paintBp, bpC: paintBp, fsA: paintFire, fsB: paintFire, fsC: paintFire, vsA: paintSub, vsB: paintSub, vsC: paintSub, dsA: paintDeep, dsB: paintDeep, dsC: paintDeep, wsA: paintSewer, wsB: paintSewer, wsC: paintSewer, mtA: paintMetro, mtB: paintMetro, mtC: paintMetro, ucA: paintUnder, ucB: paintUnder, ucC: paintUnder, thtA: paintTheatre, thtB: paintTheatre, thtC: paintTheatre, thtD: paintTheatre, mktA: paintMkt, mktB: paintMkt, mktC: paintMkt, gymA: paintGym, gymB: paintGym, gymC: paintGym, schA: paintSchool, schB: paintSchool, schC: paintSchool, roofA: paintRoof, roofB: paintRoof, roofC: paintRoof, aptA: paintApt, aptB: paintApt, aptC: paintApt, streetA: paintStreet, streetB: paintStreet, streetC: paintStreet, laneA: paintLane, laneB: paintLane, laneC: paintLane, bedroom: paintBedroom, bath: paintBath, hall: paintHall, living: paintLiving, kitchen: paintKitchen, cellar: paintCellar, porch: paintPorch, garage: paintGarage, drive: paintDrive, qbA: paintQB };
 
 // ---------- 会动的东西：暗的一层、亮的一层各画一遍 ----------
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
@@ -7812,6 +7975,16 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
     part(b, [[-s * 0.34, -s * 0.38], [-s * 0.05, -s * 0.26], [s * 0.05, -s * 0.26], [s * 0.34, -s * 0.38], [s * 0.32, -s * 0.12], [s * 0.05, -s * 0.14], [-s * 0.05, -s * 0.14], [-s * 0.32, -s * 0.12]], kc, { w: 0.8, tex: 0, lc });
     part(b, rectPts(-s * 0.075, -s * 0.15, s * 0.15, s * 0.53), kc, { w: 0.7, tex: 0, lc, seed: seed + 1 });
     b.fillStyle = lc; b.fillRect(-s * 0.035, s * 0.31, s * 0.07, s * 0.06);   // 方孔
+  } else if (name === 'zCoin') {   // 硬币（第 5 关，2026-11-25）：一枚银的，边上一圈细齿，当中一道压出来的花
+    part(b, arcPts(0, 0, s * 0.34, s * 0.34, 0, TAU, 18), P.zbCoin, { w: 0.9, tex: 0, lc });
+    ink(b, arcPts(0, 0, s * 0.25, s * 0.25, 0, TAU, 16), { w: 0.7, col: lc, taper: 0, a: 0.55, seed: seed + 1, single: 1 });
+    ink(b, [[-s * 0.1, s * 0.06], [0, -s * 0.1], [s * 0.1, s * 0.06]], { w: 0.8, col: lc, taper: 0, a: 0.6, seed: seed + 2, single: 1 });
+  } else if (name === 'zFkey') {   // 防火门链子的钥匙（第 5 关，2026-11-25）：一把挂锁的小钥匙，拴一块红色的圆牌
+    const kc = lit ? '#8a8e96' : '#3e4252', o = { taper: 0, a: 1 / b.pen.a, col: kc };
+    ink(b, arcPts(0, -s * 0.22, s * 0.13, s * 0.13, 0, TAU, 14), { ...o, w: s * 0.07 });
+    ink(b, [[0, -s * 0.07], [0, s * 0.4]], { ...o, w: s * 0.075 });
+    for (const yy of [0.25, 0.37]) ink(b, seg(0, s * yy, s * 0.15, s * yy), { ...o, w: s * 0.065 });
+    part(b, arcPts(s * 0.21, -s * 0.36, s * 0.14, s * 0.14, 0, TAU, 14), P.awnA, { w: 0.7, tex: 0, lc });
   } else if (name === 'qKnob') {   // 定时器的旋钮（第 4 关）：一只圆圆的镀铬旋钮，中间一道握的棱
     part(b, arcPts(0, 0, s * 0.34, s * 0.34, 0, TAU, 16), P.chrome, { w: 0.9, tex: 0, lc });
     part(b, rectPts(-s * 0.08, -s * 0.3, s * 0.16, s * 0.6), lit ? '#c9ccd2' : '#3a4058', { w: 0.7, tex: 0, lc, seed: seed + 1 });
@@ -8355,6 +8528,7 @@ const LIGHTS = [
   // 公寓楼（第 5 关）。声控灯：有声音就亮 SND_HOLD 秒自己灭（不算“最近一盏灯”）；每盏只照自己那一段（clip），照得到站在它底下的那位住户。
   // 大堂里一台自动售货机一直亮着：孩子被抓住了回到它跟前（够不着第一位住户）
   { id: 'vend', off: 0.3, up: 0.3, at: () => ({ x: ZVEND.x, y: 820, R: 360, I: 0.9, clip: [15210, 250, 15840, 1060] }) },
+  { id: 'zdry', off: 0.3, up: 0.5, nosafe: 1, at: () => ({ x: ZB.dry + 6, y: FL.zb.wb - 52, R: 480, I: V.li.zdry || 0, clip: [ZB.x0, ROOMS.zbA.top, ZB.x1, FL.zb.ff + 18] }) },   // 地下室烘干机的小窗（2026-11-25）：投了币一直亮着，照得到晾衣绳上的床单
   { id: 'snd1', off: 0.4, up: 0.6, nosafe: 1, at: () => ({ x: ZLA.x, y: ZLA.y, R: 440, I: V.li.za, clip: [15640, 250, 16540, 1060] }) },
   { id: 'snd2', off: 0.4, up: 0.6, nosafe: 1, at: () => ({ x: ZLB.x, y: ZLB.y, R: 440, I: V.li.zb, clip: [16260, 250, 17160, 1060] }) },
   { id: 'snd3', off: 0.4, up: 0.6, nosafe: 1, at: () => ({ x: ZLC.x, y: ZLC.y, R: 440, I: V.li.zc, clip: [17300, 250, 18390, 1060] }) },
@@ -8865,6 +9039,8 @@ const GARB = {
   // 个个速度一样，只在自己站的地方往前挪一小截（terr 是 [home, home + 70]），孩子走进这一排、又不在光里，它们一起朝孩子挪过来。face0：等车的时候朝哪边站
   ...Object.fromEntries(QU_KEYS.map((k, i) => [k, { kind: 'coat', fl: 'down', home: QU.x0 + i * QU.sp, terr: [QU.x0 + i * QU.sp, QU.x0 + i * QU.sp + 70], speed: 62, h: 214, face0: 1, queue: 1, pal: { coat: 'qc' + i, coatLo: 'qcl' + i, scarf: 'qcs' + i, hat: 'qch' } }])),
   // 公寓楼（第 5 关）：楼道里的三位住户，睡着的，听见声音才醒（listen：声音过后 ZHEAR 秒里才追人，过了又睡回去）。每位站在一盏声控灯底下
+  // 公寓楼的地下室（第 5 关，2026-11-25）：晾衣绳上搭着的一条床单（长袍的走法），守着后面的电表间。烘干机转起来、小窗一亮就塌下去，一直塌着
+  zsh: { kind: 'robe', fl: 'zb', home: ZB.sheet, terr: [ZB.gate + 26, ZB.gate + 280], speed: 50, h: 200, cols: ['shtHi', 'sht'], keepDown: () => S.zDry === 1 && (V.li.zdry || 0) > 0.5 },
   zt1: { kind: 'robe', fl: 'down', home: 16100, terr: [16030, 16210], speed: 58, h: 214, cols: ['zr1', 'zr2'], listen: 1 },
   zt2: { kind: 'coat', fl: 'down', home: 16760, terr: [16680, 16850], speed: 64, h: 214, pal: { coat: 'zc', coatLo: 'zcl', scarf: 'zcs', hat: 'zch' }, listen: 1 },
   zt3: { kind: 'robe', fl: 'down', home: 17620, terr: [17560, 17720], speed: 58, h: 214, cols: ['zr3', 'zr4'], belt: 1, listen: 1 },
@@ -9416,6 +9592,7 @@ const HEAP_COLS = { gown: ['blanketHi', 'blanket'], towel: ['towel2', 'towel'], 
 QU_KEYS.forEach((k, i) => { HEAP_COLS[k] = ['qc' + i, 'qcl' + i]; });
 HEAP_COLS.q4dust = ['dustHi', 'dust'];   // 地下室的灰大褂
 HEAP_COLS.q4apron = ['lthHi', 'lth'];   // 钟表店二楼的皮围裙
+HEAP_COLS.zsh = ['shtHi', 'sht'];   // 公寓楼地下室的床单
 HEAP_COLS.zt1 = ['zr1', 'zr2']; HEAP_COLS.zt2 = ['zc', 'zcl']; HEAP_COLS.zt3 = ['zr3', 'zr4']; HEAP_COLS.rt1 = ['r1c', 'r1l']; HEAP_COLS.rt2 = ['r2c', 'r2l']; HEAP_COLS.sg1 = ['s1c', 's1l']; HEAP_COLS.sg2 = ['s2c', 's2l']; HEAP_COLS.gr1 = ['g1c', 'g1l']; HEAP_COLS.gr2 = ['g2c', 'g2l']; HEAP_COLS.nr1 = ['n1c', 'n1l']; HEAP_COLS.nr2 = ['n2c', 'n2l']; HEAP_COLS.ta1 = ['t1c', 't1l']; HEAP_COLS.ta2 = ['t2c', 't2l']; HEAP_COLS.ta3 = ['t3c', 't3l']; HEAP_COLS.uc1 = ['uBc', 'uBl']; HEAP_COLS.mp1 = ['mtC1', 'mtC1l']; HEAP_COLS.mp2 = ['mtC2', 'mtC2l']; HEAP_COLS.mp3 = ['mtC3', 'mtC3l']; HEAP_COLS.mw = ['mtC4', 'mtC4l']; HEAP_COLS.wp1 = ['wsC1', 'wsC1l']; HEAP_COLS.wp2 = ['wsC2', 'wsC2l']; HEAP_COLS.wp3 = ['wsC3', 'wsC3l'];   // 公寓楼的三位住户塌下去
 function drawGarbHeap(b, P, lit, k, x, fy) {
   const lc = lcOf(P, lit), [c1, c2] = HEAP_COLS[k]; b.seedN = 282000 + GARB_KEYS.indexOf(k) * 100;
@@ -9479,7 +9656,8 @@ function drawOverallsHung(b, P, lit) {   // 锅炉边上钉子上挂着的一套
 const GARB_HOME = { gown: drawGown, towel: drawTowels, laundry: drawLaundry, chair: drawThrowOnChair, sack: drawSack, boiler: drawOverallsHung, stand: drawStandCoat, dog: drawDogHome, rain: drawRainHung, scare: drawScarecrow, nightie: (b, P, lit) => drawHungRobe(b, P, lit, 'nightie'), jacket: (b, P, lit) => drawHungJacket(b, P, lit, 'jacket'), apron: (b, P, lit) => drawHungRobe(b, P, lit, 'apron') };
 for (const k of [...QU_KEYS, ...ZT_KEYS]) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);
 GARB_HOME.q4dust = drawHungDust;   // 地下室的灰大褂：没醒的时候挂在柜台后面的钩子上
-GARB_HOME.q4apron = drawHungApron;   // 钟表店二楼的皮围裙：没醒的时候挂在工作台前面的钩子上
+GARB_HOME.q4apron = drawHungApron;
+GARB_HOME.zsh = drawHungSheet;   // 公寓楼地下室的床单：没醒的时候搭在晾衣绳上   // 钟表店二楼的皮围裙：没醒的时候挂在工作台前面的钩子上
 GARB_HOME.ta1 = drawThSeatHome('ta1'); GARB_HOME.ta2 = drawThSeatHome('ta2'); GARB_HOME.ta3 = drawThRackCoat;   // 剧院：后排、前排的坐在座位上，台边的挂在戏服架上
 for (const k of ['nr1', 'nr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 夜市的围裙：没醒的时候就是地上的一摊
 for (const k of ['gr1', 'gr2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, FL.down.gy);   // 体育馆的运动服：跑圈的，没醒的时候就是地上的一摊
@@ -10220,7 +10398,7 @@ const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 // 物品栏、气泡、捡起来飞过去的那一下：画成它在屋子里的样子（2026-11-18 主人说：地上是什么样，物品栏里就是什么样）。
 // 照 sceneItem 在灯下的颜色先画一张大的（世界里的大小，一个单位 ICON_R 个像素），量出画了的那一块，用的时候等比缩到格子里。
 // 画一次就放着
-const ICON_SIZE = { jKey: 52, jWt: 70, hMatch: 40, hCrank: 56, hCandle: 56, hLamp: 56, kWrench: 60, kPail: 56, kPailF: 56, cBulb: 40, cBal: 70, bLamp: 54, bTag: 44, bMirror: 84, fBeacon: 44, fHelmet: 56, vFuse: 44, vPole: 130, vKeys: 40, dPlank: 96, dWheel: 56, wPail: 64, wTorch: 66, wChain: 60, mHandle: 56, mBq: 64, uHat: 56, tMir: 56, tBill: 50, nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, yKey: 52, lPole: 110, lStool: 54, qKey: 52, qKnob: 40, qLad: 80, qBkey: 40, qWkey: 40, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
+const ICON_SIZE = { jKey: 52, jWt: 70, hMatch: 40, hCrank: 56, hCandle: 56, hLamp: 56, kWrench: 60, kPail: 56, kPailF: 56, cBulb: 40, cBal: 70, bLamp: 54, bTag: 44, bMirror: 84, fBeacon: 44, fHelmet: 56, vFuse: 44, vPole: 130, vKeys: 40, dPlank: 96, dWheel: 56, wPail: 64, wTorch: 66, wChain: 60, mHandle: 56, mBq: 64, uHat: 56, tMir: 56, tBill: 50, nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, yKey: 52, lPole: 110, lStool: 54, qKey: 52, qKnob: 40, qLad: 80, qBkey: 40, qWkey: 40, zCoin: 30, zFkey: 40, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rPlank: 90 }, ICON_R = 4, ICON_PAD = 70;
 const iconCache = {};
 function iconCanvas(it) {
   const live = it === 'candle', key = it + (live ? '' : ''), e = iconCache[key] || (iconCache[key] = { c: mk(ICON_PAD * 2 * ICON_R, ICON_PAD * 2 * ICON_R), box: null, at: -1 });
@@ -10512,7 +10690,7 @@ function walkTo(tx, ty, cb, force) {
   if (pathLen(kid.x, kid.y, path) < 0.6) { kid.path = []; kid.mode = 'idle'; kid.onArrive = null; if (cb) cb(); }
 }
 function enterKind(q) {
-  if (q.kind === 'stairs') { kid.kind = 'stairs'; kid.seg = kid.x > STREET.x0 ? CK_RUN : (kid.y + q.y) / 2 < STAIR.f1[1][1] ? STAIR.f1 : STAIR.f2; }   // 商店街：钟表店的外楼梯（第 4 关）
+  if (q.kind === 'stairs') { kid.kind = 'stairs'; kid.seg = kid.x > STREET.x1 ? ZB_RUN : kid.x > STREET.x0 ? CK_RUN : (kid.y + q.y) / 2 < STAIR.f1[1][1] ? STAIR.f1 : STAIR.f2; }   // 商店街：钟表店的外楼梯（第 4 关）
   else { kid.kind = q.kind; kid.seg = null; }
 }
 function moveKid(dx, dy, kind) {
@@ -10763,7 +10941,8 @@ function hopOffBox(dir, after) { const d = dir || kid.boxSide || -1; kid.onBox =
 function meetGate(k) {
   if (k === 'cellar' && !S.hatch) { kid.face = -1; return shakeHead(['hatch']); }   // 地窖口关着：下不去
   if (k === 'q4dark' && !S.qHatch) return shakeHead(['hatch']);
-  if (k === 'q4door' && !S.qCk) return shakeHead(['qKey']);   // 钟表店二楼的门锁着（第 4 关，2026-11-25）：推不开   // 人行道上的地窖口关着（第 4 关）：下不去
+  if (k === 'q4door' && !S.qCk) return shakeHead(['qKey']);
+  if (k === 'zbd' && !S.zBD) { kid.face = 1; return shakeHead(['zSlip']); }   // 地下室的门没撑住（第 5 关，2026-11-25）：不敢进（一关上就出不来）   // 钟表店二楼的门锁着（第 4 关，2026-11-25）：推不开   // 人行道上的地窖口关着（第 4 关）：下不去
   recoil(k);
 }
 function recoil(k) {   // 不敢过去：退两步，缩着发抖，影子的边和眼睛变红
@@ -10790,7 +10969,8 @@ function gateHint(k) {
     case 'apron': return ['lPole'];   // 巷子深处的围裙要高处的路灯照（用晾衣叉勾拉线）
     case 'q4dark': return ['imp'];    // 商店街的地窖口：底下黑着，要灯崽在口上照着（或者地下室的灯开了）
     case 'q4dust': return ['q4sw'];
-    case 'q4apron': return ['lever'];   // 钟表店二楼工作台前面的皮围裙：要合上钟表店的闸（门边墙上），台灯才亮   // 地下室柜台后面的灰大褂：要开地下室的灯（梯子脚边的开关）
+    case 'q4apron': return ['lever'];
+    case 'zsh': return ['zCoin'];   // 公寓楼地下室晾衣绳上的床单：要烘干机转起来（投币）   // 钟表店二楼工作台前面的皮围裙：要合上钟表店的闸（门边墙上），台灯才亮   // 地下室柜台后面的灰大褂：要开地下室的灯（梯子脚边的开关）
     case 'zt1': return ['stomp'];   // 公寓楼：大堂里的住户要大堂的灯照（跺脚）
     case 'zt2': return ['clap'];    // 楼道里的住户要楼道的灯照（拍手）
     case 'zt3': return s.zSlip === 'floor' ? ['stomp'] : ['zSlip'];   // 楼梯间口的住户：拖鞋丢过去
@@ -11001,6 +11181,13 @@ function spots() {
     add('zToss', [ZLC.x - 56, ZLC.y - 44, ZLC.x + 56, ZLC.y + 70], ZTOSS_X - 70, 'down', 1, [ZTOSS_X - 30, dn - 130]);   // 楼梯间那盏灯：把拖鞋朝它丢过去
     if (S.zSlip === 'far' && !(V.T - V.tossT < 0.6)) add('zSlipB', [ZTOSS_X - 30, dn - 40, ZTOSS_X + 30, FL.down.ff - 4], ZTOSS_X - 40, 'down', 1, [ZTOSS_X - 10, dn - 12]);
     add('zDoor', [ZDOOR.x - 52, dn - 190, ZDOOR.x + 52, FL.down.ff], ZDOOR_STOP - 4, 'down', 1, [ZDOOR.x - 10, dn - 94]);   // 撑住了以后还在：孩子折回来了，再点一下就是走出去
+    // 地下室（2026-11-25）：楼道口滚过来的硬币；地下室的门（拿着拖鞋撑住 / 撑着的时候拿回拖鞋）；楼道那头 103 的门（敲门）；地下室里的烘干机、电表间的闸、钥匙箱
+    if (S.zCoin === 'floor' && V.zSeen1 && V.T - V.zT1 > 1.2) add('zCoinH', [ZCOIN_X - 26, dn - 30, ZCOIN_X + 26, FL.down.ff - 4], ZCOIN_X - 30, 'down', 1, [ZCOIN_X, dn - 8]);
+    add('zBDoor', [ZB.door - 46, FL.down.wb - 196, ZB.door + 46, dn + 4], ZB.top - 26, 'down', 1, [ZB.door - 22, dn - 30]);
+    add('zKnock', [ZB.knock - 46, FL.down.wb - 190, ZB.knock + 46, dn], ZB.knock - 62, 'down', 1, [ZB.knock - 32, dn - 112]);
+    add('zDryer', [ZB.dry - 74, FL.zb.wb - 110, ZB.dry + 46, FL.zb.gy], ZB.dry - 86, 'zb', 1, [ZB.dry - 60, FL.zb.wb - 66]);
+    add('zBrk', [ZB.brk - 24, FL.zb.wb - 160, ZB.brk + 24, FL.zb.wb - 78], ZB.brk - 40, 'zb', 1, [ZB.brk - 4, FL.zb.wb - 120]);
+    if (S.zFkey === 'box') add('zFkeyH', [ZB.keys - 26, FL.zb.wb - 168, ZB.keys + 26, FL.zb.wb - 100], ZB.keys - 40, 'zb', 1, [ZB.keys + 4, FL.zb.wb - 128]);
   }
   // 变电站（第 15 关）：走到地下最深处的光里以后才有
   if (S.dOut) {
@@ -11459,6 +11646,10 @@ function perform(sp, h, r) {
     else if (f === 'nopower4') { o.pre = 0.3; o.hold = 0.35; o.onHit = bub(['bolt'], () => snd.tap()); }   // 定时器：没电（钟表店的闸没合），气泡里画闪电
     else if (f === 'noknob') { o.pre = 0.3; o.hold = 0.35; o.wiggle = true; o.onHit = bub(['qKnob'], () => snd.tap()); }   // 定时器的旋钮掉了：手指捏着那根方头的轴拧不动，气泡里画旋钮
     else if (f === 'tooFar5') { o.hx = kid.x + 40; o.hy = FL.down.gy - 110; o.pre = 0.2; o.hold = 0.1; o.onHit = bub(['zSlip'], () => snd.clap()); }   // 楼梯间的灯太远，拍手它听不见：气泡里画拖鞋
+    else if (f === 'bdShuts') { o.pre = 0.45; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.zbdPulse = V.T; }; o.onHit = bub(['zSlip'], () => snd.hiss()); }   // 地下室的门：推开一点，闭门器又把它拉上（里面没把手，关上了就出不来）：气泡里画拖鞋
+    else if (f === 'nocoin5') { o.pre = 0.3; o.hold = 0.3; o.onHit = bub(['zCoin'], () => snd.tap()); }   // 烘干机：投币口空着，按开关不转：气泡里画硬币
+    else if (f === 'dead5') { o.hx = ZTOSS_X; o.hy = FL.down.gy - 150; o.pre = 0.4; o.hold = 0.35; o.onHit = bub(['bolt'], () => snd.tap()); }   // 楼梯间那盏灯没电（电表间的闸没合）：举起拖鞋比了比又放下，气泡里画闪电
+    else if (f === 'chained') { o.pre = 0.3; o.hold = 0.35; o.wiggle = true; o.onHit = bub(['zFkey'], () => { V.zchainT = V.T; snd.rattle(); }); }   // 防火门：链子锁着，拽不开：气泡里画钥匙
     else if (f === 'doorShuts') { o.pre = 0.5; o.hold = 0.3; o.drive = rr => { if (!rr.hit) V.zdoorPulse = V.T; }; o.onHit = bub(['zBag'], () => snd.hiss()); }   // 防火门推开一点，闭门器又把它拉上：气泡里画垃圾袋
     else if (f === 'needBulb6') { o.hx = RHOLD.x; o.hy = RHOLD.y + 4; o.pre = 0.2; o.hold = 0.2; o.onHit = bub(['rBulb'], () => snd.tap()); }   // 屋顶：灯座是空的，气泡里画灯泡
     else if (f === 'dark13') { o.hx = WLED[1].x; o.hy = WLED[1].y - 10; o.pre = 0.3; o.hold = 0.2; o.onHit = bub(['wPail'], () => snd.tap()); }   // 下水道：托架上什么也没有，气泡里画桶
@@ -11563,7 +11754,15 @@ function perform(sp, h, r) {
     case 'zClap': o.pre = 0.15; o.hold = 0.12; break;
     case 'zSlip': case 'zBag': case 'zSlipB': o.pre = 0.2; o.hold = 0.2; break;
     case 'zToss': o.pre = 0.3; o.hold = 0.25; break;
-    case 'zDoor': if (S.zDoor) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.4; o.hold = 0.4; } o.after = exitSeq5; break;
+    case 'zDoor':
+      if (ev === 'unchain5') { o.pre = 0.35; o.hold = 0.5; o.wiggle = true; break; }   // 钥匙开锁，解下链子（2026-11-25）
+      if (ev === 'rattle5') { o.pre = 0.3; o.hold = 0.4; o.wiggle = true; o.onHit = () => { commit(r); say(['zFkey']); }; break; }   // 空着手拽一下锁着的门：哐啷一声，楼梯间的灯亮了，气泡里画钥匙
+      if (S.zDoor) { o.pre = 0.05; o.hold = 0; } else { o.pre = 0.4; o.hold = 0.4; } o.after = exitSeq5; break;
+    case 'zCoinH': case 'zFkeyH': o.pre = 0.2; o.hold = 0.2; break;
+    case 'zBDoor': o.pre = 0.35; o.hold = 0.35; break;   // 蹲下去把拖鞋塞进门缝 / 抽出来
+    case 'zKnock': o.pre = 0.15; o.hold = 0.5; break;   // 敲 103 的门
+    case 'zDryer': o.pre = 0.3; o.hold = 0.4; break;   // 投币，按一下开关
+    case 'zBrk': o.pre = 0.2; o.hold = 0.35; break;   // 合上电表间的闸
     // 夜市（第 9 关）
     // 剧院（第 10 关）
     case 'tKnob': o.pre = 0.3; o.hold = 0.5; o.wiggle = true; break;
@@ -11745,6 +11944,13 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       case 'clap': V.clapT = V.T; hearAt(kid.x, 'b', V.T); snd.clap(); snd.sparkOn(); break;
       case 'toss': V.tossT = V.T; V.tossX0 = kid.x; hearAt(ZTOSS_X, 'c', V.T + 0.35); snd.whoosh(); setTimeout(() => { snd.slap(); snd.sparkOn(); }, 350); break;   // 拖鞋飞过去 0.35 秒，啪的一声，灯才亮
       case 'doorProp': drop('zBag'); snd.thump(); snd.hiss(); break;
+      case 'knock5': V.knockT5 = V.T; hearAt(kid.x, 'b', V.T); snd.thump(); setTimeout(() => snd.thump(), 170); setTimeout(() => { snd.thump(); snd.sparkOn(); }, 340); break;   // 敲 103 的门：楼道的灯听见了（2026-11-25）
+      case 'bdProp': drop('zSlip'); snd.creak(); snd.thump(); break;   // 拖鞋塞进地下室的门缝，门撑住了
+      case 'bdShut': snd.hiss(); setTimeout(() => snd.thump(), 300); break;   // 抽出拖鞋，闭门器把门拉上
+      case 'dryOn': drop('zCoin'); V.lt0.zdry = V.T; snd.click(); setTimeout(() => snd.thump(), 200); break;   // 投币：烘干机转起来，滚筒的小窗亮了
+      case 'pow5': snd.clank(); snd.click(); break;   // 电表间的闸合上：楼梯间那盏灯有电了
+      case 'unchain5': drop('zFkey'); V.zchainT = V.T; snd.unlock(); snd.rattle(); break;   // 开锁，链子哗啦一声滑下来
+      case 'rattle5': V.zchainT = V.T; hearAt(ZDOOR.x, 'c', V.T); snd.rattle(); snd.sparkOn(); break;   // 拽了一下锁着的防火门：哐啷一声，楼梯间的灯亮了
       // 夜市（第 9 关）
       case 'plug9': V.lt0.nla = V.T; snd.clank(); snd.lightOn(); break;
       case 'fan9': V.peek = { x: 28900, t0: V.T, dur: 3.4 }; snd.whoosh(); snd.lightOn(); break;   // 蒲扇扇红炭炉：镜头过去看一眼面摊
@@ -11928,11 +12134,28 @@ function exitSeq4() {   // 检票机的杆抬起来了：走出去
   kid.after = () => { walkTo(TGATE.x + 150, FL.down.gy, null, true); kid.auto = true; };
 }
 // 这一关照最短的解法，下一步该点哪儿（一关一关地搜：第 1 关用原来那一套，一个字没动）
+// 提示用的求解（第 5 关，2026-11-25）：局面里多记一样“孩子在哪一块”。规则里的 solveL 不管孩子在哪儿（从入口那一块算起，灯一直亮着），
+// 第 5 关要回头（楼道那头 → 地下室），照 solveL 会叫已经过了两位住户的孩子回大堂跺脚。这里每一步只能点孩子那一块连得上的地方，点完孩子就在那个地方那一块
+function solveLZ(L, from, zone) {
+  const key = (s, z) => L.skey(s) + '|' + z, k0 = key(from, zone), prev = new Map([[k0, null]]), q = [[from, zone]], qk = [k0];
+  let goal = null;
+  for (let h = 0; h < q.length && goal == null; h++) {
+    const [s, z] = q[h], ks = qk[h];
+    if (s[L.GOAL] === 1) { goal = ks; break; }
+    const R = reachL({ ...L, ENTRY: z }, s), hand = [null, ...L.ITEMS.filter(it => has(s, it))];
+    for (const spot of L.SPOTS) {
+      const sz = L.SPOT_ZONE[spot]; if (!R.has(sz)) continue;
+      for (const held of hand) { const r = L.act(s, spot, held, R); if (!r.s) continue; const k = key(r.s, sz); if (prev.has(k)) continue; prev.set(k, [ks, spot, held]); q.push([r.s, sz]); qk.push(k); }
+    }
+  }
+  const path = []; for (let k = goal; k != null && prev.get(k); k = prev.get(k)[0]) { const [, spot, held] = prev.get(k); path.unshift({ spot, held }); }
+  return { path: goal != null ? path : null };
+}
 function nextStep() {
   { const h = S.yGate ? null : 'yKey';   // 院门挂着锁：手里得有钥匙（开了以后再点就是走出去）
     if (S.out && !S.yOut && !won && kid.x > YARD.x0 && yardZoneAt(kid.x) === 'gateway' && ACT(S, 'yGate', h).s) return { spot: 'yGate', held: h }; }   // 已经过了稻草人、站在院门跟前（轮子停了也一样，ACT 把孩子站的那一块算进去）：下一步就是院门，不往回指自行车
   const L = curLevel(); if (!L) return null;   // 都走完了
-  const r = L.n === 1 ? solve(S) : solveL(L, S, undefined, false, L.n === 3 && kid.x > GATE.x ? [laneZoneAt(kid.x)] : L.n === 4 && kid.x > LGATE.x ? [streetZoneAt(kid.x)] : L.n === 5 && kid.x > TGATE.x ? [aptZoneAt(kid.x)] : L.n === 6 && kid.x > ZDOOR.x ? [roofZoneAt(kid.x)] : L.n === 15 && kid.x > VS.x0 ? [vsZoneAt(kid.x)] : L.n === 16 && kid.x > FS.x0 ? [fsZoneAt(kid.x)] : L.n === 17 && kid.x > BP.x0 ? [bpZoneAt(kid.x)] : L.n === 18 && kid.x > CP.x0 ? [cpZoneAt(kid.x)] : L.n === 19 && kid.x > KT.x0 ? [klZoneAt(kid.x)] : L.n === 20 && kid.x > TW.x0 ? [twZoneAt()] : undefined);   // 第 3 关：孩子已经过了会自己关上的门（门廊灯灭了），就从他站的那一块往后找
+  const r = L.n === 1 ? solve(S) : L.n === 5 && kid.x > TGATE.x ? solveLZ(L, S, aptZoneAt(kid.x)) : solveL(L, S, undefined, false, L.n === 3 && kid.x > GATE.x ? [laneZoneAt(kid.x)] : L.n === 4 && kid.x > LGATE.x ? [streetZoneAt(kid.x)] : L.n === 5 && kid.x > TGATE.x ? [aptZoneAt(kid.x)] : L.n === 6 && kid.x > ZDOOR.x ? [roofZoneAt(kid.x)] : L.n === 15 && kid.x > VS.x0 ? [vsZoneAt(kid.x)] : L.n === 16 && kid.x > FS.x0 ? [fsZoneAt(kid.x)] : L.n === 17 && kid.x > BP.x0 ? [bpZoneAt(kid.x)] : L.n === 18 && kid.x > CP.x0 ? [cpZoneAt(kid.x)] : L.n === 19 && kid.x > KT.x0 ? [klZoneAt(kid.x)] : L.n === 20 && kid.x > TW.x0 ? [twZoneAt()] : undefined);   // 第 3 关：孩子已经过了会自己关上的门（门廊灯灭了），就从他站的那一块往后找。第 5 关（2026-11-25 起要回头）：孩子站在哪一块也算进局面里（solveLZ），不当他还能回到大堂
   const m = r.path && r.path.length ? r.path[0] : null;
   // 巷子（第 3 关）：规则不管孩子站在哪儿。孩子已经在外套那头（巷子深处），外套醒着（门廊灯、楼梯间的灯都灭了），下一步却在外套这头（拿板凳、敲门）：
   // 他过不去，先拿晾衣叉敲楼梯间的小窗（叉子还靠在墙上：先拿叉子）
@@ -11954,6 +12177,9 @@ function hint() {
   else if (m.spot === 'qHatch') say(['hatch', '>'], 2.8);
   else if (m.spot === 'qHwSw') say(['q4sw', '>'], 2.8);
   else if (m.spot === 'qCkBrk') say(['lever', '>'], 2.8);
+  else if (m.spot === 'zBrk') say(['lever', '>'], 2.8);
+  else if (m.spot === 'zKnock') say(['knock', '>'], 2.8);
+  else if (m.spot === 'zBDoor' && !m.held) say(['zSlip', '>'], 2.8);   // 拿回门缝里的拖鞋
   else if (spots().some(s => s.id === m.spot && s.orb)) say(['imp', '>'], 2.8);   // 灯崽谜题：把灯崽放在那儿
   else if (m.spot === 'qMain') say(['neon', '>'], 2.8);
   else if (m.spot === 'zStomp') say(['stomp', '>'], 2.8);
@@ -12067,6 +12293,8 @@ function aptUpdate(dt) {
     if (S[flag] === 1 && T >= V.zUntil[w] && (V.mon[gk].want === 1 || T >= V.zUntil[w] + 1.2)) { const r = ({ zLA: laEnds, zLB: lbEnds, zLC: lcEnds })[flag](S); if (r) { S = r.s; snd.winOff(); } }
   }
   V.zdoor = approach(V.zdoor, S.zDoor, dt / 0.5);
+  V.zbd = approach(V.zbd || 0, S.zBD, dt / 0.4); V.zbrk = approach(V.zbrk || 0, S.zPow, dt / 0.2); V.zchain = approach(V.zchain ?? 1, S.zChain, dt / 0.6);   // 地下室的门、电表间的闸、防火门的链子（2026-11-25）
+  V.li.zdry = S.zDry ? Math.min(1, 0.3 + (T - (V.lt0.zdry ?? -10)) / 0.5) : 0;   // 烘干机的小窗：投了币慢慢亮起来，一直亮
   if (!V.zSeen1 && V.mon.zt1.rise < 0.5) { V.zSeen1 = 1; V.zT1 = T; }   // 第一位塌下去：拖鞋飘出来
   if (!V.zSeen2 && V.mon.zt2.rise < 0.5) { V.zSeen2 = 1; V.zT2 = T; }
 }
@@ -12304,7 +12532,10 @@ function drawOverlays(lights) {
   ];
   const zglints = [   // 公寓楼（第 5 关）
     [ZSTOMP.x, FL.down.gy + 12, 0.5, S.zLA === 0 && S.zSlip === 'floor' && !V.zSeen1], [ZSLIP_X, FL.down.gy - 14, 1.6, S.zSlip === 'floor' && V.zSeen1], [ZPOSTER.x, ZPOSTER.y, 2.7, S.zSlip !== 'floor' && !V.zSeen2 && !S.zLB],
-    [ZBAG_X, FL.down.gy - 22, 3.8, S.zBag === 'floor' && V.zSeen2], [ZLC.x, ZLC.y + 20, 4.9, S.zSlip === 'inv' && !S.zLC], [ZTOSS_X, FL.down.gy - 12, 5.6, S.zSlip === 'far' && !S.zLC], [ZDOOR.x + 6, FL.down.gy - 94, 0.9, S.zBag === 'inv' && S.zLC],
+    [ZBAG_X, FL.down.gy - 22, 3.8, S.zBag === 'floor' && V.zSeen2], [ZLC.x, ZLC.y + 20, 4.9, S.zSlip === 'inv' && !S.zLC && S.zPow], [ZTOSS_X, FL.down.gy - 12, 5.6, S.zSlip === 'far' && !S.zLC], [ZDOOR.x + 6, FL.down.gy - 94, 0.9, S.zBag === 'inv' && S.zLC && !S.zChain],
+    // 地下室（2026-11-25）：硬币、地下室的门（拿着拖鞋）、烘干机（拿着硬币）、闸、钥匙箱；出来以后门缝里的拖鞋；拿着钥匙的时候防火门
+    [ZCOIN_X, FL.down.gy - 10, 2.0, S.zCoin === 'floor' && V.zSeen1], [ZB.door - 22, FL.down.gy - 30, 3.0, S.zSlip === 'inv' && !S.zBD && !S.zPow], [ZB.dry - 60, FL.zb.wb - 66, 4.0, S.zCoin === 'inv' && S.zBD],
+    [ZB.brk, FL.zb.wb - 120, 5.0, S.zDry && !S.zPow], [ZB.keys + 8, FL.zb.wb - 128, 0.7, S.zDry && S.zFkey === 'box'], [ZB.door - 30, FL.down.gy - 14, 1.8, S.zBD && S.zPow && S.zFkey !== 'box'], [ZDOOR.x + 6, FL.down.gy - 94, 2.9, S.zFkey === 'inv' && S.zChain],
   ];
   const rglints = [   // 屋顶（第 6 关）
     [RSW.x, RSW.y, 0.5, !S.rLA], [RBULB_X, FL.down.gy - 14, 1.6, S.rBulb === 'floor' && V.rSeen1], [RHOLD.x, RHOLD.y + 4, 2.7, S.rBulb === 'inv' && !S.rLB],
@@ -12608,7 +12839,8 @@ function snapTo(s, b) {
   Object.assign(V, { ckDoor: S.qCk, ckBrk: S.qCkP, lad4: S.qLad === 'pole' ? 1 : 0, ckCov: ckInside() ? 0 : 1, q4hatch: S.qHatch, pot: S.qKey === 'pot' ? 0 : 1, box: S.qBox, sw: S.qNeon, tgate: S.qGate, winUntil: S.qWin ? V.T + WIN_HOLD : -10, dialF: S.qWin ? 1 : 0, tkSeen: S.qTicket !== 'floor' ? 1 : 0, tkT: -10, laneDone: S.lOut ? 1 : 0 });
   V.li.neon = S.qNeon ? 1 : 0; V.li.win = S.qWin ? 1 : 0;
   // 公寓楼（第 5 关）：防火门一步到位；声控灯亮着（存档在那一阵里）就接着亮 SND_HOLD 秒；拖鞋、垃圾袋拿了就不再飘出来
-  Object.assign(V, { zdoor: S.zDoor, zSeen1: S.zSlip !== 'floor' ? 1 : 0, zSeen2: S.zBag !== 'floor' ? 1 : 0, streetDone: S.qOut ? 1 : 0, zUntil: { a: S.zLA ? V.T + SND_HOLD : -10, b: S.zLB ? V.T + SND_HOLD : -10, c: S.zLC ? V.T + SND_HOLD : -10 }, soundT: S.zLA || S.zLB || S.zLC ? V.T : -10, tossT: -10, stompT: -10, clapT: -10, zT1: -10, zT2: -10 });
+  Object.assign(V, { zbd: S.zBD, zbrk: S.zPow, zchain: S.zChain, zchainT: -10, zbdPulse: -10 });   // 公寓楼的地下室（2026-11-25）
+  Object.assign(V, { zdoor: S.zDoor, zSeen1: S.zSlip !== 'floor' || S.zCoin !== 'floor' ? 1 : 0, zSeen2: S.zBag !== 'floor' ? 1 : 0, streetDone: S.qOut ? 1 : 0, zUntil: { a: S.zLA ? V.T + SND_HOLD : -10, b: S.zLB ? V.T + SND_HOLD : -10, c: S.zLC ? V.T + SND_HOLD : -10 }, soundT: S.zLA || S.zLB || S.zLC ? V.T : -10, tossT: -10, stompT: -10, clapT: -10, zT1: -10, zT2: -10 });
   V.li.za = S.zLA ? 1 : 0; V.li.zb = S.zLB ? 1 : 0; V.li.zc = S.zLC ? 1 : 0;
   // 屋顶（第 6 关）：总闸、木板一步到位；灯亮着就接着亮；灯泡拿了就不再掉出来
   Object.assign(V, { rsw: S.rLA, rbr: S.rBr, rSeen1: S.rBulb !== 'floor' ? 1 : 0, rT1: -10, aptDone: S.zOut ? 1 : 0 });
@@ -12740,7 +12972,7 @@ if (qs.get('lv') === '6') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   snapTo({ ...s5, ...START6 }, []); placeKid(ZDOOR.x + 150, FL.down.gy, 1); V.safe = { x: ZDOOR.x + 150, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; taps = 1;
 }
 // 地址后面加 ?lv=7：直接从第 7 关开头玩（前六关照最短的解法当作走完了，孩子站在隔壁屋顶上）。不读也不写存档
@@ -12749,7 +12981,7 @@ if (qs.get('lv') === '7') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   snapTo({ ...s6, ...START7 }, []); placeKid(RGAP.x1 + 170, FL.down.gy, 1); V.safe = { x: RGAP.x1 + 170, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; taps = 1;
 }
@@ -12759,7 +12991,7 @@ if (qs.get('lv') === '8') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   snapTo({ ...s7, ...START8 }, []); placeKid(SEXIT.x + 100, FL.down.gy, 1); V.safe = { x: SEXIT.x + 100, y: FL.down.gy }; V.grace = V.T + 1; V.progT = V.T; V.yardDone = 1; V.laneDone = 1; V.streetDone = 1; V.aptDone = 1; V.roofDone = 1; V.schoolDone = 1; taps = 1;
@@ -12770,7 +13002,7 @@ if (qs.get('lv') === '9') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12782,7 +13014,7 @@ if (qs.get('lv') === '10') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12795,7 +13027,7 @@ if (qs.get('lv') === '11') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12809,7 +13041,7 @@ if (qs.get('lv') === '12') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12824,7 +13056,7 @@ if (qs.get('lv') === '13') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12840,7 +13072,7 @@ if (qs.get('lv') === '14') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12857,7 +13089,7 @@ if (qs.get('lv') === '15') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12875,7 +13107,7 @@ if (qs.get('lv') === '16') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12894,7 +13126,7 @@ if (qs.get('lv') === '17') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12914,7 +13146,7 @@ if (qs.get('lv') === '18') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12935,7 +13167,7 @@ if (qs.get('lv') === '19') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12957,7 +13189,7 @@ if (qs.get('lv') === '20') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
@@ -12980,7 +13212,7 @@ if (qs.get('lv') === '21') {
   let s2 = { ...START2, ...s1 }; for (const m of solveL(L2, s2).path) s2 = act2(s2, m.spot, m.held, new Set(['porch', 'garage', 'rollside', 'drive', 'gateway'])).s;
   let s3 = { ...START3, ...s2 }; for (const m of solveL(L3, s3).path) s3 = act3(s3, m.spot, m.held, new Set(['lane0', 'lane1', 'lane2', 'lane3'])).s;
   let s4 = { ...START4, ...s3 }; for (const m of solveL(L4, s4).path) s4 = act4(s4, m.spot, m.held, new Set(['st0', 'st1', 'qb0', 'qb1', 'ck0', 'ck1'])).s; s4.qWin = 0;
-  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
+  let s5 = { ...START5, ...s4 }; for (const m of solveL(L5, s5).path) s5 = act5(s5, m.spot, m.held, new Set(['z0', 'z1', 'z2', 'z3', 'b0', 'b1'])).s; s5.zLA = s5.zLB = s5.zLC = 0;
   let s6 = { ...START6, ...s5 }; for (const m of solveL(L6, s6).path) s6 = act6(s6, m.spot, m.held, new Set(['r0', 'r1', 'r2'])).s;
   let s7 = { ...START7, ...s6 }; for (const m of solveL(L7, s7).path) s7 = act7(s7, m.spot, m.held, new Set(['s0', 's1', 's2', 's3'])).s;
   let s8 = { ...START8, ...s7 }; for (const m of solveL(L8, s8).path) s8 = act8(s8, m.spot, m.held, new Set(['g0', 'g1', 'g2', 'g3'])).s;
