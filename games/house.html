@@ -7462,6 +7462,16 @@ function xArms(pose, d, t) {   // 两只手要去哪儿（人自己的坐标：�
     case 'play': n = [d * 38, -92]; f = [-d * 4, -80 + sn * 6]; break;
     case 'up': n = [d * 30, -206]; f = [-d * 30, -206]; break;
     case 'pocket': n = [d * 22, -80]; f = [-d * 27, -84]; break;
+    // 活人的几个手势（2026-11-25）：窗里扒着窗帘边、食指竖在嘴前面（嘘）、两只手捂着嘴、手放在膝盖上、两只手朝着火伸过去、捧着杯子
+    case 'peek': n = [d * 26, -122]; f = [-d * 26, -122]; break;
+    case 'sip': n = [d * 9, -151]; f = [-d * 24, -84]; break;
+    case 'beck': n = [d * 36, -184 + sn * 6]; f = [-d * 27, -82]; break;
+    case 'tip': n = [d * 13, -190]; f = [-d * 24, -84]; break;   // 手指碰一下帽檐   // 举着手招呼（窗里的人，手不伸出窗框）
+    case 'hush': n = [d * 8, -167]; f = [-d * 27, -82]; break;
+    case 'cover': n = [d * 6, -166]; f = [-d * 6, -165]; break;
+    case 'rest': n = [d * 17, -68]; f = [-d * 17, -68]; break;
+    case 'warm': n = [d * 40, -112 + sn * 1.4]; f = [d * 27, -104 - sn * 1.2]; break;
+    case 'cup': n = [d * 18, -108]; f = [-d * 24, -84]; break;
     default: n = [d * 27, -82]; f = [-d * 27, -82];
   }
   return d > 0 ? [f, n] : [n, f];
@@ -7479,6 +7489,10 @@ function xItem(b, P, lit, kind, x, y, d, seed) {   // 手里的东西（hx、hy 
   else if (kind === 'coin') { pn(arcPts(0, 0, 3.6, 3.6, 0, TAU, 8), '#e8c35a', 1); }
   else if (kind === 'bouquet') { for (let i = 0; i < 5; i++) { const a = -1.9 + i * 0.45; ink(b, seg(0, 0, Math.cos(a) * 14, Math.sin(a) * 14 - 4), { w: 0.8, col: C('#4a7a3c'), taper: 0, a: 1 / b.pen.a, seed: seed + 1 + i, single: 1 }); pn(arcPts(Math.cos(a) * 15, Math.sin(a) * 15 - 5, 4.4, 4.4, 0, TAU, 8), ['#e0566a', '#f0b43c', '#f2f2ea', '#c46ad0', '#e0566a'][i], 8 + i); } }
   else if (kind === 'guitar') { b.rotate(d * -0.5); pn(arcPts(0, 4, 16, 13, 0, TAU, 14), '#b46a3a', 1, 0.2); pn(arcPts(0, 4, 4.5, 4.5, 0, TAU, 8), '#1a1410', 2); pn(rectPts(d > 0 ? 8 : -44, 0, 36, 5), '#6a4a30', 3); }
+  else if (kind === 'cup') {   // 一只冒热气的杯子（活人手里的，2026-11-25）
+    pn(roundPts(-6, -10, 12, 13, 2.5), '#e8e0cc', 1); pn(rectPts(-6, -10, 12, 2.6), '#c8b894', 2); ink(b, arcPts(6.6, -4, 3.4, 3.4, -1.3, 1.3, 6), { w: 0.9, col: lc, taper: 0, a: 0.9, seed: seed + 3, single: 1 });
+    for (let i = 0; i < 3; i++) { const q = (V.T * 0.45 + i / 3) % 1, sx = -2.5 + i * 2.6 + Math.sin(V.T * 1.7 + i * 2) * 1.6; ink(b, [[sx, -12 - q * 6], [sx + Math.sin(V.T * 2.1 + i) * 1.8, -17 - q * 12], [sx - 1, -22 - q * 18]], { w: 0.8, col: C('#dfe6f4'), taper: 0, a: (1 - q) * 0.75, seed: seed + 5 + i, single: 1 }); }
+  }
   else if (kind === 'lamp') {   // 油灯：铜的底座、玻璃罩、一朵小火苗（灯光在 drawXGlow 里）
     pn(rectPts(-6, -2, 12, 7), '#c9a24a', 1); pn(curvePts([[-5, -3], [5, -3], [7, -16], [0, -22], [-7, -16]], true, 3), '#e8e2c8', 2);
     fillPts(b, curvePts([[0, -6], [3, -11], [0, -18], [-3, -11]], true, 3), '#ffd070', lit ? 1 : 0.95); ink(b, seg(-1, 5, 6, 8), { w: 1.4, col: C('#c9a24a'), taper: 0, a: 1 / b.pen.a, seed: seed + 5, single: 1 });
@@ -7520,7 +7534,7 @@ function xPerson(b, P, lit, o) {
     pn(arcPts(hx, hy, 5.2, 5.2, 0, TAU, 8), K.skin || '#e6bf9c', 33 + i, 0.1);
   }
   // 手里的东西：不拿别的就拿 k.item（在不朝着对方的那只手里）
-  const hold = o.hold === undefined ? K.item : o.hold, hi = d > 0 ? 0 : 1;
+  const hold = o.hold === undefined ? K.item : o.hold, hi = (d > 0) !== !!o.near ? 0 : 1;   // near：拿在朝着对方的那只手里（递杯子、举杯到嘴边，2026-11-25）
   if (hold && hold !== 'phones' && hold !== 'child') xItem(b, P, lit, hold, hs[hi][0], hs[hi][1], d, sd + 800);
   if (hold === 'child' || o.child) {   // 怀里抱着的小孩：小小的人，趴在肩上
     b.save(); b.translate(d * 14, -108); const ck = { type: 'plain', coat: '#d28a56', coatL: '#e8a870', pants: '#3a3d4a', hair: '#2a2420', style: 'short' };
@@ -7530,6 +7544,7 @@ function xPerson(b, P, lit, o) {
     ink(b, arcPts(0, -32, 3.4, 2.4, 0.2, Math.PI - 0.2, 6), { w: 0.7, col: lc, taper: 0, a: 0.8, seed: sd + 43, single: 1 }); b.restore();
   }
   // 脖子和头
+  b.save(); b.translate(0, -164); b.rotate(o.tilt || 0); b.translate(0, 164);   // 歪头（活人看着孩子的时候，2026-11-25）
   pn(rectPts(-4.5, -166, 9, 12), K.skin || '#e6bf9c', 50, 0.1);
   const hy = -176;
   if (K.style === 'hood') pn(arcPts(0, hy, 17.5, 19, 0, TAU, 16), K.coat, 51, 0.3);
@@ -7547,17 +7562,18 @@ function xPerson(b, P, lit, o) {
   else if (K.style === 'hood') pn([...arcPts(0, hy - 2, 16.5, 18.4, Math.PI * 1.0, Math.PI * 2.0, 14), [15, hy + 8], [11, hy + 4], [11, hy - 4], [-11, hy - 4], [-11, hy + 4], [-15, hy + 8]], K.coat, 53, 0.3);
   if (K.cap) pn([[-17, hy - 8], [17, hy - 8], [14, hy - 20], [-14, hy - 20]], K.cap, 55, 0.2);
   if (K.item === 'phones' || o.hold === 'phones') { ink(b, arcPts(0, hy - 4, 15.5, 16, Math.PI * 1.05, Math.PI * 1.95, 12), { w: 2.2, col: C('#e8c440'), taper: 0, a: 1 / b.pen.a, seed: sd + 56, single: 1 }); for (const sg of [-1, 1]) pn(roundPts(sg * 14.5 - 4, hy - 7, 8, 14, 3), '#e8c440', 57 + sg, 0.1); }
-  const bl = Math.sin(T * 0.7 + sd % 9) > 0.975;   // 眨眼
+  const bl = o.shut || Math.sin(T * 0.7 + sd % 9) > 0.975, gz = (o.gaze || 0) * 2.4;   // 眨眼；shut：闭着眼睛（听琴）；gaze：眼睛看向哪边（-1 到 1）
   for (const sg of [-1, 1]) {
-    if (bl) ln([[sg * 5 - 2.4, hy - 1], [sg * 5 + 2.4, hy - 1]], 0.9, 60 + sg); else { b.fillStyle = lc; b.beginPath(); b.ellipse(sg * 5, hy - 1, 1.7, 2.2, 0, 0, 7); b.fill(); }
-    ln([[sg * 5 - 3, hy - 6], [sg * 5 + 3, hy - 6.6]], K.style === 'old' ? 1 : 0.55, 62 + sg);
+    if (bl) ln([[sg * 5 - 2.4 + gz, hy - 1], [sg * 5 + 2.4 + gz, hy - 1]], 0.9, 60 + sg); else { b.fillStyle = lc; b.beginPath(); b.ellipse(sg * 5 + gz, hy - 1, 1.7, 2.2, 0, 0, 7); b.fill(); }
+    ln([[sg * 5 - 3 + gz * 0.5, hy - 6], [sg * 5 + 3 + gz * 0.5, hy - 6.6]], K.style === 'old' ? 1 : 0.55, 62 + sg);
   }
   const joy = o.joy ?? 0.5;
-  if (joy > 0.7) { fillPts(b, [...arcPts(0, hy + 7, 5.4, 4.6, 0.05, Math.PI - 0.05, 8)], lit ? '#7a3a34' : '#2a1618'); } else ln(arcPts(0, hy + 6.4, 5, 2.8 + joy * 2, 0.2, Math.PI - 0.2, 7), 0.85, 64);
+  if (joy > 0.7) { fillPts(b, [...arcPts(0, hy + 7, 5.4, 4.6, 0.05, Math.PI - 0.05, 8)], lit ? '#7a3a34' : '#2a1618'); } else ln(arcPts(0, hy + 6.4 + (joy < 0 ? -joy * 0.9 : 0), 5, 2.8 + joy * 2, 0.2, Math.PI - 0.2, 7), 0.85, 64);   // joy 小于 0：嘴角撇下来（担心、害怕）
   if (lit) { b.fillStyle = 'rgba(224,120,110,0.22)'; for (const sg of [-1, 1]) { b.beginPath(); b.ellipse(sg * 9, hy + 4, 3.8, 2.4, 0, 0, 7); b.fill(); } }
   if (K.style === 'old') { pn(curvePts([[-6, hy + 5], [0, hy + 3], [6, hy + 5], [3, hy + 8], [-3, hy + 8]], true, 3), '#d8d8d8', 65, 0); for (const sg of [-1, 1]) ink(b, arcPts(sg * 5, hy - 1, 4.2, 4.2, 0, TAU, 10), { w: 0.7, col: lc, taper: 0, a: 0.8, seed: sd + 66 + sg, single: 1 }); ln([[-1, hy - 1], [1, hy - 1]], 0.8, 68); }
   if (K.item === 'wrench' && K.style === 'short') for (let i = 0; i < 6; i++) ln([[-8 + i * 3.2, hy + 10], [-8 + i * 3.2 + 1, hy + 13]], 0.3, 70 + i);   // 胡茬
   b.restore();
+  b.restore();   // 歪头
   b.restore(); b.restore(); b.globalAlpha = ga;
 }
 function xDog(b, P, lit, o) {   // 狗：穿着毛衣，叼着那只咬烂的球。侧面，朝右（d 是朝哪边）。pose：run 跑、sit 坐
@@ -7898,6 +7914,90 @@ const ROOM_PAINT = { zbA: paintZB, ckA: paintCK, jA: paintJ, jB: paintJ, twA: pa
 
 // ---------- 会动的东西：暗的一层、亮的一层各画一遍 ----------
 // 每一样开头把 seedN 设成固定的数：同一笔每一帧用同一个种子，线不会跳。只画在镜头里的屋子
+// ---------- 活人（2026-11-25）----------
+// 主人说：“除了主角能不能再设计一点其他的人，就一个主角特别孤单，缺少活人感。”设计在 docs/night-people.md。
+// 这个世界里光灭了人就只剩衣服；活人是守着自己那一点光、没让它灭的人。所以他们：不跟着孩子（离开那一点光它就灭了）、
+// 不挡路、不碰规则（tools/check.mjs 一个字不用动：只读现成的状态——敲门、炉子、琴声、孩子在哪儿、被抓住了没有）。
+// 画法用结局那一套人（xPerson）；暗层、亮层里都画成原来的颜色：黑夜里只有他们是暖的，一眼就和衣服不一样。
+const FOLK_K = {
+  gran: { type: 'shawl', coat: '#6f8f7a', coatL: '#8fb09a', sweater: '#d2c08c', pants: '#4a4658', hair: '#dcd8d0', style: 'gbun' },   // 第 3 关：二楼窗里的婆婆
+  gpa: { type: 'plain', coat: '#8a7250', coatL: '#a58c66', pants: '#4a4a52', hair: '#e8e8e8', style: 'old', cap: '#4a3a30' },   // 第 6 关：屋顶上喝茶的老伯
+  boy: { type: 'plain', coat: '#b4503f', coatL: '#d27a66', pants: '#3a3d4a', hair: '#3a2c24', style: 'short' },   // 第 9 关：炭炉边的小孩
+  fan: { type: 'plain', coat: '#4f8a78', coatL: '#6fa896', pants: '#3a3d4a', hair: '#2a2420', style: 'pony' },   // 第 11 关：听琴的姑娘
+  nm: { type: 'plain', coat: '#7a4a3a', coatL: '#9a6a52', pants: '#3a3a40', hair: '#e6e2dc', style: 'old', cap: '#3a3430' },   // 第 19 关：长椅上守夜的老人
+};
+const FOLK_AT = { gran: { x: 10410, win: [10368, 568, 84, 114] }, gpa: { x: 20840, y: 978 }, boy: { x: 28656, y: 986 }, fan: { x: 38110 }, nm: { x: KLP.bench - 4, y: KLY - 4 } };
+const FK = { gran: { att: 0, act: 0, gz: 0, d: 1, was: 0 }, gpa: { give: 0, gz: -0.4 }, boy: { warm: 0, gz: -0.5 }, fan: { att: 0, hush: 0, gz: -0.6 }, nm: { give: 0, gz: 0, nod: -10 } };
+function folkUpdate(dt) {   // 看见孩子、孩子做了什么：只是慢慢地转头、换个姿势，不进规则
+  const T = V.T, kx = kid.x, near = (x, r) => Math.abs(kx - x) < r, follow = (f, x, r, sp) => { f.gz = approach(f.gz, clamp((kx - x) / r, -1, 1), dt * sp); };
+  { const f = FK.gran, x = FOLK_AT.gran.x, on = T < V.knockUntil || T < V.stairUntil, w = near(x, 820);   // 第 3 关：孩子走近，她站到窗边；敲门（或敲小窗）她就亮灯、摆手让孩子快过去
+    f.att = approach(f.att, w ? 1 : 0, dt / (w ? 1.3 : 2.4)); f.act = approach(f.act, on ? 1 : 0, dt / 0.25); follow(f, x, 260, 3); f.d = kx < x ? -1 : 1;
+    if (on && !f.was && w && typeof snd.creak === 'function') snd.creak();   // 推开窗：吱呀一声
+    f.was = on ? 1 : 0; }
+  { const f = FK.gpa, x = FOLK_AT.gpa.x, w = near(x, 760);   // 第 6 关：孩子走近他就把杯子递过来，走过去了就目送
+    f.give = approach(f.give, near(x, 430) && kx < x + 120 ? 1 : 0, dt / 0.6); f.gz = w ? approach(f.gz, clamp((kx - x) / 300, -1, 1), dt * 2.2) : approach(f.gz, -0.4, dt * 1.2); }
+  { const f = FK.boy, x = FOLK_AT.boy.x;   // 第 9 关：他坐在炉子另一侧，炉子凉的时候缩着发抖；孩子把炉子扇红了，他看着火笑，伸手去烤
+    f.warm = approach(f.warm, S.nStv ? 1 : 0, dt / 1.6); f.gz = approach(f.gz, S.nStv ? -0.7 : near(x, 800) ? clamp((kx - x) / 200, -1, 1) : -0.5, dt * 2.5); }
+  { const f = FK.fan, x = FOLK_AT.fan.x;   // 第 11 关：闭着眼睛踩着琴声点头；孩子走近她睁开眼，食指竖在嘴前面：嘘，别吵到他
+    f.att = approach(f.att, near(x, 520) ? 1 : 0, dt / 0.5); f.hush = approach(f.hush, near(x, 330) ? 1 : 0, dt / 0.4); follow(f, x, 200, 2.5); if (!near(x, 520)) f.gz = approach(f.gz, -0.6, dt * 1.2); }
+  { const f = FK.nm, x = FOLK_AT.nm.x;   // 第 19 关：一街的衣服从他面前走过，每过去一件他碰一下帽檐、点点头（把它们当人）；孩子走近他把灯举起来
+    let best = null, pass = false;
+    if (S.cOut && V.klw) for (const w of V.klw) { if (w.in || w.wait > 0 || w.a < 0.3) continue; const dx = w.x - x; if (Math.abs(dx) < 300 && (!best || Math.abs(dx) < Math.abs(best))) best = dx; if (w.mov && Math.abs(dx) < 34) pass = true; }
+    if (pass && T - f.nod > 2.4) f.nod = T;
+    f.give = approach(f.give, near(x, 460) && kid.kind === 'floor' ? 1 : 0, dt / 0.6);
+    f.gz = approach(f.gz, near(x, 560) ? clamp((kx - x) / 200, -1, 1) : best !== null ? clamp(best / 150, -1, 1) : 0, dt * 2.5); }
+}
+function folkGran(b) {   // 邻居婆婆：二楼窗里。窗玻璃里透出烛光，她站在后面看着巷子
+  const f = FK.gran, A = f.att, T = V.T; if (A < 0.01) return;
+  const [wx, wy, ww, wh] = FOLK_AT.gran.win, cx = wx + ww / 2, I = A * (0.55 + 0.45 * f.act), M = V.mon.jacket;
+  const caught = V.caughtT > -5 && T - V.caughtT < 2.4, hunt = M.rise > 0.6 && Math.abs(kid.x - M.x) < 420;
+  const pose = caught ? 'cover' : f.act > 0.5 ? 'beck' : hunt ? 'hush' : 'peek';
+  b.save(); b.beginPath(); b.rect(wx, wy, ww, wh); b.clip();
+  const gx = wx + ww - 14, gy = wy + wh - 6, gr = b.createRadialGradient(gx, gy, 3, gx, gy, 130);   // 烛光在右下角，往外一圈比一圈暗
+  gr.addColorStop(0, 'rgba(255,222,150,' + (0.96 * I).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(112,64,40,' + (0.8 * I).toFixed(3) + ')');
+  b.fillStyle = gr; b.fillRect(wx, wy, ww, wh);
+  ink(b, seg(cx, wy, cx, wy + wh), { w: 1.2, col: LIT.trim, taper: 0, a: 0.45 * I / b.pen.a }); ink(b, seg(wx, wy + 57, wx + ww, wy + 57), { w: 1.2, col: LIT.trim, taper: 0, a: 0.45 * I / b.pen.a });
+  xPerson(b, LIT, true, { k: FOLK_K.gran, x: cx + Math.sin(T * 0.9) * 0.8, y: wy + 208 + Math.sin(T * 1.5) * 0.7, s: 1, d: f.d, pose, rev: 1, joy: caught ? -2.4 : f.act > 0.5 ? 0.1 : hunt ? -1.8 : -1.2, gaze: f.gz, tilt: f.gz * 0.09, a: Math.min(1, A * 1.4), seed: 760000 });
+  b.restore();
+}
+function folkGpa(b) {   // 屋顶上的老伯：坐在小凳上，捧着杯热茶，一直看着远处黑着的钟楼；脚边一盏小提灯
+  const f = FK.gpa, T = V.T, x = FOLK_AT.gpa.x, y = FOLK_AT.gpa.y; if (!inView(x, y, 300)) return;
+  const give = f.give > 0.5, sip = (T % 11) > 8.2, lc = LIT.ink;
+  stoolShape(b, LIT, true, x + 4, y, 50, 761000); xItem(b, LIT, true, 'lamp', x - 84, y + 2, -1, 761050);
+  xPerson(b, LIT, true, { k: FOLK_K.gpa, x, y, s: 0.95, d: -1, pose: give ? 'give' : sip ? 'sip' : 'cup', hold: 'cup', near: true, sit: 1, rev: 1, joy: give ? 0.95 : 0.4, gaze: f.gz, tilt: -0.04 + f.gz * 0.06, seed: 761100 });
+}
+function folkBoy(b) {   // 炭炉边的小孩：坐在木箱上缩着，脚边一盏小灯（他守着的那一点光）；炉子扇红了他才暖过来
+  const f = FK.boy, T = V.T, x = FOLK_AT.boy.x, y = FOLK_AT.boy.y, w = f.warm, lc = LIT.ink; if (!inView(x, y, 300)) return;
+  part(b, rectPts(x - 24, y - 32, 48, 32), '#8a6a44', { w: 0.9, tex: 0.3, wob: 0.3, lc, seed: 762000 }); ink(b, seg(x - 24, y - 20, x + 24, y - 20), { w: 0.7, col: lc, taper: 0, a: 0.5, seed: 762001, single: 1 });
+  xItem(b, LIT, true, 'lamp', x + 52, y + 2, 1, 762100);
+  xPerson(b, LIT, true, { k: FOLK_K.boy, x: x + Math.sin(T * 41) * 0.9 * (1 - w), y, s: 0.6, d: -1, pose: w > 0.5 ? 'warm' : 'rest', hold: null, sit: 1, rev: 1, joy: w > 0.6 ? 0.95 : -1.3, gaze: f.gz, tilt: f.gz * 0.1, seed: 762200 });
+}
+function folkFan(b) {   // 听琴的姑娘：坐在倒扣的铁皮桶上，捧着杯子，闭着眼睛踩着琴声点头
+  const f = FK.fan, T = V.T, x = FOLK_AT.fan.x, y = FL.down.gy, lc = LIT.ink, ph = (T - V.uPl) * Math.PI / 0.34; if (!inView(x, y, 300)) return;
+  const hush = f.hush > 0.5, shut = f.att < 0.5 && (T % 15) < 11;
+  part(b, [[x - 25, y - 52], [x + 25, y - 52], [x + 29, y], [x - 29, y]], '#6e5a48', { w: 0.9, tex: 0.3, wob: 0.3, lc, seed: 763000 }); part(b, rectPts(x - 27, y - 56, 54, 6), '#8a7a66', { w: 0.8, tex: 0.1, lc, seed: 763002 }); ink(b, seg(x - 27, y - 30, x + 28, y - 30), { w: 0.8, col: lc, taper: 0, a: 0.45, seed: 763001, single: 1 });
+  xPerson(b, LIT, true, { k: FOLK_K.fan, x, y, s: 1, d: -1, pose: hush ? 'hush' : 'cup', hold: 'cup', sit: 1, mov: 0.35 * (1 - f.hush * 0.7), ph, rev: 1, joy: hush ? 0.8 : 0.55, shut, gaze: f.gz, tilt: hush ? 0.03 : 0, seed: 763100 });
+}
+function folkNm(b) {   // 守夜的老人：坐在长椅上，膝上一盏提灯；一街的衣服从他面前走过，他一件一件地点头
+  if (!S.cOut) return;
+  const f = FK.nm, T = V.T, x = FOLK_AT.nm.x, y = FOLK_AT.nm.y; if (!inView(x, y, 300)) return;
+  const give = f.give > 0.5, e = (T - f.nod) / 1.1, tip = e >= 0 && e < 1 && !give;
+  xPerson(b, LIT, true, { k: FOLK_K.nm, x, y, s: 0.95, d: -1, pose: give ? 'give' : tip ? 'tip' : 'cup', hold: 'lamp', near: give, sit: 1, rev: 1, joy: give ? 0.9 : 0.35, gaze: f.gz, tilt: f.gz * 0.05 + (e >= 0 && e < 1 ? -Math.sin(e * Math.PI) * 0.14 : 0), seed: 764000 });
+}
+function drawFolk(b, P, lit, vis) {   // 活人：暗层、亮层里都画成原来的颜色
+  if (vis.laneB) folkGran(b);
+  if (vis.roofC) folkGpa(b);
+  if (vis.mktA) folkBoy(b);
+  if (vis.ucB) folkFan(b);
+  if (vis.ktC) folkNm(b);
+}
+function drawFolkGlow() {   // 他们各自守着的那一点光，只是画，不算“照到”
+  const T = V.T, fl = x => 0.9 + 0.1 * Math.sin(T * 9 + x * 0.013) + 0.05 * Math.sin(T * 23 + x);
+  { const f = FK.gran, I = f.att * (0.5 + 0.5 * f.act); if (I > 0.02 && inView(10410, 625, 260)) { glowAt(10410, 640, 170, [255, 206, 130], 0.16 * I * fl(1)); glowAt(10410, 625, 56, [255, 226, 160], 0.2 * I); } }
+  { const x = FOLK_AT.gpa.x - 84, y = FOLK_AT.gpa.y - 14; if (inView(x, y, 260)) { glowAt(x, y, 150, [255, 214, 150], 0.3 * fl(2)); glowAt(x, y, 18, C.hot, 0.6); } }
+  { const x = FOLK_AT.boy.x + 52, y = FOLK_AT.boy.y - 14; if (inView(x, y, 200)) { glowAt(x, y, 90, [255, 214, 150], 0.26 * fl(3)); glowAt(x, y, 14, C.hot, 0.5); } }
+  if (S.cOut) { const f = FK.nm, gv = smooth(f.give), x = lerp(FOLK_AT.nm.x + 23, FOLK_AT.nm.x - 59, gv), y = lerp(FOLK_AT.nm.y - 57, FOLK_AT.nm.y - 93, gv); if (inView(x, y, 260)) { glowAt(x, y, 150, [255, 214, 150], 0.3 * fl(4)); glowAt(x, y, 18, C.hot, 0.6); } }
+}
 function drawDynamic(b, lit, vis) {
   const P = lit ? LIT : DARK;
   if (vis.bedroom) { drawPlug(b, P, lit); drawBedLamp(b, P, lit); if (S.slipper === 'bed') drawSlipper(b, P, lit, 1010, FL.up.gy + 4, 200100); drawCritters(b, P, lit, 'bedroom'); drawFear(b, P, lit, 'gown'); }
@@ -7929,6 +8029,7 @@ function drawDynamic(b, lit, vis) {
   drawFsDyn(b, P, lit, vis);   // 消防站（第 16 关）
   drawBpDyn(b, P, lit, vis);   // 百货大楼（第 17 关）
   drawCpDyn(b, P, lit, vis);   // 广场（第 18 关）
+  drawFolk(b, P, lit, vis);   // 活人（2026-11-25）：在孩子后面、在走过的衣服后面
   drawKlDyn(b, P, lit, vis);   // 钟楼脚下的老街（第 19 关）
   drawTwDyn(b, P, lit, vis);   // 钟楼里面（第 20 关）
   drawJDyn(b, P, lit, vis);   // 钟楼顶（第 21 关）
@@ -12282,7 +12383,7 @@ function tick(dt) {
   for (const k in on) V.li[k] = on[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
   const onY = { dome: S.yCar === 1, beam: S.yBeam === 1 };   // 院子：车顶的小灯、车灯
   for (const k in onY) V.li[k] = onY[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
-  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt); mktUpdate(dt); thUpdate(dt); ucUpdate(dt); mtUpdate(dt); wsUpdate(dt); dsUpdate(dt); vsUpdate(dt); fsUpdate(dt); bpUpdate(dt); cpUpdate(dt); klUpdate(dt); twUpdate(dt); jUpdate(dt); xUpdate(dt);
+  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt); mktUpdate(dt); thUpdate(dt); ucUpdate(dt); folkUpdate(dt); mtUpdate(dt); wsUpdate(dt); dsUpdate(dt); vsUpdate(dt); fsUpdate(dt); bpUpdate(dt); cpUpdate(dt); klUpdate(dt); twUpdate(dt); jUpdate(dt); xUpdate(dt);
   const HA = honeyAt(), jarK = S.lit === 1 && HA ? V.swarm.pts.filter(p => p.mode === 'honey' && Math.hypot(p.x - HA[0], p.y - HA[1]) < 140).length / 5 : 0;   // 围在蜂蜜边上的有几只亮几成
   V.candleI = approach(V.candleI, jarK, dt * (V.candleI < jarK ? 2.5 : 5));
   V.li.candle = V.candleI * (0.93 + 0.07 * Math.sin(T * 17) * Math.sin(T * 5.3)) * (1 - 0.3 * V.flies.pull * Math.max(0, Math.sin(T * 9.7) * Math.sin(T * 3.1)));   // 不安分的时候一闪一闪
@@ -12403,6 +12504,7 @@ function drawOverlays(lights) {
   drawMktGlow();   // 夜市：灯泡串、炭炉的火、小光
   drawThGlow();   // 剧院：吊灯、化妆镜、脚灯、追光
   drawUcGlow();   // 地下通道：小灯、小光
+  drawFolkGlow();   // 活人守着的小灯、窗里的烛光
   drawMtGlow();   // 旧地铁：站台灯、手摇车的灯、信号灯
   drawWsGlow();   // 下水道：蘑菇、桶、窨井漏下来的光
   drawDsGlow();   // 地下最深处：缝里漏下来的光、小光
