@@ -2092,24 +2092,189 @@ function paintShell(b, r, P, lit, o) {
   }
   b.restore();
 }
+// ---------- 地面的起伏（2026-11-26，主人说地板不够凹凸、看着不自然） ----------
+// 以前每种地都是一整条平平的颜色加几道直线。现在：大块的深浅不匀（floorTone）；鼓起来的小包、凹下去的小坑（floorBumps：受光的一面亮一点，
+// 背光的一面暗一点，有的描一道淡淡的铅笔弧）；再加每种地自己的：木板一块块深浅不一、每块中间微微拱起、有木纹、节疤、钉眼（woodDetail）；
+// 方砖一块块深浅不一、缺角、裂纹（checkerDetail）；水泥地有补过的一块、污渍、小坑，前沿缺几个口（concreteDetail、edgeChips）；
+// 草地一丛丛的草长在土包上、有秃了露土的地方，前沿的草皮边高低不平，底下的土里有草根、小石子（grassDetail、soilDetail）；
+// 碎石大大小小、堆成一小堆一小堆，前沿也不平（gravelDetail）。
+// 都按世界坐标撒（hash），相邻两块接得上（木板、方砖的缝本来就按屋子排，照旧）。只是画：墙脚 wb、孩子走的线 gy、前沿 ff 都没动。
+// 新加的笔画都带自己的种子、不动 b.seedN，屋子里别的东西一笔不变；种子在几十个里轮着用（nz 的缓存每个种子 1KB，不能每笔一个）
+const gDk = (P, lit) => lit ? P.ink : DARK.mass, gHi = (P, lit) => lit ? P.hi : DARK.hi;
+const pick = (n, m) => ((Math.round(n) % m) + m) % m;
+function softEll(b, cx, cy, rx, ry, col, a) {   // 一团边上虚掉的颜色（压扁的圆）
+  if (a <= 0.003 || rx < 0.5 || ry < 0.2) return;
+  b.save(); b.translate(cx, cy); b.scale(1, ry / rx);
+  const gr = b.createRadialGradient(0, 0, 0, 0, 0, rx); gr.addColorStop(0, rgba(col, a)); gr.addColorStop(0.5, rgba(col, a * 0.55)); gr.addColorStop(1, rgba(col, 0));
+  b.fillStyle = gr; b.fillRect(-rx, -rx, rx * 2, rx * 2); b.restore();
+}
+function floorTone(b, P, lit, x0, x1, wb, ff, o = {}) {   // 大块的深浅：有的地方暗一点（潮、脏），有的地方亮一点（磨得多、落了灰）；o.wear：孩子走的那条线上磨亮一点
+  const cw = o.cell || 100, A = o.a ?? 1, s = o.salt || 0;
+  for (let x = Math.floor(x0 / cw) * cw - cw; x < x1 + cw; x += cw) {
+    const h = k => hash(x + s, k), cx = x + h(1.7) * cw, rx = cw * (0.5 + h(3.1) * 0.6);
+    if (cx + rx < x0 || cx - rx > x1) continue;
+    const cy = wb + 6 + h(2.3) * (ff - wb - 10), ry = (ff - wb) * (0.2 + h(4.7) * 0.22), k = 0.5 + h(6.1) * 0.5;
+    if (h(5.3) < 0.55) softEll(b, cx, cy, rx, ry, gDk(P, lit), (lit ? 0.15 : 0.4) * A * k);
+    else softEll(b, cx, cy, rx, ry, gHi(P, lit), (lit ? 0.11 : 0.07) * A * k);
+    if (o.wear) softEll(b, x + h(7.9) * cw, (wb + ff) / 2 + (h(8.3) - 0.5) * 8, cw * (0.5 + h(8.9) * 0.5), 7, gHi(P, lit), (lit ? 0.08 : 0.035) * o.wear);
+  }
+}
+// 鼓起来的小包（受光的上半边亮、背光的下半边暗）和凹下去的小坑（反过来）；有的描一道淡淡的铅笔弧（包描下沿、坑描后沿），
+// 包顶上（坑的前沿）一道受光的亮边——暗处画的线是黑的、看不见，夜里地上的起伏全靠这一道月光的亮边。返回每个包在哪儿（草长在包上）
+function floorBumps(b, P, lit, x0, x1, wb, ff, o) {
+  const cw = o.cell, rows = o.rows || 3, A = o.a ?? 1, s = o.salt || 0, lc = lcOf(P, lit), hi = gHi(P, lit), out = [];
+  for (let x = Math.floor(x0 / cw) * cw - cw; x < x1 + cw; x += cw) for (let j = 0; j < rows; j++) {
+    const h = k => hash(x + s + j * 0.371, k + j * 1.37);
+    if (h(1.1) > (o.p ?? 0.6)) continue;
+    const t = (j + 0.2 + h(2.2) * 0.6) / rows, cx = x + h(3.3) * cw, cy = wb + 7 + t * (ff - wb - 12), sc = 0.6 + 0.55 * t;
+    const rx = (o.rx[0] + h(4.4) * (o.rx[1] - o.rx[0])) * sc, ry = rx * (0.2 + h(5.5) * 0.1);
+    if (cx + rx < x0 - 2 || cx - rx > x1 + 2) continue;
+    const dip = h(6.6) < (o.dip ?? 0.25), sd = dip ? -1 : 1, sdS = 7300000 + pick(x / cw + j * 7, 89);
+    softEll(b, cx + rx * 0.06, cy + sd * ry * 0.55, rx * 1.05, ry * 1.15, gDk(P, lit), (lit ? 0.24 : 0.5) * A);
+    softEll(b, cx - rx * 0.04, cy - sd * ry * 0.45, rx * 0.85, ry * 0.85, hi, (lit ? 0.2 : 0.14) * A);
+    if (h(7.7) < (o.arc ?? 0.5)) {
+      const y0 = cy + sd * ry * 0.15, ym = cy + sd * ry * 1.05;
+      ink(b, quadPts([cx - rx * 0.72, y0], [cx, 2 * ym - y0], [cx + rx * 0.7, y0], 8), { w: 0.55, a: (lit ? 0.32 : 0.45) * A, taper: 6, amp: 0.35, col: lc, seed: sdS, single: 1 });
+    }
+    if (h(9.9) < (o.rim ?? 0.7)) {   // 受光的亮边：包描顶上，坑描前沿（坑的前壁朝上、朝着光）；长短、偏左偏右每个不一样
+      const y0 = cy - ry * 0.25, ym = cy - sd * ry * (0.75 + h(10.3) * 0.3), l = rx * (0.35 + h(10.7) * 0.35), r2 = rx * (0.3 + h(11.3) * 0.35), mx = cx + (h(11.9) - 0.5) * rx * 0.4;
+      ink(b, quadPts([cx - l, y0 + ry * 0.2], [mx, 2 * ym - y0], [cx + r2, y0 + ry * 0.25], 8), { w: 0.6, a: (lit ? 0.26 : 0.3) * A * (0.6 + h(12.7) * 0.4), taper: 9, amp: 0.3, col: hi, seed: sdS + 101, single: 1 });
+    }
+    out.push({ x: cx, y: cy, rx, ry, dip, t, h: h(8.8) });
+  }
+  return out;
+}
+function blade(b, x, y, tx, ty, w, col, a) {   // 一根草：根上宽、尖上细，往一边弯
+  const cx = x + (tx - x) * 0.2, cy = y + (ty - y) * 0.65, ga = b.globalAlpha;
+  b.beginPath(); b.moveTo(x - w / 2, y); b.quadraticCurveTo(cx - w * 0.3, cy, tx, ty); b.quadraticCurveTo(cx + w * 0.3, cy, x + w / 2, y); b.closePath();
+  b.fillStyle = col; b.globalAlpha = ga * a; b.fill(); b.globalAlpha = ga;
+}
+function tuft(b, x, y, n, hh, col, a, s, w = 1.3) {   // 一丛草：n 根散开，中间的高、两边的矮、往外斜
+  for (let i = 0; i < n; i++) {
+    const u = n < 2 ? 0 : i / (n - 1) - 0.5, r1 = hash(s, i + 0.31), r2 = hash(s, i + 5.17), L = hh * (1 - Math.abs(u) * 0.9) * (0.75 + r1 * 0.5), bx = x + u * (n * 1.6 + 1);
+    blade(b, bx, y, bx + u * hh * 0.9 + (r2 - 0.5) * hh * 0.3, y - L, w, col, a * (0.75 + r2 * 0.25));
+  }
+}
+// 木板：rows 是一排排板子的上下沿（从墙脚到前沿），seams[i] 是第 i 排板子接头的 x（接头的线从上往下斜 1.5）
+function woodDetail(b, P, lit, x0, x1, rows, seams, salt) {
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha;
+  for (let i = 0; i < rows.length - 1; i++) {
+    const y0 = rows[i], y1 = rows[i + 1], hh = y1 - y0, ss = seams[i], xs = [x0, ...ss.filter(x => x > x0 && x < x1), x1];
+    for (let k = 0; k < xs.length - 1; k++) {
+      const a = xs[k], c = xs[k + 1], L = c - a, key = ss.reduce((m, s) => s <= a + 0.01 ? s : m, a);   // 按左边那道接头认板子（第一块板子从屋子外面接进来的，和左边一块一样深浅）
+      const h = q => hash(Math.round(key) + salt + i * 0.53, q + 0.17), quad = [[a, y0], [c, y0], [c - 1.5, y1], [a - 1.5, y1]];
+      if (h(1) < 0.5) fillPts(b, quad, dk, (lit ? 0.05 : 0.08) + h(2) * (lit ? 0.11 : 0.22));   // 每块板子深浅不一样
+      else fillPts(b, quad, hi, (lit ? 0.03 : 0.02) + h(2) * (lit ? 0.08 : 0.05));
+      if (L < 30) continue;
+      for (let m = 0; m < 1 + Math.floor(h(3) * 2.2); m++) {   // 木纹：一两道细细的、弯弯的
+        const gx0 = a + L * (0.05 + h(4 + m) * 0.3), gx1 = a + L * (0.6 + h(5 + m) * 0.38), gy0 = y0 + hh * (0.25 + h(6 + m) * 0.5);
+        ink(b, [[gx0, gy0], [(gx0 + gx1) / 2, gy0 + (h(7 + m) - 0.5) * hh * 0.4], [gx1, gy0 + (h(8 + m) - 0.5) * hh * 0.3]], { w: 0.4, a: lit ? 0.22 : 0.1, taper: 14, amp: 0.5, col: lit ? lc : hi, seed: 7340000 + pick(a * 0.37 + i * 13 + m * 5, 53), single: 1 });
+      }
+      if (h(9) < 0.16) {   // 节疤
+        const kx = a + L * (0.2 + h(10) * 0.6), ky = y0 + hh * (0.35 + h(11) * 0.3), kr = 1.6 + hh * 0.12;
+        b.globalAlpha = ga * (lit ? 0.45 : 0.55); b.fillStyle = lc; b.beginPath(); b.ellipse(kx, ky, kr * 1.5, kr * 0.6, 0, 0, 7); b.fill();
+        b.globalAlpha = ga * 0.3; b.strokeStyle = lc; b.lineWidth = 0.5; b.beginPath(); b.ellipse(kx, ky, kr * 3, kr * 1.1, 0, 0, 7); b.stroke(); b.globalAlpha = ga;
+      }
+    }
+    // 板子中间微微拱起：上沿底下一线亮（再描一道受光的细边），下沿上面一条暗
+    const gr = b.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, rgba(dk, lit ? 0.12 : 0.22)); gr.addColorStop(0.12, rgba(hi, lit ? 0.1 : 0.08)); gr.addColorStop(0.45, rgba(hi, 0)); gr.addColorStop(0.75, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.18 : 0.36));
+    b.fillStyle = gr; b.fillRect(x0, y0, x1 - x0, hh);
+    if (i > 0) ink(b, seg(x0, y0 + 1.4, x1, y0 + 1.4), { w: 0.45, a: lit ? 0.22 : 0.16, taper: 0, amp: 0.3, col: hi, seed: 7360000 + i, single: 1 });
+    b.globalAlpha = ga * (lit ? 0.5 : 0.55); b.fillStyle = lc;   // 钉眼：每个接头两边各两颗
+    for (const sx of seams[i]) { if (sx < x0 + 6 || sx > x1 - 6) continue; for (const dx of [-4.5, 3]) for (const fy of [0.3, 0.72]) { b.beginPath(); b.arc(sx + dx - fy * 1.5, y0 + hh * fy, 0.55 + hh * 0.025, 0, 7); b.fill(); } }
+    b.globalAlpha = ga;
+  }
+}
+function checkerDetail(b, P, lit, x0, x1, rows, wb, salt) {   // 方砖：一块块深浅不一，偶尔缺个角、一道裂纹；每排砖下沿暗一点
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit);
+  for (let i = 0; i < rows.length - 1; i++) {
+    const sk = (rows[i + 1] - wb) * 0.12, y0 = rows[i], y1 = rows[i + 1];
+    for (let x = x0; x < x1; x += 44) {
+      const h = q => hash(x + salt + i * 0.71, q + 0.23), quad = [[x, y0], [x + 44, y0], [x + 44 + sk, y1], [x + sk, y1]];
+      if (h(1) < 0.5) fillPts(b, quad, dk, (lit ? 0.04 : 0.08) + h(2) * (lit ? 0.08 : 0.12)); else fillPts(b, quad, hi, (lit ? 0.02 : 0.01) + h(2) * (lit ? 0.06 : 0.03));
+      if (h(3) < 0.08) { const s2 = h(4) < 0.5 ? -1 : 1, cx = s2 < 0 ? x + 44 + sk : x + sk; fillPts(b, [[cx, y1], [cx + s2 * 7, y1], [cx + s2 * 1.5, y1 - 4]], dk, lit ? 0.35 : 0.5); }
+      if (h(5) < 0.06) ink(b, [[x + 8 + h(6) * 24, y0 + 1], [x + 14 + h(7) * 18, (y0 + y1) / 2], [x + 10 + h(8) * 26 + sk, y1 - 1]], { w: 0.45, a: 0.45, taper: 5, amp: 0.3, col: lc, seed: 7350000 + pick(x / 44 + i * 7, 31), single: 1 });
+    }
+    const gr = b.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, rgba(hi, lit ? 0.08 : 0.04)); gr.addColorStop(0.3, rgba(hi, 0)); gr.addColorStop(0.7, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.14 : 0.26));
+    b.fillStyle = gr; b.fillRect(x0, y0, x1 - x0, y1 - y0);
+  }
+}
+function concreteDetail(b, P, lit, x0, x1, wb, ff, salt = 0, o = {}) {   // 水泥地：微微起伏、补过的一块（o.patch === false 不要）、污渍、小坑
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha;
+  floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 95, rows: 2, p: 0.45, rx: [22, 52], dip: 0.5, arc: 0.12, rim: 0.35, a: 0.8, salt: salt + 0.13 });
+  if (o.patch !== false) for (let x = Math.floor(x0 / 420) * 420; x < x1; x += 420) {   // 补过的一块：颜色差一点，四边一道淡淡的缝
+    const h = k => hash(x + salt, k + 0.91); if (h(1) > 0.5) continue;
+    const px = x + 30 + h(2) * 300, top = wb + 6 + h(3) * 20, bot = Math.min(ff - 4, top + 16 + h(4) * 30), w = 40 + h(5) * 70, sk = (bot - top) * 0.12;
+    if (px + w + sk > x1 - 4 || px < x0 + 4) continue;
+    const pts = [[px, top], [px + w, top + 1], [px + w + sk, bot], [px + sk - 1, bot - 1]];
+    fillPts(b, pts, h(6) < 0.5 ? hi : dk, lit ? 0.07 : h(6) < 0.5 ? 0.05 : 0.22);
+    ink(b, [...pts, pts[0]], { w: 0.5, a: lit ? 0.28 : 0.12, taper: 0, amp: 0.3, col: lit ? lc : hi, seed: 7320000 + pick(x / 420, 37), single: 1 });
+  }
+  for (let x = Math.floor(x0 / 160) * 160; x < x1; x += 160) {   // 污渍（水、油）：几团暗的
+    const h = k => hash(x + salt, k + 0.33); if (h(1) > 0.45) continue;
+    const cx = x + h(2) * 160, cy = wb + 10 + h(3) * (ff - wb - 18), rx = 8 + h(4) * 18;
+    softEll(b, cx, cy, rx, rx * 0.3, dk, lit ? 0.16 : 0.3); softEll(b, cx + rx * 0.5, cy + 1, rx * 0.5, rx * 0.16, dk, lit ? 0.12 : 0.22);
+  }
+  for (let x = Math.floor(x0 / 7) * 7; x < x1; x += 7) {   // 小坑：一个暗点，底下挨着一点亮（坑的边受光）
+    const h = k => hash(x + salt, k + 0.71); if (h(1) > 0.22) continue;
+    const cx = x + h(2) * 7, t = h(3), cy = wb + 4 + t * (ff - wb - 7), r = (0.5 + h(4) * 0.9) * (0.7 + 0.5 * t);
+    b.globalAlpha = ga * (lit ? 0.45 : 0.55); b.fillStyle = lc; b.beginPath(); b.ellipse(cx, cy, r * 1.4, r * 0.7, 0, 0, 7); b.fill();
+    b.globalAlpha = ga * (lit ? 0.3 : 0.26); b.fillStyle = hi; b.beginPath(); b.ellipse(cx + 0.3, cy + r * 0.8, r * 1.2, r * 0.35, 0, 0, 7); b.fill();
+  }
+  b.globalAlpha = ga;
+}
+function edgeChips(b, P, lit, x0, x1, ff, salt = 0) {   // 水泥前沿缺的几个口
+  const lc = lcOf(P, lit);
+  for (let x = Math.floor(x0 / 130) * 130; x < x1; x += 130) {
+    const h = k => hash(x + salt, k + 0.44); if (h(1) > 0.5) continue;
+    const cx = x + h(2) * 130, w = 5 + h(3) * 10, d = 1.5 + h(4) * 2.5; if (cx - w < x0 + 6 || cx + w > x1 - 6) continue;
+    const pts = [[cx - w, ff], [cx - w * 0.3, ff + d], [cx + w * 0.4, ff + d * 0.8], [cx + w, ff]];
+    fillPts(b, pts, gDk(P, lit), lit ? 0.55 : 0.7); ink(b, pts, { w: 0.6, a: 0.6, taper: 0, amp: 0.2, col: lc, seed: 7330000 + pick(x / 130, 41), single: 1 });
+  }
+}
+// 从后往前一条条铺的地（第 20 关钟楼里的木楼板、第 21 关顶上平台的石板）：接缝每 step 一道、往前斜 sl。
+// 每一条深浅不一样；木板再加木纹、节疤和一点点起伏，石板再加起伏、污渍、小坑
+function stripDetail(b, P, lit, x0, x1, wb, ff, step, sl, kind) {
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha, D = ff - wb;
+  floorTone(b, P, lit, x0, x1, wb, ff, { cell: 120, a: 0.8, wear: kind === 'wood' ? 0.8 : 0, salt: 0.77 });
+  for (let xx = Math.floor(x0 / step) * step - step; xx < x1 + step; xx += step) {
+    const h = k => hash(xx, k + 0.39), q = [[xx, wb], [xx + step, wb], [xx + step + sl, ff], [xx + sl, ff]];
+    if (h(1) < 0.5) fillPts(b, q, dk, (lit ? 0.05 : 0.1) + h(2) * (lit ? 0.1 : 0.16)); else fillPts(b, q, hi, (lit ? 0.03 : 0.015) + h(2) * (lit ? 0.07 : 0.035));
+    if (kind !== 'wood') continue;
+    for (let m = 0; m < 1 + Math.floor(h(3) * 2); m++) {   // 木纹：顺着板子从后往前
+      const u = 0.2 + h(4 + m) * 0.6, t0 = h(6 + m) * 0.3, t1 = 0.6 + h(8 + m) * 0.4, X = t => xx + step * u + sl * t;
+      ink(b, [[X(t0), wb + D * t0], [X((t0 + t1) / 2) + (h(10 + m) - 0.5) * 4, wb + D * (t0 + t1) / 2], [X(t1), wb + D * t1]], { w: 0.4, a: lit ? 0.22 : 0.1, taper: 10, amp: 0.4, col: lit ? lc : hi, seed: 7370000 + pick(xx / step + m * 3, 43), single: 1 });
+    }
+    if (h(12) < 0.18) { const t = 0.3 + h(13) * 0.4, kx = xx + step * (0.3 + h(14) * 0.4) + sl * t, ky = wb + D * t, kr = 2 + D * 0.03; b.globalAlpha = ga * (lit ? 0.45 : 0.55); b.fillStyle = lc; b.beginPath(); b.ellipse(kx, ky, kr * 0.8, kr * 1.1, 0, 0, 7); b.fill(); b.globalAlpha = ga; }   // 节疤
+  }
+  if (kind === 'wood') floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 120, rows: 2, p: 0.35, rx: [18, 36], dip: 0.4, arc: 0, rim: 0, a: 0.55, salt: 0.83 });
+  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.87, { patch: false });
+}
 // 地板：木板（planks）、方格砖（checker）、水泥（concrete）
 function paintFloor(b, r, P, lit, kind, seed) {
   const lc = lit ? P.ink : DARK.ink, x0 = r.ix0, x1 = r.ix1, wb = r.wb, ff = r.ff, fr = r.fr;
+  const rows = kind === 'planks' ? [wb, wb + 12, wb + 26, wb + 43, wb + 62, ff] : [wb, wb + 16, wb + 34, wb + 56, ff];
+  let seams = null;
+  if (kind === 'planks') { const rr0 = rnd(seed + 1); seams = rows.slice(0, -1).map(() => { const s = []; for (let x = x0 + rr0() * 120; x < x1; x += 150 + rr0() * 140) s.push(x); return s; }); }   // 每排板子的接头（和以前同一串随机数）
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, fr - wb); b.clip();
   b.fillStyle = kind === 'concrete' ? P.concrete : kind === 'checker' ? P.checker1 : P.floor; b.fillRect(x0, wb, x1 - x0, ff - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
   if (kind === 'checker') {   // 黑白相间的方砖，越往前越大
-    const rows = [wb, wb + 16, wb + 34, wb + 56, ff]; b.fillStyle = P.checker2;
+    b.fillStyle = P.checker2;
     for (let i = 0; i < rows.length - 1; i++) for (let j = 0, x = x0; x < x1; j++, x += 44) if ((i + j) % 2) { const sk = (rows[i + 1] - wb) * 0.12; b.beginPath(); b.moveTo(x, rows[i]); b.lineTo(x + 44, rows[i]); b.lineTo(x + 44 + sk, rows[i + 1]); b.lineTo(x + sk, rows[i + 1]); b.fill(); }
   }
+  b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, ff - wb); b.clip();   // 地板面上的深浅、起伏（见上面“地面的起伏”）
+  floorTone(b, P, lit, x0, x1, wb, ff, { cell: kind === 'concrete' ? 110 : 130, a: kind === 'concrete' ? 1 : 0.7, wear: kind === 'concrete' ? 0 : 1, salt: 0.41 });
+  if (kind === 'planks') woodDetail(b, P, lit, x0, x1, rows, seams, seed % 997);
+  else if (kind === 'checker') checkerDetail(b, P, lit, x0, x1, rows, wb, seed % 997);
+  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.27);
+  b.restore();
   const gr = b.createLinearGradient(0, wb, 0, wb + 40); gr.addColorStop(0, rgba(DARK.mass, lit ? 0.32 : 0.46)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x0, wb, x1 - x0, 40);
   b.fillStyle = kind === 'concrete' ? shadeHex(P.concrete) : P.front; b.fillRect(x0, ff, x1 - x0, fr - ff);
   b.restore();
   b.seedN = seed;
   if (kind === 'planks') {
-    const rows = [wb, wb + 12, wb + 26, wb + 43, wb + 62, ff];
     for (let i = 1; i < rows.length - 1; i++) ink(b, seg(x0, rows[i], x1, rows[i]), { w: 0.7, a: lit ? 0.55 : 0.65, taper: 0, col: lc });
-    const rr0 = rnd(seed + 1);
-    for (let i = 0; i < rows.length - 1; i++) for (let x = x0 + rr0() * 120; x < x1; x += 150 + rr0() * 140) ink(b, seg(x, rows[i] + 1, x - 1.5, rows[i + 1] - 1), { w: 0.7, a: lit ? 0.6 : 0.7, taper: 0, col: lc });
+    for (let i = 0; i < rows.length - 1; i++) for (const x of seams[i]) ink(b, seg(x, rows[i] + 1, x - 1.5, rows[i + 1] - 1), { w: 0.7, a: lit ? 0.6 : 0.7, taper: 0, col: lc });
   } else if (kind === 'concrete') {
     const rr0 = rnd(seed + 2);   // 几道裂缝、几块污渍
     for (let i = 0; i < 6; i++) { const x = x0 + rr0() * (x1 - x0), pts = [[x, wb + 4 + rr0() * 20]]; for (let k = 0; k < 4; k++) { const l = pts[pts.length - 1]; pts.push([l[0] + (rr0() - 0.5) * 40, l[1] + 6 + rr0() * 10]); } ink(b, pts, { w: 0.6, a: 0.6, amp: 0.4, single: 1 }); }
@@ -2119,6 +2284,7 @@ function paintFloor(b, r, P, lit, kind, seed) {
   ink(b, seg(x0, ff - 2, x1, ff - 2), { w: 0.9, a: lit ? 0.5 : 0.45, col: lit ? P.hi : DARK.hi, taper: 0 });
   ink(b, seg(x0, ff, x1, ff), { w: 1.6, taper: 0, col: lc }); ink(b, seg(x0, fr, x1, fr), { w: 1.1, a: 0.9, taper: 0, col: lc });
   if (kind !== 'concrete') for (let x = x0 + 60; x < x1; x += 130) ink(b, seg(x, ff, x - 1, fr), { w: 0.7, a: 0.8, taper: 0, col: lc });
+  else edgeChips(b, P, lit, x0, x1, ff, 0.27);
 }
 const shadeHex = h => hexMix(h, '#000000', 0.35);
 // 隔墙上的门洞：门洞里是暗的（墙的厚度），两边各一道门框；地板从门洞里接过去
@@ -2739,30 +2905,82 @@ const klZoneAt = x => x < GATEPOS.kg1.x ? 'k0' : 'k1';
 const twZoneAt = () => kid.y > 520 ? (kid.x < GATEPOS.hg1.x ? 'h0' : 'h1') : kid.y > 160 ? (kid.x < GATEPOS.hg2.x ? 'h1' : 'h2') : 'h3';
 const fsZoneAt = x => x < GATEPOS.fc1.x ? 'f0' : x < GATEPOS.fc2.x ? 'f1' : 'f2';
 const vsZoneAt = x => x < GATEPOS.vc1.x ? 'v0' : x < GATEPOS.vc2.x ? 'v1' : 'v2';
+// 一块小石头：底下一点影子，上面一点亮，下沿描一笔（v 是 0–1 的随机数，定颜色、歪多少）
+function stone(b, P, lit, cx, cy, r, v) {
+  const ga = b.globalAlpha, rot = v * 0.4 - 0.2;
+  b.globalAlpha = ga * (lit ? 0.35 : 0.5); b.fillStyle = gDk(P, lit); b.beginPath(); b.ellipse(cx + r * 0.3, cy + r * 0.45, r * 1.5, r * 0.6, 0, 0, 7); b.fill();
+  b.globalAlpha = ga * 0.9; b.fillStyle = v < 0.3 ? hexMix(P.gravel, P.ink, 0.3) : v < 0.75 ? hexMix(P.gravel, P.gravelHi, 0.4) : P.gravelHi; b.beginPath(); b.ellipse(cx, cy, r * 1.4, r * 0.75, rot, 0, 7); b.fill();
+  b.globalAlpha = ga * (lit ? 0.22 : 0.2); b.fillStyle = gHi(P, lit); b.beginPath(); b.ellipse(cx - r * 0.3, cy - r * 0.3, r * 0.7, r * 0.3, 0, 0, 7); b.fill();
+  b.globalAlpha = ga * 0.45; b.strokeStyle = lcOf(P, lit); b.lineWidth = 0.55; b.beginPath(); b.ellipse(cx, cy, r * 1.4, r * 0.75, rot, 0.2, 3.3); b.stroke();
+  b.globalAlpha = ga;
+}
+const grassTip = (P, lit) => lit ? P.grassHi : hexMix(DARK.grassHi, DARK.hi, 0.3);   // 草尖的颜色：暗处是被月光照着的青灰
+function grassDetail(b, P, lit, x0, x1, wb, ff) {   // 草地：秃了露土的地方、土包、几块小石头、一丛丛的草（土包上的密、高）
+  const lc = lcOf(P, lit), tip = grassTip(P, lit);
+  for (let x = Math.floor(x0 / 130) * 130 - 130; x < x1 + 130; x += 130) {
+    const h = k => hash(x, k + 0.73); if (h(1) > 0.45) continue;
+    const cx = x + h(2) * 130, cy = wb + 16 + h(3) * (ff - wb - 26), rx = 16 + h(4) * 26;
+    softEll(b, cx, cy, rx, rx * 0.22, P.soil, lit ? 0.5 : 0.7); softEll(b, cx + rx * 0.3, cy + 1, rx * 0.5, rx * 0.12, P.soil, lit ? 0.4 : 0.6);
+  }
+  const bumps = floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 48, rows: 3, p: 0.6, rx: [14, 34], dip: 0.2, arc: 0.55, salt: 0.37 });
+  for (let x = Math.floor(x0 / 90) * 90; x < x1; x += 90) { const h = k => hash(x, k + 0.93); if (h(1) < 0.3) stone(b, P, lit, x + h(2) * 90, wb + 12 + h(3) * (ff - wb - 18), 1.4 + h(4) * 1.6, h(5)); }
+  for (let x = Math.floor(x0 / 17) * 17; x < x1; x += 17) {   // 小丛的草，到处都有：有的亮（受光），有的暗（背光）
+    const h = k => hash(x, k + 0.19); if (h(1) > 0.62) continue;
+    const t = h(2), y = wb + 8 + t * (ff - wb - 12), sc = 0.6 + 0.55 * t, dark = h(3) < 0.4;
+    tuft(b, x + h(4) * 17, y, 2 + Math.floor(h(5) * 3), (5 + h(6) * 6) * sc, dark ? lc : tip, dark ? 0.4 : lit ? 0.75 : 0.7, x * 0.13 + 1, 0.9 + 0.5 * sc);
+  }
+  for (const k of bumps) if (!k.dip) tuft(b, k.x + (k.h - 0.5) * k.rx * 0.6, k.y - k.ry * 0.2, 4 + Math.floor(k.h * 3), (9 + k.h * 7) * (0.6 + 0.55 * k.t), tip, lit ? 0.8 : 0.75, k.x * 0.11 + 2, 1.3);
+}
+function gravelDetail(b, P, lit, x0, x1, wb, ff) {   // 碎石：堆成一小堆一小堆，石子有的地方密、有的地方稀，大大小小
+  const lc = lcOf(P, lit), ga = b.globalAlpha, D = nz(7303);
+  floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 70, rows: 2, p: 0.5, rx: [16, 36], dip: 0.15, arc: 0.3, rim: 0.45, salt: 0.61 });
+  for (let x = Math.floor(x0 / 5) * 5; x < x1; x += 5) {
+    const h = k => hash(x, k + 0.29); if (h(1) > 0.25 + D(x / 60) * 0.6) continue;
+    const t = h(2), cx = x + h(3) * 5, cy = wb + 5 + t * (ff - wb - 8), r = (0.7 + h(4) * 1.3) * (0.7 + 0.5 * t), light = h(5) > 0.45;
+    b.globalAlpha = ga * (light ? 0.5 : 0.35); b.fillStyle = light ? P.gravelHi : lc; b.beginPath(); b.ellipse(cx, cy, r * 1.5, r * 0.75, 0, 0, 7); b.fill();
+  }
+  b.globalAlpha = ga;
+  for (let x = Math.floor(x0 / 23) * 23; x < x1; x += 23) { const h = k => hash(x, k + 0.47); if (h(1) < 0.55) { const t = h(2); stone(b, P, lit, x + h(3) * 23, wb + 7 + t * (ff - wb - 12), (2.2 + h(4) * 2.6) * (0.7 + 0.5 * t), h(5)); } }
+}
+function soilDetail(b, P, lit, x0, x1, eY, fr) {   // 前沿底下的土：紧挨着草皮（石子）的一条暗一点，草根、小石子
+  const lc = lcOf(P, lit), ga = b.globalAlpha;
+  b.beginPath(); b.moveTo(x0, eY(x0)); for (let x = x0; x < x1; x += 6) b.lineTo(x, eY(x)); b.lineTo(x1, eY(x1)); b.lineTo(x1, eY(x1) + 4); for (let x = x1; x > x0; x -= 6) b.lineTo(x, eY(x) + 4); b.lineTo(x0, eY(x0) + 4); b.closePath();
+  b.fillStyle = rgba(gDk(P, lit), lit ? 0.28 : 0.45); b.fill();
+  for (let x = Math.floor(x0 / 9) * 9; x < x1; x += 9) {
+    const h = k => hash(x, k + 0.57), px = x + h(2) * 9; if (px < x0 + 2 || px > x1 - 2) continue;
+    const ey = eY(px);
+    if (h(1) < 0.3) { const r = 0.9 + h(4) * 1.5, py = ey + 6 + h(3) * Math.max(1, fr - ey - 9), light = h(5) < 0.5; b.globalAlpha = ga * (light ? 0.45 : 0.35); b.fillStyle = light ? P.gravelHi : lc; b.beginPath(); b.ellipse(px, py, r * 1.4, r, 0, 0, 7); b.fill(); }
+    else if (h(1) < 0.45) { const L = 3 + h(6) * 6; b.globalAlpha = ga * 0.4; b.strokeStyle = lc; b.lineWidth = 0.6; b.beginPath(); b.moveTo(px, ey + 1); b.quadraticCurveTo(px + (h(7) - 0.5) * 5, ey + 1 + L * 0.6, px + (h(8) - 0.5) * 6, ey + 1 + L); b.stroke(); }
+  }
+  b.globalAlpha = ga;
+}
+// 门廊木板第 i 排的接头（按世界坐标；往左多算一格，第一块板子的深浅和左边一块接得上）
+const deckSeams = (x0, x1, i) => { const s = []; for (let x = Math.ceil(x0 / 170) * 170 - 170; x < x1; x += 170) s.push(x + hash(x, i + 0.7) * 150); return s; };
 // 室外的地：从墙脚线（wb）到前沿（ff）是地面，前沿下面一道断面。kind：grass 草地、deck 门廊的木板、concrete 水泥、gravel 碎石。
-// 草、石子按世界坐标撒，相邻两块的接缝对得上
+// 草、石子按世界坐标撒，相邻两块的接缝对得上。2026-11-26 起地面有起伏（见“地面的起伏”）；草地、碎石的前沿高低不平（两头 40 以内收平，和旁边一块接得上）
 function paintGround(b, P, lit, x0, x1, kind, seed) {
-  const F = FL.down, wb = F.wb, ff = F.ff, fr = F.fr, lc = lcOf(P, lit);
+  const F = FL.down, wb = F.wb, ff = F.ff, fr = F.fr, lc = lcOf(P, lit), rough = kind === 'grass' || kind === 'gravel';
+  const N = nz(kind === 'grass' ? 7301 : 7302), eY = x => rough ? ff + clamp(Math.min(x - x0, x1 - x) / 40, 0, 1) * ((N(x / 41) - 0.5) * 5 + (N(x / 9 + 50) - 0.5) * 1.4) : ff;
+  const edge = []; for (let x = x0; ; x += 6) { const xx = Math.min(x, x1); edge.push([xx, eY(xx)]); if (xx >= x1) break; }
+  const deckRows = [wb, wb + 14, wb + 31, wb + 51, ff];
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, fr - wb); b.clip();   // 只在地面这一条里上色、盖纸纹（纸纹盖到透明的地方会画出一条灰带）
-  b.fillStyle = P[kind]; b.fillRect(x0, wb, x1 - x0, ff - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
+  b.fillStyle = P[kind]; b.fillRect(x0, wb, x1 - x0, ff + 4 - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
+  b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, ff + 4 - wb); b.clip();   // 地面上的深浅、起伏、草、石子
+  floorTone(b, P, lit, x0, x1, wb, ff, { cell: kind === 'grass' ? 120 : 110, a: kind === 'deck' ? 0.7 : 1, wear: kind === 'deck' ? 1 : 0, salt: 0.53 });
+  if (kind === 'grass') grassDetail(b, P, lit, x0, x1, wb, ff);
+  else if (kind === 'gravel') gravelDetail(b, P, lit, x0, x1, wb, ff);
+  else if (kind === 'deck') woodDetail(b, P, lit, x0, x1, deckRows, deckRows.slice(0, -1).map((_, i) => deckSeams(x0, x1, i)), 0.61);
+  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.19);
+  b.restore();
   const gr = b.createLinearGradient(0, wb, 0, wb + 46); gr.addColorStop(0, rgba(DARK.mass, lit ? 0.26 : 0.4)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x0, wb, x1 - x0, 46);
-  b.fillStyle = kind === 'deck' ? P.front : kind === 'concrete' ? shadeHex(P.concrete) : P.soil; b.fillRect(x0, ff, x1 - x0, fr - ff);
-  if (kind === 'grass') {
-    for (let x = Math.ceil(x0 / 47) * 47; x < x1; x += 47) {   // 地上的草窝
-      const cx = x + hash(x, 1.3) * 34, cy = wb + 18 + hash(x, 2.9) * 56;
-      for (let i = -1; i <= 1; i++) ink(b, seg(cx + i * 5, cy, cx + i * 9, cy - 8 - hash(x, i + 4.4) * 7), { w: 0.7, taper: 5, col: P.grassHi, a: 0.9, seed: seed + 3000 + (x % 9973) * 3 + i, single: 1 });
-    }
-  } else if (kind === 'gravel') {
-    for (let x = Math.ceil(x0 / 11) * 11; x < x1; x += 11) {
-      const cx = x + hash(x, 8.1) * 10, cy = wb + 8 + hash(x, 6.3) * 72, r0 = 1.4 + hash(x, 9.9) * 2.6;
-      b.fillStyle = hash(x, 4.2) > 0.45 ? P.gravelHi : lc; b.globalAlpha = hash(x, 4.2) > 0.45 ? 0.55 : 0.3; b.beginPath(); b.ellipse(cx, cy, r0 * 1.5, r0 * 0.7, 0, 0, 7); b.fill();
-    }
-    b.globalAlpha = 1;
-  } else if (kind === 'deck') {
+  b.fillStyle = kind === 'deck' ? P.front : kind === 'concrete' ? shadeHex(P.concrete) : P.soil;   // 前沿下面的断面
+  if (rough) { b.beginPath(); b.moveTo(x0, fr + 1); for (const [x, y] of edge) b.lineTo(x, y); b.lineTo(x1, fr + 1); b.closePath(); b.fill(); soilDetail(b, P, lit, x0, x1, eY, fr); }
+  else b.fillRect(x0, ff, x1 - x0, fr - ff);
+  if (kind === 'deck') {
     b.seedN = seed + 20;
     for (const y of [wb + 14, wb + 31, wb + 51]) ink(b, seg(x0, y, x1, y), { w: 0.7, a: lit ? 0.5 : 0.6, taper: 0, col: lc });
     for (let x = Math.ceil(x0 / 170) * 170; x < x1; x += 170) for (let i = 0; i < 4; i++) { const y0 = [wb, wb + 14, wb + 31, wb + 51][i], y1 = [wb + 14, wb + 31, wb + 51, ff][i], sx = x + hash(x, i + 0.7) * 150; if (sx < x1 - 4) ink(b, seg(sx, y0 + 1, sx - 1.5, y1 - 1), { w: 0.7, a: 0.6, taper: 0, col: lc, seed: seed + 60 + (x % 997) * 5 + i }); }
-  } else {
+  } else if (kind === 'concrete') {
     for (let x = Math.ceil(x0 / 190) * 190; x < x1; x += 190) {   // 水泥地上的几道裂缝
       const pts = [[x + hash(x, 2.2) * 150, wb + 6 + hash(x, 3.3) * 18]]; for (let k = 0; k < 4; k++) { const l = pts[pts.length - 1]; pts.push([l[0] + (hash(x, k + 5.5) - 0.5) * 44, l[1] + 7 + hash(x, k + 6.6) * 10]); }
       ink(b, pts, { w: 0.6, a: 0.6, amp: 0.4, single: 1, col: lc, seed: seed + 90 + x % 997 });
@@ -2772,13 +2990,20 @@ function paintGround(b, P, lit, x0, x1, kind, seed) {
   hatch(b, k => k.rect(x0, wb, x1 - x0, 24), [x0, wb, x1 - x0, 24], { ang: -0.25, gap: 5 / HD, a: lit ? 0.22 : 0.42, w: 0.7, len: 30, col: lc });
   hatch(b, k => k.rect(x0, ff + 2, x1 - x0, fr - ff - 3), [x0, ff + 2, x1 - x0, fr - ff - 3], { ang: -1.2, gap: 7, a: lit ? 0.3 : 0.4, w: 0.7, len: 9, col: lc });
   b.restore();
-  ink(b, seg(x0, ff, x1, ff), { w: 1.6, taper: 0, col: lc, seed: seed + 7 }); ink(b, seg(x0, fr, x1, fr), { w: 1.1, a: 0.9, taper: 0, col: lc, seed: seed + 8 });
+  ink(b, rough ? edge : seg(x0, ff, x1, ff), { w: 1.6, taper: 0, col: lc, seed: seed + 7 }); ink(b, seg(x0, fr, x1, fr), { w: 1.1, a: 0.9, taper: 0, col: lc, seed: seed + 8 });
   if (kind !== 'grass') ink(b, seg(x0, wb, x1, wb), { w: 1.3, taper: 0, col: lc, seed: seed + 9 });
   else for (let x = Math.ceil(x0 / 23) * 23; x < x1 - 12; x += 23) {   // 靠后那条边上的草，长出地面一点
     const j = hash(x, 3.1), y = wb + 3 + j * 4, hh = 9 + hash(x, 5.7) * 14, sx = x + j * 14;
     ink(b, seg(sx, y, sx + (hash(x, 7.3) - 0.5) * 10, y - hh), { w: 0.8, taper: 6, col: lc, a: 0.8, seed: seed + 1000 + x % 9973, single: 1 });
   }
-  ink(b, seg(x0, ff - 2, x1, ff - 2), { w: 0.9, a: lit ? 0.4 : 0.35, col: lit ? P.hi : DARK.hi, taper: 0, seed: seed + 10 });
+  ink(b, rough ? edge.map(([x, y]) => [x, y - 2]) : seg(x0, ff - 2, x1, ff - 2), { w: 0.9, a: lit ? 0.4 : 0.35, col: lit ? P.hi : DARK.hi, taper: 0, seed: seed + 10 });
+  if (kind === 'grass') for (let x = Math.floor(x0 / 11) * 11; x < x1; x += 11) {   // 前沿的草皮边上冒出来的草
+    const h = k => hash(x, k + 0.83), px = x + h(2) * 11; if (h(1) > 0.7 || px < x0 + 3 || px > x1 - 3) continue;
+    const dark = h(5) < 0.45; tuft(b, px, eY(px) + 1, 1 + Math.floor(h(3) * 3), 4 + h(4) * 7, dark ? lc : grassTip(P, lit), dark ? 0.5 : lit ? 0.8 : 0.75, x * 0.07 + 3, 1.2);
+  } else if (kind === 'gravel') for (let x = Math.floor(x0 / 37) * 37; x < x1; x += 37) {   // 前沿上搁着的几块石头
+    const h = k => hash(x, k + 0.67), px = x + h(2) * 37; if (h(1) > 0.3 || px < x0 + 5 || px > x1 - 5) continue;
+    const r = 1.2 + h(3) * h(3) * 3.4; stone(b, P, lit, px, eY(px) - r * 0.2, r, h(4));
+  } else if (kind === 'concrete') edgeChips(b, P, lit, x0, x1, ff, 0.19);
 }
 // 草地上踩出来的一条土路（孩子走的那条线）
 function paintWornPath(b, P, lit, x0, x1, seed) {
@@ -2788,8 +3013,16 @@ function paintWornPath(b, P, lit, x0, x1, seed) {
   for (let x = x0; x <= x1 + 12; x += 12) { const y = gy - 15 + (nz(seed)(x / 90) - 0.5) * 8; x === x0 ? b.moveTo(x, y) : b.lineTo(x, y); }
   for (let x = x1 + 12; x >= x0; x -= 12) b.lineTo(x, gy + 15 + (nz(seed + 1)(x / 70) - 0.5) * 8);
   b.closePath(); b.fill(); b.globalAlpha = 1; texture(b, TEX.blot2, 0.5);
+  // 路也不平（2026-11-26）：几个浅浅的小包、小坑，几块小石头
+  floorBumps(b, P, lit, x0, x1, gy - 14, gy + 14, { cell: 60, rows: 1, p: 0.5, rx: [10, 22], dip: 0.5, arc: 0.3, rim: 0.4, a: 0.7, salt: 0.97 });
+  for (let x = Math.floor(x0 / 41) * 41; x < x1; x += 41) { const h = k => hash(x, k + 0.21); if (h(1) < 0.35) stone(b, P, lit, x + h(2) * 41, gy - 8 + h(3) * 18, 1 + h(4) * 1.4, h(5)); }
   for (let x = Math.ceil(x0 / 29) * 29; x < x1; x += 29) { b.fillStyle = lc; b.globalAlpha = 0.25; b.beginPath(); b.ellipse(x + hash(x, 1.9) * 20, gy - 10 + hash(x, 2.7) * 22, 2 + hash(x, 3.5) * 3, 1.2, 0, 0, 7); b.fill(); }
   b.restore(); b.globalAlpha = 1;
+  for (let x = Math.floor(x0 / 19) * 19; x < x1; x += 19) {   // 两边的草长到路上来一点
+    const h = k => hash(x, k + 0.61), px = x + h(2) * 19; if (h(1) > 0.5 || px < x0 + 3 || px > x1 - 3) continue;
+    const onTop = h(3) < 0.5, y = onTop ? gy - 15 + (nz(seed)(px / 90) - 0.5) * 8 + 1 : gy + 15 + (nz(seed + 1)(px / 70) - 0.5) * 8 + 2;
+    tuft(b, px, y, 2 + Math.floor(h(4) * 2), (onTop ? 4 : 6) + h(5) * 4, grassTip(P, lit), lit ? 0.75 : 0.7, x * 0.17 + 5, 1.1);
+  }
 }
 // 一段木栅栏：尖头的木条、两道横档
 function paintFence(b, P, lit, x0, x1, seed) {
@@ -7457,6 +7690,7 @@ function twShell(b, P, lit, r, S0, gaps) {   // 一层的壳：后墙（石头�
   part(b, rectPts(x0 - 4, wb - 20, w + 8, 24), P.twBackLo, { w: 0.9, tex: 0.4, lc, seed: S0 + 3 });   // 踢脚线
   twPieces(x0 - 4, x1 + 4, gaps).forEach(([a, c], j) => {
     part(b, rectPts(a, wb, c - a, ff - wb), P.twPlank, { w: 1, tex: 0.5, lc, seed: S0 + 20 + j * 7 });
+    b.save(); b.beginPath(); b.rect(a, wb, c - a, ff - wb); b.clip(); stripDetail(b, P, lit, a, c, wb, ff, 76, -8, 'wood'); b.restore();   // 楼板一条条深浅不一、有木纹（见“地面的起伏”）
     hatch(b, k => k.rect(a, wb, c - a, ff - wb), [a, wb, c - a, ff - wb], { ang: 0.04, gap: 9 / HD, a: lit ? 0.16 : 0.32, w: 0.7, len: 90, col: lc, seed: S0 + 21 + j * 7 });
     for (let xx = Math.ceil(a / 76) * 76; xx < c; xx += 76) ink(b, seg(xx, wb + 2, xx - 8, ff), { w: 0.6, col: lc, taper: 0, a: 0.3, seed: S0 + 30 + (xx % 89) + j * 3, single: 1 });
     part(b, rectPts(a, ff, c - a, fr - ff), P.twBackLo, { w: 1, tex: 0.5, lc, seed: S0 + 22 + j * 7 });
@@ -7763,6 +7997,7 @@ function paintJ(b, r, P, lit) {
   for (let xx = Math.ceil((x0 + 200) / 380) * 380; xx < x1 - 100; xx += 380) part(b, rectPts(xx - 8, ff + 120, 16, 90), P.klIron, { w: 0.8, tex: 0.3, lc, seed: S0 + 300 + xx % 97 });
   // 平台的地：石板
   part(b, rectPts(x0 - 4, wb, w + 8, ff - wb), P.klStoneHi, { w: 1, tex: 0.5, lc, seed: S0 + 3 });
+  b.save(); b.beginPath(); b.rect(x0 - 4, wb, w + 8, ff - wb); b.clip(); stripDetail(b, P, lit, x0 - 4, x1 + 4, wb, ff, 120, -10, 'stone'); b.restore();   // 石板一块块深浅不一、有起伏（见“地面的起伏”）
   hatch(b, k => k.rect(x0, wb, w, ff - wb), [x0, wb, w, ff - wb], { ang: 0.04, gap: 9 / HD, a: lit ? 0.12 : 0.28, w: 0.7, len: 80, col: lc, seed: S0 + 4 });
   for (let xx = Math.ceil(x0 / 120) * 120; xx < x1 + 4; xx += 120) ink(b, seg(xx, wb + 2, xx - 10, ff), { w: 0.6, col: lc, taper: 0, a: 0.3, seed: S0 + 20 + xx % 89, single: 1 });
   part(b, rectPts(x0 - 4, ff, w + 8, 14), P.klStoneLo, { w: 1, tex: 0.4, lc, seed: S0 + 5 });
