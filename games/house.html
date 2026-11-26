@@ -177,7 +177,9 @@ function solve(from = START, allow = () => true, full = false) {
 function mkLevel(L) {
   L.KEYS = Object.keys(L.START); L.SPOTS = Object.keys(L.SPOT_ZONE);
   L.VIDX = L.KEYS.map(k => new Map((L.VALUES[k] || [0, 1]).map((v, i) => [v, i])));
-  L.skey = s => { let n = 0; for (let i = 0; i < L.KEYS.length; i++) n = n * 3 + L.VIDX[i].get(s[L.KEYS[i]]); return n; };
+  // 每一项自己的进制：最少 3（和以前一样，旧的关每项都不到 4 个值，编出来的数一个字没变）；第 17 关的镜子角度有 8 个值，那一项按 8 进制
+  L.RAD = L.KEYS.map(k => Math.max(3, (L.VALUES[k] || [0, 1]).length));
+  L.skey = s => { let n = 0; for (let i = 0; i < L.KEYS.length; i++) n = n * L.RAD[i] + L.VIDX[i].get(s[L.KEYS[i]]); return n; };
   return L;
 }
 function reachL(L, s, extra = []) {   // extra：孩子现在站着的那几块（提示用：他已经过了会自己关上的门，不用再回头去开）
@@ -1007,6 +1009,50 @@ function act16(s, spot, held, R = reachL(L16, s)) {
   return no('no');
 }
 const L16 = mkLevel({ n: 16, name: '消防站', START: START16, ITEMS: ITEMS16, VALUES: VALUES16, GATES: GATES16, LINKS: LINKS16, ENTRY: 'f0', SPOT_ZONE: SPOT_ZONE16, act: act16, GOAL: 'fOut' });
+// ---------- 光路：镜子按反射定律算（2026-11-26 起，第 17 关的试衣镜；规则和页面共用同一份几何）----------
+// 一束光从 (x, y) 朝 ang 射出（弧度，从 +x 朝 +y 转：屏幕上 y 朝下，所以正的角是往下转）。碰到镜子（一条线段，两面都反光）就按反射定律拐弯：
+// 出射角 = 2 × 镜面的角 − 入射角；碰到屋子的边（天花板、地、两头的墙）就停；碰到目标（一个矩形，夜班店员的头）也停，记下命中。
+// mirrors：[{ x, y, a, r }]（镜子中心、镜面的角、半长）；box：[x0, y0, x1, y1]（屋子里面）；target：[x0, y0, x1, y1] 或 null。
+// 返回 { pts: 折线上的点（第一个是光源）, hit: 打中目标没有, end: 'head' 打中了目标 / 'floor' 'ceil' 'wall' 停在屋子的边上, bounces: 拐了几次弯 }
+function traceBeam(x, y, ang, mirrors, box, target, maxBounce = 6) {
+  const pts = [[x, y]]; let last = -1, bounces = 0;
+  for (let k = 0; k <= maxBounce; k++) {
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    let tM = Infinity, mi = -1;   // 最近的一面镜子（解 P + t·d = M + u·U：t 是光走的路，|u| ≤ 半长才算碰到）
+    mirrors.forEach((m, i) => {
+      if (i === last) return;
+      const ux = Math.cos(m.a), uy = Math.sin(m.a), den = dx * uy - dy * ux; if (Math.abs(den) < 1e-9) return;   // 平行：擦过去
+      const px = m.x - x, py = m.y - y, t = (px * uy - py * ux) / den, u = (px * dy - py * dx) / den;
+      if (t > 1e-6 && Math.abs(u) <= m.r && t < tM) { tM = t; mi = i; }
+    });
+    const tx = dx > 1e-9 ? (box[2] - x) / dx : dx < -1e-9 ? (box[0] - x) / dx : Infinity, ty = dy > 1e-9 ? (box[3] - y) / dy : dy < -1e-9 ? (box[1] - y) / dy : Infinity;
+    const tW = Math.min(tx, ty), wallEnd = ty <= tx ? (dy > 0 ? 'floor' : 'ceil') : 'wall', tStop = Math.min(tM, tW);
+    if (target) {   // 光走到镜子、墙以前，穿过目标的矩形没有（逐条边夹出来）
+      let t0 = 0, t1 = tStop, ok = true;
+      for (const [o, d, lo, hi] of [[x, dx, target[0], target[2]], [y, dy, target[1], target[3]]]) {
+        if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) ok = false; continue; }
+        let a = (lo - o) / d, b = (hi - o) / d; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+      }
+      if (ok && t0 <= t1) { pts.push([x + dx * t0, y + dy * t0]); return { pts, hit: true, end: 'head', bounces }; }
+    }
+    if (mi < 0 || tM > tW) { pts.push([x + dx * tW, y + dy * tW]); return { pts, hit: false, end: wallEnd, bounces }; }
+    x += dx * tM; y += dy * tM; pts.push([x, y]); ang = 2 * mirrors[mi].a - ang; last = mi; bounces++;
+  }
+  return { pts, hit: false, end: 'wall', bounces };
+}
+// 第 17 关百货大楼：射灯头 spot；试衣镜推进光里以后转轴的位置 pivot（射灯正对着它照）、镜面半长 r；屋子里面 box（大厅 + 过道，天花板 y 350、地 y 700）；
+// 夜班店员的头够得着的一片 head（它在 57720–57880 之间来回，头在 y 500–565）；镜子一格转 22.5°、一共 8 个位置。
+// 镜子在第 0 个位置的时候，镜面的角正好把光反射到店员头的正中（a0 是算出来的，不是写死的）：入射角 ray，要出射角 aim，镜面的角 = (入射 + 出射) / 2
+const BPO = { spot: [56896, 382], pivot: [57330, 584], r: 62, box: [56390, 350, 59360, 700], head: [57690, 500, 57910, 565], aim: [57800, 532], n: 8, step: Math.PI / 8 };
+BPO.ray = Math.atan2(BPO.pivot[1] - BPO.spot[1], BPO.pivot[0] - BPO.spot[0]);
+BPO.a0 = (BPO.ray + Math.atan2(BPO.aim[1] - BPO.pivot[1], BPO.aim[0] - BPO.pivot[0])) / 2;
+const bpAng17 = k => BPO.a0 + k * BPO.step;
+// 这一刻的光路。射灯没亮：没有光（null）。镜子没推进光里：射灯的光直接落到地上。withHead：店员的头还在（塌了以后，头不在了，光穿过去）
+function bpBeam17(s, ang = bpAng17(s.bAng), withHead = true) {
+  if (!s.bSw) return null;
+  return traceBeam(BPO.spot[0], BPO.spot[1], BPO.ray, s.bMir ? [{ x: BPO.pivot[0], y: BPO.pivot[1], a: ang, r: BPO.r }] : [], BPO.box, withHead ? BPO.head : null);
+}
+const bpHit17 = s => { const b = bpBeam17(s); return !!(b && b.hit); };
 // ---------- 第 17 关：百货大楼（镜子、橱窗射灯；人台上的衣服和夜班店员；一个价签）----------
 // 街面上，消防站的路障再往右：百货大楼，夜里关了门，里面黑着。进门是大厅：服务台、橱窗射灯的开关、陈列台上三个穿着衣服的人台，右边一面立着的试衣镜。
 // 往里走，一位夜班店员（人的衣服）守在过道上，追人；射灯要靠试衣镜才照得到它（把射灯的光反射过去）。它一塌，口袋里掉出一个价签。
@@ -1019,23 +1065,31 @@ const START17 = {
   bLamp: 'desk',              // 台灯：服务台上 / 身上 / 递给夜班店员了（used）
   bTag: 'floor',              // 价签：夜班店员塌了以后掉在地上 / 身上 / 在收银通道的扫码器上扫过了（used）
   bSw: 0,                     // 橱窗射灯的开关扳上去了没有（射灯亮了）
-  bMir: 0,                    // 试衣镜：0 靠在墙边（侧着）/ 1 推到射灯的光里（斜着，光反射到天花板上）/ 2 转过来，光反射到过道上
+  bMir: 0,                    // 试衣镜：0 靠在墙边 / 1 推到射灯的光里（立在转轴上，能转）
+  bAng: 5,                    // 试衣镜转到第几格（一共 8 格，一格 22.5°，点一下转一格、转满一圈回到 0）。推进光里的时候在第 5 格：光反射到天花板上；转 3 下（5 → 6 → 7 → 0）正好反射到夜班店员头上
+  bHit: 0,                    // 射灯的光经试衣镜照到过道上夜班店员的头了没有（照到过就是 1，锁住：它塌了就塌了，镜子再转开它也不会再站起来）
   bGive: 0,                   // 台灯递给人台中间的夜班店员了没有（递了，它抱着灯站着，让开路）
   bPow: 0,                    // 货梯间墙上的闸刀合上了没有（货梯才有电）
   bUp: 0,                     // 货梯的平台在二楼（1）还是在地上（0）。平台一升走，地上是个坑，走廊是断的
   bMon: 0,                    // 巡逻的大衣在二楼了没有（0 还在一楼挡着，1 被平台带上去、走到二楼的仓库里去了）。按“升上去”那一下规则先当它被带上去了；站没站在平台上是页面里量的（bpLiftGo），没带上去就改回 0（TIMED 里的 liftMiss17 就是查这个）
   bOut: 0,                    // 扫了价签、闸杆抬起来、走出去了没有
 };
-const VALUES17 = { bLamp: ['desk', 'inv', 'used'], bTag: ['floor', 'inv', 'used'], bMir: [0, 1, 2] };
+const VALUES17 = { bLamp: ['desk', 'inv', 'used'], bTag: ['floor', 'inv', 'used'], bMir: [0, 1], bAng: [0, 1, 2, 3, 4, 5, 6, 7] };
 const GATES17 = {
-  bs1: s => s.bSw === 1 && s.bMir === 2,   // 过道上的夜班店员（射灯的光经试衣镜反射过去照着）
+  bs1: s => s.bHit === 1,                  // 过道上的夜班店员（射灯的光经试衣镜反射到它头上照到过：光路是 bpBeam17 按反射定律算的，不是写死的）
   bs2: s => s.bGive === 1,                 // 人台中间的夜班店员（要台灯；人台上的衣服不要）
   bs3: s => s.bMon === 1 && s.bUp === 0,   // 货梯间里巡逻的大衣（不是靠光：被货梯带上了二楼，平台又放回了地上，走廊才通）
 };
 const LINKS17 = [['b0', 'b1', 'bs1'], ['b1', 'b2', 'bs2'], ['b2', 'b3', 'bs3']];
 // bPowH、bBtnH 排在扫码器前面：一样短的解法里，求解器先找到排在前面的
 const SPOT_ZONE17 = { bSwH: 'b0', bMirH: 'b0', bLampH: 'b0', bManA: 'b0', bTagH: 'b1', bManB: 'b1', bHeapH: 'b1', bStaffH: 'b1', bPowH: 'b2', bBtnH: 'b2', bScanH: 'b3' };
-function act17(s, spot, held, R = reachL(L17, s)) {
+// 每一步做完，算一下射灯的光现在照没照到夜班店员的头（扳开关、推镜子、转镜子，哪一步先后都行）：照到了就锁成 bHit = 1
+function act17(s, spot, held, R) {
+  const r = act17raw(s, spot, held, R);
+  if (r.s && !r.s.bHit && bpHit17(r.s)) r.s.bHit = 1;
+  return r;
+}
+function act17raw(s, spot, held, R = reachL(L17, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
   if (!R.has(SPOT_ZONE17[spot])) return no('far');
@@ -1043,8 +1097,8 @@ function act17(s, spot, held, R = reachL(L17, s)) {
   switch (spot) {
     // 大厅：橱窗射灯的开关（一块小板子，一根扳手）
     case 'bSwH': if (held) return no('no'); if (s.bSw) return no('look'); n.bSw = 1; return ok('sw17');
-    // 立着的试衣镜：先推到射灯的光里，再转个角度，把光反射到过道上
-    case 'bMirH': if (held) return no('no'); if (s.bMir >= 2) return no('look'); n.bMir = s.bMir + 1; return ok(s.bMir === 0 ? 'mirIn17' : 'mirTurn17');
+    // 立着的试衣镜：先推到射灯的光里；推进去以后每点一下转一格（22.5°），光怎么反射是按角度算的，转到把光送到夜班店员头上才行
+    case 'bMirH': if (held) return no('no'); if (!s.bMir) { n.bMir = 1; return ok('mirIn17'); } n.bAng = (s.bAng + 1) % BPO.n; return ok('mirTurn17');
     // 服务台上的台灯
     case 'bLampH': if (held || s.bLamp !== 'desk') return no(held ? 'no' : 'look'); n.bLamp = 'inv'; return ok('take:bLamp');
     // 人台（陈列台上的、过道里的）、失物招领那一堆没人穿的衣服：要光没用，光掉在地上
@@ -2716,9 +2770,9 @@ const FP = { truck0: 53330, truck1: 53830, mastX: 53760, lampY: FSY - 205, beaco
 // 试衣镜（mirHome 靠墙的地方，mirAt 推到射灯的光里）、过道上的夜班店员（bs1，守着 bs1a–bs1b）和掉出来的价签（tag）、失物招领（lost）、过道里两个人台（manB1、manB2）、
 // 人台中间的夜班店员（bs2，孩子站在 bs2g 前面递灯）、收银通道的扫码器（scan）和闸杆（gate）、出口的旋转门（door）
 const BPY = FL.sfc.gy, BPWB = FL.sfc.wb;
-const BPP = { lamp: 56700, sw: 56890, plat0: 56940, plat1: 57290, man1: 57010, man2: 57110, man3: 57210, spot: [56896, 382], mirHome: 57470, mirAt: 57330, bs1: 57800, bs1a: 57720, bs1b: 57880, tag: 57945, lost: 58080, manB1: 58250, manB2: 58360, bs2: 58590, scan: 59360, gate: 59390, door: 59610,
+const BPP = { lamp: 56700, sw: 56890, plat0: 56940, plat1: 57290, man1: 57010, man2: 57110, man3: 57210, spot: BPO.spot, mirHome: 57470, mirAt: BPO.pivot[0], bs1: 57800, bs1a: 57720, bs1b: 57880, tag: 57945, lost: 58080, manB1: 58250, manB2: 58360, bs2: 58590, scan: 59360, gate: 59390, door: 59610,
   pw: 58730, bt: 58850, lp0: 59115, lp1: 59245, lpc: 59180, cab: 59300 };   // 货梯间（2026-11-25）：pw 墙上的闸刀盒、bt 按钮盒、lp0–lp1 货梯的平台（lpc 正中）、cab 平台边上的控制柜；扫码器、闸杆从 59270、59300 往后挪了 90
-const BP_RAY1 = 1.1355, BP_RAY2 = 1.689;   // 射灯往下往右斜着照向试衣镜；镜子转过来以后，光朝右微微往上，照在过道上夜班店员的头上（rot：从朝下起，朝 +x 转过去的角度）
+const BP_RAY1 = Math.PI / 2 - BPO.ray;   // 射灯往下往右斜着照向试衣镜的转轴（rot：从朝下起，朝 +x 转过去的角度 = π/2 − 方向角）。镜子转了以后光朝哪儿，是 traceBeam 按反射定律算的（每帧 V.bBeam）
 const bpZoneAt = x => x < GATEPOS.bs1.x ? 'b0' : x < GATEPOS.bs2.x ? 'b1' : x < GATEPOS.bs3.x ? 'b2' : 'b3';
 // 货梯间：大衣在一楼来回巡逻（BPL.S1：[停的地方, 停几秒]，在平台正中 lpc 停得最久；平台升走以后地上是个坑，走廊断成两截，它只在自己这一截里来回：SL、SR），升到二楼以后在仓库里来回（S2，再也不靠近平台的口）。
 // F2：二楼地板的 y（平台升到顶，和二楼地板一样平）；PRE：按下去到平台动起来（喇叭先响）；RISE：升到顶要几秒；V：大衣走多快
@@ -6540,18 +6594,18 @@ function drawBpSpot(b, P, lit) {   // 橱窗的射灯：吊在轨道上的一只
   b.restore();
   part(b, arcPts(ox - 16, oy - 6, 6, 6, 0, TAU, 8), P.bpSw, { w: 0.6, tex: 0, lc, seed: 671105 });
 }
-function drawBpMirror(b, P, lit) {   // 试衣镜：一面椭圆的镜子，吊在木架子的转轴上，架子底下两只小轮子。靠墙的时候侧着（只看得见一条边），推进光里、转过来才看得见镜面
-  const lc = lcOf(P, lit), x = V.bmx, gy = BPY, t = V.bmt, cy = gy - 115; if (!inView(x, cy, 200)) return; b.seedN = 671200;
-  const rx = t < 1 ? lerp(5, 30, smooth(t)) : lerp(30, 22, smooth(t - 1)), rot = t < 1 ? lerp(0, -0.2, smooth(t)) : lerp(-0.2, 0.1, smooth(t - 1));
+function drawBpMirror(b, P, lit) {   // 试衣镜（2026-11-26 起能转）：木框的椭圆镜子，装在立杆顶上的转轴上，立杆底下是木底座和两只小轮子。椭圆的长轴就是镜面（光在这条线上反射），点一下顺时针转 22.5°
+  const lc = lcOf(P, lit), x = V.bmx, gy = BPY, cy = BPO.pivot[1]; if (!inView(x, cy, 200)) return; b.seedN = 671200;
   part(b, rectPts(x - 36, gy - 12, 72, 8), P.bpWood, { w: 0.9, tex: 0.4, lc, seed: 671201 });
   for (const dx of [-28, 28]) part(b, arcPts(x + dx, gy - 5, 5, 5, 0, TAU, 8), P.bpLampB, { w: 0.6, tex: 0, lc, seed: 671202 + dx });
-  part(b, rectPts(x - 3, cy + 70, 6, gy - 12 - cy - 70), P.bpWood, { w: 0.8, tex: 0.3, lc, seed: 671203 });
-  for (const dx of [-1, 1]) ink(b, seg(x + dx * 3, cy + 6, x + dx * 36, cy + 4), { w: 1.4, col: P.bpWood, taper: 0, a: 1 / b.pen.a, seed: 671204 + dx, single: 1 });
-  b.save(); b.translate(x, cy); b.rotate(rot);
-  part(b, arcPts(0, 0, rx + 6, 82, 0, TAU, 24), P.bpMirF, { w: 1, tex: 0.3, lc, seed: 671205 });
-  part(b, arcPts(0, 0, rx, 76, 0, TAU, 24), lit ? P.bpMirG : '#18242f', { w: 0.7, tex: 0, lc, seed: 671206 });
-  if (rx > 14) { ink(b, [[-rx * 0.5, -48], [-rx * 0.2, -22]], { w: 2, col: lit ? '#ffffff' : '#3a4a5c', taper: 0, a: 0.8, seed: 671207, single: 1 }); ink(b, [[-rx * 0.6, -30], [-rx * 0.45, -16]], { w: 1.4, col: lit ? '#ffffff' : '#3a4a5c', taper: 0, a: 0.6, seed: 671208, single: 1 }); }
+  part(b, rectPts(x - 3, cy + 8, 6, gy - 12 - cy - 8), P.bpWood, { w: 0.8, tex: 0.3, lc, seed: 671203 });
+  b.save(); b.translate(x, cy); b.rotate(bpAng17(V.bmkA));
+  part(b, arcPts(0, 0, 70, 21, 0, TAU, 28), P.bpMirF, { w: 1, tex: 0.3, lc, seed: 671205 });
+  part(b, arcPts(0, 0, BPO.r + 1, 15, 0, TAU, 28), lit ? P.bpMirG : '#18242f', { w: 0.7, tex: 0, lc, seed: 671206 });
+  ink(b, [[-BPO.r * 0.62, -4], [-BPO.r * 0.24, -5]], { w: 2, col: lit ? '#ffffff' : '#3a4a5c', taper: 0, a: 0.8, seed: 671207, single: 1 });
+  ink(b, [[-BPO.r * 0.12, -5], [BPO.r * 0.04, -5]], { w: 1.4, col: lit ? '#ffffff' : '#3a4a5c', taper: 0, a: 0.6, seed: 671208, single: 1 });
   b.restore();
+  part(b, arcPts(x, cy, 6, 6, 0, TAU, 10), P.bpLampB, { w: 0.7, tex: 0, lc, seed: 671209 });   // 转轴上的旋钮
 }
 function drawBpDesk(b, P, lit) {   // 服务台上的台灯（拿走了就没有了）
   if (S.bLamp !== 'desk' || !inView(BPP.lamp, BPY - 120, 200)) return;
@@ -6681,20 +6735,17 @@ function drawBpDyn(b, P, lit, vis) {   // 百货大楼（第 17 关）
   if (vis.bpB) { drawBpTag(b, P, lit); drawFear(b, P, lit, 'bs1'); drawFear(b, P, lit, 'bs2'); }
   if (vis.bpC) { drawBpGate(b, P, lit); drawBpLiftParts(b, P, lit); drawFear(b, P, lit, 'bs3'); }   // 货梯间：平台和剪叉、闸刀、按钮，然后是平台上巡逻的大衣（它站在平台上）
 }
-function drawBpGlow() {   // 射灯（灯头、一道光）、试衣镜反射出去的光、店员手里的台灯、出口上面绿色的牌子（冷光，不算光）、扫码窗口、掉在地上的光
-  const T = V.T, ox = BPP.spot[0], oy = BPP.spot[1], dx = Math.sin(BP_RAY1), dy = Math.cos(BP_RAY1), I = V.bsI;
-  if (I > 0.02 && inView(ox + 300, oy + 100, 700)) {
-    const fl = 0.95 + 0.05 * Math.sin(T * 23) * Math.sin(T * 5.3), L = (V.bmx + 16 - ox) / dx;
-    glowAt(ox + dx * 40, oy + dy * 40, 34, [255, 246, 214], 0.85 * I * fl);
-    for (let d = 70; d < Math.min(L, 640); d += 60) glowAt(ox + dx * d, oy + dy * d, 20 + d * 0.06, [255, 244, 210], 0.2 * I * fl * (1 - d / 760));
-    if (V.bmk > 0.5) glowAt(V.bmx, BPY - 115, 46, [255, 244, 214], 0.28 * I * fl);   // 镜面上的一团亮
-  }
-  if (V.bmk > 0.9 && I > 0.5 && V.bmt > 0.4 && V.bmt < 1.9 && inView(V.bmx + 100, BPY - 200, 400)) {   // 镜子斜着：光反射到天花板上，一道淡淡的（照不到衣服）
-    for (let d = 30; d < 300; d += 50) glowAt(V.bmx + 8 + d * 0.62, BPY - 115 - d * 0.78, 14 + d * 0.05, [255, 244, 210], 0.14 * I * (1 - d / 340));
-  }
-  if (V.brI > 0.02 && inView(V.bmx + 300, BPY - 120, 700)) {   // 镜子转过来：一长条光落在过道上
-    const rx = Math.sin(BP_RAY2), ry = Math.cos(BP_RAY2), mx = V.bmx + 8, my = BPY - 115;
-    for (let d = 40; d < 760; d += 55) glowAt(mx + rx * d, my + ry * d, 16 + d * 0.05, [255, 244, 210], 0.22 * V.brI * (1 - d / 840));
+function drawBpGlow() {   // 射灯（灯头、一道光）、试衣镜反射出去的光（一段一段按光路画：落在天花板、地上、陈列台那边、店员头上）、店员手里的台灯、出口上面绿色的牌子（冷光，不算光）、扫码窗口、掉在地上的光
+  const T = V.T, ox = BPO.spot[0], oy = BPO.spot[1], I = V.bsI, bm = V.bBeam;
+  if (I > 0.02 && bm && inView(ox + 300, oy + 100, 700)) {
+    const fl = 0.95 + 0.05 * Math.sin(T * 23) * Math.sin(T * 5.3);
+    glowAt(ox + Math.sin(BP_RAY1) * 40, oy + Math.cos(BP_RAY1) * 40, 34, [255, 246, 214], 0.85 * I * fl);
+    for (let j = 1; j < bm.pts.length; j++) {   // 第 j 段：从 pts[j-1] 到 pts[j]；第一段是射灯照出来的，以后的是镜子反射出去的（暗一点）
+      const [x0, y0] = bm.pts[j - 1], [x1, y1] = bm.pts[j], len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / len, uy = (y1 - y0) / len, Ij = j === 1 ? I : V.brI, cap = j === 1 ? 820 : 760;
+      if (Ij < 0.02) continue;
+      for (let d = j === 1 ? 70 : 30; d < Math.min(len, cap); d += 55) glowAt(x0 + ux * d, y0 + uy * d, 16 + d * 0.05, [255, 244, 210], (j === 1 ? 0.2 : 0.22) * Ij * fl * (1 - d / (cap + 80)));
+      if (len < cap) glowAt(x1, y1, j === 1 ? 40 : 34, [255, 244, 214], 0.3 * Ij * fl);   // 落点一团亮：镜面上 / 天花板上 / 地上 / 店员头上
+    }
   }
   const m = V.mon.bs2;
   if (V.bgI > 0.02 && inView(m.x, BPY - 120, 500)) {
@@ -6709,14 +6760,24 @@ function drawBpGlow() {   // 射灯（灯头、一道光）、试衣镜反射出
   if (d && T - d.t0 < 1.5 && inView(d.x, d.y, 300)) { const u = T - d.t0, fall = Math.min(1, u / 0.5), y = lerp(d.y, BPY - 8, fall * fall), a = u < 0.5 ? 1 : Math.max(0, 1 - (u - 0.5) / 0.9); glowAt(d.x, y, 26 + (u > 0.5 ? (u - 0.5) * 50 : 0), [255, 214, 150], 0.7 * a); glowAt(d.x, y, 8, [255, 240, 200], 0.9 * a); }
 }
 function bpUpdate(dt) {   // 射灯、试衣镜、反射的光、店员手里的灯、闸杆；过道上的店员塌了没有（塌了孩子才敢走过去）
-  const w1 = V.mon.bs1, on = S.bSw === 1 && S.bMir === 2;
+  const w1 = V.mon.bs1, hit = S.bHit === 1;
   V.bsw = approach(V.bsw, S.bSw, dt / 0.25); V.bsI = approach(V.bsI, S.bSw, dt / 0.5);
-  V.bmk = approach(V.bmk, S.bMir >= 1 ? 1 : 0, dt / 1.4); V.bmt = approach(V.bmt, S.bMir, dt / 0.9);
+  V.bmk = approach(V.bmk, S.bMir >= 1 ? 1 : 0, dt / 1.4);
   V.bmx = lerp(BPP.mirHome, BPP.mirAt, smooth(V.bmk));
-  V.brI = on && V.bmt > 1.9 && V.bsI > 0.9 ? Math.min(1, V.brI + dt / 0.4) : Math.max(0, V.brI - dt * 4);
+  // 镜子转到第几格：点一下转一格。V.bmkU 是一直往上数、不回绕的格数（画的角度只顺时针转，不会从第 7 格倒着转回第 0 格）；靠墙的时候站得差不多是竖着的（第 4 格，99°）
+  if (S.bAng !== V.bAngS) { V.bmkU += (S.bAng - V.bAngS + BPO.n) % BPO.n; V.bAngS = S.bAng; }
+  const kT = S.bMir ? V.bmkU : 4; V.bmkA += (kT - V.bmkA) * (1 - Math.exp(-dt * 9)); if (Math.abs(kT - V.bmkA) < 0.003) V.bmkA = kT;
+  // 这一帧的光路：和规则里是同一个 traceBeam，只是镜子的角度是转动中的角度（光束跟着镜子扫过去）。镜子一动就算在光路里。
+  // bBeam 画光束用：店员的头还在，光就打在头上；它塌了以后光穿过去。bBeamL 照亮用（光锥的范围）：不管头在不在
+  const mir = V.bmk > 0.02 ? [{ x: V.bmx, y: BPO.pivot[1], a: bpAng17(V.bmkA), r: BPO.r }] : [];
+  V.bBeam = V.bsI > 0.02 ? traceBeam(BPO.spot[0], BPO.spot[1], BPO.ray, mir, BPO.box, V.bSeen1 ? null : BPO.head) : null;
+  V.bBeamL = V.bsI > 0.02 ? traceBeam(BPO.spot[0], BPO.spot[1], BPO.ray, mir, BPO.box, null) : null;
+  const refl = V.bBeamL && V.bBeamL.bounces > 0 ? V.bsI : 0;
+  V.brI = refl > V.brI ? Math.min(refl, V.brI + dt / 0.25) : Math.max(refl, V.brI - dt * 4);
   V.bgI = approach(V.bgI, S.bGive, dt / 1.5);
   V.bgate = approach(V.bgate, S.bOut, dt / 0.9);
-  V.bSeen1 = on && (V.bSeen1 || w1.rise < 0.4) ? 1 : 0;
+  V.bHitT = hit ? V.bHitT + dt : 0;   // 规则里照到了以后过了几秒（光扫过去的那一会儿它该塌了；万一没塌，keepDown 兜底，别让孩子对着一个站着的店员“已经算过了”）
+  V.bSeen1 = hit && (V.bSeen1 || w1.rise < 0.4) ? 1 : 0;
   // 货梯间：闸刀的拨杆；平台（按下去 BPL.PRE 秒以后才动，喇叭先响）和被带着的大衣
   V.bpSw = approach(V.bpSw, S.bPow, dt / 0.25);
   const mv = V.bpMv;
@@ -9321,8 +9382,12 @@ const LIGHTS = [
   { id: 'fsl', off: 1.1, up: 1, wd: 0.34, at: () => ({ x: FP.mastX + 20, y: FP.lampY, R: 700, I: V.fsI * (0.95 + 0.05 * Math.sin(V.T * 29) * Math.sin(V.T * 6.1)), rot: Math.PI / 2, clip: [FP.mastX + 26, 250, 55500, 740] }) },
   { id: 'fcb', off: 0.1, up: 0.3, at: () => { const m = V.mon.fb1; return { x: m.x + m.face * 18, y: FSY - 122, R: 380, I: V.fbI * (0.94 + 0.06 * Math.sin(V.T * 2.9)), clip: [m.x - 420, 300, m.x + 420, 780] }; } },
   // 百货大楼（第 17 关）。橱窗射灯：轨道上朝右下斜着照向试衣镜（光到镜子就停）；镜子转过来以后反射出去的一长条，照在过道上夜班店员的头上；人台中间那位店员手里的台灯：站着的一团光
-  { id: 'bsp', off: 0.75, up: 1, wd: 0.3, at: () => ({ x: BPP.spot[0], y: BPP.spot[1], R: 560, I: V.bsI * (0.95 + 0.05 * Math.sin(V.T * 23) * Math.sin(V.T * 5.3)), rot: BP_RAY1, clip: [BPP.spot[0] - 20, 300, V.bmx + 16, 740] }) },
-  { id: 'bmr', off: 1.0, up: 0, wd: 0.3, at: () => ({ x: V.bmx + 8, y: BPY - 115, R: 420, I: V.brI * (0.96 + 0.04 * Math.sin(V.T * 19) * Math.sin(V.T * 4.7)), rot: BP_RAY2, clip: [V.bmx + 14, 360, V.bmx + 14 + 840, 740] }) },
+  { id: 'bsp', off: 0.75, up: 1, wd: 0.3, at: () => { const e = V.bBeamL ? V.bBeamL.pts[1] : [BPO.spot[0], BPO.spot[1]]; return { x: BPO.spot[0], y: BPO.spot[1], R: 560, I: V.bsI * (0.95 + 0.05 * Math.sin(V.T * 23) * Math.sin(V.T * 5.3)), rot: BP_RAY1, clip: [BPO.spot[0] - 20, 300, e[0] + 16, 740] }; } },   // 射灯的第一段：到镜子（或者镜子不在光里的时候，到地上）为止
+  { id: 'bmr', off: 1.0, up: 0, wd: 0.3, at: () => {   // 镜子反射出去的一长条：从镜面上的落点朝反射的方向，到天花板 / 地 / 墙为止（没算店员的头：光锥照到它的头，它才塌）
+    const bm = V.bBeamL; if (!bm || bm.bounces < 1) return null;
+    const [mx, my] = bm.pts[1], [ex, ey] = bm.pts[bm.pts.length - 1];
+    return { x: mx, y: my, R: 420, I: V.brI * (0.96 + 0.04 * Math.sin(V.T * 19) * Math.sin(V.T * 4.7)), rot: Math.PI / 2 - Math.atan2(ey - my, ex - mx), clip: [BPO.box[0], BPO.box[1], BPO.box[2], 740] };   // 剪裁框是整间屋子（顶到天花板、底到地面下面一点）：光锥自己会淡掉，不让它漏到楼上去
+  } },
   { id: 'bgl', off: 0.1, up: 0.3, at: () => { const m = V.mon.bs2; return { x: m.x + m.face * 18, y: BPY - 122, R: 380, I: V.bgI * (0.94 + 0.06 * Math.sin(V.T * 2.9)), clip: [m.x - 420, 300, m.x + 420, 780] }; } },
   // 广场（第 18 关）。木马的灯泡串：灯泡转到右边才亮，所以光落在木马的右半边、再往右一点；左边是暗的（大人转到右边的光里就塌，转到左边又醒）
   { id: 'cbl', off: 0, up: 0.3, at: () => ({ x: CPP.cx + CPP.LX, y: CPY - 265, R: CPP.LR, I: V.cbI * (0.95 + 0.05 * Math.sin(V.T * 11) * Math.sin(V.T * 3.7)), clip: [60900, 250, 62020, 740] }) },
@@ -9853,7 +9918,7 @@ const GARB = {
   rt2: { kind: 'coat', fl: 'down', home: 20150, terr: [20040, 20280], speed: 60, h: 214, pal: { coat: 'r2c', coatLo: 'r2l', scarf: 'r2s', hat: 'rh' } },
   // 百货大楼（第 17 关）：bs1 过道上的夜班店员：走法和别的衣服一样（暗处醒着，孩子走进它那一片又不在光里就追；光照到头就塌），塌了就一直塌着（keepDown）。
   // bs2 人台中间的夜班店员：醒着，站在原处，不动、不追人，挡着路（idle）；把台灯递给它，它抱着灯站在那儿（holds），让开路。人台上的衣服不是 GARB：没人穿，是画出来的架子
-  bs1: { kind: 'coat', fl: 'sfc', keepDown: () => V.bSeen1 === 1, home: BPP.bs1, terr: [BPP.bs1a, BPP.bs1b], speed: 62, h: 214, face0: -1, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
+  bs1: { kind: 'coat', fl: 'sfc', keepDown: () => V.bSeen1 === 1 || (S.bHit === 1 && V.bHitT > 1.8), home: BPP.bs1, terr: [BPP.bs1a, BPP.bs1b], speed: 62, h: 214, face0: -1, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
   bs2: { kind: 'coat', fl: 'sfc', idle: true, home: BPP.bs2, terr: [BPP.bs2, BPP.bs2], speed: 0, h: 214, face0: -1, faceEnd: -1, holds: () => S.bGive === 1, get stand() { return BPP.bs2; }, lapSpeed: 150, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
   // bs3 货梯间里来回巡逻的夜班大衣（2026-11-25）：不追人、不怕光（那儿没有灯能照到它），挡着路；走法在 bpMonUpdate（G.lift）：在平台正中停一阵，按钮一按平台连着它一起升到二楼，它在二楼的仓库里来回，平台放回地上走廊才通
   bs3: { kind: 'coat', fl: 'sfc', lift: 1, home: BPP.lpc, terr: [BPP.lp0 - 100, BPP.lp1 + 100], speed: 62, h: 214, face0: -1, fyOf: m => m.py ?? BPY, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
@@ -12296,7 +12361,7 @@ const newView = () => ({
   T: 0, li: { nlt: 0, dl: 1, wl: 1, wp: 0, wg: 0, we: 1, ml: 1, mc: 0, ms: 0, ub: 0, tk: 0, tm: 0, tf: 0, ts: 0, bedlamp: 0, bath: 0, hall: 0, fire: 0.6, candle: 0, power: 0, sensor: 0, dome: 0, beam: 0, bike: 0, lamp1: 0, lamp2: 0, porch3: 0, neon: 0, win: 0, za: 0, zb: 0, zc: 0, ra: 0, rb: 0, sa: 0, sp: 0, ga: 0, gk: 0, nl: 0, ns: 0, nb: 0 }, lt0: { bedlamp: -10, bath: -10, hall: -10, power: -10, sensor: -10, dome: -10, beam: -10, lamp1: -10, lamp2: -10, porch3: -10, neon: -10, win: -10, za: -10, zb: -10, zc: -10, ra: -10, rb: -10, sa: -10, sp: -10 }, candleI: 0,
   soundT: -10, soundX: 0, zdoorPulse: -10, zUntil: { a: -10, b: -10, c: -10 }, zdoor: 0, zSeen1: 0, zSeen2: 0, zT1: -10, zT2: -10, tossT: -10, clapT: -10, stompT: -10, streetDone: 0, aptDone: 0, rsw: 0, rbr: 0, rSeen1: 0, rT1: -10, rSeen3: 0, rT3: -10, tarpT: -10, tarpTug: 0, skyVent: 0, rbTug: 0, reelInT: -10, rReelT: -10, swT: -10, roofDone: 0, ssw: 0, sswT: -10, sdoor: 0, sSeen1: 0, sT1: -10, schoolDone: 0, ga: 0, gsw: 0, gswT: -10, gDown: 0, gateY: 0, gateGo: 0, gateT: -10, gateW: 0, leverA: 0, gdoor: 0, gSeen: 0, gT1: -10, gX0: 25640, gWx: 25900, gymDone: 0, npl: 0, nlk: 0, nstv: 0, ngt: 0, nSeen: 0, nT1: -10, nX0: 28980, nWx: 29100, mktDone: 0, tkn: 0, tmr: 0, tfo: 0, tsp: 0, tdr: 0, ttr: 0, tHandle: 0, tClapT: -10, tLook: 1, tSeen1: 0, tSeen2: 0, tSeen3: 0, tT1: -10, tT2: -10, tT3: -10, tX0: 32532, tFall: -10, thDone: 0, uvk: 0, ust: 1, uNi: 0, uNt: 0, uPl: -10, uNotes: [], ucDone: 0, mcx: MCART[0], mcw: 0, mca: 0, mcT: -10, mcl: 0, msl: 0, mlv: 0, mdr: 0, mj: 0, mjT: -10, mjA: 0, mbump: 0, mSeen1: 0, mSeen2: 0, mSeenW: 0, mt1: -10, mt2: -10, mtW: -10, mtDone: 0, wpx: WLED[1].x, wpk: 1, wgl: 0, wgr: 0, wwl: 1, wvr: 0, wSeen1: 0, wSeen2: 0, wSeen3: 0, wt1: -10, wt2: -10, wt3: -10,   // 屋顶：总闸扳手扳下去几成、木板倒下去几成、第一件衬衫塌下去了没有；公寓楼：最后一次声音的时候和地方、三盏灯亮到什么时候、防火门开了几成、拖鞋和垃圾袋露出来没有、丢拖鞋/拍手/跺脚的那一下
   lpull: 0, lpullWho: 0, knockT: -10, knockUntil: -10, lgate: 0,
-  vink: newVink(), vi0: null, nfl: newNfl(), nLandT: -10, wsDone: 0, dwl: 0, dvr: 0, dwT: -10, dsg: 0, dsq: 0, dRobT: -10, dRideT: -10, dRp3: -1, dRx0: 0, drx: DSRAFT.x, dsDone: 0, vl: [0, 0, 0, 0, 0], vUntil: [-10, -10, -10, -10, -10], vT0: -10, vsw: 0, vcg: 0, vSeen1: 0, vSeen2: 0, vKeyOn: 0, vKT: -10, vCT: -10, fcrK: 0, fpd: 0, fsI: 0, fbI: 0, fbar: 0, fSeen1: 0, fSeen2: 0, fsDone: 0, bpDone: 0, ca: 0, cw: 0, cBrake: null, cSeen: 0, cbI: 0, cbk: 0, cplug: 0, clev: 0, cbar: 0, cSndT: -10, cpDone: 0, klg: 0, klw: null, klSeen: 0, klfar: 0, kdr: 0, ktap: 0, klT: -10, klDone: 0, hcd: 0, hlm: 0, hSeen1: 0, hSeen2: 0, hLad: 0, hwt: 0, hgr: 0, hdr: 0, hg: null, hSndT: -10, hFearT: -10, hdr2: 0, jIn: 0, jInT: -10, jwd: 0, jwa: 0, jhg: 0, jlv: 0, jop: 0, jI: 0, jR: 380, jdl: 0, jU: -1, jT0: 0, jDawn: 0, jMoon: 0, jZoom: 1, jDone: 0, jWoke: 0, jRing: 0, jSndT: -10, jTk: 0, bsw: 0, bsI: 0, bmk: 0, bmt: 0, bmx: BPP.mirHome, brI: 0, bgI: 0, bgate: 0, bSeen1: 0, bDrop: null, bpPy: BPY, bpMv: null, bpSw: 0, bpBt: -10, vCx0: 0, vTop: 0,   // 消防站：转盘转了几成、踏板压了几成、探照灯多亮、大衣手里的灯多亮、横杆抬了几成、两件雨衣塌了没有；变电站：五盏路灯多亮、各亮到什么时候、合闸是什么时候、闸刀推下去几成、铁笼开了几成、两件工作服塌了没有、钥匙掉出来没有、爬铁塔从什么时候起；地下最深处：池里的水涨到几成、闸轮转到哪儿、水柱、人群冲上来了几成、被抱走从什么时候起、漂着的时候从什么时候起、门板漂到哪儿
+  vink: newVink(), vi0: null, nfl: newNfl(), nLandT: -10, wsDone: 0, dwl: 0, dvr: 0, dwT: -10, dsg: 0, dsq: 0, dRobT: -10, dRideT: -10, dRp3: -1, dRx0: 0, drx: DSRAFT.x, dsDone: 0, vl: [0, 0, 0, 0, 0], vUntil: [-10, -10, -10, -10, -10], vT0: -10, vsw: 0, vcg: 0, vSeen1: 0, vSeen2: 0, vKeyOn: 0, vKT: -10, vCT: -10, fcrK: 0, fpd: 0, fsI: 0, fbI: 0, fbar: 0, fSeen1: 0, fSeen2: 0, fsDone: 0, bpDone: 0, ca: 0, cw: 0, cBrake: null, cSeen: 0, cbI: 0, cbk: 0, cplug: 0, clev: 0, cbar: 0, cSndT: -10, cpDone: 0, klg: 0, klw: null, klSeen: 0, klfar: 0, kdr: 0, ktap: 0, klT: -10, klDone: 0, hcd: 0, hlm: 0, hSeen1: 0, hSeen2: 0, hLad: 0, hwt: 0, hgr: 0, hdr: 0, hg: null, hSndT: -10, hFearT: -10, hdr2: 0, jIn: 0, jInT: -10, jwd: 0, jwa: 0, jhg: 0, jlv: 0, jop: 0, jI: 0, jR: 380, jdl: 0, jU: -1, jT0: 0, jDawn: 0, jMoon: 0, jZoom: 1, jDone: 0, jWoke: 0, jRing: 0, jSndT: -10, jTk: 0, bsw: 0, bsI: 0, bmk: 0, bmkA: 4, bmkU: START17.bAng, bAngS: START17.bAng, bBeam: null, bBeamL: null, bHitT: 0, bmx: BPP.mirHome, brI: 0, bgI: 0, bgate: 0, bSeen1: 0, bDrop: null, bpPy: BPY, bpMv: null, bpSw: 0, bpBt: -10, vCx0: 0, vTop: 0,   // 消防站：转盘转了几成、踏板压了几成、探照灯多亮、大衣手里的灯多亮、横杆抬了几成、两件雨衣塌了没有；变电站：五盏路灯多亮、各亮到什么时候、合闸是什么时候、闸刀推下去几成、铁笼开了几成、两件工作服塌了没有、钥匙掉出来没有、爬铁塔从什么时候起；地下最深处：池里的水涨到几成、闸轮转到哪儿、水柱、人群冲上来了几成、被抱走从什么时候起、漂着的时候从什么时候起、门板漂到哪儿
   pot: 0, box: 0, sw: 0, dialF: 0, tgate: 0, winUntil: -10, tkSeen: 0, tkT: -10, laneDone: 0,   // 商店街：花盆翻了几成、配电箱门开了几成、闸刀合了几成、定时器的指针（还剩几成）、检票机的杆、橱窗灯亮到什么时候、车票飘出来没有、走出巷口没有   // 巷子：拉线、敲门、栅栏门
   sensorUntil: -10, sensorBy: 'kid', cardoor: 0, rollK: 0, rollPulse: -10, gate: 0, bikeQ: 0, wheelA: 0.4, whirT: 0, ballT: -10, dogX: 4930, ballDir: 1, dogCaught: 0,
   // 院子：感应灯亮到什么时候、车门、卷帘门、院门开了几成、车轮还剩几成劲、狗的毛衣塌在哪儿
@@ -13147,7 +13212,7 @@ function spots() {
   if (S.fOut) {
     const sy = FL.sfc.gy, m2 = V.mon.bs2;
     if (!S.bSw) add('bSwH', [BPP.sw - 34, sy - 190, BPP.sw + 34, sy - 100], BPP.sw - 50, 'sfc', 1, [BPP.sw, sy - 140]);
-    if (S.bMir < 2) add('bMirH', [V.bmx - 44, sy - 205, V.bmx + 44, sy], (S.bMir === 0 ? BPP.mirHome : BPP.mirAt) + 56, 'sfc', -1, [V.bmx + 20, sy - 110]);
+    add('bMirH', [V.bmx - 74, BPO.pivot[1] - 80, V.bmx + 74, sy], (S.bMir === 0 ? BPP.mirHome : BPP.mirAt) + 84, 'sfc', -1, [V.bmx + 20, BPO.pivot[1] + 4]);   // 推进光里以后一直点得动，点一下转一格；孩子站在镜子右边、够得着转轴的旋钮
     if (S.bLamp === 'desk') add('bLampH', [BPP.lamp - 40, sy - 140, BPP.lamp + 40, sy - 90], BPP.lamp - 56, 'sfc', 1, [BPP.lamp, sy - 112]);
     add('bManA', [BPP.man1 - 30, sy - 24 - 214, BPP.man3 + 30, sy - 20], BPP.plat0 - 50, 'sfc', 1, [BPP.man1 - 6, sy - 24 - 118]);
     if (S.bTag === 'floor' && V.bSeen1) add('bTagH', [BPP.tag - 36, sy - 50, BPP.tag + 36, sy + 10], BPP.tag - 40, 'sfc', 1, [BPP.tag, sy - 14]);
@@ -14425,7 +14490,7 @@ function drawOverlays(lights) {
     [VP.lock - 20, VSY - 76, 0.9, S.vKeys === 'inv' && !S.vLock], [VP.lock - 10, VSY - 130, 2.1, S.vLock && !S.vOut],
   ];
   const bglints = [   // 百货大楼（第 17 关）
-    [BPP.lamp, BPY - 124, 0.5, S.bLamp === 'desk'], [BPP.sw, BPY - 140, 1.6, !S.bSw], [V.bmx + 18, BPY - 110, 2.7, S.bMir < 2], [BPP.tag, BPY - 14, 3.8, S.bTag === 'floor' && V.bSeen1 === 1],
+    [BPP.lamp, BPY - 124, 0.5, S.bLamp === 'desk'], [BPP.sw, BPY - 140, 1.6, !S.bSw], [V.bmx + 18, BPY - 110, 2.7, !S.bHit], [BPP.tag, BPY - 14, 3.8, S.bTag === 'floor' && V.bSeen1 === 1],
     [GATEPOS.bs2.x + 50, BPY - 106, 4.9, S.bLamp === 'inv' && !S.bGive], [BPP.scan - 18, BPY - 112, 0.9, S.bTag === 'inv' && !S.bOut],
     [BPP.pw, BPY - 140, 2.1, S.bGive === 1 && !S.bPow], [BPP.bt, BPY - 134, 3.2, S.bPow === 1 && bpBtnReady()],   // 货梯间：闸刀盒；按钮（现在按得成：大衣站在平台上 / 平台空着升上去了 / 大衣在二楼走远了）
   ];
@@ -14763,7 +14828,7 @@ function snapTo(s, b) {
   // 钟楼脚下的老街（第 19 关）：水栓、栅门、大门一步到位；衣服挤在栅门外面（栅门升起来了就当都走进拱门了）；远处的光亮着
   Object.assign(V, { cpDone: S.cOut ? 1 : 0, ktap: S.kTap, klg: S.kGate, kdr: S.kOut, klSeen: S.kGate, klfar: S.cOut ? 1 : 0, klw: null }); if (S.cOut) klWalkSnap(S.kGate);
   // 百货大楼（第 17 关）：射灯、试衣镜、反射的光、店员手里的灯、闸杆一步到位；灯照着、店员塌了就当塌了
-  { const on = S.bSw && S.bMir === 2 ? 1 : 0; Object.assign(V, { fsDone: S.fOut ? 1 : 0, bsw: S.bSw, bsI: S.bSw, bmk: S.bMir >= 1 ? 1 : 0, bmt: S.bMir, bmx: S.bMir >= 1 ? BPP.mirAt : BPP.mirHome, brI: on, bgI: S.bGive, bgate: S.bOut, bSeen1: on, bDrop: null }); }
+  { const hit = S.bHit ? 1 : 0; Object.assign(V, { fsDone: S.fOut ? 1 : 0, bsw: S.bSw, bsI: S.bSw, bmk: S.bMir >= 1 ? 1 : 0, bmkU: S.bAng, bAngS: S.bAng, bmkA: S.bMir ? S.bAng : 4, bBeam: null, bBeamL: null, bHitT: hit ? 9 : 0, bmx: S.bMir >= 1 ? BPP.mirAt : BPP.mirHome, brI: S.bSw && S.bMir ? 1 : 0, bgI: S.bGive, bgate: S.bOut, bSeen1: hit, bDrop: null }); }
   outDone = S.out ? 1 : 0; if (S.out && V.outT < 0) V.outT = V.T;
   { const st = saveT; saveT = Infinity; tick(0.001); saveT = st; }   // 这一下不存档：读档的时候站的地方、点了几下还是开局的（以前会把卧室窗下写进去，再打开一次就回卧室了）
   LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].holds && GARB[k].holds() ? GARB[k].stand : GARB[k].home; m.dir = 1; m.pause = 0; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = GARB[k].sleeper || coverage(hx, hy, LT) > 0.55 || !!(GARB[k].keepDown && GARB[k].keepDown()) ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; }   // 睡着的（靴嘴）摆好局面的时候是睡着的
@@ -14797,6 +14862,8 @@ function readSave() {
       else { Object.assign(d.S, START6); if (Array.isArray(d.bag)) d.bag = d.bag.filter(it => !ITEMS6.includes(it)); if (d.safe && d.safe.x > ROOF.x0) d.safe = { x: RLAN.x + 30, y: FL.down.gy }; }
     }
     if (d && d.S && typeof d.S === 'object') d.S = { ...START21, ...START20, ...START19, ...START18, ...START17, ...START16, ...START15, ...START14, ...START13, ...START12, ...START11, ...START10, ...START9, ...START8, ...START7, ...START6, ...START5, ...START4, ...START3, ...START2, ...d.S };   // 第 3、4、5 关加进来以前的存档：巷子、商店街、公寓楼那几项照开局补上（院子 2026-11-24 多了灯崽、钥匙两项：以前的存档照开局补上）
+    // 2026-11-26 以前的存档（试衣镜只有三个写死的位置：0 靠墙 / 1 推进光里 / 2 转过来）：“转过来”的就是现在的推进光里、转到第 0 格（正好照到店员头上），店员已经塌了
+    if (d && d.S && typeof d.S === 'object' && d.S.bMir === 2) { d.S.bMir = 1; d.S.bAng = 0; d.S.bHit = 1; }
     // 2026-11-25 以前的存档（第 8 关器材室加闸门以前，没有 gGate 那一项）：已经走出后门的，闸门当作放下来了；正在器材室里的，孩子回到器材室的门口（以前那儿的灯是亮的，现在屋子是黑的，运动服在跑）
     if (d && d.S && typeof d.S === 'object' && d.S.gOut) d.S.gGate = 1;
     if (d && d.S && d.safe && d.S.gDoor && !d.S.gOut && d.safe.x > GL.lad1 - 40 && d.safe.x < GL.deck1 + 400) d.safe = { x: GDOOR_STOP - 4, y: FL.down.gy };
