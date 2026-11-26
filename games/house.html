@@ -8776,21 +8776,72 @@ const FOLK_K = {
 };
 const FOLK_AT = { gran: { x: 10410, win: [10368, 568, 84, 114] }, gpa: { x: 20840, y: 978 }, boy: { x: 28656, y: 986 }, fan: { x: 38110 }, nm: { x: KLP.bench - 4, y: KLY - 4 }, fam: { x: 41580, y: 986 }, ob: { x: 60858, y: CPY - 4 } };
 const FK = { gran: { att: 0, act: 0, gz: 0, d: 1, was: 0 }, gpa: { give: 0, gz: -0.4 }, boy: { warm: 0, gz: -0.5 }, fan: { att: 0, hush: 0, gz: -0.6 }, nm: { give: 0, gz: 0, nod: -10 }, fam: { gz: 0, scare: 0, near: 0, wave: 0 }, ob: { lit: 0, spin: 0, gz: 0.7, hi: 0 } };
+// 每次开始打听都从第一帧讲起，走开后可以回来再问。
+function witnessCue(f, nearby, trigger, dt) {
+  if (!nearby) { f.telling = false; f.asked = false; }
+  else if (trigger && !f.asked) { f.telling = true; f.elapsed = 0; f.asked = true; }
+  if (!trigger) f.asked = false;
+  if (f.telling && (f.elapsed += dt) >= 5) f.telling = false;
+}
+function witnessBubble(b, who, x, y) {
+  const f = FK[who];
+  if (!f.telling) return;
+  const t = f.elapsed, progress = clamp((t - 0.6) / 2.8, 0, 1);
+  b.save(); b.translate(x, y);
+  b.globalAlpha *= clamp(Math.min(t, 5 - t) * 5, 0, 1);
+  const shape = (points, color) => {
+    b.fillStyle = color; b.beginPath(); b.moveTo(...points[0]);
+    for (const point of points.slice(1)) b.lineTo(...point);
+    b.closePath(); b.fill();
+  };
+  const dot = (x, y, r, color) => {
+    b.fillStyle = color; b.beginPath(); b.arc(x, y, r, 0, Math.PI * 2); b.fill();
+  };
+  const paper = '#f0e2c8', ink = '#302e39';
+  shape([[-12,32],[-4,54],[6,33]], paper);
+  b.beginPath(); b.ellipse(0,0,103,44,0,0,Math.PI*2);
+  b.fillStyle = paper; b.fill(); b.clip();
+  b.fillStyle = '#8b7d75';
+  if (who === 'gran') shape([[-94,29],[36,-7],[94,15],[94,45],[-94,45]], '#8b7d75');
+  else b.fillRect(-104,24,208,22);
+  if (who === 'boy') {
+    b.fillStyle = ink; b.fillRect(37,-23,33,48);
+    shape([[32,-26],[75,-26],[69,-6],[60,0],[61,-17],[46,-17],[44,0],[38,-7]], '#974e49');
+  }
+  if (who === 'nm') {
+    b.fillStyle = '#866c51'; b.fillRect(31,-30,30,54);
+    b.fillStyle = '#b6dddd'; b.fillRect(35,-26,22,46);
+    const fall = clamp((t-2.4)*2,0,1);
+    shape([[30,-30+51*fall],[62,-30+51*fall],[65,21],[28,23]], '#645f68');
+  }
+  b.save();
+  const px = -52 + progress * (who === 'boy' ? 113 : 101);
+  b.translate(px, who === 'gran' ? 11 - progress * 26 : 14);
+  if (who === 'boy') b.globalAlpha *= 1-clamp((progress-0.8)*5,0,1);
+  dot(-10,-10,6,'#805d4e'); shape([[-14,-5],[-6,-5],[-3,10],[-18,10]], '#657580');
+  shape([[-6,-6],[-12,-2],[-28,Math.sin(t*7)*3],[-13,-8]], '#b63736');
+  dot(11,-20,8,ink); shape([[6,-16],[17,-16],[26,10],[-1,8]],ink);
+  shape([[8,-13],[10,-7],[-6,-2],[-9,-5]],ink); dot(14,-10,3,'#cb9e54');
+  b.restore(); b.restore();
+}
 function folkUpdate(dt) {   // 看见孩子、孩子做了什么：只是慢慢地转头、换个姿势，不进规则
   const T = V.T, kx = kid.x, near = (x, r) => Math.abs(kx - x) < r, follow = (f, x, r, sp) => { f.gz = approach(f.gz, clamp((kx - x) / r, -1, 1), dt * sp); };
   { const f = FK.gran, x = FOLK_AT.gran.x, on = T < V.knockUntil || T < V.stairUntil, w = near(x, 820);   // 第 3 关：孩子走近，她站到窗边；敲门（或敲小窗）她就亮灯、摆手让孩子快过去
     f.att = approach(f.att, w ? 1 : 0, dt / (w ? 1.3 : 2.4)); f.act = approach(f.act, on ? 1 : 0, dt / 0.25); follow(f, x, 260, 3); f.d = kx < x ? -1 : 1;
     if (on && !f.was && w && typeof snd.creak === 'function') snd.creak();   // 推开窗：吱呀一声
+    witnessCue(f, w, on, dt);
     f.was = on ? 1 : 0; }
   { const f = FK.gpa, x = FOLK_AT.gpa.x, w = near(x, 760);   // 第 6 关：孩子走近他就把杯子递过来，走过去了就目送
     f.give = approach(f.give, near(x, 430) && kx < x + 120 ? 1 : 0, dt / 0.6); f.gz = w ? approach(f.gz, clamp((kx - x) / 300, -1, 1), dt * 2.2) : approach(f.gz, -0.4, dt * 1.2); }
   { const f = FK.boy, x = FOLK_AT.boy.x;   // 第 9 关：他坐在炉子另一侧，炉子凉的时候缩着发抖；孩子把炉子扇红了，他看着火笑，伸手去烤
+    witnessCue(f, near(x, 390), !!S.nStv, dt);
     f.warm = approach(f.warm, S.nStv ? 1 : 0, dt / 1.6); f.gz = approach(f.gz, S.nStv ? -0.7 : near(x, 800) ? clamp((kx - x) / 200, -1, 1) : -0.5, dt * 2.5); }
   { const f = FK.fan, x = FOLK_AT.fan.x;   // 第 11 关：闭着眼睛踩着琴声点头；孩子走近她睁开眼，食指竖在嘴前面：嘘，别吵到他
     f.att = approach(f.att, near(x, 520) ? 1 : 0, dt / 0.5); f.hush = approach(f.hush, near(x, 330) ? 1 : 0, dt / 0.4); follow(f, x, 200, 2.5); if (!near(x, 520)) f.gz = approach(f.gz, -0.6, dt * 1.2); }
   { const f = FK.nm, x = FOLK_AT.nm.x;   // 第 19 关：一街的衣服从他面前走过，每过去一件他碰一下帽檐、点点头（把它们当人）；孩子走近他把灯举起来
     let best = null, pass = false;
     if (S.cOut && V.klw) for (const w of V.klw) { if (w.in || w.wait > 0 || w.a < 0.3) continue; const dx = w.x - x; if (Math.abs(dx) < 300 && (!best || Math.abs(dx) < Math.abs(best))) best = dx; if (w.mov && Math.abs(dx) < 34) pass = true; }
+    witnessCue(f, near(x, 390), !!S.cOut, dt);
     if (pass && T - f.nod > 2.4) f.nod = T;
     f.give = approach(f.give, near(x, 460) && kid.kind === 'floor' ? 1 : 0, dt / 0.6);
     f.gz = approach(f.gz, near(x, 560) ? clamp((kx - x) / 200, -1, 1) : best !== null ? clamp(best / 150, -1, 1) : 0, dt * 2.5); }
@@ -8813,6 +8864,7 @@ function folkGran(b) {   // 邻居婆婆：二楼窗里。窗玻璃里透出烛�
   ink(b, seg(cx, wy, cx, wy + wh), { w: 1.2, col: LIT.trim, taper: 0, a: 0.45 * I / b.pen.a }); ink(b, seg(wx, wy + 57, wx + ww, wy + 57), { w: 1.2, col: LIT.trim, taper: 0, a: 0.45 * I / b.pen.a });
   xPerson(b, LIT, true, { k: FOLK_K.gran, x: cx + Math.sin(T * 0.9) * 0.8, y: wy + 208 + Math.sin(T * 1.5) * 0.7, s: 1, d: f.d, pose, rev: 1, joy: caught ? -2.4 : f.act > 0.5 ? 0.1 : hunt ? -1.8 : -1.2, gaze: f.gz, tilt: f.gz * 0.09, a: Math.min(1, A * 1.4), seed: 760000 });
   b.restore();
+  witnessBubble(b, 'gran', cx + 65, wy - 29);
 }
 function folkGpa(b) {   // 屋顶上的老伯：坐在小凳上，捧着杯热茶，一直看着远处黑着的钟楼；脚边一盏小提灯
   const f = FK.gpa, T = V.T, x = FOLK_AT.gpa.x, y = FOLK_AT.gpa.y; if (!inView(x, y, 300)) return;
@@ -8825,6 +8877,7 @@ function folkBoy(b) {   // 炭炉边的小孩：坐在木箱上缩着，脚边�
   part(b, rectPts(x - 24, y - 32, 48, 32), '#8a6a44', { w: 0.9, tex: 0.3, wob: 0.3, lc, seed: 762000 }); ink(b, seg(x - 24, y - 20, x + 24, y - 20), { w: 0.7, col: lc, taper: 0, a: 0.5, seed: 762001, single: 1 });
   xItem(b, LIT, true, 'lamp', x + 52, y + 2, 1, 762100);
   xPerson(b, LIT, true, { k: FOLK_K.boy, x: x + Math.sin(T * 41) * 0.9 * (1 - w), y, s: 0.6, d: -1, pose: w > 0.5 ? 'warm' : 'rest', hold: null, sit: 1, rev: 1, joy: w > 0.6 ? 0.95 : -1.3, gaze: f.gz, tilt: f.gz * 0.1, seed: 762200 });
+  witnessBubble(b, 'boy', x, y - 158);
 }
 function folkFan(b) {   // 听琴的姑娘：坐在倒扣的铁皮桶上，捧着杯子，闭着眼睛踩着琴声点头
   const f = FK.fan, T = V.T, x = FOLK_AT.fan.x, y = FL.down.gy, lc = LIT.ink, ph = (T - V.uPl) * Math.PI / 0.34; if (!inView(x, y, 300)) return;
@@ -8837,6 +8890,7 @@ function folkNm(b) {   // 守夜的老人：坐在长椅上，膝上一盏提灯
   const f = FK.nm, T = V.T, x = FOLK_AT.nm.x, y = FOLK_AT.nm.y; if (!inView(x, y, 300)) return;
   const give = f.give > 0.5, e = (T - f.nod) / 1.1, tip = e >= 0 && e < 1 && !give;
   xPerson(b, LIT, true, { k: FOLK_K.nm, x, y, s: 0.95, d: -1, pose: give ? 'give' : tip ? 'tip' : 'cup', hold: 'lamp', near: give, sit: 1, rev: 1, joy: give ? 0.9 : 0.35, gaze: f.gz, tilt: f.gz * 0.05 + (e >= 0 && e < 1 ? -Math.sin(e * Math.PI) * 0.14 : 0), seed: 764000 });
+  witnessBubble(b, 'nm', x, y - 235);
 }
 function folkStove(b, x, y) {   // 一只铁皮小炉子：炉身、炉门里的火、一截烟囱，烟囱口往上飘一缕烟
   const lc = LIT.ink, T = V.T, pn = (pts, col, sd, tex = 0.3) => part(b, pts, col, { w: 0.9, tex, wob: 0.3, lc, seed: 765000 + sd });
