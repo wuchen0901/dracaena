@@ -11006,6 +11006,7 @@ const MZ_COLS = {   // [亮的一层, 暗的一层]。暗的一层里牙、线�
   mzCloak: ['#5a4660', '#2a3048'], mzCloakLo: ['#43354a', '#1c2335'],
   mzStk1: ['#8e5a52', '#2e3652'], mzStk2: ['#5b7a8a', '#27354c'], mzStk3: ['#b0a67a', '#374160'], mzStk4: ['#6e6a9a', '#2d3252'],
   mzCab: ['#7a5a3a', '#2b3149'], mzCabHi: ['#98744c', '#3a4260'], mzCabLo: ['#583f27', '#1c2335'], mzKnob: ['#c9a24a', '#a9b6d9'], mzComb: ['#d9d0b2', '#b4bedb'], mzDoily: ['#e6dec8', '#6b779c'], mzDoilyLo: ['#b9ad8c', '#4b567a'],
+  mzMaskCoat: ['#4a3f44', '#2b3350'], mzMaskCoatLo: ['#352c31', '#1c2338'], mzMaskInk: ['#25212a', '#0d111c'], mzMaskFace: ['#e2dac6', '#d5dbee'], mzMaskCrack: ['#8a806e', '#7c88aa'], mzMaskRed: ['#b8382e', '#cf4438'],   // 墨脸：外套、手和脖子的墨、瓷面具似的脸、脸上的裂纹、她的红围巾
 };
 for (const [k, [a, d]] of Object.entries(MZ_COLS)) { LIT[k] = a; DARK[k] = d; }
 
@@ -11704,9 +11705,102 @@ function mzCabHeap(b, P, lit, x, fy, f, t, m, seed) {   // 塌下去：抽屉都
   b.restore();
 }
 
+// ---------- 墨脸（2026-11-26）：新故事里那只有脸的墨，设计见 docs/night-story-d.md；只是图鉴，没进任何一关 ----------
+// 人形的一团墨，披一件从镇上拿的长外套。脸是苍白的、平的，像瓷面具，全是黑的画面里最亮的一块：眼睛是人的比例、有瞳孔，瞳孔跟着孩子转
+// （m.look：-1 朝左、1 朝右）；嘴一开始没有，抓到孩子的那一下才裂开一道笑（m.grin 0–1）。手臂比人多一节关节；站着不呼吸（身子不起伏）。
+// 不是衣服：被光照到不塌，缩一下，手挡住脸，从下往上一层一层变淡（mzMaskFlinch，亮的那一层）。
+// m：hunt、reach、ph 和别的怪物一样；另有 look、tilt（歪头）、grin、shield（手挡脸 0–1）。图鉴里 hunt=1 那一格就是“抓到的那一下”，所以 grin 默认跟着 hunt 走；
+// 以后放进关卡，追人的时候要显式传 grin: 0。
+function mzMaskFace(b, P, lit, cx, cy, tilt, look, hu, grin, seed, sc = 1) {
+  const lc = lcOf(P, lit); b.save(); b.translate(cx, cy); b.rotate(tilt); b.scale(sc, sc); b.seedN = seed;
+  const face = [[-14, -14], [-8, -22], [0, -24], [8, -22], [14, -14], [15, 2], [10, 16], [0, 24], [-10, 16], [-15, 2]];
+  for (const s of [-1, 1]) for (let j = 0; j < 3; j++) ink(b, quadPts([s * (6 + j * 4), -23], [s * (18 + j * 3), -16 + j * 4], [s * (17 + j * 4), 6 + j * 14 + 6 * Math.sin(seed + j)], 8), { col: INK, w: (3.4 - j * 0.5) / b.pen.w, a: 1 / b.pen.a, taper: 3, seed: seed + 3 + j + (s > 0 ? 10 : 0) });   // 头发：又湿又黑的墨，从头顶垂到脸两边
+  part(b, curvePts(face, true, 4), P.mzMaskFace, { w: 1, tex: 0.25, lc, seed: seed + 1 });
+  hatch(b, k => pathOf(k, [[-14, -14], [-8, -22], [0, -24], [0, 24], [-10, 16], [-15, 2]]), [-16, -24, 17, 48], { ang: -1.15, gap: 5 / HD, a: lit ? 0.3 : 0.26, w: 0.6, len: 12, seed: seed + 5 });   // 脸的一半在阴影里
+  ink(b, [[-6, -22], [-3, -13], [-5, -5], [-1, 4]], { w: 0.7, col: P.mzMaskCrack, a: 0.85, taper: 0, seed: seed + 6 });   // 瓷面具上一道裂纹，从额头往下
+  for (const s of [-1, 1]) {
+    const ex = s * 7, ey = -3, ir = hu > 0.5 ? '#7a2a22' : '#2b2f3c';
+    b.fillStyle = '#0a0d16'; b.beginPath(); b.ellipse(ex, ey, 5.8, 4.7, 0, 0, 7); b.fill();   // 眼窝
+    b.fillStyle = '#f2efe5'; b.beginPath(); b.ellipse(ex, ey, 4.5, 3.4, 0, 0, 7); b.fill();   // 眼白：人的比例
+    const ix = ex + clamp(look, -1, 1) * 1.9; b.fillStyle = ir; b.beginPath(); b.arc(ix, ey, 2.5, 0, 7); b.fill();   // 虹膜，跟着孩子转
+    b.fillStyle = '#020307'; b.beginPath(); b.arc(ix, ey, hu > 0.5 ? 0.9 : 1.3, 0, 7); b.fill();   // 瞳孔，追人的时候缩小
+    b.fillStyle = 'rgba(255,255,255,0.8)'; b.beginPath(); b.arc(ix - 0.8, ey - 1, 0.55, 0, 7); b.fill();
+    ink(b, arcPts(ex, ey, 4.8, 3.7, Math.PI * 1.05, Math.PI * 1.95, 8), { w: 0.6, a: 0.8, taper: 0, seed: seed + 8 + (s > 0 ? 3 : 0) });   // 上眼睑
+  }
+  ink(b, [[0, 2], [-1.3, 8], [1, 9.6]], { w: 0.6, a: 0.35, taper: 0, seed: seed + 12 });   // 鼻子，只有一道淡淡的线
+  if (grin > 0.02) {   // 嘴：一开始没有；抓到孩子的那一下裂开一道笑，越过脸的边
+    const w = lerp(3, 17, grin), d = 9 * grin, U = quadPts([-w, 8], [0, 8 + d], [w, 8], 12), L = quadPts([w, 8], [0, 8 + d + 8 * grin], [-w, 8], 12);
+    fillPts(b, [...U, ...L], '#04060a'); ink(b, U, { w: 0.8, a: 0.9, taper: 2, seed: seed + 14 });
+    if (grin > 0.6) inkDrips(b, [[-5, 14, 9], [6, 15, 13]], seed + 20);
+  }
+  b.restore();
+}
+function mzMask(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), hu = m.hunt || 0, rk = m.reach || 0, sh = m.shield || 0, sw = Math.sin((m.ph || 0) * TAU);
+  const look = m.look != null ? m.look : clamp(0.45 + Math.sin(t * 0.5 + seed) * 0.5 + hu * 0.2, -1, 1);
+  const tilt = (m.tilt != null ? m.tilt : Math.sin(t * 0.37 + seed) * 0.1) + hu * 0.06 - sh * 0.15;
+  const grin = m.grin != null ? m.grin : smooth((hu - 0.9) / 0.1), lean = 0.02 + 0.2 * hu - 0.18 * sh;
+  b.save(); b.translate(x, fy); b.scale(f, 1); b.seedN = seed;
+  b.fillStyle = 'rgba(1,2,5,0.4)'; b.beginPath(); b.ellipse(0, 3, 40, 5, 0, 0, 7); b.fill();
+  for (const s of [-1, 1]) {   // 两条腿：细细的墨，尖头的鞋
+    const w = sw * 7 * s * (0.2 + hu);
+    part(b, tube([[s * 7, -102], [s * 8 + w * 0.5, -54], [s * 8 + w, -9]], [12, 10, 9]), P.mzMaskInk, { w: 0.9, tex: 0.2, lc, seed: seed + 10 + (s > 0 ? 5 : 0) });
+    part(b, curvePts([[s * 8 + w - 7, -7], [s * 8 + w + 15, -9], [s * 8 + w + 22, -1], [s * 8 + w - 7, 1]], true, 3), INK, { w: 0.7, tex: 0, lc, seed: seed + 12 + (s > 0 ? 5 : 0) });
+  }
+  b.translate(0, -100); b.rotate(lean); b.translate(0, 100);   // 追人的时候从腰上弯过来；被光照到往后缩
+  const arm = (far) => {   // 手臂：肩、肘、多出来的一节、腕，四个点；垂着 → 往前探 → 挡在脸前
+    const r = rk * (far ? 0.8 : 1), dx = far ? -46 * (1 - r) : 0, sx = far ? -20 : 22;
+    let el = [lerp(30, 70, r) + dx, lerp(-160, -192, r)], ex = [lerp(24, 120, r) + dx, lerp(-122, -204, r)], wr = [lerp(30, 172, r) + dx, lerp(-84, -178, r)];
+    if (!far && sh > 0) { el = [lerp(el[0], 50, sh), lerp(el[1], -204, sh)]; ex = [lerp(ex[0], 44, sh), lerp(ex[1], -232, sh)]; wr = [lerp(wr[0], 26, sh), lerp(wr[1], -240, sh)]; }
+    const ang = lerp(lerp(Math.PI / 2, 0.05, r), Math.PI, far ? 0 : sh);
+    part(b, tube([[sx, -196], el, ex, wr], [14, 12, 11, 10]), P.mzMaskCoat, { w: 0.9, tex: 0.3, lc, seed: seed + 400 + (far ? 20 : 0) });
+    mzHand(b, P, lit, wr[0], wr[1], ang, 1.2, 0.3 + hu * 0.2, 0.25 + 0.2 * Math.sin(t * 2.4 + (far ? 1 : 0)), seed + 430 + (far ? 20 : 0), P.mzMaskInk);
+  };
+  arm(true);
+  const coatPts = [[-22, -206], [22, -206], [30, -186], [34, -120], [42, -44], [10, -38], [0, -46], [-10, -38], [-42, -44], [-34, -120], [-30, -186]];
+  part(b, curvePts(coatPts, true, 4), P.mzMaskCoat, { w: 1.1, tex: 0.4, lc });
+  hatch(b, k => pathOf(k, coatPts), [-42, -206, 84, 164], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 22, seed: seed + 440 });
+  ink(b, seg(3, -202, 5, -42), { w: 0.8, a: 0.8, taper: 0 }); for (const yy of [-176, -148, -120, -92]) part(b, arcPts(9, yy, 2.2, 2.2, 0, TAU, 8), P.mzBone, { w: 0.5, tex: 0, lc, seed: seed + 450 + yy });
+  part(b, [[-20, -204], [-6, -216], [-2, -198]], P.mzMaskCoatLo, { w: 0.8, tex: 0, lc, seed: seed + 452 }); part(b, [[22, -204], [8, -216], [3, -198]], P.mzMaskCoatLo, { w: 0.8, tex: 0, lc, seed: seed + 453 });   // 立起来的领子
+  ink(b, [[30, -186], [40, -48]], { col: DARK.hi, w: 0.8, a: lit ? 0 : 0.25, taper: 0 });
+  part(b, tube([[0, -206], [1, -216], [2 + hu * 3, -226]], [12, 10, 10]), P.mzMaskInk, { w: 0.9, tex: 0.2, lc, seed: seed + 460 });   // 脖子：细细的一截墨
+  mzMaskFace(b, P, lit, 2 + hu * 4 + sh * 2, -246, tilt, look, hu, grin, seed + 600);
+  arm(false);
+  inkDrips(b, [[-34, -44, 22], [6, -40, 30], [34, -46, 16]], seed + 60);
+  b.restore();
+}
+// 窗里：远处的塔窗（第 1、3、6 关看见它的样子）。一扇黑窗，只有一张苍白的脸和两个肩膀，瞳孔朝着孩子；窗台上露出一截红围巾（她的）
+function mzMaskHome(b, P, lit, x, fy, f, t, m, seed) {
+  const lc = lcOf(P, lit), wx = x - 62, wy = fy - 214, ww = 124, wh = 168; b.save(); b.seedN = seed;
+  if (!(m && m.game)) mzWall(b, P, lit, x, fy, 420, 300, seed + 80);
+  part(b, rectPts(wx - 9, wy - 9, ww + 18, wh + 18), P.wood, { w: 0.9, tex: 0.3, lc, seed: seed + 90 });   // 窗框
+  fillPts(b, rectPts(wx, wy, ww, wh), lit ? '#2a2620' : '#04060b');   // 黑的窗
+  b.save(); b.beginPath(); b.rect(wx, wy, ww, wh); b.clip();
+  const sy = wy + wh;
+  part(b, curvePts([[x - 62, sy + 6], [x - 54, sy - 30], [x - 30, sy - 50], [x + 30, sy - 50], [x + 54, sy - 30], [x + 62, sy + 6]], true, 3), P.mzMaskCoat, { w: 1, tex: 0.4, lc, seed: seed + 91 });   // 肩膀
+  part(b, tube([[x, sy - 46], [x + 1, sy - 62], [x + 2, sy - 74]], [12, 10, 10]), P.mzMaskInk, { w: 0.9, tex: 0.2, lc, seed: seed + 92 });
+  mzMaskFace(b, P, lit, x + 3, sy - 98, Math.sin(t * 0.37 + seed) * 0.1, clamp(0.6 + Math.sin(t * 0.5) * 0.4, -1, 1), 0, 0, seed + 600, 1.2);
+  part(b, tube([[x - 52, sy - 3], [x - 42, sy - 20], [x - 30, sy - 11]], [9, 9, 8]), P.mzMaskRed, { w: 0.8, tex: 0.3, lc, seed: seed + 93 });   // 一截红围巾搭在窗台上
+  for (let i = 0; i < 4; i++) ink(b, seg(wx + 20 + i * 26, wy + 6, wx + 4 + i * 26, wy + 34), { w: 0.6, col: lit ? lc : DARK.hi, a: lit ? 0.25 : 0.16, taper: 6, seed: seed + 100 + i });   // 玻璃上几道反光
+  b.restore();
+  part(b, rectPts(wx - 14, sy + 9, ww + 28, 10), P.woodHi, { w: 0.9, tex: 0.2, lc, seed: seed + 94 });   // 窗台
+  b.restore();
+}
+// 被光照到（亮的一层）：缩一下，手挡住脸，从下往上一层一层变淡，往上飘墨点；它不塌
+function mzMaskFlinch(b, P, lit, x, fy, f, t, m, seed) {
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2.6), ga = b.globalAlpha, mm = { hunt: 0, reach: 0, ph: 0, shield: 1, look: -0.9, tilt: -0.2, grin: 0 };
+  b.save(); b.translate(x, fy); b.scale(f * (0.93 + 0.02 * pulse), 0.93 + 0.02 * pulse); b.translate(-x, -fy);
+  for (let i = 0; i < 4; i++) {
+    b.save(); b.beginPath(); b.rect(x - 220, fy - 300 + i * 84 - 2, 440, 86); b.clip(); b.globalAlpha = ga * [1, 0.8, 0.55, 0.3][i] * (0.88 + 0.12 * (1 - pulse));
+    mzMask(b, P, lit, x, fy, f, t, mm, seed); b.restore();
+  }
+  b.fillStyle = P.mzMaskInk; for (let i = 0; i < 14; i++) { const u = (t * 0.35 + hash(seed, i)) % 1; b.globalAlpha = ga * (1 - u) * 0.75; b.beginPath(); b.ellipse(x + (hash(seed + 1, i) - 0.5) * 90, fy - 24 - u * 240, 2.4 - u, 3.2 - u * 1.4, 0, 0, 7); b.fill(); }
+  b.restore(); b.globalAlpha = ga;
+}
+
 // ---------- 图鉴页：house.html?monsters=1（=all 总览，=zip 之类直接翻到那一只；左右键、点左右两边翻页，点中间回总览）----------
 // 每只四格：睡着（原处的样子）/ 醒着 / 追人 / 照到头塌下去（亮的那一层，普通衣服）。每格里的画就是游戏里那一层的画法，不是另画的效果图
-const MZ_TIERS = [['一眼就是怪物', '#c96a5e'], ['睡着的时候是别的东西', '#c9a35e'], ['就是一件衣服', '#7fa3c9'], ['会飞的，固定路线巡逻', '#9d8fd0'], ['不是衣服：柜子，塌了能站上去', '#6fb39a']];
+const MZ_TIERS = [['一眼就是怪物', '#c96a5e'], ['睡着的时候是别的东西', '#c9a35e'], ['就是一件衣服', '#7fa3c9'], ['会飞的，固定路线巡逻', '#9d8fd0'], ['不是衣服：柜子，塌了能站上去', '#6fb39a'], ['唯一有脸的：会想，不会塌', '#e8e2d0']];
 const MZ_LIST = [
   { id: 'zip', name: '拉链嘴', tier: 0, h: 268, w: 250, ox: -34, awake: mzZip, home: mzZipHome, heap: mzZipHeap,
     line: '羽绒服的拉链从下往上拉开，两排拉链齿是牙，肚子里一排眼睛。',
@@ -11741,6 +11835,10 @@ const MZ_LIST = [
   { id: 'cab', name: '抽屉嘴', tier: 4, h: 190, w: 190, ox: 0, awake: mzCab, home: mzCabHome, heap: mzCabHeap,
     line: '一只旧五斗柜：上面一排抽屉缝里是眼睛，中间的大抽屉是嘴，梳子是牙，旧围巾是舌头。',
     tell: '睡着：一只普通的柜子，抽屉都关着，只是有一只没推严，柜子底下一小滩墨。', move: '醒着：守在原处，嘴一张一合，矮腿一晃一晃；孩子走近：先晃、嘴越张越大，再重重地往前一蹦，嘴一合。', beat: '光照到它，抽屉全推回去，塌成一只结结实实的矮柜，柜面平平的：孩子可以站上去，够墙上高处的东西。' },
+  { id: 'face', name: '墨脸', tier: 5, h: 262, w: 290, ox: -20, oxBy: { home: 0, awake: -20, hunt: -85, heap: 0 }, awake: mzMask, home: mzMaskHome, heap: mzMaskFlinch,
+    cells: [['远处看见（塔窗里）', 'home', 'asleep', false], ['醒着：看着你', 'awake', 'awake', false], ['追人：抓到的那一下', 'awake', 'hunt', false], ['被光照到：缩一下，不塌', 'heap', 'asleep', true]],
+    line: '人形的一团墨，披着长外套。脸是苍白的瓷面具，瞳孔跟着孩子转，嘴一开始没有。',
+    tell: '塔窗里一张苍白的脸，窗台搭着红围巾（她的）。手臂多一节关节，不呼吸。', move: '醒着：歪头，眼睛跟着孩子；追人：弯腰，长手探过来；抓到那一下嘴才裂开笑。', beat: '光照到不塌：缩一下，手挡脸，一块块变淡；灯灭又站起来。只在第 14 关追一回。' },
 ];
 const MZ_STATE = { page: qs.get('monsters') && qs.get('monsters') !== '1' ? qs.get('monsters') : 'all' };
 function mzPage() { return MZ_STATE.page === 'all' ? -1 : Math.max(0, MZ_LIST.findIndex(o => o.id === MZ_STATE.page)); }
@@ -11786,16 +11884,16 @@ function mzFrame() {
       });
       g.strokeStyle = '#8d99b8'; g.globalAlpha = 0.7; g.lineWidth = 1.5; g.beginPath(); g.moveTo(M + 8, y0 + rowH * 0.9); g.lineTo(M + 8, y0 + rowH * 0.9 - 150 * S); g.moveTo(M + 3, y0 + rowH * 0.9 - 150 * S); g.lineTo(M + 13, y0 + rowH * 0.9 - 150 * S); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1;
     });
-    MZ_TIERS.forEach(([nm, col], i) => { mzText('■ ' + nm, M + i * 240, H - 14, 13, col); });
+    MZ_TIERS.forEach(([nm, col], i) => { mzText('■ ' + nm, M + i * Math.min(240, (W - 2 * M) / MZ_TIERS.length), H - 14, 13, col); });
     return;
   }
   const o = MZ_LIST[pg], cols = narrow ? 2 : 4, rows = narrow ? 2 : 1, top = narrow ? 96 : 84, ch = narrow ? (H - top - 150) / 2 : Math.min(H - top - 150, (W - 2 * M) / 4 * 1.7), cw = (W - 2 * M - (cols - 1) * 6) / cols, S = Math.min(cw / (o.w + 30), ch * 0.82 / (o.h + 10));
   const ts = narrow ? 28 : 34; mzText(o.name, M, 44, ts, '#e6ebf8', { w: 700 }); mzFont(ts, 700); mzText(MZ_TIERS[o.tier][0], M + g.measureText(o.name).width + 16, 44, 15, MZ_TIERS[o.tier][1], { w: 600 });
   mzText(`${pg + 1} / ${MZ_LIST.length}`, W - M, 36, 14, '#8d99b8', { al: 'right' }); mzWrap(o.line, M, 70, W - 2 * M, narrow ? 14 : 16, 20, '#b8c2dc');
-  const cells = [['睡着（原处）', 'home', 'asleep', false], ['醒着', 'awake', 'awake', false], ['追人', 'awake', 'hunt', false], ['照到头：塌了', 'heap', 'asleep', true]];
+  const cells = o.cells || [['睡着（原处）', 'home', 'asleep', false], ['醒着', 'awake', 'awake', false], ['追人', 'awake', 'hunt', false], ['照到头：塌了', 'heap', 'asleep', true]];
   cells.forEach(([nm, fn, st, lit], i) => {
     const cx = M + (i % cols) * (cw + 6), cy = top + Math.floor(i / cols) * (ch + 30);
-    mzCell(cx, cy, cw, ch, { lit, s: S, gy: 0.88, draw: (b, P, l) => o[fn](b, P, l, o.ox || 0, 0, 1, t, mzSt(st, t), 5000 + pg * 700) });
+    mzCell(cx, cy, cw, ch, { lit, s: S, gy: 0.88, draw: (b, P, l) => o[fn](b, P, l, (o.oxBy ? o.oxBy[fn === 'awake' ? st : fn] : o.ox) || 0, 0, 1, t, mzSt(st, t), 5000 + pg * 700) });
     mzText(nm, cx + 4, cy + ch + 18, 14, '#9aa6c6');
   });
   const ny = top + rows * (ch + 30) + 8, cwid = (W - 2 * M) / (narrow ? 1 : 3);
