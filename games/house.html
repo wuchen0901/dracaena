@@ -1846,6 +1846,7 @@ const GATEPOS = {
   rain: { e: 5, x: 6722 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
 };
 const GATE_ALL = { ...GATES, ...GATES2, ...GATES3, ...GATES4, ...GATES5, ...GATES6, ...GATES7, ...GATES8, ...GATES9, ...GATES10, ...GATES11, ...GATES12, ...GATES13, ...GATES14, ...GATES15, ...GATES16, ...GATES17, ...GATES18, ...GATES19, ...GATES20, ...GATES21 };   // 几关的门放在一起查（页面上只有一个并起来的局面 S）
+const GATE_RULE = { ...GATE_ALL };   // 只认规则的那一份（下面往 GATE_ALL 里加的是页面上的条件：它真的塌下去了、平台真的放回地上了……）。怪物自己看这一份：照它的灯按规则亮了没有（ruleOpen）
 GATE_ALL.mp1 = s => GATES12.mp1(s) && (!V || V.mSeen1 === 1); GATE_ALL.mp2 = s => GATES12.mp2(s) && (!V || V.mSeen2 === 1); GATE_ALL.mp3 = s => GATES12.mp3(s) && (!V || V.mSeen2 === 1); GATE_ALL.mw = s => GATES12.mw(s) && (!V || V.mSeenW === 1);   // 旧地铁：衣服塌下去了，孩子才敢走过去
 GATE_ALL.wp1 = s => GATES13.wp1(s) && (!V || V.wSeen1 === 1); GATE_ALL.wp2 = s => GATES13.wp2(s) && (!V || V.wSeen2 === 1); GATE_ALL.wp3 = s => GATES13.wp3(s) && (!V || V.wSeen3 === 1);   // 下水道：水裤塌下去了，孩子才敢走过去
 GATE_ALL.bs1 = s => GATES17.bs1(s) && (!V || V.bSeen1 === 1);   // 百货大楼：过道上的夜班店员塌下去了，孩子才敢走过去
@@ -10054,6 +10055,7 @@ function drawKidBack(b, P0, lit) {
 
 // ---------- 这个世界：光是活的，衣服是空的 ----------
 // 主人 2026-11-18 定的：光是活的、正在一盏盏死掉；光灭了的地方，人就不见了，只剩衣服，衣服里灌满了会流的墨，夜里自己走（暗黑恐怖，B）。
+// 2026-11-26：下面说的是最老实的那一种（第 1 关的七件还是这样）。别的各有各的脾气了：全部怪物的名册、每一只平时怎么动 / 怎么出手 / 碰到会怎样 / 见光怎么怕，见 docs/night-monster-roster.md
 // 每个影子是一件空衣服。暗处它立起来醒着；孩子走进它那一片（terr）、又不在光里，它就朝孩子挪过来（比孩子走得慢），碰到孩子就是被抓住了，
 // 孩子回到最近一盏亮着的灯底下（做好的事都还在）。光照到它就停住、塌下去，变回一件普通的衣服（挂在原处，或者掉在地上）；它不会走进光里。
 const INK = '#010205';
@@ -10067,84 +10069,100 @@ const GARB = {
   stand: { kind: 'coat', fl: 'down', home: HSTAND.x, terr: [3885, 4470], speed: 62, h: 214 },
   // 院子（第 2 关）。狗的毛衣：fast 跑得比孩子快（孩子跑起来 360），有惯性、刹不住车（acc）；headDx 头在身子前面多远（照没照到看头）；
   // wake 孩子走过这条线（出了门廊那片光）它才头一回从窝里扑出来
-  dog: { kind: 'sweater', fl: 'down', home: KENNEL.x, terr: [4560, 5790], speed: 500, acc: 900, brk: 450, h: 110, fast: 1, headDx: 34, wake: 5100 },
+  dog: { kind: 'sweater', fl: 'down', touch: 'catch', home: KENNEL.x, terr: [4560, 5790], speed: 500, acc: 900, brk: 450, h: 110, fast: 1, headDx: 34, wake: 5100 },
   // 雨衣、稻草人的那一片（terr）都落在照它的那盏灯照得到的地方里面：灯一亮，它走到哪儿都塌（量过，见 README）
-  rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6690, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'] },
+  // 2026-11-26 各有各的脾气（docs/night-monster-roster.md）。雨衣：听脚步的（ai: 'hear'）。孩子在它跟前跑起来（比 loud 快）它才听得见：帽兜猛地朝声音转过去，冲到声音那儿（不出 lo 到 hi：它后面摆着靴嘴，
+  // 孩子被吓退的位置、靴嘴的那几个数都不动），站着听一阵，听不见了慢慢走回钩子底下；慢慢走过去它一动不动
+  rain: { kind: 'robe', fl: 'down', home: RAINHOOK.x, terr: [6690, 6850], speed: 58, h: 214, cols: ['rainHi', 'rain'], ai: 'hear', hear: { ear: 330, loud: 205, tell: 0.55, speed: 240, listen: 1.7, back: 55, hit: 42, lo: RAINHOOK.x - 22, hi: 6850 } },
   // 巷子（第 3 关）：晾在绳子上的邻居的衣服。走法和第 1 关的一样（慢慢挪过来，光照到头就塌）
-  nightie: { kind: 'robe', fl: 'down', home: 9300, terr: [9170, 9500], speed: 58, h: 214, cols: ['lnSh1', 'lnSh2'] },
-  jacket: { kind: 'coat', fl: 'down', home: 10370, terr: [10230, 10560], speed: 64, h: 214, pal: { coat: 'jkC', coatLo: 'jkLo', scarf: 'jkS', hat: 'jkH' } },
-  apron: { kind: 'robe', fl: 'down', home: 11190, terr: [11060, 11350], speed: 58, h: 214, cols: ['apC1', 'apC2'], belt: 1 },
+  // 2026-11-26 三件三个脾气。fear：孩子不敢走到离它这么近（它们的门就钉在它们站的地方，以前孩子停在 40 远，它一挪就碰上了）；地盘（terr）往孩子来的那边放了一截，孩子被吓退以后还站在它那一片里，它才出得了手
+  // 睡裙：渗过来的（ai: 'ooze'）。孩子离得远，它化成一摊墨贴着地流过来（流的时候不伤人），在跟前重新长出来（这就是预兆），再慢慢挪过来拽人
+  nightie: { kind: 'robe', fl: 'down', home: 9300, terr: [9120, 9500], speed: 58, h: 214, fear: 110, cols: ['lnSh1', 'lnSh2'], ai: 'ooze', ooze: { wait0: 1.6, wait: 0.6, far: 30, near: 84, melt: 0.45, form: 1.0, speed: 150, hit: 42 } },
+  // 外套：你不动它才动（ai: 'still'）。孩子在走，它像被按了暂停；孩子站住（吓得发抖也算）超过 wait 秒，它就快步过来
+  jacket: { kind: 'coat', fl: 'down', home: 10370, terr: [10180, 10560], speed: 64, h: 214, fear: 110, ai: 'still', still: { wait: 1.3, speed: 118, hit: 42, back: 50 }, pal: { coat: 'jkC', coatLo: 'jkLo', scarf: 'jkS', hat: 'jkH' } },
+  // 围裙：伸袖子的（ai: 'reach'）。自己不离开原处，一只袖子顺着地伸过来（最长 base + len），够着了就拽住；见了光还要硬撑一阵（brace 秒）才塌
+  apron: { kind: 'robe', fl: 'down', home: 11190, terr: [11000, 11350], speed: 58, h: 214, fear: 110, cols: ['apC1', 'apC2'], belt: 1, brace: 1.4, ai: 'reach', reach: { base: 70, len: 200, tell0: 2.4, tell: 0.9, speed: 62, back: 190 } },
   // 商店街的地下室（第 4 关，2026-11-24）：五金店老板挂在柜台后面钩子上的一件灰大褂（长袍的走法），守着柜台后面的零件柜。
   // 它那一片（terr）全在地下室灯泡照得到的地方：灯一亮，走到哪儿都塌
   // 钟表店二楼（第 4 关，2026-11-25）：工作台前面钩子上挂着的一条皮围裙（长袍的走法），守着工作台。台灯一亮就塌下去，一直塌着（孩子出了门，台灯的光就几乎不算了）
-  q4apron: { kind: 'robe', fl: 'ck', home: CK.apron, terr: [CK.gate + 26, CK.x1 - 22], speed: 54, h: 184, cols: ['lthHi', 'lth'], belt: 1, keepDown: () => S.qCkP === 1 && (V.li.ck || 0) > 0.5 },
-  q4dust: { kind: 'robe', fl: 'qb', home: Q4.coat, terr: [Q4.counter - 4, Q4.x1 - 22], speed: 56, h: 196, cols: ['dustHi', 'dust'] },
-  scare: { kind: 'coat', fl: 'down', home: SCARE.x, terr: [7812, 8236], speed: 64, h: 214, pal: { coat: 'burlap', coatLo: 'burlapLo', scarf: 'straw', hat: 'strawHat' } },
+  // 2026-11-26：皮围裙是硬撑的（皮厚：台灯照到头要撑 brace 秒才塌；也沉，挪得慢），地盘往门口放了一截；灰大褂在柜台后面来回踱步（lap），隔着柜台够不着人
+  q4apron: { kind: 'robe', fl: 'ck', home: CK.apron, terr: [CK.gate - 86, CK.x1 - 22], speed: 40, h: 184, fear: 120, brace: 2.0, cols: ['lthHi', 'lth'], belt: 1, keepDown: () => S.qCkP === 1 && (V.li.ck || 0) > 0.5 },
+  q4dust: { kind: 'robe', fl: 'qb', home: Q4.coat, terr: [Q4.counter - 4, Q4.x1 - 22], speed: 56, h: 196, cols: ['dustHi', 'dust'], lap: [Q4.counter + 12, Q4.x1 - 30], lapSpeed: 42, lapRest: 1.5 },
+  // 稻草人：背过身才动的（ai: 'sneak'）。孩子脸朝着它，它一动不动；孩子一背过身去（在它 sense 这么远以内、在暗处），它就朝孩子这边挪，不出它那一片；挪到 hit 以内就从背后抓住（这一下挣不开）
+  scare: { kind: 'coat', fl: 'down', home: SCARE.x, terr: [7812, 8236], speed: 64, h: 214, fear: 120, touch: 'catch', ai: 'sneak', sneak: { sense: 500, speed: 62, hit: 44 }, pal: { coat: 'burlap', coatLo: 'burlapLo', scarf: 'straw', hat: 'strawHat' } },
   // 商店街（第 4 关）：公交站排队等末班车的一排大衣（五件，从排尾到排头），朝右等车。走法还是同一种（光照到头就塌），不过是一排一起挪：
   // 个个速度一样，只在自己站的地方往前挪一小截（terr 是 [home, home + 70]），孩子走进这一排、又不在光里，它们一起朝孩子挪过来。face0：等车的时候朝哪边站
   ...Object.fromEntries(QU_KEYS.map((k, i) => [k, { kind: 'coat', fl: 'down', home: QU.x0 + i * QU.sp, terr: [QU.x0 + i * QU.sp, QU.x0 + i * QU.sp + 70], speed: 62, h: 214, face0: 1, queue: 1, pal: { coat: 'qc' + i, coatLo: 'qcl' + i, scarf: 'qcs' + i, hat: 'qch' } }])),
   // 公寓楼（第 5 关）：楼道里的三位住户，睡着的，听见声音才醒（listen：声音过后 ZHEAR 秒里才追人，过了又睡回去）。每位站在一盏声控灯底下
   // 公寓楼的地下室（第 5 关，2026-11-25）：晾衣绳上搭着的一条床单（长袍的走法），守着后面的电表间。烘干机转起来、小窗一亮就塌下去，一直塌着
-  zsh: { kind: 'robe', fl: 'zb', home: ZB.sheet, terr: [ZB.gate + 26, ZB.gate + 280], speed: 50, h: 200, cols: ['shtHi', 'sht'], keepDown: () => S.zDry === 1 && (V.li.zdry || 0) > 0.5 },
+  // 2026-11-26：床单是渗过来的（和第 3 关的睡裙一样，这儿是第二回）：贴着地滑过来，在跟前重新鼓起来。地盘往烘干机这边放了一截（到不了烘干机跟前：投币的地方在 16914）
+  zsh: { kind: 'robe', fl: 'zb', home: ZB.sheet, terr: [ZB.gate - 116, ZB.gate + 280], speed: 50, h: 200, fear: 110, cols: ['shtHi', 'sht'], keepDown: () => S.zDry === 1 && (V.li.zdry || 0) > 0.5, ai: 'ooze', ooze: { wait0: 1.5, wait: 0.6, far: 30, near: 84, melt: 0.45, form: 1.0, speed: 140, hit: 42 } },
   zt1: { kind: 'robe', fl: 'down', home: 16100, terr: [16030, 16210], speed: 58, h: 214, cols: ['zr1', 'zr2'], listen: 1 },
   zt2: { kind: 'coat', fl: 'down', home: 16760, terr: [16680, 16850], speed: 64, h: 214, pal: { coat: 'zc', coatLo: 'zcl', scarf: 'zcs', hat: 'zch' }, listen: 1 },
   zt3: { kind: 'robe', fl: 'down', home: 17620, terr: [17560, 17720], speed: 58, h: 214, cols: ['zr3', 'zr4'], belt: 1, listen: 1 },
   // 屋顶（第 6 关）：晾在天台上的两件衬衫。走法还是同一种（光照到头就塌）
-  rt1: { kind: 'coat', fl: 'down', home: 19010, terr: [18880, 19150], speed: 60, h: 214, pal: { coat: 'r1c', coatLo: 'r1l', scarf: 'r1s', hat: 'rh' } },
-  rt3: { kind: 'coat', fl: 'down', home: 19540, terr: [19460, 19640], speed: 60, h: 214, pal: { coat: 'r3c', coatLo: 'r3l', scarf: 'r3s', hat: 'rh' } },   // 2026-11-25：天窗上面晾着的第三件
+  // 2026-11-26：三件衬衫都是风来了才动的（ai: 'gust'）。屋顶上一阵一阵地刮风（roofGust：先起风声、衣服鼓起来，这是预兆，再刮）；没风的时候它们垂着、走不动，风一灌满就朝孩子扑一截
+  rt1: { kind: 'coat', fl: 'down', home: 19010, terr: [18880, 19150], speed: 60, h: 214, ai: 'gust', gust: { speed: 185, first: 2.2, hit: 42, back: 45 }, pal: { coat: 'r1c', coatLo: 'r1l', scarf: 'r1s', hat: 'rh' } },
+  rt3: { kind: 'coat', fl: 'down', home: 19540, terr: [19460, 19640], speed: 60, h: 214, ai: 'gust', gust: { speed: 185, first: 2.2, hit: 42, back: 45 }, pal: { coat: 'r3c', coatLo: 'r3l', scarf: 'r3s', hat: 'rh' } },   // 2026-11-25：天窗上面晾着的第三件
   // 学校（第 7 关）：走廊里挂着的外套、后面走廊里挂着的围裙。走法还是同一种（转折以前的规则：光照到头就塌）
-  sg1: { kind: 'coat', fl: 'down', home: 21700, terr: [21580, 21840], speed: 62, h: 214, pal: { coat: 's1c', coatLo: 's1l', scarf: 's1s', hat: 'rh' } },
+  // 2026-11-26：走廊里的外套是巡走廊的（lap：在门那头来回踱步，像值日的），孩子走进它那一片它才掉头过来；后面走廊里的围裙是扑的（ai: 'pounce'：先往后一仰、袖子举起来，再一扑到底，扑空了愣一阵）
+  sg1: { kind: 'coat', fl: 'down', home: 21700, terr: [21520, 21840], speed: 50, h: 214, fear: 110, lap: [21700, 21826], lapSpeed: 46, lapRest: 1.3, pal: { coat: 's1c', coatLo: 's1l', scarf: 's1s', hat: 'rh' } },
   // 教室里的学人精（第 7 关，2026-11-25）：醒着，孩子往哪边走它往反方向走（孩子在 x，它在 2c − x，不出 lo 到 hi），孩子伸手它也伸手；
   // 面对面撞上就是被抓住；怕光：右边那盏灯亮起来，照到头它就塌（一直塌着）。孩子扳左边的开关，它学着扳右边的，灯就亮在它自己头上
   sm1: { kind: 'coat', fl: 'down', keepDown: () => V.sSeenM === 1, home: 23300, terr: [22790, 23300], speed: 0, h: 214, face0: -1, pal: { coat: 's2c', coatLo: 's2l', scarf: 's2s', hat: 'rh' }, mirror: { c: SMI.c, lo: SMI.lo, hi: SMI.hi, sp: 520, hit: 44 } },
-  sg2: { kind: 'coat', fl: 'down', home: 23900, terr: [23780, 24040], speed: 62, h: 214, pal: { coat: 's2c', coatLo: 's2l', scarf: 's2s', hat: 'rh' } },
+  sg2: { kind: 'coat', fl: 'down', home: 23900, terr: [23700, 24040], speed: 62, h: 214, fear: 120, touch: 'catch', ai: 'pounce', pounce: { tell0: 3.0, tell: 1.6, dist: 200, dur: 0.34, stun: 1.4, back: 70, hit: 44 }, pal: { coat: 's2c', coatLo: 's2l', scarf: 's2s', hat: 'rh' } },
   // 体育馆（第 8 关）：跑圈的运动服（第三条新规则：衣服照着它的人在做的事动）。不在窝里等，一圈一圈来回跑（lap：跑的那一段，lapSpeed：跑多快，lapRest：到头歇多久）；
   // 孩子走进它那一片、又不在光里，它朝孩子追过来（speed）。光照到头它就塌。gr2 接了小光（holds）就不跑了，站在 stand 抱着光
-  gr1: { kind: 'runner', fl: 'down', home: 25640, terr: [25480, 26640], lap: [25640, 26590], lapSpeed: 170, lapRest: 1.2, speed: 150, h: 214, pal: { coat: 'g1c', coatLo: 'g1l', scarf: 'g1s', hat: 'rh' } },
+  gr1: { kind: 'runner', fl: 'down', gate: 'gg1', touch: 'catch', home: 25640, terr: [25480, 26640], lap: [25640, 26590], lapSpeed: 170, lapRest: 1.2, speed: 150, h: 214, pal: { coat: 'g1c', coatLo: 'g1l', scarf: 'g1s', hat: 'rh' } },
   // 2026-11-25：器材室里这件不再抱着灯站着（那一段剧情删了）：屋子是黑的，它在屋子中间 lap 这一段里来回跑，孩子走进 terr、又不在光里就追；夹层上的闸门落下来以后，lap、terr 的右头缩到 GL.lapR（gymUpdate）
-  gr2: { kind: 'runner', fl: 'down', home: 26900, terr: [26850, 27350], lap: [26900, 27300], lapSpeed: 150, lapRest: 1.6, speed: 140, h: 214, pal: { coat: 'g2c', coatLo: 'g2l', scarf: 'g2s', hat: 'rh' } },
+  gr2: { kind: 'runner', fl: 'down', gate: 'gg2', touch: 'catch', home: 26900, terr: [26850, 27350], lap: [26900, 27300], lapSpeed: 150, lapRest: 1.6, speed: 140, h: 214, pal: { coat: 'g2c', coatLo: 'g2l', scarf: 'g2s', hat: 'rh' } },
   // 夜市（第 9 关）：摊主的围裙（第三条新规则：衣服照着它的人在做的事动）。守着摊子在 lap 这一段里来回摆，到头歇一会儿：炉子那头在扇火，摊位那头在招呼；
   // 孩子走进它那一片、又不在光里，它朝孩子追过来。光照到头它就塌。nr2 接了小光（holds）就不摆了，站在 stand（炉子边）抱着光
-  nr1: { kind: 'apron', fl: 'down', keepDown: () => V.nSeen === 1, home: 28980, terr: [28730, 29420], lap: [28790, 29300], lapSpeed: 110, lapRest: 1.6, speed: 130, h: 214, pal: { coat: 'n1c', coatLo: 'n1l', scarf: 'n1s', hat: 'rh' } },
-  nr2: { kind: 'apron', fl: 'down', home: 30140, terr: [30040, 30580], lap: [30140, 30440], lapSpeed: 100, lapRest: 1.9, speed: 125, h: 214, pal: { coat: 'n2c', coatLo: 'n2l', scarf: 'n2s', hat: 'rh' }, holds: () => true, stand: NR2_STAND },
+  nr1: { kind: 'apron', fl: 'down', gate: 'ng1', touch: 'catch', keepDown: () => V.nSeen === 1, home: 28980, terr: [28730, 29420], lap: [28790, 29300], lapSpeed: 110, lapRest: 1.6, speed: 130, h: 214, pal: { coat: 'n1c', coatLo: 'n1l', scarf: 'n1s', hat: 'rh' } },
+  nr2: { kind: 'apron', fl: 'down', touch: 'catch', home: 30140, terr: [30040, 30580], lap: [30140, 30440], lapSpeed: 100, lapRest: 1.9, speed: 125, h: 214, pal: { coat: 'n2c', coatLo: 'n2l', scarf: 'n2s', hat: 'rh' }, holds: () => true, stand: NR2_STAND },
   // 剧院（第 10 关）：观众厅里坐满了人，后排、前排各有一件会站起来的大衣（别的只是坐着，灯一亮一起扭头、拍手）；台边挂在戏服架上的一件。走法还是同一种（光照到头就塌）；
   // 塌下去以后一直塌着（keepDown：灯一换路、一灭，它们不该又站起来）
-  ta1: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen1 === 1, home: 32532, terr: [32380, 32700], speed: 60, h: 214, pal: { coat: 't1c', coatLo: 't1l', scarf: 't1s', hat: 'rh' } },
-  ta2: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen2 === 1, home: 33132, terr: [32960, 33300], speed: 60, h: 214, pal: { coat: 't2c', coatLo: 't2l', scarf: 't2s', hat: 'rh' } },
+  // 2026-11-26：后排那件是扑的（从座位上站起来往后一仰，顺着过道一扑到底）；前排那件是你不动它才动；台边戏服架上那件是个哑剧演员（ai: 'mime'：孩子在台前走，它跟着朝同一个方向走，孩子停它停，孩子伸手它也伸手；不抓人，只是拦着）
+  ta1: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen1 === 1, home: 32532, terr: [32230, 32700], speed: 60, h: 214, fear: 110, touch: 'catch', ai: 'pounce', pounce: { tell0: 3.0, tell: 1.6, dist: 300, dur: 0.5, stun: 1.5, back: 80, hit: 44 }, pal: { coat: 't1c', coatLo: 't1l', scarf: 't1s', hat: 'rh' } },
+  ta2: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen2 === 1, home: 33132, terr: [32810, 33300], speed: 60, h: 214, fear: 130, ai: 'still', still: { wait: 1.3, speed: 125, hit: 42, back: 55 }, pal: { coat: 't2c', coatLo: 't2l', scarf: 't2s', hat: 'rh' } },
   // 地下通道（第 11 关）：壁龛里弹琴的旧外套。坐着不动，一直在弹，不追人；孩子不敢走过去（GATES）。分到小光（holds）就是一盏灯，琴声响起来，不再挡路
   // 旧地铁（第 12 关）：站台长椅边的人、车厢里站着的两位乘客（车一动就跟着晃，sway）、车门口抱着花一直朝车门使劲的大衣。站着不动，不追人；塌下去以后一直塌着
-  mp1: { kind: 'coat', fl: 'down', keepDown: () => V.mSeen1 === 1, home: 40430, terr: [40420, 40440], speed: 0, h: 214, face0: 1, pal: { coat: 'mtC1', coatLo: 'mtC1l', scarf: 'uBs', hat: 'rh' } },
-  mp2: { kind: 'coat', fl: 'down', sway: true, keepDown: () => V.mSeen2 === 1, home: 42060, terr: [42050, 42070], speed: 0, h: 214, face0: 1, pal: { coat: 'mtC2', coatLo: 'mtC2l', scarf: 'uBs', hat: 'rh' } },
-  mp3: { kind: 'coat', fl: 'down', sway: true, keepDown: () => V.mSeen2 === 1, home: 42200, terr: [42190, 42210], speed: 0, h: 214, face0: -1, pal: { coat: 'mtC3', coatLo: 'mtC3l', scarf: 'uBs', hat: 'rh' } },
+  // 2026-11-26：这几位还是不追人（忙自己的事），可是不再是木头：孩子走近（stare 以内、在暗处），它们转过头来盯着他，眼睛发红，孩子走开了再转回去；长椅边的人坐不住，站起来走几步又回到长椅边（lap，够不着孩子）
+  mp1: { kind: 'coat', fl: 'down', keepDown: () => V.mSeen1 === 1, home: 40430, terr: [40386, 40474], speed: 0, h: 214, face0: 1, stare: 420, lap: [40392, 40468], lapSpeed: 34, lapRest: 2.6, pal: { coat: 'mtC1', coatLo: 'mtC1l', scarf: 'uBs', hat: 'rh' } },
+  mp2: { kind: 'coat', fl: 'down', sway: true, keepDown: () => V.mSeen2 === 1, home: 42060, terr: [42050, 42070], speed: 0, h: 214, face0: 1, stare: 460, pal: { coat: 'mtC2', coatLo: 'mtC2l', scarf: 'uBs', hat: 'rh' } },
+  mp3: { kind: 'coat', fl: 'down', sway: true, keepDown: () => V.mSeen2 === 1, home: 42200, terr: [42190, 42210], speed: 0, h: 214, face0: -1, stare: 460, pal: { coat: 'mtC3', coatLo: 'mtC3l', scarf: 'uBs', hat: 'rh' } },
   // 下水道（第 13 关）：三件胶皮水裤，各站在一根立管边上，面朝管子，一直拧着扳手（不追人）。塌下去以后一直塌着
-  wp1: { kind: 'coat', fl: 'down', waders: true, keepDown: () => V.wSeen1 === 1, home: 43990, terr: [43980, 44000], speed: 0, h: 214, face0: 1, pal: { coat: 'wsC1', coatLo: 'wsC1l', scarf: 'uBs', hat: 'rh' } },
-  wp2: { kind: 'coat', fl: 'down', waders: true, keepDown: () => V.wSeen2 === 1, home: 44630, terr: [44620, 44640], speed: 0, h: 214, face0: -1, pal: { coat: 'wsC2', coatLo: 'wsC2l', scarf: 'uBs', hat: 'rh' } },
-  wp3: { kind: 'coat', fl: 'down', waders: true, keepDown: () => V.wSeen3 === 1, home: 44990, terr: [44980, 45000], speed: 0, h: 214, face0: 1, pal: { coat: 'wsC3', coatLo: 'wsC3l', scarf: 'uBs', hat: 'rh' } },
-  mw: { kind: 'coat', fl: 'down', keepDown: () => V.mSeenW === 1, home: 42630, terr: [42620, 42640], speed: 0, h: 214, face0: 1, pal: { coat: 'mtC4', coatLo: 'mtC4l', scarf: 'uBs', hat: 'rh' } },
+  wp1: { kind: 'coat', fl: 'down', waders: true, stare: 420, keepDown: () => V.wSeen1 === 1, home: 43990, terr: [43980, 44000], speed: 0, h: 214, face0: 1, pal: { coat: 'wsC1', coatLo: 'wsC1l', scarf: 'uBs', hat: 'rh' } },
+  wp2: { kind: 'coat', fl: 'down', waders: true, stare: 420, keepDown: () => V.wSeen2 === 1, home: 44630, terr: [44620, 44640], speed: 0, h: 214, face0: -1, pal: { coat: 'wsC2', coatLo: 'wsC2l', scarf: 'uBs', hat: 'rh' } },
+  wp3: { kind: 'coat', fl: 'down', waders: true, stare: 420, keepDown: () => V.wSeen3 === 1, home: 44990, terr: [44980, 45000], speed: 0, h: 214, face0: 1, pal: { coat: 'wsC3', coatLo: 'wsC3l', scarf: 'uBs', hat: 'rh' } },
+  mw: { kind: 'coat', fl: 'down', stare: 420, keepDown: () => V.mSeenW === 1, home: 42630, terr: [42620, 42640], speed: 0, h: 214, face0: 1, pal: { coat: 'mtC4', coatLo: 'mtC4l', scarf: 'uBs', hat: 'rh' } },
   uc1: { kind: 'coat', seated: true, fl: 'down', home: 37960, terr: [37900, 38020], speed: 0, h: 214, pal: { coat: 'uBc', coatLo: 'uBl', scarf: 'uBs', hat: 'rh' }, holds: () => true, stand: 37960, lapSpeed: 1 },
-  ta3: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen3 === 1, home: 34120, terr: [34000, 34330], speed: 62, h: 214, pal: { coat: 't3c', coatLo: 't3l', scarf: 't3s', hat: 'rh' } },
+  ta3: { kind: 'coat', fl: 'down', keepDown: () => V.tSeen3 === 1, home: 34120, terr: [34000, 34330], speed: 62, h: 214, fear: 120, ai: 'mime', mime: { z0: TDOOR.x - 40, z1: 33960, ref: 33800, gain: 0.8, lo: 34010, hi: 34200, sp: 330 }, pal: { coat: 't3c', coatLo: 't3l', scarf: 't3s', hat: 'rh' } },
   // 变电站（第 15 关）：两件巡夜的工作服，一件守在配电盘后面，一件守在铁塔前面（腰上别着一串钥匙）。走法还是同一种（暗处醒着，孩子走进它那一片又不在光里就追过来；光照到头就塌）。
   // 合闸以后路灯一起亮，它们塌下去；灯暗下去，它们又醒过来（不用 keepDown：塌了不是一直塌着，这是“假的好了”）
-  vw1: { kind: 'coat', fl: 'sfc', home: 51760, terr: [51680, 51850], speed: 62, h: 214, face0: -1, pal: { coat: 'vwC1', coatLo: 'vwC1l', scarf: 'vwS', hat: 'vwH' } },
+  // 2026-11-26：配电盘后面那件是真的在巡夜（lap：来回踱步）；两件都加了 fear：灯被墨崽吃灭、它们又醒过来的时候，孩子从哪一边走回来都会在它跟前停住，不会一头撞上去
+  vw1: { kind: 'coat', fl: 'sfc', gate: 'vc1', home: 51760, terr: [51680, 51850], speed: 62, h: 214, face0: -1, fear: 120, lap: [51712, 51838], lapSpeed: 44, lapRest: 1.6, pal: { coat: 'vwC1', coatLo: 'vwC1l', scarf: 'vwS', hat: 'vwH' } },
   // 消防站（第 16 关）：fb1 消防员的大衣，站在长凳前，不动、不追人（醒着也不挡路）；递给它警示灯，它抱着灯往最黑的地方走（holds 的时候走到 stand，stand 每一帧算：孩子跟得上才往前走）。
   // fw1、fw2 两件熏黑的雨衣：走法和别的衣服一样（暗处醒着，孩子走进它那一片又不在光里就追；光照到头就塌），塌了就一直塌着（keepDown）
   fb1: { kind: 'fire', fl: 'sfc', idle: true, home: FP.coat, terr: [FP.coat, FP.coat], speed: 0, h: 214, face0: -1, faceEnd: 1, holds: () => S.fGive === 1, get stand() { return fsStand(); }, lapSpeed: 150, pal: { coat: 'fcC', coatLo: 'fcCl', scarf: 'fcS', hat: 'fcH' } },
-  fw1: { kind: 'coat', fl: 'sfc', keepDown: () => V.fSeen1 === 1, home: 54830, terr: [54750, 54920], speed: 62, h: 214, face0: -1, pal: { coat: 'fwC1', coatLo: 'fwC1l', scarf: 'fwS', hat: 'fwH' } },
-  fw2: { kind: 'coat', fl: 'sfc', keepDown: () => V.fSeen2 === 1, home: 55980, terr: [55900, 56070], speed: 62, h: 214, face0: -1, pal: { coat: 'fwC2', coatLo: 'fwC2l', scarf: 'fwS', hat: 'fwH' } },
+  // 2026-11-26：黑街上那件是渗过来的（熏黑的雨衣化成一股黑烟贴着地飘过来，在跟前重新立起来；这是第三回，烟的样子）；桥底下那件在桥洞里来回踱步（lap）
+  fw1: { kind: 'coat', fl: 'sfc', gate: 'fc1', keepDown: () => V.fSeen1 === 1, home: 54830, terr: [54530, 54920], speed: 62, h: 214, face0: -1, fear: 130, ai: 'ooze', ooze: { wait0: 1.6, wait: 0.6, far: 30, near: 84, melt: 0.45, form: 1.0, speed: 160, hit: 42, smoke: 1 }, pal: { coat: 'fwC1', coatLo: 'fwC1l', scarf: 'fwS', hat: 'fwH' } },
+  fw2: { kind: 'coat', fl: 'sfc', gate: 'fc2', keepDown: () => V.fSeen2 === 1, home: 55980, terr: [55900, 56070], speed: 62, h: 214, face0: -1, fear: 120, lap: [55932, 56002], lapSpeed: 40, lapRest: 1.8, pal: { coat: 'fwC2', coatLo: 'fwC2l', scarf: 'fwS', hat: 'fwH' } },
   // 钟楼里面（第 20 关）：两件旧工作服（敲钟人换下来的），一件挂在底层的楼梯脚下，一件挂在一层的过道上。走法还是同一种（暗处醒着，孩子走进它那一片又不在光里就追；光照到头就塌），塌了就一直塌着（keepDown）
-  hk1: { kind: 'coat', fl: 'sfc', keepDown: () => V.hSeen1 === 1, home: TWP.coat1, terr: [TWP.coat1 - 60, TWP.coat1 + 60], speed: 62, h: 214, face0: -1, pal: { coat: 'klC1', coatLo: 'klC1l', scarf: 'klScarf', hat: 'klHair' } },
-  hk2: { kind: 'coat', fl: 'tw1', keepDown: () => V.hSeen2 === 1, home: TWP.coat2, terr: [TWP.coat2 - 60, TWP.coat2 + 60], speed: 62, h: 214, face0: -1, pal: { coat: 'klC4', coatLo: 'klC4l', scarf: 'klScarf', hat: 'klHair' } },
-  vw2: { kind: 'coat', fl: 'sfc', home: 52370, terr: [52290, 52460], speed: 62, h: 214, face0: -1, pal: { coat: 'vwC2', coatLo: 'vwC2l', scarf: 'vwS', hat: 'vwH' } },
-  rt2: { kind: 'coat', fl: 'down', home: 20150, terr: [20040, 20280], speed: 60, h: 214, pal: { coat: 'r2c', coatLo: 'r2l', scarf: 'r2s', hat: 'rh' } },
+  // 2026-11-26：楼梯脚下那件是伸袖子的（孩子在窗台边划火柴的时候，它的袖子已经举起来了，再磨蹭两三秒就顺着地伸过来；烛光弱，照到头还要硬撑 brace 秒）；一层过道上那件是扑的。两件的地盘都放到了点灯的地方：点灯的那一下是有东西在逼过来的（照最顺的走法：走进它那一片 1.1 秒点着蜡烛、0.9 秒点着油灯；袖子要 5 秒才够得着，扑要等 3.8 秒）
+  hk1: { kind: 'coat', fl: 'sfc', gate: 'hg1', keepDown: () => V.hSeen1 === 1, home: TWP.coat1, terr: [TWP.candle - 90, TWP.coat1 + 60], speed: 62, h: 214, face0: -1, fear: 120, brace: 1.6, ai: 'reach', reach: { base: 70, len: 230, tell0: 2.4, tell: 0.9, speed: 70, back: 200 }, pal: { coat: 'klC1', coatLo: 'klC1l', scarf: 'klScarf', hat: 'klHair' } },
+  hk2: { kind: 'coat', fl: 'tw1', gate: 'hg2', keepDown: () => V.hSeen2 === 1, home: TWP.coat2, terr: [TWP.lamp - 40, TWP.coat2 + 60], speed: 62, h: 214, face0: -1, fear: 120, touch: 'catch', ai: 'pounce', pounce: { tell0: 3.4, tell: 1.6, dist: 290, dur: 0.46, stun: 1.5, back: 80, hit: 44 }, pal: { coat: 'klC4', coatLo: 'klC4l', scarf: 'klScarf', hat: 'klHair' } },
+  vw2: { kind: 'coat', fl: 'sfc', gate: 'vc2', home: 52370, terr: [52290, 52460], speed: 62, h: 214, face0: -1, fear: 120, stare: 460, pal: { coat: 'vwC2', coatLo: 'vwC2l', scarf: 'vwS', hat: 'vwH' } },
+  rt2: { kind: 'coat', fl: 'down', home: 20150, terr: [20040, 20280], speed: 60, h: 214, ai: 'gust', gust: { speed: 185, first: 2.2, hit: 42, back: 45 }, pal: { coat: 'r2c', coatLo: 'r2l', scarf: 'r2s', hat: 'rh' } },
   // 百货大楼（第 17 关）：bs1 过道上的夜班店员：走法和别的衣服一样（暗处醒着，孩子走进它那一片又不在光里就追；光照到头就塌），塌了就一直塌着（keepDown）。
   // bs2 人台中间的夜班店员：醒着，站在原处，不动、不追人，挡着路（idle）；把台灯递给它，它抱着灯站在那儿（holds），让开路。人台上的衣服不是 GARB：没人穿，是画出来的架子
-  bs1: { kind: 'coat', fl: 'sfc', keepDown: () => V.bSeen1 === 1 || (S.bHit === 1 && V.bHitT > 1.8), home: BPP.bs1, terr: [BPP.bs1a, BPP.bs1b], speed: 62, h: 214, face0: -1, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
+  bs1: { kind: 'coat', fl: 'sfc', stare: 440, keepDown: () => V.bSeen1 === 1 || (S.bHit === 1 && V.bHitT > 1.8), home: BPP.bs1, terr: [BPP.bs1a, BPP.bs1b], speed: 62, h: 214, face0: -1, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
   bs2: { kind: 'coat', fl: 'sfc', idle: true, home: BPP.bs2, terr: [BPP.bs2, BPP.bs2], speed: 0, h: 214, face0: -1, faceEnd: -1, holds: () => S.bGive === 1, get stand() { return BPP.bs2; }, lapSpeed: 150, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
   // bs3 货梯间里来回巡逻的夜班大衣（2026-11-25）：不追人、不怕光（那儿没有灯能照到它），挡着路；走法在 bpMonUpdate（G.lift）：在平台正中停一阵，按钮一按平台连着它一起升到二楼，它在二楼的仓库里来回，平台放回地上走廊才通
   bs3: { kind: 'coat', fl: 'sfc', lift: 1, home: BPP.lpc, terr: [BPP.lp0 - 100, BPP.lp1 + 100], speed: 62, h: 214, face0: -1, fyOf: m => m.py ?? BPY, pal: { coat: 'bsC', coatLo: 'bsCl', scarf: 'bsS', hat: 'bsH' } },
   // 广场（第 18 关）：cr1 木马上陪孩子的大人（ride：位置跟着木马转，不用自己走）。暗处醒着；光照到头它就塌，转出光了它又醒；停下来的时候醒着，朝孩子这边看，木马外面的孩子它够不着。
   // 刹车的时候要它停在光里，塌了就一直塌着（keepDown）
-  cr1: { kind: 'coat', fl: 'sfc', ride: true, keepDown: () => V.cSeen === 1, get home() { return CPP.cx + CPP.ro; }, terr: [CPP.cx - 260, CPP.cx + 260], speed: 0, h: 292, face0: -1 },
+  cr1: { kind: 'coat', fl: 'sfc', gate: 'cs1', ride: true, keepDown: () => V.cSeen === 1, get home() { return CPP.cx + CPP.ro; }, terr: [CPP.cx - 260, CPP.cx + 260], speed: 0, h: 292, face0: -1 },
   // ===== 新的怪物（2026-11-25）：主人说雨衣、外套先留着当怪物，别所有怪物都一个行为——新的是多出来的，各有各的行为（docs/night-monsters.md）=====
   // partner：它挂在这一关的哪一道门上。规则不动（同一盏灯照倒）；页面里这道门要等它也塌下去才算开（GATE_ALL，见下面）。
   // sleeper：睡着的，暗处也不立起来，孩子走到这么近才醒。hop：一蹦一蹦地追（先预兆再一蹦）。
@@ -10160,13 +10178,15 @@ const GARB = {
   pj: { kind: 'pj', fl: 'down', partner: 'zt1', follow: 'zt1', home: 15990, terr: [15850, 16130], speed: 0, h: 70, sleeper: 300, listen: 1, ai: 'dart', dart: { tell: 0.75, speed: 330, max: 0.8, reach: 44, back: 150 } },
   // 第 18 关广场（2026-11-26）：cm1 石渠尽头拦路的湿雨披（光水喷泉的那一段）。flow：不追人、够不着孩子（门拦着），暗处醒着；光水冲过来它往后退（退到 hi 为止），
   // 被逼在光里照到头就塌，塌了就一直塌着（keepDown）；光水退了它慢慢走回原处（cfMonUpdate）。extra：和新的怪物一起在 drawDynamic 里画；颜色用消防站熏黑的雨衣那一套
-  cm1: { kind: 'coat', fl: 'sfc', extra: 1, flow: 1, keepDown: () => V.cfSeen === 1, home: CF.home, terr: [CF.lo, CF.hi], speed: 0, h: 214, face0: -1, pal: { coat: 'fwC1', coatLo: 'fwC1l', scarf: 'fwS', hat: 'fwH' } },
+  cm1: { kind: 'coat', fl: 'sfc', gate: 'cf1', extra: 1, flow: 1, keepDown: () => V.cfSeen === 1, home: CF.home, terr: [CF.lo, CF.hi], speed: 0, h: 214, face0: -1, pal: { coat: 'fwC1', coatLo: 'fwC1l', scarf: 'fwS', hat: 'fwH' } },
   // 第 10 关剧院：缝合怪守在台边戏服架后面（挂在 ta3 这道门上，追光一照一起塌）。一瘸一拐地走过来，够到一臂远（剪刀）先张开剪刀预兆，再咔嚓一合
   patch: { kind: 'patch', fl: 'down', partner: 'ta3', follow: 'ta3', home: 34250, terr: [34020, 34400], speed: 55, h: 250, sleeper: 360, ai: 'snip', snip: { reach: 150, tell: 0.9, snap: 0.16, rest: 1.1 } },
   // 第 13 关下水道：袖蛛用一根毛线吊在第二段管子上（挂在 wp2 这道门上，桶的光一照一起塌）。孩子走到它底下，线放下来（预兆），掉下来贴着地追一阵，追不到就爬回去
   spider: { kind: 'spider', fl: 'down', partner: 'wp2', follow: 'wp2', home: 44520, terr: [44360, 44700], speed: 0, h: 150, sleeper: 420, ai: 'drop', drop: { ceil: 330, hang: 190, trig: 95, tell: 0.95, fall: 0.22, speed: 185, max: 2.2, hit: 54, climb: 1.4 } },
   // 第 17 关百货大楼：叠好的衣服摆在过道上，在夜班店员前面（挂在 bs1 这道门上，射灯一照一起塌）。孩子看着它，它就不动；孩子一背过身，它就往孩子这边挪
-  stk: { kind: 'stk', fl: 'sfc', partner: 'bs1', follow: 'bs1', home: 57660, terr: [57525, 57720], speed: 0, h: 70, sleeper: 360, ai: 'watch', watch: { speed: 52, hit: 46 } },
+  // 2026-11-26：地盘的左头从 57525 收到 57604，另加 sense。试衣镜是后来加的（2026-11-26），头一下推镜子孩子站在 57554、背对着它，正在它原来的地盘里：自动试玩每回都在这儿被它抓一次。
+  // 现在它在孩子走到 sense 以内、背过身的时候照样挪过来，但只挪到自己那一片的边上（离推镜子的位置 50，够不着），张着嘴等在那儿；孩子看着它的时候它咬不到，凑到它跟前（46 以内）又背过身去才咬得到
+  stk: { kind: 'stk', fl: 'sfc', partner: 'bs1', follow: 'bs1', home: 57660, terr: [57604, 57720], speed: 0, h: 70, sleeper: 360, ai: 'watch', watch: { speed: 52, hit: 46, sense: 190 } },
   // 第 18 关广场：长衣人站在木马这头（挂在 cs1 这道门上，木马的灯一亮一起塌）。站着不动，广场的灯闪一下，它就往孩子这边近一步
   tall: { kind: 'tall', fl: 'sfc', partner: 'cs1', follow: 'cr1', home: 61300, terr: [60900, 61420], speed: 0, h: 340, sleeper: 520, ai: 'flick', flick: { step: 60, every: 4.6, dark: 0.34, hit: 52 } },
   // 第 12 关旧地铁（2026-11-26）：抽屉嘴，一只旧五斗柜，不是衣服（主人：“怪物也不一定得是衣服，还可以是柜子，可以站上去的”）。立在信号箱底下（挂在新的一道门 mcb 上：手摇车推到轨道这一段，灯照着它，它塌成一只普通的柜子；
@@ -10379,16 +10399,16 @@ AI.drop = (k, G, m, dt, c) => {
 };
 // 叠好的衣服：孩子看着它（脸朝着它这边），它就不动，像一摞普通的衣服；孩子一背过身去（或者脸朝别处），它就往孩子这边挪（speed），一伸一缩像尺蠖。挪到 hit 以内就抓住
 AI.watch = (k, G, m, dt, c) => {
-  const { T, fy, hy, calm, kidLit } = c, W = G.watch, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
+  const { T, fy, hy, calm, kidLit } = c, W = G.watch, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inT = onF && kid.x > G.terr[0] - (W.sense || 10) && kid.x < G.terr[1] + (W.sense || 10);   // sense：孩子在它那一片外面这么远以内它就盯上了（挪还是只在自己那一片里挪）
   const hunting = !calm && m.rise > 0.9 && inT && !kidLit, d = kid.x - m.x, watched = Math.sign(-d) === kid.face || kid.mode === 'recoil';   // 孩子脸朝着它（它在孩子的 -d 那一边）就是在看着它
   m.reach = 0; m.mv = 0;
   if (m.rise < 0.5) { m.open = 0.1; m.hunt = 0; return; }
   if (m.rise <= 0.9) return;
   const go = hunting && !watched && Math.abs(d) > 20;
   m.hunt = approach(m.hunt, go ? 1 : 0, dt * 5); m.open = approach(m.open ?? 0.1, go ? 0.5 + 0.25 * Math.abs(Math.sin(T * 7)) : watched && hunting ? 0.08 : 0.16, dt * 5);
-  if (go) { const st = Math.min(Math.abs(d), W.speed * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 90; m.face = Math.sign(d); c.near = Math.max(c.near, 0.4); }
+  if (go) { const nx = W.sense ? clamp(m.x + Math.sign(d) * Math.min(Math.abs(d), W.speed * dt), G.terr[0], G.terr[1]) : m.x + Math.sign(d) * Math.min(Math.abs(d), W.speed * dt), st = Math.abs(nx - m.x); m.x = nx; m.mv = st; m.ph += st / 90; m.face = Math.sign(d); c.near = Math.max(c.near, 0.4); }
   else m.face = Math.sign(d) || m.face;
-  if (hunting && Math.abs(d) < W.hit) caught(k);
+  if (hunting && Math.abs(d) < W.hit && (!W.sense || !watched)) caught(k);   // 有 sense 的（它会挪到自己那一片的边上等着）：孩子看着它的时候咬不到，背过身才咬
 };
 // 长衣人：站着不动。广场的灯每隔 every 秒闪一下（闪的那 dark 秒四下里一黑）：它趁黑往孩子这边近一步 step（孩子在它那一片里、在暗处才动）。近到 hit 以内就抓住
 AI.flick = (k, G, m, dt, c) => {
@@ -10405,15 +10425,268 @@ AI.flick = (k, G, m, dt, c) => {
   if (hunting) c.near = Math.max(c.near, 0.5 * (1 - Math.abs(kid.x - m.x) / 400));
   if (hunting && Math.abs(kid.x - m.x) < F.hit) caught(k);
 };
+// ===== 2026-11-26：原来“一个模子”的那些衣服各自的脾气（主人：“总不能都是站在原地不动，一碰就死吧”）。名册和每一只的特点：docs/night-monster-roster.md =====
+// 规则一个字没动（check.mjs 的输出一字不差），这些都是页面里的事。几条都守着的：
+// ① 照它的灯按规则亮了（ruleOpen），它就不再出手，回原处去——灯照得到原处，回去就塌。所以哪一种脾气都不会让它躲在灯照不到的地方一直醒着
+// ② 出手以前有预兆，头一回长一些（孩子被吓退要抖 1.25 秒，抖完了还来得及走开）
+// ③ 碰到了不一定是“一下抓住”：慢慢挪的、伸袖子的是拽住（holdKid），往外挣得开；扑的、从背后来的才是一下抓住（G.touch: 'catch'）
+// ④ 孩子不敢走到醒着的怪物跟前（G.fear，见 fearAhead）：怪物离开原处了，孩子停的地方跟着它走，不会一头撞上去
+const GATE_OF = Object.fromEntries(GARB_KEYS.map(k => [k, GARB[k].gate || GARB[k].partner || (GATEPOS[k] ? k : GARB[k].queue ? 'queue' : null)]));   // 每一只挂在哪道门上（规则里的键）
+const ruleOpen = k => { const g = GATE_OF[k]; return !!(g && GATE_RULE[g] && GATE_RULE[g](S)); };   // 照它的灯按规则亮了没有
+const FEARERS = GARB_KEYS.filter(k => GARB[k].fear);
+const aiHunt = (k, G, m, c) => {
+  const onF = kid.kind === 'floor' && Math.abs(kid.y - c.fy) < 2, inT = onF && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10, hunting = !c.calm && m.rise > 0.9 && inT && !c.kidLit && !ruleOpen(k);
+  if (hunting) { if ((m.gapT ?? 9) > 1) m.tellFirst = 1; m.gapT = 0; } else m.gapT = (m.gapT ?? 9) + c.dt;   // 孩子隔了一阵又走进它那一片（被抓回去再来也是）：预兆又从长的那一种算起
+  return { onF, inT, hunting };
+};
+const touchKid = k => (GARB[k].touch === 'catch' ? caught : holdKid)(k);
+// 伸袖子的（围裙、钟楼里的旧工作服）：自己不离开原处，一只袖子顺着地伸过来。先把袖子举起来（预兆 tell 秒，头一回 tell0 秒），再朝孩子脚边爬（speed），最长 base + len；
+// 孩子退它跟，退出它那一片它就缩回去（back）。袖口够着了就拽住
+AI.reach = (k, G, m, dt, c) => {
+  const { hy } = c, R = G.reach, { hunting } = aiHunt(k, G, m, c), d = kid.x - m.x;
+  m.mv = 0; m.x = G.home; m.lean = approach(m.lean || 0, 0, dt * 2);
+  if (m.rise < 0.5) { m.ext = approach(m.ext || 0, 0, dt * 5); m.rs = 'idle'; m.rt = 0; m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); return; }
+  if (m.rise <= 0.9) return;
+  m.rt = (m.rt || 0) + dt; if (!m.rs) m.rs = 'idle'; if (m.ext == null) m.ext = 0;
+  if (hunting) m.face = Math.sign(d) || m.face;
+  if (m.rs === 'idle') {
+    m.ext = approach(m.ext, 0, dt * R.back / R.len); m.reach = approach(m.reach, m.ext > 0.02 ? 1 : 0, dt * 3);
+    if (hunting && m.rt > 0.4 && m.ext < 0.04) { m.rs = 'tell'; m.rt = 0; if (m.tellFirst == null) m.tellFirst = 1; if (inView(m.x, hy, 220)) snd.rustle(); }
+  } else if (m.rs === 'tell') {   // 预兆：袖子慢慢举起来
+    m.reach = approach(m.reach, 1, dt * 2.2);
+    if (!hunting && m.rt > 0.3) { m.rs = 'idle'; m.rt = 0; }
+    else if (m.rt >= (m.tellFirst ? R.tell0 : R.tell)) { m.rs = 'out'; m.rt = 0; m.tellFirst = 0; if (inView(m.x, hy, 220)) snd.creak(); }
+  } else {   // 伸出去
+    m.reach = 1;
+    if (!hunting) { m.rs = 'idle'; m.rt = 0; }
+    else {
+      m.ext = approach(m.ext, clamp((Math.abs(d) - R.base) / R.len, 0, 1), dt * R.speed / R.len);
+      const tip = m.x + m.face * (R.base + m.ext * R.len);
+      if ((Math.abs(kid.x - tip) < 20 && m.ext > 0.04) || Math.abs(d) < 40) touchKid(k);
+    }
+  }
+  m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5);
+  if (hunting) c.near = Math.max(c.near, 0.3 + 0.6 * (m.ext || 0));
+};
+// 渗过来的（睡裙、床单、熏黑的雨衣）：孩子在它那一片里、离得远（比 near + far 远），它化成一摊墨（melt 秒）贴着地流过来（speed；流的时候不伤人），流到离孩子 near 的地方重新长出来（form 秒：这就是预兆），
+// 再慢慢挪过来拽人。头一回先站着盯 wait0 秒。孩子走了，它也是流回原处再立起来
+AI.ooze = (k, G, m, dt, c) => {
+  const { hy } = c, O = G.ooze, { hunting } = aiHunt(k, G, m, c), dk = kid.x - m.x;
+  m.mv = 0; m.lean = approach(m.lean || 0, 0, dt * 2);
+  if (m.rise < 0.5) { m.os = 'stand'; m.ot = 0; m.flat = approach(m.flat || 0, 0, dt * 5); m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); return; }
+  if (m.rise <= 0.9) return;
+  m.ot = (m.ot || 0) + dt; if (!m.os) m.os = 'stand'; if (m.flat == null) m.flat = 0; if (m.tellFirst == null) m.tellFirst = 1;
+  if (hunting && !m.oh && m.os === 'stand') m.ot = 0;   // 孩子刚走进它那一片：从这一下起算（先盯一阵）
+  m.oh = hunting;
+  const tgt = hunting ? clamp(kid.x - (Math.sign(dk) || 1) * O.near, G.terr[0], G.terr[1]) : G.home, d = tgt - m.x;
+  if (m.os === 'stand') {
+    m.flat = approach(m.flat, 0, dt / O.form);
+    const formed = m.flat < 0.06, melt = () => { m.os = 'melt'; m.ot = 0; m.tellFirst = 0; if (inView(m.x, hy, 220)) snd.freeze(); };
+    if (hunting) {
+      m.face = Math.sign(dk) || m.face;
+      if (formed && Math.abs(dk) > O.near + O.far) { if (m.ot > (m.tellFirst ? O.wait0 : O.wait)) melt(); }
+      else if (formed && m.ot > (m.tellFirst ? O.wait0 : 0.35) && Math.abs(dk) > 30) { const st = Math.min(Math.abs(dk) - 30, G.speed * dt); m.x = clamp(m.x + Math.sign(dk) * st, G.terr[0], G.terr[1]); m.mv = st; m.ph += st / 60; }
+      m.reach = approach(m.reach, formed && Math.abs(dk) < 170 ? 1 : 0, dt * 3);
+      if (formed && Math.abs(dk) < O.hit) touchKid(k);
+    } else { m.reach = approach(m.reach, 0, dt * 3); if (formed && Math.abs(G.home - m.x) > 30 && m.ot > 0.9) melt(); else if (formed && Math.abs(G.home - m.x) > 1.5) { const dh = G.home - m.x, st = Math.min(Math.abs(dh), G.speed * 0.6 * dt); m.x += Math.sign(dh) * st; m.mv = st; m.face = Math.sign(dh); } }
+  } else if (m.os === 'melt') { m.flat = approach(m.flat, 1, dt / O.melt); m.reach = approach(m.reach, 0, dt * 6); if (m.flat >= 0.99) { m.os = 'flow'; m.ot = 0; } }
+  else {   // flow：一摊墨贴着地流
+    const st = Math.min(Math.abs(d), O.speed * dt); m.x = clamp(m.x + Math.sign(d) * st, G.terr[0], G.terr[1]); m.mv = st; m.ph += st / 80; if (st > 0.01) m.face = Math.sign(d);
+    if (Math.abs(d) < 2 || m.ot > 5 || (m.x <= G.terr[0] + 0.5 && d < 0) || (m.x >= G.terr[1] - 0.5 && d > 0)) { m.os = 'stand'; m.ot = 0; m.face = Math.sign(kid.x - m.x) || m.face; if (inView(m.x, hy, 220)) snd.rise(); }
+  }
+  m.hunt = approach(m.hunt, hunting && m.flat < 0.5 ? 1 : 0, dt * 2.5);
+  if (hunting) c.near = Math.max(c.near, 0.45);
+};
+// 你不动它才动（外套、剧院前排那件）：孩子在走，它像被按了暂停（姿势都不变）；孩子站住超过 wait 秒（吓得发抖、伸手做事也算站住），它就快步过来（speed），孩子一动它又定住。没人在它那一片，它慢慢走回去
+AI.still = (k, G, m, dt, c) => {
+  const { hy } = c, Q = G.still, { hunting } = aiHunt(k, G, m, c), dk = kid.x - m.x;
+  m.mv = 0;
+  if (m.rise < 0.5) { m.qt = 0; m.qgo = false; m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); m.lean = 0; return; }
+  if (m.rise <= 0.9) return;
+  if (hunting) {
+    m.face = Math.sign(dk) || m.face;
+    m.qt = kid.walk < 0.22 ? (m.qt || 0) + dt : 0;
+    const go = m.qt > Q.wait, v = go ? Q.speed * smooth(clamp((m.qt - Q.wait) / 0.45, 0, 1)) : 0;
+    if (go && !m.qgo && inView(m.x, hy, 240)) snd.rustle();
+    if (!go && m.qgo && inView(m.x, hy, 240)) snd.click();
+    m.qgo = go;
+    if (v > 0 && Math.abs(dk) > 30) { const st = Math.min(Math.abs(dk) - 30, v * dt); m.x = clamp(m.x + Math.sign(dk) * st, G.terr[0], G.terr[1]); m.mv = st; m.ph += st / 60; }
+    if (go) { m.reach = approach(m.reach, 1, dt * 2.5); m.lean = approach(m.lean || 0, 0.16, dt * 2); }   // 定住的时候姿势不变（袖子伸到一半就停在一半）
+    m.hunt = approach(m.hunt, go ? 1 : 0.35, dt * 4);
+    if (Math.abs(dk) < Q.hit) touchKid(k);
+    c.near = Math.max(c.near, go ? 0.8 : 0.3);
+  } else {
+    m.qt = 0; m.qgo = false; const d = G.home - m.x;
+    if (Math.abs(d) > 1.5) { const st = Math.min(Math.abs(d), Q.back * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; m.face = Math.sign(d); }
+    m.reach = approach(m.reach, 0, dt * 2); m.lean = approach(m.lean || 0, 0, dt * 2); m.hunt = approach(m.hunt, 0, dt * 2.5);
+  }
+};
+// 听脚步的（雨衣）：看不见，只听得见跑。孩子在它跟前（地盘外面 ear 以内）跑起来（比 loud 快），它猛地朝声音转过去（预兆 tell 秒），冲到声音那儿（speed，不出 lo 到 hi），站着听 listen 秒，
+// 再听见就再冲，听不见了慢慢走回去（back）。慢慢走过去，它一动不动
+AI.hear = (k, G, m, dt, c) => {
+  const { hy, fy, calm, kidLit } = c, H = G.hear, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, dk = kid.x - m.x;
+  const loud = !calm && m.rise > 0.9 && onF && !kidLit && !ruleOpen(k) && kid.x > G.terr[0] - H.ear && kid.x < G.terr[1] + H.ear && kid.mode === 'walk' && kid.v > H.loud;
+  m.mv = 0; m.lean = approach(m.lean || 0, m.es === 'rush' ? 0.3 : 0, dt * 5);
+  if (m.rise < 0.5) { m.es = 'idle'; m.et = 0; m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); return; }
+  if (m.rise <= 0.9) return;
+  m.et = (m.et || 0) + dt; if (!m.es) m.es = 'idle';
+  if (loud) m.ex = clamp(kid.x, H.lo, H.hi);   // 听见了：记住声音在哪儿
+  const go = (tx, sp) => { const d = tx - m.x, st = Math.min(Math.abs(d), sp * dt); if (st > 0.01) { m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; m.face = Math.sign(d); } return Math.abs(d) - st < 1.5; };
+  if (m.es === 'idle' || m.es === 'back') {
+    if (m.es === 'back' && go(G.home, H.back)) { m.es = 'idle'; m.et = 0; }
+    if (loud) { m.es = 'turn'; m.et = 0; m.face = Math.sign(dk) || m.face; if (inView(m.x, hy, 260)) snd.rustle(); }
+  } else if (m.es === 'turn') { m.face = Math.sign(dk) || m.face; if (m.et >= H.tell) { m.es = 'rush'; m.et = 0; if (inView(m.x, hy, 260)) snd.whoosh(); } }
+  else if (m.es === 'rush') { if (go(m.ex, H.speed) || m.et > 2.5) { m.es = 'listen'; m.et = 0; m.face = Math.sign(dk) || m.face; } }
+  else if (loud) { m.es = 'turn'; m.et = H.tell * 0.5; }   // listen：站着听；又听见了
+  else if (m.et >= H.listen) { m.es = 'back'; m.et = 0; }
+  const act = m.es === 'turn' || m.es === 'rush' || m.es === 'listen';
+  m.hunt = approach(m.hunt, m.es === 'rush' || m.es === 'turn' ? 1 : m.es === 'listen' ? 0.6 : 0, dt * 5);
+  m.reach = approach(m.reach, m.es === 'rush' ? 1 : m.es === 'listen' ? 0.4 : 0, dt * 4);
+  if (act && !calm && onF && !kidLit && Math.abs(dk) < H.hit) touchKid(k);
+  if (act) c.near = Math.max(c.near, 0.5);
+};
+// 背过身才动的（稻草人）：孩子脸朝着它，它一动不动，眼睛也不红（装成稻草人）；孩子一背过身去（在它那一片外面 sense 以内、在暗处），它就朝孩子这边挪（speed），不出它那一片；挪到 hit 以内就从背后抓住。
+// 孩子走远了，过一阵它走回杆子上
+AI.sneak = (k, G, m, dt, c) => {
+  const { hy, fy, calm, kidLit } = c, K = G.sneak, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, dk = kid.x - m.x;
+  const sense = !calm && m.rise > 0.9 && onF && !kidLit && !ruleOpen(k) && kid.x > G.terr[0] - K.sense && kid.x < G.terr[1] + K.sense;
+  const watched = Math.sign(-dk) === kid.face || kid.mode === 'recoil';
+  m.mv = 0; m.reach = approach(m.reach, 0, dt * 2); m.lean = approach(m.lean || 0, 0, dt * 3);
+  if (m.rise < 0.5) { m.hunt = 0; m.nt = 0; return; }
+  if (m.rise <= 0.9) return;
+  if (sense) {
+    m.nt = 0;
+    if (!watched && Math.abs(dk) > 24) {
+      const st = Math.min(Math.abs(dk) - 24, K.speed * dt), nx = clamp(m.x + Math.sign(dk) * st, G.terr[0], G.terr[1]); m.mv = Math.abs(nx - m.x); m.x = nx; m.ph += m.mv / 60; m.face = Math.sign(dk);
+      m.nd = (m.nd || 0) + m.mv; if (m.nd > 46) { m.nd = 0; if (inView(m.x, hy, 260)) snd.rustle(); }   // 稻草窸窣响：背后有动静
+    } else m.face = Math.sign(dk) || m.face;
+    m.hunt = approach(m.hunt, watched ? 0 : 1, dt * (watched ? 9 : 3));
+    if (!watched && Math.abs(dk) < K.hit) touchKid(k);
+    if (!watched && m.mv > 0) c.near = Math.max(c.near, 0.4);
+  } else {
+    m.nt = (m.nt || 0) + dt; m.hunt = approach(m.hunt, 0, dt * 3);
+    const d = G.home - m.x; if (m.nt > 2.5 && Math.abs(d) > 1.5) { const st = Math.min(Math.abs(d), K.speed * 0.8 * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; m.face = Math.sign(d); }
+  }
+};
+// 风来了才动的（屋顶上晾着的三件衬衫）：屋顶上一阵一阵地刮风（roofGust：every 秒一阵，先起风 tell 秒——风声、衣服鼓起来，这是预兆——再刮 blow 秒）。
+// 没风的时候它们垂着、走不动；风一灌满，就朝孩子扑一截（speed × 风的大小）。孩子走进它那一片以后，头一阵风至少等 first 秒
+const GUST = { every: 5.4, tell: 0.9, blow: 1.3 };
+function roofGust(T) {   // k：衣服鼓起来几成；blow：正在刮（0 到 1，中间最大）
+  const p = T % GUST.every, tB = GUST.every - GUST.blow, tT = tB - GUST.tell;
+  if (p < tT) return { k: 0, blow: 0 };
+  if (p < tB) return { k: 0.4 * smooth((p - tT) / GUST.tell), blow: 0 };
+  const u = (p - tB) / GUST.blow; return { k: 0.4 + 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.1)), blow: Math.sin(Math.PI * u) };
+}
+AI.gust = (k, G, m, dt, c) => {
+  const { T } = c, W = G.gust, { hunting } = aiHunt(k, G, m, c), g = roofGust(T), dk = kid.x - m.x;
+  m.mv = 0;
+  if (m.rise < 0.5) { m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); m.lean = 0; m.gt = 0; return; }
+  if (m.rise <= 0.9) return;
+  m.gt = hunting ? (m.gt || 0) + dt : 0;
+  if (hunting) m.face = Math.sign(dk) || m.face;
+  const live = hunting && g.blow > 0 && m.gt > W.first;
+  m.lean = approach(m.lean || 0, g.k * 0.4, dt * 5); m.reach = approach(m.reach, live && g.blow > 0.2 ? 1 : 0, dt * 4);
+  if (live && Math.abs(dk) > 26) { const st = Math.min(Math.abs(dk) - 26, W.speed * g.blow * dt), nx = clamp(m.x + m.face * st, G.terr[0], G.terr[1]); m.mv = Math.abs(nx - m.x); m.x = nx; m.ph += m.mv / 60; }
+  else if (!hunting) { const d = G.home - m.x; if (Math.abs(d) > 1.5) { const st = Math.min(Math.abs(d), W.back * dt); m.x += Math.sign(d) * st; m.mv = st; m.face = Math.sign(d); } }
+  m.hunt = approach(m.hunt, hunting ? 0.4 + 0.6 * g.blow : 0, dt * 4);
+  if (live && Math.abs(dk) < W.hit) touchKid(k);
+  if (hunting) c.near = Math.max(c.near, 0.3 + 0.5 * g.k);
+};
+// 扑的（学校后面走廊里的围裙、剧院后排那件、钟楼一层那件旧工作服）：守在原处。孩子在它那一片里、在暗处：先往后一仰、袖子举起来（预兆 tell 秒，头一回 tell0 秒），再一扑到底（dist 远，又快又直，不进光里），
+// 扑空了趴着愣 stun 秒，再走回原处（back）。只有扑的那一下抓得到，这一下挣不开
+AI.pounce = (k, G, m, dt, c) => {
+  const { hy } = c, U = G.pounce, { hunting, onF } = aiHunt(k, G, m, c), dk = kid.x - m.x;
+  m.mv = 0;
+  if (m.rise < 0.5) { m.us = 'idle'; m.ut = 0; m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); m.lean = 0; return; }
+  if (m.rise <= 0.9) return;
+  m.ut = (m.ut || 0) + dt; if (!m.us) m.us = 'idle';
+  if (m.us === 'idle') {
+    m.lean = approach(m.lean || 0, 0, dt * 2); m.reach = approach(m.reach, 0, dt * 3);
+    if (hunting && m.ut > 0.4) { m.us = 'tell'; m.ut = 0; if (m.tellFirst == null) m.tellFirst = 1; m.face = Math.sign(dk) || m.face; if (inView(m.x, hy, 260)) snd.creak(); }
+  } else if (m.us === 'tell') {
+    const need = m.tellFirst ? U.tell0 : U.tell, u = clamp(m.ut / need, 0, 1); m.face = Math.sign(dk) || m.face;
+    m.lean = -0.26 * smooth(u) + 0.02 * Math.sin(m.ut * 30) * u; m.reach = approach(m.reach, 0.85, dt * 3);
+    if (!hunting && m.ut > 0.3) { m.us = 'idle'; m.ut = 0; }
+    else if (m.ut >= need) { m.us = 'dash'; m.ut = 0; m.tellFirst = 0; m.ux0 = m.x; m.ux1 = clamp(m.x + m.face * U.dist, G.terr[0] - 40, G.terr[1] + 40); if (inView(m.x, hy, 260)) snd.whoosh(); }
+  } else if (m.us === 'dash') {
+    const u = clamp(m.ut / U.dur, 0, 1), xn = lerp(m.ux0, m.ux1, ease(u)), stop = coverage(xn + m.face * 34, hy, LT) >= 0.5;   // 前面是光：停住
+    if (!stop) { m.mv = Math.abs(xn - m.x); m.ph += m.mv / 50; m.x = xn; }
+    m.lean = 0.34; m.reach = 1;
+    if (!c.calm && !c.kidLit && onF && Math.abs(kid.x - m.x) < U.hit) touchKid(k);
+    if (u >= 1 || stop) { m.us = 'stun'; m.ut = 0; if (inView(m.x, hy, 260)) snd.thump(); }
+  } else if (m.us === 'stun') { m.lean = approach(m.lean, 0.5, dt * 3); m.reach = approach(m.reach, 0.2, dt * 3); if (m.ut >= U.stun) { m.us = 'back'; m.ut = 0; } }
+  else {   // back
+    const d = G.home - m.x, st = Math.min(Math.abs(d), U.back * dt); m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; if (st > 0.01) m.face = Math.sign(d); m.lean = approach(m.lean, 0, dt * 2); m.reach = approach(m.reach, 0, dt * 3);
+    if (Math.abs(d) < 3) { m.us = 'idle'; m.ut = 0; m.face = G.face0 || m.face; }
+  }
+  m.hunt = approach(m.hunt, m.us === 'tell' || m.us === 'dash' ? 1 : hunting ? 0.5 : 0, dt * 4);
+  if (hunting || m.us === 'dash') c.near = Math.max(c.near, m.us === 'tell' || m.us === 'dash' ? 0.8 : 0.4);
+};
+// 哑剧演员（剧院台边戏服架上那件）：孩子在台前（z0 到 z1）、在暗处，它从架子上下来学他——孩子往哪边走它也往哪边走（同一个方向，慢半拍：位置按 ref、gain 对过去，不出 lo 到 hi），
+// 孩子停它停，孩子朝哪边它朝哪边，孩子伸手它也伸手。不追人（够不着）；孩子不在台前，它走回架子底下
+AI.mime = (k, G, m, dt, c) => {
+  const { fy, calm, kidLit } = c, M = G.mime, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2;
+  const inZ = !calm && m.rise > 0.9 && onF && !kidLit && !ruleOpen(k) && kid.x > M.z0 && kid.x < M.z1;
+  m.mv = 0; m.lean = approach(m.lean || 0, 0, dt * 3);
+  if (m.rise < 0.5) { m.hunt = 0; m.reach = approach(m.reach, 0, dt * 5); return; }
+  if (m.rise <= 0.9) return;
+  const tgt = inZ ? clamp(G.home + (kid.x - M.ref) * M.gain, M.lo, M.hi) : G.home, d = tgt - m.x, st = Math.min(Math.abs(d), (inZ ? M.sp : 70) * dt);
+  if (st > 0.05) { m.x += Math.sign(d) * st; m.mv = st; m.ph += st / 60; }
+  m.face = inZ ? kid.face || m.face : Math.abs(d) > 2 ? Math.sign(d) : G.face0 || -1;
+  m.reach = approach(m.reach, inZ && kid.mode === 'reach' && kid.r && kid.r.k > 0.15 ? 1 : 0, dt * 5);
+  m.hunt = approach(m.hunt, inZ ? 0.35 : 0, dt * 3);
+  if (inZ && Math.abs(kid.x - m.x) < 40) caught(k);
+};
+// 被拽住（2026-11-26）：不是所有的怪物一碰就完。有袖子的衣服是“拽”：袖子抓住孩子，HOLD.limit 秒里往外挣出 HOLD.free 这么远就挣开了（挣的时候走不快：HOLD.v），
+// 挣开以后它愣 1.3 秒；挣不开才是被抓住（回到灯底下）。手上正忙着（伸手、推东西、跳、爬梯子）的时候挣不了，直接算被抓住。光照到它，它就松手
+const HOLD = { limit: 1.7, free: 48, v: 96 };
+function holdKid(k) {
+  if (V.hold || kid.mode === 'caught') return;
+  if (!(kid.mode === 'idle' || kid.mode === 'walk' || kid.mode === 'recoil') || kid.kind !== 'floor' || kid.onBox) return caught(k);
+  const m = V.mon[k];
+  kid.path = []; kid.onArrive = null; kid.drive = false; kid.v = 0; kid.auto = false; kid.mode = 'idle'; kid.fearK = 1;
+  V.hold = { k, t: 0, x0: kid.x, side: Math.sign(kid.x - m.x) || -m.face }; V.holds = (V.holds || 0) + 1;
+  snd.fear(); puff(kid.x - V.hold.side * 14, kid.y - 70, C.ink, 8);
+}
+function holdUpdate(dt) {
+  const H = V.hold; if (!H) return;
+  const m = V.mon[H.k];
+  if (kid.mode === 'caught' || won) { V.hold = null; return; }
+  if (m.rise < 0.6 || m.want === 0 || m.braced) { V.hold = null; return; }   // 光照到它了：松手
+  H.t += dt; kid.fearK = Math.max(kid.fearK, 0.85);
+  if ((kid.x - H.x0) * H.side > HOLD.free) {   // 挣开了
+    V.hold = null; m.stun = 1.3; V.holdFree = V.T; snd.whoosh(); snd.thump(); puff((kid.x + m.x) / 2, kid.y - 80, C.ink, 14); return;
+  }
+  if (H.t > HOLD.limit || kid.mode === 'reach' || kid.mode === 'push' || kid.mode === 'grab' || kid.mode === 'hop') { V.hold = null; caught(H.k); }   // 没挣开；或者被拽着还去伸手、推东西：抓住了
+}
+// 孩子不敢走到醒着的怪物跟前（2026-11-26）：门（GATEPOS）是钉在路上的一点，怪物会踱步、会扑过来、会挪到背后，所以另外量它现在站在哪儿——朝它走，走到离它 fear 这么远就不敢再走了
+// （和被门拦住一样：吓得退两步，气泡里画照亮它要用的东西）。只会让孩子停得更早，不会让他越过门。化成一摊的时候近一半；正在光里硬撑的、被光照着正在塌的不算
+function fearAhead(dir) {   // 往 dir 这边走：前面最近的一只 → { k, dist（还能走多远）}
+  let best = null;
+  if (kid.kind !== 'floor') return null;
+  for (const k of FEARERS) {
+    const G = GARB[k], m = V.mon[k]; if (m.rise < 0.6 || m.want === 0 || m.braced) continue;
+    if (Math.abs(garbFy(G, m) - kid.y) > 2) continue;
+    const s = (m.x - kid.x) * dir; if (s < 0) continue;
+    const d = Math.max(0, s - G.fear * ((m.flat || 0) > 0.5 ? 0.5 : 1)); if (!best || d < best.dist) best = { k, dist: d };
+  }
+  return best;
+}
 // 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
 function garbUpdate(dt) {
   const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || V.xCalm || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
+  holdUpdate(dt);
+  if (kid.x > ROOF.x0 - 200 && kid.x < ROOF.x1 + 200 && roofGust(T - dt).k === 0 && roofGust(T).k > 0 && V.mon.rt1.rise + V.mon.rt3.rise + V.mon.rt2.rise > 0.5) snd.gust();   // 屋顶起风了（还有醒着的衬衫的时候才响：风声是它们要动的预兆）
   for (const k of GARB_KEYS) {
     const G = GARB[k], m = V.mon[k], fy = garbFy(G, m), hy = G.headAt ? G.headAt(m, fy) : fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0), lit = coverage(hx, hy, LT) > 0.55 || !!(G.keepDown && G.keepDown()) || !!(G.follow && V.mon[G.follow].want === 0 && V.mon[G.follow].rise < 0.5), trapped = k === 'dog' && S.yDog === 1;
     if (G.lift) { bpMonUpdate(k, G, m, dt); continue; }   // 货梯间里巡逻的大衣：自己的走法（不追人、不怕光），见 bpMonUpdate
     if (G.flow) { cfMonUpdate(k, G, m, dt, lit, hy); continue; }   // 石渠尽头拦路的雨披（第 18 关）：光水冲过来它往后退，被逼在光里就塌，见 cfMonUpdate
     let want = lit ? 0 : 1;
+    if (G.brace) {   // 硬撑的：光照到头不是一下就塌，要照够 brace 秒（这一阵它缩着、举着袖子挡光、冒黑烟，抓不了人）；没照够灯就灭了，它慢慢缓过来
+      if (lit && m.rise > 0.5 && (m.burn || 0) < G.brace) { if (!m.braced && inView(m.x, hy, 200)) snd.steam(); m.burn = (m.burn || 0) + dt; want = 1; m.braced = 1; }
+      else { m.braced = 0; if (!lit) m.burn = Math.max(0, (m.burn || 0) - dt * 0.6); }
+    }
     if (G.sleeper) {   // 睡着的（靴嘴）：暗处也不立起来，是整整齐齐的一双靴子；孩子走到跟前才醒，醒了一直醒着，直到光照倒；孩子走远了又睡回去
       const onF0 = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2 && kid.mode !== 'caught', dd = Math.abs(kid.x - m.x);
       if (lit) m.woke = 0;
@@ -10431,8 +10704,16 @@ function garbUpdate(dt) {
     if (G.idle) { m.mv = 0; m.dr = 0; m.want = 1; m.rise = 1; m.hunt = m.reach = 0; m.x = G.home; V.fig[k] = 0; m.face = G.face0 || -1; continue; }   // 消防员的大衣（没拿到灯的时候）：醒着，站在原处，不动、不追人
     if (G.seated) { m.mv = 0; m.dr = 0; m.want = 1; m.rise = 1; m.hunt = m.reach = 0; m.x = G.home; V.fig[k] = 0; continue; }   // 坐着弹琴的：一直醒着，不动、不追人（只是挡路，分到光就不挡了）
     if (want !== m.want) { m.want = want; if (!trapped && inView(m.x, hy, 40)) { puff(m.x, fy - G.h * 0.5, want ? C.ink : C.lamp); (want ? snd.rise : snd.freeze)(); } }
-    const r0 = m.rise, x0 = m.x; m.rise = approach(m.rise, want, dt / (want ? 0.9 : 0.35)); m.dr = m.rise - r0;
+    const r0 = m.rise, x0 = m.x; m.rise = approach(m.rise, want, dt / (want ? 0.9 : LITFORM[G.kind] && !G.fast ? 0.5 : 0.35)); m.dr = m.rise - r0;   // 塌下去：老画法的衣服放慢一点（0.35 → 0.5 秒），灯下看得清它是缩下去的（狗的毛衣照旧）
     V.fig[k] = 1 - m.rise;
+    if (m.stun > 0) m.stun -= dt;   // 刚被孩子挣开：愣一阵
+    const calmM = calm || m.stun > 0;
+    if (m.braced) {   // 在光里硬撑着
+      m.mv = 0; m.hunt = approach(m.hunt, 0.6, dt * 4); m.reach = approach(m.reach, 0.8, dt * 6); m.lean = approach(m.lean || 0, -0.16, dt * 2); if (m.ext) m.ext = approach(m.ext, 0, dt * 3);
+      m.steamT = (m.steamT || 0) - dt; if (m.steamT <= 0 && inView(m.x, hy, 200)) { m.steamT = 0.05; parts.push({ x: hx + (Math.random() - 0.5) * 44, y: hy - 14 + Math.random() * 70, vx: (Math.random() - 0.5) * 30, vy: -(50 + Math.random() * 70), life: 0.45 + Math.random() * 0.3, col: C.lamp, s: 1.2 + Math.random() * 1.8 }); }   // 光把墨烧出火星（黑烟画在它身上，见 drawGarb）
+      continue;
+    }
+    if (V.hold && V.hold.k === k) { m.mv = 0; m.hunt = approach(m.hunt, 1, dt * 4); m.reach = approach(m.reach, 1, dt * 6); m.face = Math.sign(kid.x - m.x) || m.face; near = Math.max(near, 1); continue; }   // 正拽着孩子：站住不动，袖子拉着
     if (G.ride) {   // 木马上的大人：坐在马上，位置跟着木马转，下不来追人；停住的时候醒着，朝孩子这边看（孩子站进木马里才抓得到，门拦着，一般不会）
       const stopped = !V.cBrake && V.cw < 0.05, onF = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, d = kid.x - m.x;
       m.mv = 0; m.dr = 0; m.x = CPP.cx + CPP.ro * Math.cos(V.ca); m.face = Math.sin(V.ca) > 0 ? -1 : 1;
@@ -10453,10 +10734,10 @@ function garbUpdate(dt) {
       m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
       continue;
     }
-    if (G.ai) { const c = { T, fy, hx, hy, lit, calm, kidLit, near }; AI[G.ai](k, G, m, dt, c); near = c.near; V.fig[k] = 1 - m.rise; continue; }   // 新的怪物：各有各的行为（AI 表）
+    if (G.ai) { const c = { T, dt, fy, hx, hy, lit, calm: calmM, kidLit, near }; AI[G.ai](k, G, m, dt, c); near = c.near; V.fig[k] = 1 - m.rise; continue; }   // 新的怪物：各有各的行为（AI 表）
     const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
     // 狗的毛衣不等“被抓住以后那两秒半”（calm0）：它本来就要孩子过了 wake 那条线才扑出来；等的话，孩子一回到灯底下马上往右跑，它还没动人就过去了
-    let hunting = !(G.fast ? calm0 : calm) && m.rise > 0.9 && inTerr && !kidLit && (!G.listen || T - V.soundT < ZHEAR);   // listen：睡着的住户，声音过后一阵子才醒
+    let hunting = !(G.fast ? calm0 : calmM) && m.rise > 0.9 && inTerr && !kidLit && (!G.listen || T - V.soundT < ZHEAR);   // listen：睡着的住户，声音过后一阵子才醒
     if (G.fast) {   // 狗的毛衣：跑得快，有惯性
       // 头一回要孩子走出门廊的光、过了 wake 那条线，它才从窝里扑出来（先愣一下）。扑出来以后，孩子只要在暗处它就追；孩子被抓回灯底下，它又缩回窝里
       if (!m.alert && !trapped && hunting && kid.x > G.wake) { m.alert = true; m.alertT = T; if (inView(m.x, hy, 80)) snd.growl(); }
@@ -10506,13 +10787,15 @@ function garbUpdate(dt) {
     }
     m.mv = Math.abs(m.x - x0);
     if (G.lap) m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
-    if (G.face0 && !hunting && Math.abs(m.x - G.home) < 2) m.face = G.face0;   // 排队的大衣：回到原处又朝着公交车来的那边站好
+    if (G.face0 && !G.lap && !hunting && Math.abs(m.x - G.home) < 2) m.face = G.face0;   // 排队的大衣：回到原处又朝着公交车来的那边站好（踱步的不算：它路过原处的时候不回头）
     m.hunt = approach(m.hunt, hunting ? 1 : 0, dt * 2.5);
     m.reach = approach(m.reach, hunting && Math.abs(kid.x - m.x) < 170 ? 1 : 0, dt * 3);
     if (hunting) { m.face = Math.sign(kid.x - m.x) || m.face; near = Math.max(near, 1 - Math.abs(kid.x - m.x) / 400); }
     // 孩子站在感应灯管的那一片里：狗的毛衣冲进来，灯一定亮，它抓不着人。不加这一句，站在光圈外缘（5050–5070）等它，帧数低的时候灯晚亮一两帧就被抓了
     const porchSafe = k === 'dog' && power(S) && kid.x > SENSOR.zone[0] && kid.x < SENSOR.zone[1] && onFloor;
-    if (hunting && Math.abs(kid.x - m.x) < (G.fast ? 46 : 40) && !porchSafe) caught(k);
+    // 2026-11-26：慢慢挪过来的衣服是拽住（往外挣得开，holdKid）；狗的毛衣、跑圈的运动服、来回摆的摊主还是一下抓住（touch: 'catch'）
+    if (hunting && Math.abs(kid.x - m.x) < (G.fast ? 46 : 40) && !porchSafe) touchKid(k);
+    if (G.stare && m.rise > 0.9 && !hunting && onFloor && !kidLit && Math.abs(kid.x - m.x) < G.stare) { m.face = Math.sign(kid.x - m.x) || m.face; m.hunt = approach(m.hunt, 0.75, dt * 5); if (G.lap) m.pause = Math.max(m.pause || 0, 0.5); }   // 盯人的：孩子走近了，转过头来盯着他，眼睛发红（不追）；正踱着步的站住
     // 狗的毛衣塌在感应灯底下了：这就是“把它引到灯底下”（规则里的 yLure，不是点出来的）
     if (k === 'dog' && !trapped && S.out && !S.yOut && kid.mode !== 'caught' && m.want === 0 && m.rise < 0.5 && coverage(hx, hy, LT.filter(a => a.L.id === 'sensor')) > 0.55) lureDone(m);
     if (trapped && m.rise > 0.5) V.sensorUntil = Math.max(V.sensorUntil, T + 0.5);   // 保底：困住了的那件一起来，灯一定亮
@@ -10548,11 +10831,13 @@ function caught(k) {
   // 被扑倒的动画：怪物扑过来，孩子被撞得往后退一步、腾空一点，接着仰面摔倒（绕着脚转），摔在地上，墨涌上来盖住
   const mm = V.mon[k]; kid.cdir = kid.kind === 'floor' && mm ? (Math.sign(kid.x - mm.x) || -kid.face) : 0; kid.cx0 = kid.x; kid.rot = 0; kid.thumped = false;
   if (kid.cdir) kid.face = -kid.cdir;   // 脸朝着怪物
-  V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught(); if (k === 'boots') snd.chomp();
+  V.caughtT = V.T; V.caughtBy = k; V.catches++; V.hold = null; snd.caught(); if (k === 'boots') snd.chomp();
 }
+const monCalm = m => Object.assign(m, { ext: 0, flat: 0, lean: 0, stun: 0, braced: 0, rs: null, rt: 0, os: null, ot: 0, qt: 0, qgo: false, es: null, et: 0, nt: 0, gt: 0, us: null, ut: 0 });   // 2026-11-26 新脾气用到的那些状态：归零（回到原处站着）
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
   kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1; kid.rot = 0; kid.lift = 0; kid.alpha = 1; kid.cdir = 0; kid.thumped = false;
-  for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; m.x = GARB[k].home; m.v = 0; m.alert = false; m.dir = 1; m.pause = 0; m.ls = m.ds = 'idle'; m.lt = m.dt0 = 0; m.zip = 0.2; m.cyc = 0; if (GARB[k].sleeper) { m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; m.rise = 0; m.want = 0; if (GARB[k].ai === 'fly') { m.pt = -1.4; m.alt = 182; } } if (GARB[k].holds && GARB[k].holds()) m.x = GARB[k].stand; }   // 困在感应灯底下的狗毛衣留在原处；睡着的靴子回原处睡着
+  V.hold = null;
+  for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; monCalm(m); m.x = GARB[k].home; m.v = 0; m.alert = false; m.dir = 1; m.pause = 0; m.ls = m.ds = 'idle'; m.lt = m.dt0 = 0; m.zip = 0.2; m.cyc = 0; if (GARB[k].sleeper) { m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; m.rise = 0; m.want = 0; if (GARB[k].ai === 'fly') { m.pt = -1.4; m.alt = 182; } } if (GARB[k].holds && GARB[k].holds()) m.x = GARB[k].stand; }   // 困在感应灯底下的狗毛衣留在原处；睡着的靴子回原处睡着
   V.grace = V.T + 2.5; [camFX, camFY] = camTarget();
 }
 
@@ -12069,6 +12354,26 @@ for (const k of ['fw1', 'fw2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P,
 for (const k of ['vw1', 'vw2']) GARB_HOME[k] = (b, P, lit) => drawGarbHeap(b, P, lit, k, GARB[k].home, VSY);   // 变电站的工作服：没醒的时候就是地上的一摊（钥匙掉在脚边，drawVsKeys 里画）
 GARB_HOME.mw = (b, P, lit) => { const G = GARB.mw; drawGarbHeap(b, P, lit, 'mw', G.home, FL.down.gy); if (S.mBq === 'floor') sceneItem(b, 'mBq', MBQ.x + 6, FL.down.gy - 34, 60, P, lit, 586700); };
 const palOf = (G, P) => G.palD || (G.palD = { ...P, ...Object.fromEntries(Object.entries(G.pal).map(([a, c]) => [a, P[c]])) });   // 换一套颜色画（稻草人用长大衣的画法）
+// 2026-11-26 灯下也看得见它塌：以前灯一亮，暗的那一层连同立着的怪物整个被亮的一层盖掉，它是“凭空没了”。现在照到头的那一下（want 是 0、还没塌完）和在光里硬撑的时候（braced），
+// 亮的那一层也画它立着的样子——在光里往后一仰、缩下去。只有这几种老画法的衣服这么画（新的怪物各有各的塌法）
+const LITFORM = { robe: 1, coat: 1, runner: 1, apron: 1, sweater: 1, laundry: 1, sack: 1, throw: 1, overalls: 1 };
+const palLit = G => G.palL || (G.palL = { ...LIT, ...Object.fromEntries(Object.entries(G.pal).map(([a, c]) => [a, LIT[c]])) });   // 亮的那一层用的那套颜色（palOf 只记一套，记的是暗处的）
+function drawInkPool(b, x, fy, k, t, seed, hunt, smoke) {   // 渗过来的：化成一摊的时候地上的那一滩墨，边上淌着，里面几只眼睛；熏黑的雨衣是一股贴着地的黑烟，往上冒几缕
+  const rx = 30 + 46 * k, ry = 4 + 3.5 * k, ga = b.globalAlpha; b.save(); b.globalAlpha = ga * Math.min(1, k * 1.5); b.fillStyle = INK;
+  b.beginPath(); b.ellipse(x, fy + 2, rx * (1 + 0.05 * Math.sin(t * 5 + seed)), ry, 0, 0, 7); b.fill();
+  b.beginPath(); b.ellipse(x + rx * 0.45 * Math.sin(t * 2.3 + seed), fy + 3, rx * 0.55, ry * 0.8, 0, 0, 7); b.fill();
+  if (smoke) for (const [u, hgt, i] of [[-0.5, 46, 0], [0.1, 64, 1], [0.6, 38, 2]]) inkTendril(b, x + u * rx, fy - 2, x + u * rx + 14 * Math.sin(t * 1.7 + i * 2), fy - hgt * k - 8 * Math.sin(t * 2.3 + i), t, seed + 40 + i, 7);
+  if (k > 0.45) inkEyes(b, [[x - 13, fy - 1, 2.7 * k], [x + 7, fy, 2.2 * k], [x + 22, fy - 2, 1.5 * k]], hunt);
+  b.restore();
+}
+function drawLongSleeve(b, G, P, m, fy, f, t, seed) {   // 伸袖子的：从举着的那只手接着往外长的一截长袖子，中间垂到快贴地，袖口里一只张开的墨手
+  const R = G.reach, L = m.ext * R.len, x0 = m.x + f * (R.base + 12), y0 = fy - (G.kind === 'robe' ? 130 : 126), x1 = m.x + f * (R.base + L), y1 = fy - 46 - 10 * (1 - Math.min(1, L / 60));
+  const col = G.kind === 'robe' ? P[G.cols[0]] : (G.pal ? (P === LIT ? palLit(G) : palOf(G, P)) : P).coat;
+  const pts = quadPts([x0, y0], [(x0 + x1) / 2, Math.max(y0, y1) + Math.min(40, L * 0.3) + 4 * Math.sin(t * 3 + seed)], [x1, y1], 10);
+  part(b, tube(pts, pts.map((_, i) => 15 - 5.5 * i / 10)), col, { w: 0.9, tex: 0.3, lc: DARK.ink, seed: seed + 700 });
+  part(b, arcPts(x1 + f * 2, y1, 5, 8.5, 0, TAU, 12), INK, { w: 0.6, tex: 0, lc: DARK.ink, seed: seed + 710 });
+  for (const dy of [-8, 0, 8]) inkTendril(b, x1 + f * 3, y1 + dy * 0.5, x1 + f * (26 + 7 * Math.sin(t * 4 + dy)), y1 + dy + 5, t, seed + 720 + dy, 4.5);
+}
 // 画一件衣服：家具一直在；照亮了（或者正塌下去）画成普通的衣服；暗处立起来的样子只画在暗的那一层
 function drawGarb(b, P, lit, k) {
   if (S.xRode && (k === 'dog' || GARB[k].queue)) return;   // 后半：狗、排队的人回来了，不再是衣服
@@ -12083,9 +12388,10 @@ function drawGarb(b, P, lit, k) {
   if (k === 'bs2' && G.holds()) { bpClerk(b, P, lit, k, true); return; }   // 百货大楼：抱着台灯站在人台中间的夜班店员
   if (G.seated) { drawUcBusker(b, P, lit); return; }   // 壁龛里弹琴的外套：醒着也好、分到光也好，都是坐着弹
   if (G.holds && G.holds()) { (G.kind === 'apron' ? drawApronHeld : drawRunnerHeld)(b, P, lit, k); return; }   // 接了小光、抱着光站着的那件
-  const ga = b.globalAlpha, rest = lit && !G.queue ? 1 : 1 - m.rise;   // 排队的大衣：亮的那一层也只在塌下去以后才画那一摊（只开一盏灯时，还站着的两件脚下不该有一摊）
+  const inL = lit && LITFORM[G.kind] && m.rise > 0.01 && (m.want === 0 || !!m.braced);   // 灯下也看得见它：正在光里塌下去、或者在光里硬撑着
+  const ga = b.globalAlpha, rest = lit && !G.queue && !inL ? 1 : 1 - m.rise;   // 排队的大衣：亮的那一层也只在塌下去以后才画那一摊（只开一盏灯时，还站着的两件脚下不该有一摊）
   if (rest > 0.01) { b.globalAlpha = ga * rest; if (atHome) GARB_HOME[k](b, P, lit); else if (G.kind === 'boot') mzBootHeap(b, P, lit, m.x - 36, fy, 1, t, null, 279100, BOOT_SC); else if (G.kind === 'stk') mzStkHeap(b, P, lit, m.x, fy, 1, t, null, 279960); else if (G.kind === 'tall') mzTallHeap(b, P, lit, m.x - 20, fy, 1, t, null, 279970); else if (G.kind === 'spider') mzSpiderHeap(b, P, lit, m.x, fy, 1, t, null, 279900, false); else if (G.kind === 'patch') mzPatchHeap(b, P, lit, m.x, fy, 1, t, null, 279800, false); else if (G.kind === 'zip') mzZipHeap(b, P, lit, m.x, fy, 1, t, null, 279600); else if (G.kind === 'pj') mzPjHome(b, P, lit, m.x + 56, fy, 1, t, null, 279700, false); else if (G.kind === 'fly') mzCloakHeap(b, P, lit, m.x, fy, 1, t, null, 279200); else if (G.kind === 'umb') mzUmbHeap(b, P, lit, m.x - 70, fy, 1, t, null, 279300); else if (G.kind === 'cab') mzCabHeap(b, P, lit, m.x, fy, 1, t, null, 279500); else drawGarbHeap(b, P, lit, k, m.x, fy); b.globalAlpha = ga; }
-  if (lit || m.rise < 0.01) return;
+  if ((lit && !inL) || m.rise < 0.01) return;
   if (kid.mode === 'caught' && V.caughtBy === k && CATCH[k] && CATCH[k].extra && G.kind !== 'shdcoat' && G.kind !== 'fly') return;   // 盖在孩子上面画的（drawCatchExtra）：这儿不再画   // 咬住脚踝的靴子、罩住头的伞盖在孩子上面画（drawCatchExtra）
   const r = smooth(m.rise), f = m.face, seed = 285000 + GARB_KEYS.indexOf(k) * 500;
   if (G.kind === 'fly') { if (!(kid.mode === 'caught' && V.caughtBy === k)) mzCloak(b, P, false, m.x, fy, f, t, { alt: (m.alt || 150) * r, flap: m.flapT || 0, dive: m.dive === 1 ? 1 : m.dive || 0, hunt: m.dive === 1 ? 1 : 0 }, seed); return; }   // 会飞的：不“从一摊往上长”，落下来、升起来是高度在变
@@ -12093,11 +12399,17 @@ function drawGarb(b, P, lit, k) {
     b.save(); b.globalAlpha = ga * r * m.den; inkEyes(b, [[KENNEL.x - 9, KENNEL.base - 30, 3], [KENNEL.x + 4, KENNEL.base - 27, 2.4], [KENNEL.x - 2, KENNEL.base - 19, 1.6]], m.hunt); b.restore();
     if (m.den > 0.99) return;
   }
+  if (!lit && (m.flat || 0) > 0.02) drawInkPool(b, m.x, fy, m.flat, t, seed, m.hunt, G.ooze && G.ooze.smoke);   // 渗过来的：地上的那一滩墨
   b.save(); b.globalAlpha = ga * r * (G.fast ? 1 - m.den : 1); if (G.sway) b.translate(mtSway() * 6, 0); b.translate(m.x, fy); b.scale(1, 0.3 + 0.7 * r); b.translate(-m.x, -fy);   // 立起来：从一摊往上长
+  { // 2026-11-26 身子的姿势：lean 往前倾（负的是往后仰：扑以前、被光照到的那一下）、flat 化成一摊、在光里硬撑的时候缩着发抖
+    const flat = m.flat || 0, lean = (m.lean || 0) + (inL && !m.braced ? -0.45 * (1 - r) : 0), sq = (1 - 0.86 * flat) * (m.braced ? 0.9 + 0.02 * Math.sin(t * 37) : 1), jx = m.braced ? Math.sin(t * 43) * 1.6 : 0;
+    if (lean || sq !== 1 || jx) { b.translate(m.x + jx, fy); b.transform(1, 0, -f * lean, sq, 0, 0); b.translate(-m.x, -fy); }
+  }
+  const PP = G.pal ? (lit ? palLit(G) : palOf(G, P)) : P;
   if (G.kind === 'robe') inkRobe(b, P, m.x, fy, f, t, m, G, seed);
-  else if (G.kind === 'coat') inkCoat(b, G.pal ? palOf(G, P) : P, m.x, fy, f, t, m, seed);
-  else if (G.kind === 'runner') inkRunner(b, palOf(G, P), m.x, fy, f, t, m, seed);
-  else if (G.kind === 'apron') inkApron(b, palOf(G, P), m.x, fy, f, t, m, seed, G);
+  else if (G.kind === 'coat') inkCoat(b, PP, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'runner') inkRunner(b, PP, m.x, fy, f, t, m, seed);
+  else if (G.kind === 'apron') inkApron(b, PP, m.x, fy, f, t, m, seed, G);
   else if (G.kind === 'sweater') inkSweater(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'laundry') inkLaundry(b, P, m.x, fy, f, t, m, seed);
   else if (G.kind === 'sack') inkSack(b, P, m.x, fy, f, t, m, seed);
@@ -12118,9 +12430,15 @@ function drawGarb(b, P, lit, k) {
   if (G.waders) { b.save(); b.translate(m.x, fy); b.scale(f, 1); const lc = lcOf(P, lit);   // 水裤：脚上两只胶靴，胸前一块护胸，两条背带
     part(b, roundPts(-30, -20, 24, 24, 7), P.wsBar, { w: 0.8, tex: 0.2, lc, seed: seed + 60 }); part(b, roundPts(6, -20, 24, 24, 7), P.wsBar, { w: 0.8, tex: 0.2, lc, seed: seed + 61 });
     ink(b, [[-12, -150], [-4, -112]], { w: 2, col: DARK.ink, taper: 0, a: 0.7, seed: seed + 62, single: 1 }); ink(b, [[10, -150], [4, -112]], { w: 2, col: DARK.ink, taper: 0, a: 0.7, seed: seed + 63, single: 1 });
-    part(b, rectPts(-8, -112, 20, 22), palOf(G, P).coatLo, { w: 0.8, tex: 0.2, lc, seed: seed + 64 }); b.restore(); }
+    part(b, rectPts(-8, -112, 20, 22), PP.coatLo, { w: 0.8, tex: 0.2, lc, seed: seed + 64 }); b.restore(); }
   if (k === 'wp3' && S.wTorch === 'floor') sceneItem(b, 'wTorch', m.x + f * 36, fy - 78, 60, P, lit, 597110);   // 手里拿着一只手电
+  if (G.reach && (m.ext || 0) > 0.01) drawLongSleeve(b, G, P, m, fy, f, t, seed);   // 伸袖子的：伸出去的那一截
+  if (m.braced) for (const [u, hgt, i] of [[-15, 54, 0], [1, 74, 1], [16, 46, 2]]) {   // 在光里硬撑：头顶冒黑烟（几缕弯弯曲曲往上飘的墨）
+    const pts = []; for (let j = 0; j <= 12; j++) pts.push([m.x + u + Math.sin(j * 0.85 - t * 4.2 + i * 2.1) * (1.5 + j * 0.75) - f * j * 0.9, fy - G.h + 10 - j * hgt / 12]);
+    ink(b, pts, { col: INK, w: 4.2 / b.pen.w, a: 0.85 / b.pen.a, taper: 0, prof: q => Math.max(0.1, 1 - q * 0.9), amp: 0.4, seed: seed + 900 + i });
+  }
   b.restore(); b.globalAlpha = ga;
+  if (!lit && V.hold && V.hold.k === k && !(G.reach && m.ext > 0.05)) inkTendril(b, m.x + f * 88, fy - 124, kid.x - f * 6, kid.y - 66, t, seed + 800, 9);   // 正拽着孩子：袖口里的墨连到孩子身上
 }
 // 眼睛在哪儿（叠一层微光用）
 function garbEyes(k) {
@@ -12754,6 +13072,8 @@ for (const [k, fn] of Object.entries({
   stair: t => { noise(t, 0.07, 0.07, 380, 2); tone(70, t, 0.06, 0.04); if (Math.random() < 0.18) tone(210 + Math.random() * 80, t + 0.02, 0.28, 0.018, 'sawtooth', 160); },
   power: t => { tone(1800, t, 0.03, 0.06, 'square', 900); tone(55, t + 0.04, 0.7, 0.16, 'sine', 40); noise(t + 0.04, 0.3, 0.1, 200, 1, 'lowpass'); tone(110, t + 0.15, 1.8, 0.025, 'sawtooth', 110); },
   rise: t => { noise(t, 0.7, 0.05, 220, 1.5); tone(88, t, 0.6, 0.045, 'sawtooth', 58); },   // 衣服从地上立起来：湿的、低的一声
+  gust: t => { noise(t, 2.2, 0.045, 420, 0.7); noise(t + 0.5, 1.6, 0.035, 1100, 1); tone(140, t + 0.3, 1.6, 0.012, 'sine', 210); },   // 屋顶上起风了：呜——（先响，衣服再鼓起来）
+  steam: t => { noise(t, 1.1, 0.05, 3000, 0.8, 'highpass'); noise(t, 0.5, 0.05, 500, 1.2); tone(120, t, 0.5, 0.04, 'sawtooth', 70); },   // 墨被光烧着：嘶——（硬撑的那几件）
   heart: t => { tone(58, t, 0.12, 0.12, 'sine', 45); tone(56, t + 0.2, 0.1, 0.08, 'sine', 42); },
   zipper: t => { noise(t, 0.9, 0.07, 3400, 6); tone(1800, t, 0.9, 0.02, 'sawtooth', 5200); },   // 拉链嘶——地一路拉开
   rustle: t => { noise(t, 0.35, 0.07, 1400, 1.5); noise(t + 0.2, 0.3, 0.05, 2200, 2); },   // 睡衣窸窣地翻过身
@@ -12802,7 +13122,7 @@ const newView = () => ({
   drawer: 0, clock: 0, door: 0, damperT: 0, side: 0, chairT: 0, fridge: 0, fridgePulse: -10, hatch: 0, fbox: 0, fboxOpen: 0, fboxPulse: -10,
   fig: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])), figWant: Object.fromEntries(FEAR_KEYS.map(k => [k, 0])),
   ...xView(), fearGate: null, fearT: -10, tickN: 0, candleDown: 0, blowT: -10, progT: 0, outT: -1,   // progT：最后一次做成一件事的时候（卡住多久了）
-  imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
+  imps: newImps(), flames: newFlames(), bugs: newBugs(), flies: newFlies(), swarm: newSwarm(), mon: newMon(), safe: { x: 420, y: FL.up.gy }, grace: 0, caughtT: -10, caughtBy: null, catches: 0, hold: null, holds: 0, heartT: 0,   // 衣服们；最近一盏照着孩子的灯（被抓住了回到这儿）
 });
 // 孩子：从卧室窗下的月光里开始。kind 是脚底下是什么（floor 平地、stairs 楼梯、ladder 梯子）
 const newKid = () => ({ x: 420, y: FL.up.gy, kind: 'floor', seg: null, face: 1, mode: 'idle', path: [], v: 0, ph: 0.1, walk: 0, gait: 0, long: false, onArrive: null, r: null, t: 0,
@@ -13111,7 +13431,7 @@ function walkTo(tx, ty, cb, force) {
     else path = [...path.slice(0, gate.upto), gate.stop];
     const k = gate.gate; cb = () => meetGate(k);
   }
-  kid.path = path; kid.onArrive = cb || null; kid.long = pathLen(kid.x, kid.y, path) > 250; kid.mode = 'walk'; kid.drive = false; kid.auto = false;
+  kid.path = path; kid.onArrive = cb || null; kid.long = pathLen(kid.x, kid.y, path) > 250; kid.mode = 'walk'; kid.drive = false; kid.auto = false; kid.nofear = !!force;
   if (pathLen(kid.x, kid.y, path) < 0.6) { kid.path = []; kid.mode = 'idle'; kid.onArrive = null; if (cb) cb(); }
 }
 function enterKind(q) {
@@ -13129,12 +13449,21 @@ function moveKid(dx, dy, kind) {
 function kidWalk(dt) {
   const rem = pathLen(kid.x, kid.y, kid.path), k0 = kid.path.length ? kid.path[0].kind : 'floor';
   kid.gait += ((kid.long && rem > 140 && k0 === 'floor' ? 1 : 0) - kid.gait) * (1 - Math.exp(-dt * 7));   // 远了小跑，快到了收成走；楼梯、梯子上不跑
-  const vmax = k0 === 'floor' ? lerp(128, 360, kid.gait) : 150, vt = Math.min(vmax, 36 + rem * 7);
-  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * 12));
+  const vmax = k0 === 'floor' ? lerp(128, 360, kid.gait) : 150, vt = Math.min(vmax, 36 + rem * 7, V.hold ? HOLD.v : Infinity);   // 被袖子拽着：走不快
+  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * 12)); if (V.hold) kid.v = Math.min(kid.v, HOLD.v);
   let step = kid.v * dt;
   while (step > 1e-6 && kid.path.length) {
     const q = kid.path[0], dx = q.x - kid.x, dy = q.y - kid.y, d = Math.hypot(dx, dy);
     enterKind(q);
+    if (q.kind === 'floor' && !kid.nofear && Math.abs(dy) < 2 && Math.abs(dx) > 1e-6) {   // 2026-11-26：点着走过去的路上，前面有一只醒着的怪物（不在它的门那儿了）：走到离它 fear 远就停，吓得退两步
+      const fa = fearAhead(Math.sign(dx));
+      if (fa && fa.dist < Math.min(step, d)) {
+        if (fa.dist > 0) moveKid(Math.sign(dx) * fa.dist, 0, 'floor');
+        kid.path = []; kid.onArrive = null; kid.mode = 'idle'; kid.v = 0; kid.auto = false;
+        if (!(V.hold && V.hold.k === fa.k)) recoil(GATE_OF[fa.k] || fa.k, V.mon[fa.k].x);
+        return;
+      }
+    }
     const m = d < 1e-6 ? 1 : Math.min(1, step / d);
     moveKid(dx * m, dy * m, q.kind); step -= d * m;
     if (m >= 1) { kid.x = q.x; kid.y = q.y; kid.path.shift(); }
@@ -13229,6 +13558,10 @@ function driveBlock(E, d, u) {
   if (STREET_E.has(E.i) && kid.dd > 0) for (const st of STOPS) { if (st.open()) continue; const s = st.x - kid.x; if (s >= -0.5 && s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null }; }   // 门没开：走到门前就停
   if (STREET_E.has(E.i) && kid.dd < 0 && S.tOut && kid.x >= TLAND.wall - 0.5) { const s = kid.x - TLAND.wall; if (s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null }; }   // 掉到台底下以后：往回走，走到砖墙跟前就停（回不去了）
   if (STREET_E.has(E.i) && kid.dd < 0 && S.dRide && kid.x >= DS.back - 0.5) { const s = kid.x - DS.back; if (s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null }; }   // 翻过坝以后：往回走，走到坝跟前就停（回不去了）
+  if (E.kind === 'floor' && Math.abs(w[0]) > 0.5) {   // 2026-11-26：前面有一只醒着的怪物（不在它的门那儿了）：走到离它 fear 远就不敢再走。正拽着孩子的那只：朝它走不动（不再吓退）
+    const fa = fearAhead(Math.sign(w[0]));
+    if (fa && fa.dist <= d + 0.5 && (!best || fa.dist < best.dist)) best = V.hold && V.hold.k === fa.k ? { dist: fa.dist, gate: null } : { dist: fa.dist, gate: GATE_OF[fa.k] || fa.k, from: V.mon[fa.k].x };
+  }
   return best;
 }
 function driveRun(dt, u) {
@@ -13238,8 +13571,8 @@ function driveRun(dt, u) {
   }
   const m = u ? u.m : 0, onFloor = E.kind !== 'ladder';   // 平地、楼梯一个速度（2026-11-21）；梯子还是慢慢爬
   // 拖得越远跑得越快（连续的，不分档）；速度慢慢加上去（起步约 0.3 秒），松手或拖近了也不是马上停：顺着滑一小段（惯性）。步态跟着实际速度走，滑的时候还在迈步
-  const vt = !u ? 0 : onFloor ? lerp(45, 480, Math.pow(m, 1.15)) : 150 * Math.min(1, 0.55 + m);
-  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * (vt > kid.v ? 3.4 : u ? 4.5 : 5.5)));
+  const vt = Math.min(V.hold ? HOLD.v : Infinity, !u ? 0 : onFloor ? lerp(45, 480, Math.pow(m, 1.15)) : 150 * Math.min(1, 0.55 + m));   // 被袖子拽着：走不快
+  kid.v += (vt - kid.v) * (1 - Math.exp(-dt * (vt > kid.v ? 3.4 : u ? 4.5 : 5.5))); if (V.hold) kid.v = Math.min(kid.v, HOLD.v);
   kid.gait += ((onFloor ? clamp((kid.v - 128) / 352, 0, 1) : 0) - kid.gait) * (1 - Math.exp(-dt * 7));
   if (!u && kid.v < 6) return driveStop();
   let step = kid.v * dt;
@@ -13250,7 +13583,7 @@ function driveRun(dt, u) {
     const bl = driveBlock(E, d, u);
     if (bl && bl.dist <= step) {
       const k = d < 1e-6 ? 0 : bl.dist / d; moveKid((nx - kid.x) * k, (ny - kid.y) * k, E.kind);
-      if (bl.gate) { kid.drive = false; kid.v = 0; kid.seek = null; kid.mode = 'idle'; stickLock = u ? { ...u } : null; meetGate(bl.gate); }
+      if (bl.gate) { kid.drive = false; kid.v = 0; kid.seek = null; kid.mode = 'idle'; stickLock = u ? { ...u } : null; if (bl.from != null) recoil(bl.gate, bl.from); else meetGate(bl.gate); }
       else driveStop();
       return;
     }
@@ -13372,8 +13705,8 @@ function meetGate(k) {
   if (k === 'zbd' && !S.zBD) { kid.face = 1; return shakeHead(['zSlip']); }   // 地下室的门没撑住（第 5 关，2026-11-25）：不敢进（一关上就出不来）   // 钟表店二楼的门锁着（第 4 关，2026-11-25）：推不开   // 人行道上的地窖口关着（第 4 关）：下不去
   recoil(k);
 }
-function recoil(k) {   // 不敢过去：退两步，缩着发抖，影子的边和眼睛变红
-  const gp = GATEPOS[k], [gx] = edgePt(gp.e, gp.t), dir = k === 'cellar' ? 1 : (Math.sign(kid.x - gx) || -kid.face);
+function recoil(k, fromX) {   // 不敢过去：退两步，缩着发抖，影子的边和眼睛变红。fromX：不是被门拦住，是被一只走到这儿来的怪物拦住（它现在在 fromX）
+  const gp = GATEPOS[k], gx = fromX != null ? fromX : edgePt(gp.e, gp.t)[0], dir = k === 'cellar' ? 1 : (Math.sign(kid.x - gx) || -kid.face);
   if (kid.kind === 'ladder') kid.kind = 'floor';
   kid.mode = 'recoil'; kid.t = 0; kid.face = -dir; kid.x0 = kid.x; kid.rdir = dir; kid.r = null; kid.onArrive = null; kid.path = [];
   V.fearGate = k; V.fearT = V.T; snd.fear();
@@ -15194,6 +15527,7 @@ if (qs.has('auto')) setInterval(() => {
 window.__house = {
   get S() { return S; }, get V() { return V; }, get kid() { return kid; }, get stick() { return stick; }, get bag() { return bag; }, get won() { return won; }, get held() { return held; }, get taps() { return taps; }, get bubble() { return bubble; },
   get cam() { return [camX, camY, VWW, VHH]; }, get paintQ() { return paintQ.length; }, get mon() { return V.mon; }, get catches() { return V.catches; },
+  GARB, GATEPOS, GATE_ALL, garbHead, get flying() { return fly.length; }, set autoStep(v) { autoStep = v; },   // 检查用：怪物表、门的位置、门开没开、头在哪儿、有没有东西还在飞；模拟试玩时把“下一步”告诉 tick（引狗的毛衣那一步要它）
   set paused(v) { paused = !!v; }, get paused() { return paused; },
   autoLift, tick, render, tap, restart, hint, solve, spots, coverage, busy, tapWorld, walkTo, spotAt, LEVELS, solveL, nextStep, ACT, curLevel, get LT() { return LT; }, get outDone() { return outDone; },
   run(sec, fps = 30) { for (let i = 0; i < Math.round(sec * fps); i++) tick(1 / fps); render(); },
@@ -15276,7 +15610,8 @@ function snapTo(s, b) {
   { const hit = S.bHit ? 1 : 0; Object.assign(V, { fsDone: S.fOut ? 1 : 0, bsw: S.bSw, bsI: S.bSw, bmk: S.bMir >= 1 ? 1 : 0, bmkU: S.bAng, bAngS: S.bAng, bmkA: S.bMir ? S.bAng : 4, bBeam: null, bBeamL: null, bHitT: hit ? 9 : 0, bmx: S.bMir >= 1 ? BPP.mirAt : BPP.mirHome, brI: S.bSw && S.bMir ? 1 : 0, bgI: S.bGive, bgate: S.bOut, bSeen1: hit, bDrop: null }); }
   outDone = S.out ? 1 : 0; if (S.out && V.outT < 0) V.outT = V.T;
   { const st = saveT; saveT = Infinity; tick(0.001); saveT = st; }   // 这一下不存档：读档的时候站的地方、点了几下还是开局的（以前会把卧室窗下写进去，再打开一次就回卧室了）
-  LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].holds && GARB[k].holds() ? GARB[k].stand : GARB[k].home; m.dir = 1; m.pause = 0; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = GARB[k].sleeper || coverage(hx, hy, LT) > 0.55 || !!(GARB[k].keepDown && GARB[k].keepDown()) ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; }   // 睡着的（靴嘴）摆好局面的时候是睡着的
+  V.hold = null;
+  LT = activeLights(); for (const k of FEAR_KEYS) { const m = V.mon[k]; monCalm(m); m.burn = 0; m.tellFirst = null; m.x = k === 'dog' && S.yDog ? V.dogX : GARB[k].holds && GARB[k].holds() ? GARB[k].stand : GARB[k].home; m.dir = 1; m.pause = 0; m.v = 0; m.alert = false; m.den = k === 'dog' && S.yDog ? 0 : 1; const [hx, hy] = garbHead(k); m.want = m.rise = GARB[k].sleeper || coverage(hx, hy, LT) > 0.55 || !!(GARB[k].keepDown && GARB[k].keepDown()) ? 0 : 1; V.fig[k] = 1 - m.rise; m.hunt = m.reach = 0; m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; }   // 睡着的（靴嘴）摆好局面的时候是睡着的
   bpMonSnap();   // 货梯间：平台、闸刀、巡逻的大衣一步到位（在二楼还是在一楼，看 S.bMon、S.bUp）
   cfSnap();   // 广场的光水喷泉：盆里的水位、阀门、拦路的雨披一步到位
 }
