@@ -10137,15 +10137,20 @@ function bodyY() {
 const HONEY_K = 0.75;   // 拿在手里的蜂蜜罐画多大
 const holdsCandle = () => S.honey === 'inv' && !V.candleDown;
 const candleArm = () => kid.r && kid.r.k > 0 && !kid.r.candle ? 1 : 0;
+// 站着不动时的小动作（kid.idl，没有就是原来的样子；现在只有 house.html?idle=1 的候选页用到）：
+// bob 身子一起一落（替换掉原来的轻轻喘气）、sq 缩脖子、tip 踮脚（像素）、lean 往前倾、jit 发抖（像素）、sw 两只袖子前后摆、tuck 袖子收到胸前、
+// lift / kick 两只脚抬起来（像素）、往前蹭（单位）、arms 两只袖口要去的地方 [u, v, 权重]（身上的坐标）、
+// hd 头抬起（正）低下（负）、ex / ey 眼珠往前（正）往后、往上（正）往下、shut 闭眼、hatDn 帽子往下拉、puff 嘴前哈出来的白气（0–1 一团的进度）、front 近的袖子画在脸前面
+const IDL0 = {};
 function kidPose() {
-  const f = kid.face, w = kid.walk, gj = kid.gait, T = V.T, G = gaitOf(gj), r = kid.r, ak = r ? r.k : 0, fear = kid.fearK, gb = bodyY();
+  const f = kid.face, w = kid.walk, gj = kid.gait, T = V.T, G = gaitOf(gj), r = kid.r, ak = r ? r.k : 0, fear = kid.fearK, gb = bodyY(), I = kid.idl || IDL0;
   const low = r ? ak * smooth((r.ty - (gb - 34)) / 18) : 0, crouch = Math.max(low, kid.crouch), push = kid.pushK;   // 够地上的东西：缩下去
-  const tipK = r ? ak * smooth((gb - r.ty - 104) / 14) : 0, tip = tipK * 9;                                       // 够高处：踮脚
+  const tipK = r ? ak * smooth((gb - r.ty - 104) / 14) : 0, tip = tipK * 9 + (I.tip || 0);                        // 够高处：踮脚
   const lean = w * lerp(0.04, 0.13, gj) * (kid.pull ? -0.5 : 1) - fear * 0.08 + crouch * 0.3 + push * (kid.pull ? -0.12 : 0.16)
-    + (r ? ak * clamp((r.tx - kid.x) * f / 60, -0.4, 1) * 0.14 : 0) + (kid.kind === 'stairs' ? 0.04 : 0);
+    + (r ? ak * clamp((r.tx - kid.x) * f / 60, -0.4, 1) * 0.14 : 0) + (kid.kind === 'stairs' ? 0.04 : 0) + (I.lean || 0);
   const stepB = w * lerp(1.6, 2.4, gj) * Math.cos(2 * TAU * (kid.ph - lerp(0, 0.14, gj)));                       // 每迈一步身子一沉一起
-  const bob = (Math.sin(T * 2.1) * 0.35 * (1 - w) - (stepB + w * 1.5) / KK) * (1 - fear);                        // 站着轻轻喘气
-  const x0 = kid.x + (fear > 0.5 ? Math.sin(T * 62) * 1.2 : 0), y0 = gb - tip, sq = 0.14 * fear + 0.34 * crouch;  // 害怕、蹲下：大衣往下缩
+  const bob = ((I.bob ?? Math.sin(T * 2.1) * 0.35) * (1 - w) - (stepB + w * 1.5) / KK) * (1 - fear);              // 站着轻轻喘气
+  const x0 = kid.x + (fear > 0.5 ? Math.sin(T * 62) * 1.2 : 0) + (I.jit || 0), y0 = gb - tip, sq = 0.14 * fear + 0.34 * crouch + (I.sq || 0);  // 害怕、蹲下：大衣往下缩
   const c = Math.cos(lean), s = Math.sin(lean);
   const lift = v => v <= 3.8 ? v : 3.8 + (v - 3.8) * (1 - sq) + bob;                                            // 下摆不动
   const B = (u, v) => { const dv = lift(v) - VHIP, ru = u * c + dv * s, rv = VHIP - u * s + dv * c; return [x0 + f * KK * ru, y0 - KK * rv]; };   // 身上的点 → 世界
@@ -10153,14 +10158,16 @@ function kidPose() {
     const q = (kid.ph + off) % 1; let fx, fy = 0;
     if (q < G.st) fx = lerp(G.fa, -G.fb, q / G.st);
     else { const sp = (q - G.st) / (1 - G.st), e = (1 - Math.cos(Math.PI * sp)) / 2; fx = lerp(-G.fb, G.fa, e); fy = Math.sin(Math.PI * sp) * (G.lift + (1 - sp) * G.kick); }
-    const ax = x0 + f * (lerp((i ? -1.6 : 2.8) * KK, fx, w) + crouch * (i ? -4 : 5)), up = fy * w;
-    return { ax, ay: footY(ax) - up - tip * 0.8, up, fu: (ax - x0) * f / KK, tip: tipK };
+    const ax = x0 + f * (lerp((i ? -1.6 : 2.8) * KK, fx, w) + crouch * (i ? -4 : 5) + (I.kick ? I.kick[i] * KK : 0)), up = fy * w + (I.lift ? I.lift[i] : 0);
+    return { ax, ay: footY(ax) - up - tip * 0.8, up, fu: (ax - x0) * f / KK, tip: tipK + (I.tip || 0) / 9 };
   });
-  const sw = lerp(0.3, 0.7, gj) * w * Math.cos(kid.ph * TAU) * (1 - push), bend = 0.75 + lerp(0, 0.5, gj) * w + fear * 1.2;
+  const sw = lerp(0.3, 0.7, gj) * w * Math.cos(kid.ph * TAU) * (1 - push), bend = 0.75 + lerp(0, 0.5, gj) * w + fear * 1.2 + (I.tuck || 0) * 1.2;
   const holding = !kid.girl && holdsCandle(), ci = candleArm();
   const arms = [[SHO[0], 1], [SHO[0] - 1.6, -1]].map(([su, sd], i) => {   // 袖子和同一边的腿反着摆；害怕的时候缩到胸前
-    const [sx, sy] = B(su, SHO[1]), an = -sd * sw - 0.05 + fear * 0.5 + lean, ex = sx + Math.sin(an) * UA * KK * f, ey = sy + Math.cos(an) * UA * KK;
+    const [sx, sy] = B(su, SHO[1]), an = -sd * sw - 0.05 + fear * 0.5 + lean + (I.sw ? -sd * I.sw : 0) + (I.tuck || 0) * 0.5, ex = sx + Math.sin(an) * UA * KK * f, ey = sy + Math.cos(an) * UA * KK;
     let px = ex + Math.sin(an + bend) * FA * KK * f, py = ey + Math.cos(an + bend) * FA * KK;
+    const IA = I.arms && I.arms[i];
+    if (IA && IA[2] > 0) { const [tx, ty] = B(IA[0], IA[1]); px = lerp(px, tx, IA[2]); py = lerp(py, ty, IA[2]); }   // 站着的小动作：袖口挪到身上的某一处（嘴前、帽檐）
     if (push > 0) { px = lerp(px, sx + f * 36, push); py = lerp(py, kid.pushY, push); }                        // 推、拉：两只袖子往前抓着
     if (holding && i === ci && fear < 0.5) { px = lerp(px, sx + f * 32, 0.9); py = lerp(py, sy + 12, 0.9); }    // 举着蜡烛：袖子伸在胸前
     if (i === 0 && ak > 0) { px = lerp(px, r.tx, ak); py = lerp(py, r.ty, ak); }                                // 近的那只袖子伸出去
@@ -10172,7 +10179,7 @@ function kidPose() {
     }
     return { sx, sy, ex: k[0], ey: k[1], hx: k[2], hy: k[3] };
   });
-  return { x0, y0, lean, legs, arms, B, look: r ? ak * clamp((gb - r.ty - 31.6 * KK) / 40, -1, 1) : 0 };
+  return { x0, y0, lean, legs, arms, B, look: r ? ak * clamp((gb - r.ty - 31.6 * KK) / 40, -1, 1) : 0, I };
 }
 // 拿着蜡烛的那只袖口在哪儿（蜡烛的光跟着它）
 function kidHand() {
@@ -10237,11 +10244,13 @@ function drawKid(b, P0, lit) {
   const gy = footY(kid.x), Lk = lit ? kidLight() : null, dir = Lk ? clamp((kid.x - Lk.x) / 200, -1, 1) : 0;
   if (lit) hatch(b, k => k.ellipse(kid.x + dir * 14, gy + 2, 34 + Math.abs(dir) * 8, 5, 0, 0, 7), [kid.x - 64, gy - 8, 128, 18], { ang: -0.25, gap: 3, a: 0.7, w: 0.8, len: 20, seed: 37001 });
   else { b.fillStyle = 'rgba(3,4,10,0.4)'; b.beginPath(); b.ellipse(kid.x, gy + 2, 30, 4.6, 0, 0, 7); b.fill(); }
-  const B = p.B, TB = pts => pts.map(([u, v]) => B(u, v));
-  const HX = kid.shake, TH = pts => pts.map(([u, v]) => { const q = B(u, v); return [q[0] + HX, q[1]]; });
+  const B = p.B, TB = pts => pts.map(([u, v]) => B(u, v)), I = p.I;
+  const hd = I.hd || 0, hc = Math.cos(hd), hs = Math.sin(hd), HB = hd ? (u, v) => B(0.8 + (u - 0.8) * hc - (v - 27) * hs, 27 + (u - 0.8) * hs + (v - 27) * hc) : B;   // 抬头、低头：绕着脖子转
+  const HX = kid.shake, TH = pts => pts.map(([u, v]) => { const q = HB(u, v); return [q[0] + HX, q[1]]; });
   const fill = (pts, col, o) => part(b, pts, col, { w: 1, tex: 0, wob: 0.6, ...o });
   const line = (pts, o) => ink(b, pts, { w: 0.7, taper: 3, single: 1, ...o });
-  const TBf = (u, v) => B(u, v), THf = (u, v) => { const q = B(u, v); return [q[0] + HX, q[1]]; };
+  const TBf = (u, v) => B(u, v), THf = (u, v) => { const q = HB(u, v); return [q[0] + HX, q[1]]; };
+  const hdn = I.hatDn || 0, THh = hdn ? pts => TH(pts.map(([u, v]) => [u, v - hdn])) : TH, THhf = hdn ? (u, v) => THf(u, v - hdn) : THf;   // 帽子往下拉
   const shade = (clipPts, id, u0, u1, v0, v1, seed, T = TBf) => kidHatch(b, kidHatchSegs(id, u0, u1, v0, v1, f, seed), T, clipPts);
   const sleeve = (A, col, seed, back) => {   // 袖子：两节的粗管子，袖口里黑黑的，看不见手
     const L = Math.hypot(A.hx - A.ex, A.hy - A.ey) || 1, ux = (A.hx - A.ex) / L, uy = (A.hy - A.ey) / L, nx = -uy, ny = ux;
@@ -10258,7 +10267,7 @@ function drawKid(b, P0, lit) {
     for (let i = 0; i < 14; i++) { const a = i / 14 * TAU, ca = Math.cos(a) * 2.5 * KK, sa = Math.sin(a) * 0.95 * KK; op.push([ex + nx * ca + ux * sa, ey + ny * ca + uy * sa]); }
     fill(op, P.coat2, { w: 0.7, wob: 0.3, seed: seed + 3 });
   };
-  const near = p.arms[0], farA = p.arms[1], front = (kid.r && kid.r.k > 0.3) || fear > 0.3 || kid.pushK > 0.3;
+  const near = p.arms[0], farA = p.arms[1], front = (kid.r && kid.r.k > 0.3) || fear > 0.3 || kid.pushK > 0.3 || !!I.front;
   sleeve(farA, hexMix(P.coat, P.coat2, 0.42), 37010, true);
   for (const i of [1, 0]) {   // 两只脚：先画远的。腿藏在大衣里，迈步、上下楼梯的时候露出一截
     const l = p.legs[i], rot = f * Math.min(0.5, l.up * 0.035) + f * l.tip * 0.32, cr = Math.cos(rot), sr = Math.sin(rot), tr = ([u, v]) => { const x = f * u * KK, y = -v * KK; return [l.ax + x * cr - y * sr, l.ay + x * sr + y * cr]; };
@@ -10286,8 +10295,8 @@ function drawKid(b, P0, lit) {
   }
   fill(TH(kE(1.6, 33.0, 7.6, 7.8, 24)), P.skin, { w: 1.0, wob: 0.5, seed: 37070 });
   if (!kid.girl) fill(TH(KSH.hairBack), P.hair, { w: 0.8, wob: 0.4, seed: 37071 });
-  const wide = fear > 0.3, eo = wide ? 1.12 : 1, po = wide ? 0.68 : 1, lk = wide ? 0.5 : 0, lu = p.look * 0.5;
-  if (kid.blink > 0 && !wide) {
+  const wide = fear > 0.3, eo = wide ? 1.12 : 1, po = wide ? 0.68 : 1, ix = I.ex || 0, lk = (wide ? 0.5 : 0) + ix, lu = p.look * 0.5 + (I.ey || 0);
+  if ((kid.blink > 0 || I.shut) && !wide) {
     line(TH(kQ([2.0, 31.4], [4.0, 30.4], [6.0, 31.3])), { w: 0.8, a: 0.95, seed: 37072 });
     line(TH(kQ([6.2, 31.5], [7.6, 30.8], [8.9, 31.4])), { w: 0.7, a: 0.9, seed: 37073 });
   } else {
@@ -10295,7 +10304,7 @@ function drawKid(b, P0, lit) {
     fill(TH(kE(7.5, 31.7, 1.55 * eo, 2.4 * eo, 14)), P.eye, { w: 0.7, wob: 0.25, seed: 37073 });
     fill(TH(kE(4.7 + lk, 31.4 + lu, 1.2 * po, 1.45 * po, 12)), P.pupil, { line: 0, wob: 0.15, seed: 37074 });
     fill(TH(kE(8.0 + lk * 0.6, 31.5 + lu, 0.9 * po, 1.3 * po, 12)), P.pupil, { line: 0, wob: 0.15, seed: 37075 });
-    [[5.2, 32.2], [8.4, 32.2]].forEach(([u, v], i) => fill(TH(kE(u, v + lu, 0.4, 0.45, 8)), P.eye, { line: 0, wob: 0, seed: 37076 + i }));
+    [[5.2, 32.2], [8.4, 32.2]].forEach(([u, v], i) => fill(TH(kE(u + ix * (i ? 0.6 : 1), v + lu, 0.4, 0.45, 8)), P.eye, { line: 0, wob: 0, seed: 37076 + i }));
   }
   const collar = TB(KSH.collar);
   fill(collar, P.collar, { w: 1.05, wob: 0.6, seed: 37080 });
@@ -10315,14 +10324,14 @@ function drawKid(b, P0, lit) {
     if (!(kid.blink > 0) || fear > 0.3) { line(TH([[2.3, 33.6], [1.0, 34.7]]), { w: 0.7, a: 0.9, taper: 0, seed: 37356 }); line(TH([[1.9, 32.4], [0.5, 32.9]]), { w: 0.7, a: 0.9, taper: 0, seed: 37357 }); line(TH([[8.7, 33.4], [9.7, 34.4]]), { w: 0.6, a: 0.85, taper: 0, seed: 37358 }); }
     fill(TH(kE(3.4, 27.9, 1.9, 1.2, 10)), P.nose, { line: 0, wob: 0.2, fa: 0.55, seed: 37359 });
   } else {
-  const hat = TH(KSH.hat);
+  const hat = THh(KSH.hat);
   fill(hat, P.hat, { w: 1.1, tex: 0.3, wob: 0.7, seed: 37083 });
-  shade(hat, 'hat', -11, -3.5, 32, 47, 37084, THf);
-  [-0.5, 0, 0.5].forEach((t, i) => line(TH(kQ([t * 8 + 1, 37.4], [t * 9.6 + 1, 42.4], [t * 4 + 1, 45.0])), { w: 0.5, a: 0.35, seed: 37085 + i }));
-  fill(TH(KSH.band), P.hat2, { w: 0.9, wob: 0.5, seed: 37088 });
-  for (let u = -8, i = 0; u < 9.6; u += 1.4, i++) line(TH([[u, 33.5 + u * 0.06], [u + 0.15, 36.3 + u * 0.03]]), { w: 0.5, a: 0.55, taper: 0, seed: 37090 + i });
-  fill(TH(kE(1.0, 45.9, 2.9, 2.6, 16)), P.lining, { w: 0.9, wob: 0.7, seed: 37105 });
-  for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; line(TH([[1.0 + Math.cos(a) * 2.5, 45.9 + Math.sin(a) * 2.2], [1.0 + Math.cos(a) * 3.5, 45.9 + Math.sin(a) * 3.2]]), { w: 0.5, a: 0.6, taper: 0, seed: 37106 + i }); }
+  shade(hat, 'hat', -11, -3.5, 32, 47, 37084, THhf);
+  [-0.5, 0, 0.5].forEach((t, i) => line(THh(kQ([t * 8 + 1, 37.4], [t * 9.6 + 1, 42.4], [t * 4 + 1, 45.0])), { w: 0.5, a: 0.35, seed: 37085 + i }));
+  fill(THh(KSH.band), P.hat2, { w: 0.9, wob: 0.5, seed: 37088 });
+  for (let u = -8, i = 0; u < 9.6; u += 1.4, i++) line(THh([[u, 33.5 + u * 0.06], [u + 0.15, 36.3 + u * 0.03]]), { w: 0.5, a: 0.55, taper: 0, seed: 37090 + i });
+  fill(THh(kE(1.0, 45.9, 2.9, 2.6, 16)), P.lining, { w: 0.9, wob: 0.7, seed: 37105 });
+  for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; line(THh([[1.0 + Math.cos(a) * 2.5, 45.9 + Math.sin(a) * 2.2], [1.0 + Math.cos(a) * 3.5, 45.9 + Math.sin(a) * 3.2]]), { w: 0.5, a: 0.6, taper: 0, seed: 37106 + i }); }
   }
   fill(TH(kE(9.6, 29.6, 1.6, 1.35, 12)), P.nose, { w: 0.8, wob: 0.25, seed: 37117 });
   // 站在月光里原来还在头的朝窗那一边画一道冷的亮边：是一段固定的圆弧，不贴着帽子，看上去像头后面飘着一道影子（2026-11-18 主人问“头后面怎么有个阴影”），去掉了；月光里身上的颜色照旧亮一些（KIDM）
@@ -10337,6 +10346,14 @@ function drawKid(b, P0, lit) {
   }
   if (kid.girl && kid.lampK > 0.02) handLamp(b, P0, lit, near.hx, near.hy, kid.lampA, kid.lampOn);
   if (!kid.girl && holdsCandle()) { const A = p.arms[candleArm()]; drawHoney(b, P0, lit, A.hx + f * 2, A.hy - 3, true, 37200, HONEY_K); }
+  if (I.puff) for (const k of I.puff) if (k > 0 && k < 1) {   // 哈出来的白气：从嘴前冒出来，往前、往上飘，越飘越大、越淡
+    const a = (k < 0.12 ? k / 0.12 : Math.pow(1 - (k - 0.12) / 0.88, 1.5)) * (lit ? 0.3 : 0.36), s = 0.6 + k * 1.6, rgb = lit ? '250,246,236' : '206,218,244';
+    for (const [du, dv, r] of [[0, 0, 1.6], [1.5, 0.7, 1.4], [-0.3, 1.3, 1.2], [2.4, -0.2, 1.1], [0.9, -0.9, 1.0]]) {   // 几团软边的雾叠在一起
+      const q = THf(12.0 + k * 7.5 + du * s, 28.6 + k * 3.6 + dv * s), R = r * s * KK, gr = b.createRadialGradient(q[0], q[1], 0, q[0], q[1], R);
+      gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.55, `rgba(${rgb},${a * 0.6})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+      b.fillStyle = gr; b.beginPath(); b.arc(q[0], q[1], R, 0, TAU); b.fill();
+    }
+  }
   b.pen = pen0; b.globalAlpha = ga; b.restore();
 }
 // 爬梯子：背对着我们（照《灯下》的 coatBack）。两只袖子伸上去抓着梯子两边，一边的手在上、另一边的脚踩高一档，每爬一档两边换过来；
@@ -16619,8 +16636,94 @@ function imStart() {
   }, true);
   buildTex(); const loop = () => { imFrame(); requestAnimationFrame(loop); }; loop();
 }
+// ---------- 主角站着不动的时候：house.html?idle=1（候选页，给主人挑；=a、b、c、d 直接放大那一格；点一格放大，再点一下回总览；L 键换暗处 / 灯下，地址加 &lit=1 一打开就是灯下）----------
+// 画的就是游戏里的孩子（drawKid），每一格借一个临时的孩子、用 kid.idl 摆姿势，一直循环。游戏里还没用上（2026-11-27）。
+const IDENV = (t, a, b, c, d) => t <= a || t >= d ? 0 : t < b ? smooth((t - a) / (b - a)) : t <= c ? 1 : 1 - smooth((t - c) / (d - c));   // a→b 起来，c→d 落回去
+const IDBUMP = (t, a, b) => t > a && t < b ? Math.sin(Math.PI * (t - a) / (b - a)) : 0;
+const IDLE_C = [
+  { id: 'a', name: 'A 安静地呼吸', col: '#9dc08a', len: 8.4, line: '肩膀跟着呼吸一起一落；隔一会儿深深吸一口气，再长长地叹出来，闭一下眼睛。动作最小，不抢画面。',
+    fn: t => {
+      const s1 = smooth((t - 4.0) / 1.0), s2 = smooth((t - 5.3) / 1.3), s3 = smooth((t - 6.6) / 0.7), sigh = 2.0 * s1 - 2.9 * s2 + 0.9 * s3, mix = IDENV(t, 3.6, 4.0, 6.9, 7.6);
+      return { I: { bob: Math.sin(t * TAU / 2.8) * 0.8 * (1 - mix) + sigh, hd: sigh * 0.035, shut: t > 5.55 && t < 6.3 }, blink: t % 3.3 < 0.12 };
+    } },
+  { id: 'b', name: 'B 冷', col: '#8fb4e0', len: 8, line: '缩着脖子；两只袖子捧到嘴前哈一口白气、搓一搓，再哈一口；然后左右脚轮流跺两下，打个哆嗦。夜里、大衣、怕冷的小孩。',
+    fn: t => {
+      const up = IDENV(t, 0.8, 1.3, 3.7, 4.2), rub = IDENV(t, 2.3, 2.45, 3.05, 3.2) * Math.sin((t - 2.3) * TAU * 2.6), in1 = IDBUMP(t, 1.1, 1.9), in2 = IDBUMP(t, 3.0, 3.6);
+      const st = a => IDBUMP(t, a, a + 0.36) * 11, sh = IDENV(t, 6.5, 6.6, 7.2, 7.4);
+      return { I: { bob: Math.sin(t * TAU / 2) * 0.4 * (1 - up) + in1 * 0.9 + in2 * 0.7, sq: 0.05 + sh * 0.04, hd: -0.06 * up, front: up > 0.05,
+        arms: [[10.4 + rub * 0.3, 27.4 + rub, up], [11.4 - rub * 0.3, 29.6 - rub, up]], puff: [clamp((t - 1.6) / 1.3, 0, 1), clamp((t - 3.35) / 1.2, 0, 1)],
+        shut: (t > 1.55 && t < 2.2) || (t > 3.35 && t < 3.75), lift: [st(4.7) + st(5.5), st(5.1) + st(5.9)], jit: Math.sin(t * 63) * 0.9 * sh, tuck: 0.12 * sh }, blink: t % 3.1 < 0.12 };
+    } },
+  { id: 'c', name: 'C 怕', col: '#c79ad8', len: 9, line: '呼吸又浅又快，袖子收在身前；眼珠往后一瞟，抬头看看天花板，猛地回头看一眼身后，转回来抱紧自己、抖一下。',
+    fn: t => {
+      const dart = IDENV(t, 1.1, 1.22, 1.9, 2.02), upL = IDENV(t, 2.6, 3.0, 3.9, 4.4), turned = t > 4.9 && t < 6.1, hug = IDENV(t, 6.4, 6.8, 7.7, 8.4), sh = IDENV(t, 6.8, 6.9, 7.4, 7.6);
+      return { face: turned ? -1 : 1, I: { bob: Math.sin(t * TAU / 1.5) * 0.45 + hug * 0.6, tuck: 0.2 + 0.7 * hug, sq: 0.03 + 0.05 * hug, ex: turned ? 0.2 : 0.3 - 1.3 * dart, ey: 0.9 * upL - 0.3 * hug,
+        hd: 0.17 * upL - 0.04 * hug, lean: turned ? -0.03 : 0, jit: Math.sin(t * 60) * 0.8 * sh }, blink: t % 2.6 < 0.1 && !turned };
+    } },
+  { id: 'd', name: 'D 等不及', col: '#e0b86a', len: 9, line: '踮着脚尖前后晃，袖子跟着甩；低头用鞋尖蹭蹭地板；抓住帽檐把帽子往下一拉，从帽檐底下往上看，过一会儿再推回去。小孩子的小动作。',
+    fn: t => {
+      const rk = IDENV(t, 0.2, 0.5, 2.2, 2.6), ph = Math.sin((t - 0.2) * TAU / 0.8), dn = IDENV(t, 2.6, 2.9, 4.1, 4.4), sc = IDENV(t, 2.9, 3.05, 3.85, 4.0), sp = Math.sin((t - 2.9) * TAU / 0.45);
+      const reach = IDENV(t, 4.6, 5.0, 5.6, 6.0), push = IDENV(t, 7.3, 7.6, 7.9, 8.3), pull = smooth((t - 5.0) / 0.4) - smooth((t - 7.7) / 0.4), hand = Math.max(reach, push);
+      return { I: { bob: Math.sin(t * TAU / 2.25) * 0.5, tip: rk * 8 * (0.5 + 0.5 * ph), lean: rk * 0.03 * ph, sw: rk * 0.3 * ph,
+        hd: -0.12 * dn - 0.06 * hand, ey: -0.9 * dn + 0.7 * pull * (1 - hand), lift: [sc * (3 + 2.5 * sp), 0], kick: [sc * 4 * sp, 0],
+        arms: [[9.8, 35.8 - 1.5 * pull, hand], null], hatDn: 1.5 * pull, front: hand > 0.05 }, blink: t % 3.4 < 0.12 && pull < 0.5 };
+    } },
+];
+const ID_STATE = { page: qs.get('idle') && qs.get('idle') !== '1' ? qs.get('idle') : 'all', lit: qs.has('lit') };
+function idleDraw(b, P, lit, c, t) {   // 借一个临时的孩子画一格，画完换回来
+  const o = c.fn(((t % c.len) + c.len) % c.len), k0 = kid;
+  kid = Object.assign(newKid(), { x: 0, y: 0, moon: 0.6, face: o.face || 1, blink: o.blink ? 0.1 : 0, idl: o.I });
+  try { drawKid(b, P, lit); } finally { kid = k0; }
+}
+function idleBar(x, y, w, c, t) { const u = (((t % c.len) + c.len) % c.len) / c.len; g.fillStyle = 'rgba(140,156,206,0.22)'; g.fillRect(x, y, w, 2); g.fillStyle = c.col; g.fillRect(x, y, w * u, 2); }   // 这一格循环到哪儿了
+function idleFrame() {
+  const t = qs.has('t') ? +qs.get('t') : performance.now() / 1000; V.T = t;   // &t=6：停在第 6 秒（截图用）
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#06080e'; g.fillRect(0, 0, cv.width, cv.height);
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const M = Math.max(10, W * 0.02), narrow = W < H * 0.9, lit = ID_STATE.lit, pg = IDLE_C.findIndex(c => c.id === ID_STATE.page);
+  mzText('主角站着不动的时候', M, 40, narrow ? 20 : 26, '#e6ebf8', { w: 600 });
+  if (!narrow) mzText(pg < 0 ? '四种候选，各自一直循环。点一格放大；L 键换暗处 / 灯下。' : `${pg + 1} / ${IDLE_C.length}　点一下回总览；← → 翻页；L 键换暗处 / 灯下`, M + 260, 40, 14, '#8d99b8');
+  mzText(lit ? '灯下' : '暗处', W - M, 40, 14, lit ? '#e0b86a' : '#8d9acc', { al: 'right' });
+  if (pg < 0) {
+    const { cols, top, gap, cw, ch, txt, rh } = idleLay(), S = ch * 0.66 / 165;
+    IDLE_C.forEach((c, i) => {
+      const x0 = M + (i % cols) * (cw + gap), y0 = top + Math.floor(i / cols) * rh;
+      mzCell(x0, y0, cw, ch, { s: S, gy: 0.9, lit, draw: (b, P, l) => idleDraw(b, P, l, c, t) });
+      idleBar(x0, y0 + ch - 2, cw, c, t);
+      mzText(c.name, x0 + 2, y0 + ch + 22, narrow ? 15 : 17, c.col, { w: 700 });
+      mzWrap(c.line, x0 + 2, y0 + ch + 42, cw - 4, narrow ? 12 : 13, narrow ? 16 : 18, '#aab4d0');
+    });
+  } else {
+    const c = IDLE_C[pg], top = 62, ch = Math.min(H - top - 110, (W - 2 * M) * 0.75), cw = Math.min(W - 2 * M, ch * 1.3), x0 = (W - cw) / 2, S = ch * 0.7 / 165;
+    mzCell(x0, top, cw, ch, { s: S, gy: 0.9, lit, draw: (b, P, l) => idleDraw(b, P, l, c, t) });
+    idleBar(x0, top + ch - 3, cw, c, t);
+    mzText(c.name, x0, top + ch + 28, 20, c.col, { w: 700 });
+    mzWrap(c.line, x0, top + ch + 52, cw, 14, 20, '#aab4d0');
+  }
+  mzWrap('游戏里还没用上。先挑做哪一种（也可以几种混着来）；多久开始做、多久做一回，下一步再定。', M, narrow ? H - 30 : H - 12, W - 2 * M, narrow ? 12 : 13, 17, '#7f8aa8');
+}
+function idleLay() {   // 总览的格子怎么排（画和点共用）：宽屏一行四格，窄屏两行两格；每格下面留字的地方
+  const narrow = W < H * 0.9, cols = narrow ? 2 : 4, rows = narrow ? 2 : 1, M = Math.max(10, W * 0.02), top = 62, gap = 10, cw = (W - 2 * M - (cols - 1) * gap) / cols;
+  const txt = narrow ? 128 : 112, rh = (H - top - (narrow ? 52 : 30)) / rows, ch = Math.min(rh - txt, cw * 1.6);
+  return { narrow, cols, rows, M, top, gap, cw, ch, txt, rh };
+}
+function idleStart() {
+  paused = true; document.title = '夜里的房子 · 主角站着不动的时候';
+  for (const ev of ['pointerup', 'pointermove', 'pointercancel', 'touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'click', 'keyup', 'wheel', 'contextmenu']) addEventListener(ev, e => e.stopImmediatePropagation(), true);
+  const go = i => { ID_STATE.page = i < 0 || i >= IDLE_C.length ? 'all' : IDLE_C[i].id; }, cur = () => IDLE_C.findIndex(c => c.id === ID_STATE.page);
+  addEventListener('keydown', e => { e.stopImmediatePropagation(); const p = cur(); if (e.key === 'l' || e.key === 'L') ID_STATE.lit = !ID_STATE.lit; else if (e.key === 'ArrowRight' || e.key === 'd') go(p + 1); else if (e.key === 'ArrowLeft' || e.key === 'a') go(p < 0 ? IDLE_C.length - 1 : p - 1); else if (e.key === 'Escape' || e.key === ' ') go(-1); }, true);
+  addEventListener('pointerdown', e => {
+    e.stopImmediatePropagation();
+    const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    if (y < 52 && x > W * 0.8) { ID_STATE.lit = !ID_STATE.lit; return; }   // 点右上角“暗处 / 灯下”也能换
+    if (cur() >= 0) return go(-1);
+    const { cols, rows, M, top, gap, cw, rh } = idleLay(), ci = clamp(Math.floor((x - M) / (cw + gap)), 0, cols - 1), ri = clamp(Math.floor((y - top) / rh), 0, rows - 1); go(ri * cols + ci);
+  }, true);
+  buildTex(); const loop = () => { idleFrame(); requestAnimationFrame(loop); }; loop();
+}
 if (qs.has('monsters')) mzStart();   // 图鉴页：地址后面加 ?monsters=1
 if (qs.has('imps')) imStart();   // 小精灵图鉴页：地址后面加 ?imps=1
+if (qs.has('idle')) idleStart();   // 主角站着不动的时候（候选页）：地址后面加 ?idle=1
 </script>
 </body>
 </html>
