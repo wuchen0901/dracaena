@@ -1447,12 +1447,14 @@ function act22(s, spot, held, R = reachL(L22, s)) {
     // 木箱：压在盖板上的时候往右推开；推开了再推回盖板上，要盖板先合着（洞口开着，箱子压不住：气泡里画盖板）
     case 'eCrateH':
       if (held) return no('no');
+      if (s.eOut) return no('look');   // 后门开了，这一段的事做完了：木箱、盖板不再动（不然走到门口又回头把底下那件放出来，提示就没话可说了）
       if (s.eCrate === 0) { n.eCrate = 1; return ok('crateOff22'); }
       if (s.eHatch === 1) return no('holeOpen22');
       n.eCrate = 0; return ok('crateOn22');
     // 梯口盖板：木箱压着掀不动（气泡里画木箱）；掀开、合上
     case 'eHatchH':
       if (held) return no('no');
+      if (s.eOut) return no('look');
       if (s.eHatch === 1) { n.eHatch = 0; return ok('hatchDown22'); }
       if (s.eCrate === 0) return no('pinned22');
       n.eHatch = 1; return ok('hatchUp22');
@@ -1798,7 +1800,9 @@ const DYB = { x0: 73100, x1: 74200, rot0: 73520, rot1: 73740, pit0: 73400, pit1:
 // --- 22C ---
 // 库房：壁灯（lamp）；梯口盖板的中心（hx，盖板 120 宽）和梯子；木箱压在盖板上（crOn）、推开以后（crOff）的位置；盖板右边那条线（line：钥匙拿了以后，没压住就不敢过）；
 // 后门（door）和门前停住的地方（stop）、门外（out）；地窖（墙里 cx0–cx1）：钉子上的钥匙（key）、墙角挂围裙的钩子（hook）
-const DYC = { x0: 74200, x1: 75300, lamp: 74290, lampY: 770, hx: 74620, hw: 60, crOn: 74620, crOff: 74806, line: 74950, door: 75210, stop: 75166, out: 75290, cx0: 74260, cx1: 75260, key: 75080, hook: 75206 };
+const DYC = { x0: 74200, x1: 75300, lamp: 74290, lampY: 770, hx: 74620, hw: 60, crOn: 74620, crOff: 74806, line: 74950, door: 75210, stop: 75166, out: 75290, cx0: 74260, cx1: 75260, key: 75080, hook: 75206, celL: 74460, celR: 75130 };
+// celL、celR：地窖里孩子走得到的两头。左头到那几只小缸跟前为止，右头到钥匙再往里一点为止（再往里是墙角钩子底下的那摊墨，他不往里走）：
+// 这样他永远在那件围裙的左边，被扑倒的时候往左摔，不会摔进墙里
 // 屋子：x0..x1（隔墙 40 厚，两边各占一半），top 是天花板（门厅两层高，上到楼上的天花板）
 const ROOMS = {
   bedroom: { x0: 0, x1: 1400, fl: 'up', name: '卧室' },
@@ -1899,10 +1903,11 @@ const ROOMS = {
   dyBp: { x0: DYB.pit0 - 20, x1: DYB.pit1 + 20, fl: 'dyb', top: 1066, name: '染缸的坑' },
   // --- 22C ---
   dyC: { x0: DYC.x0, x1: DYC.x1, fl: 'down', top: 250, name: '库房' },
-  dyCc: { x0: DYC.cx0 - 20, x1: DYC.cx1 + 20, fl: 'dyc', top: 1066, name: '库房的地窖' },
+  dyCc: { x0: DYB.pit1 + 80, x1: DYC.cx1 + 20, fl: 'dyc', top: 1066, name: '库房的地窖' },   // 这张画往左多画一截土，一直接到染缸的坑的画（中间不留一条墙体的排线）；地窖自己的墙里是 DYC.cx0–cx1（见下面的 ix0）
 };
 for (const k in ROOMS) { const r = ROOMS[k], f = FL[r.fl]; Object.assign(r, { id: k, top: r.top ?? f.ceil, wb: f.wb, gy: f.gy, ff: f.ff, fr: f.fr, ix0: r.x0 + 20, ix1: r.x1 - 20 }); }
 ROOMS.jA.fr = ROOMS.jB.fr = 560;
+ROOMS.dyCc.ix0 = DYC.cx0;   // 第 22 关库房的地窖：画往左多画了一截土，屋子里面还是从左墙算起
 ROOMS.qbA.fr = 1480; ROOMS.zbA.fr = 1560;   // 五金店的地下室：画布往下多留一截（地下室底下的土；人在地下室的时候镜头看得到这么低）
 const roomAt = (x, y) => Object.values(ROOMS).find(r => x >= r.x0 && x < r.x1 && y >= r.top - 40 && y <= r.fr + 40) || null;
 // 隔墙上的门洞（门框 26 宽），门厅里的楼梯，厨房地板上的地窖口
@@ -1960,7 +1965,7 @@ const NODES = [[60, 240], [2900, 240], [3300, 620], [2900, 1000], [60, 1000], [L
   [Q4.hx, FL.down.gy], [Q4.hx, FL.qb.gy], [Q4.x0 + 24, FL.qb.gy], [Q4.x1 - 24, FL.qb.gy], [CK.foot, FL.down.gy], [CK.top, FL.ck.gy], [CK.x1 - 24, FL.ck.gy], [ZB.top, FL.down.gy], [ZB.bot, FL.zb.gy], [ZB.x0 + 24, FL.zb.gy], [ZB.x1 - 24, FL.zb.gy], [GL.lad1, FL.down.gy], [GL.lad1, FL.gm.gy], [GL.lad2, FL.gm.gy], [GL.lad2, FL.down.gy]];   // 29–32：第 8 关器材室的梯子脚（左）、夹层左头、夹层右头、梯子脚（右）   // 25–28：第 5 关楼道口的地下室楼梯顶、楼梯脚、地下室两头   // 22–24：第 4 关钟表店的外楼梯脚、楼梯顶（二楼门口的平台）、二楼工作间的右头   // 11 号点以后：楼梯顶、软梯下、软梯上、钟房尽头；6 号点：地下那一层走到隧道口；10、11：斜坡爬到街面、街面走到铁塔底下；18–21：第 4 关的地窖口、梯子脚、地下室两头
 // 第 22 关染坊（2026-11-26）：33 号点进门、34 库房的梯口（梯子顶）、35 后门外面、36 梯子脚、37 和 38 地窖两头。31 号路是地面从进门到梯口（A、B 两间和库房的左半）、32 号路从梯口到后门外、
 // 33 号路是梯子、34 和 35 号路是地窖（梯子脚往左、往右）。A、B 两段要加点、加路的话接着往后 push、往 EDGES 的末尾加（别改这几个的号）
-NODES.push([DY.x0 + 70, FL.down.gy], [DYC.hx, FL.down.gy], [DY.end, FL.down.gy], [DYC.hx, FL.dyc.gy], [DYC.cx0 + 30, FL.dyc.gy], [DYC.cx1 - 30, FL.dyc.gy]);
+NODES.push([DY.x0 + 70, FL.down.gy], [DYC.hx, FL.down.gy], [DY.end, FL.down.gy], [DYC.hx, FL.dyc.gy], [DYC.celL, FL.dyc.gy], [DYC.celR, FL.dyc.gy]);
 const DYE = { main: 31, back: 32, lad: 33, celL: 34, celR: 35 };
 // 5 号路原来是一整条（门厅一直到隧道口），2026-11-24 在第 4 关的地窖口（18 号点）断成两段：5 号路到地窖口为止，16 号路从地窖口接着往右。
 // 只认 5 号路的地方（门、回不去的墙）都改成认 STREET_E；GATEPOS 里在地窖口右边的，下面挪到 16 号路上
@@ -10027,8 +10032,19 @@ const DY_LID = { D: HOLE.y1 - HOLE.y0, H: 104, th: 7, open: 1.75, high: 0.35 }; 
 const dyLidAng = () => { const c = V.dy.c; return Math.max(smooth(c.lid) * DY_LID.open, c.lidJ); };
 // 孩子正在梯口里（梯子上）：立着的盖板在他后面
 const dyKidInHole = () => kid.kind === 'ladder' && Math.abs(kid.x - DYC.hx) < 8;
-// 钻过楼板的时候，楼板挡住的那一截不画（洞口前沿以上、地窖的天花板以下看得见）
-function dyHoleClip(b, x) { b.beginPath(); b.rect(x - 300, HOLE.y1 - 3000, 600, 3000); b.rect(x - 300, ROOMS.dyCc.top, 600, 3000); b.clip(); }
+// 钻过楼板的时候，楼板挡住的那一截不画（洞口前沿以上、地窖的天花板以下看得见）。
+// gap：盖板没掀开的时候，地面以上只有盖板前沿底下那条缝里看得见（dyLidGap；null 就是一点都看不见）——不然它在盖板底下举着的手会从合着的盖板上面露出来
+function dyHoleClip(b, x, gap) {
+  b.beginPath();
+  if (gap === undefined) b.rect(x - 300, HOLE.y1 - 3000, 600, 3000); else if (gap) b.rect(x - DYC.hw, gap[0], DYC.hw * 2, gap[1] - gap[0]);
+  b.rect(x - 300, ROOMS.dyCc.top, 600, 3000); b.clip();
+}
+// 盖板前沿在画面上的 y（合着是洞的前沿，掀起来往上走）；盖板前沿底下那条缝 [上, 下]（没有缝是 null）
+const dyLidFrontY = () => { const a = dyLidAng(); return HOLE.y0 + Math.cos(a) * DY_LID.D - Math.sin(a) * DY_LID.H; };
+function dyLidGap() { const top = Math.max(HOLE.y0, dyLidFrontY() + DY_LID.th * Math.abs(Math.cos(dyLidAng()))); return top < HOLE.y1 - 0.5 ? [top, HOLE.y1] : null; }
+// 洞口的前沿在它身上多高（它自己的坐标：脚底是 0，往上是负的）；两只手撑不撑在洞沿上（0…1）：身子还在底下够不着是 0，够得着是 1，身子出来大半了手放下来又是 0
+const dyRimOf = fy => HOLE.y1 - 4 - fy + 6;
+const dyRimReach = fy => { const r = dyRimOf(fy); return smooth((r + 236) / 40) * (1 - smooth((r + 96) / 50)); };
 function dyDrawC(b, P, lit, vis) {
   const c = V.dy.c, m = V.mon.dyc, F = FL.down, gy = F.gy, gyC = FL.dyc.gy, lc = lcOf(P, lit), hx = DYC.hx, hw = DYC.hw, { y0, y1 } = HOLE, T = V.T, a = dyLidAng();
   const inHole = dyInHole();
@@ -10059,7 +10075,7 @@ function dyDrawC(b, P, lit, vis) {
       part(b, rectPts(hx - 30, y0 + 16, 60, 7), P.woodHi, { w: 0.8, tex: 0, lc, seed: 883110 });
       const g2 = b.createLinearGradient(0, y0, 0, y1); g2.addColorStop(0, rgba('#000000', 0)); g2.addColorStop(1, rgba('#000000', 0.55)); b.fillStyle = g2; b.fillRect(hx - hw, y0, hw * 2, y1 - y0);
       // 合着的时候被顶得跳起来：缝里是眼睛（只在暗的一层）
-      if (!lit && c.st === 'under' && c.lidJ > 0.05 && c.lid < 0.05) { const yF = y0 + Math.cos(a) * DY_LID.D - Math.sin(a) * DY_LID.H, ym = (yF + y1) / 2 + 2, k = clamp((y1 - yF) / 16, 0, 1); inkEyes(b, [[hx - 22, ym, 3.4 * k], [hx + 4, ym + 1, 2.8 * k], [hx + 27, ym - 1, 2.1 * k]], 1); }
+      if (!lit && c.st === 'under' && c.lidJ > 0.05 && c.lid < 0.05) { const yF = y0 + Math.cos(a) * DY_LID.D - Math.sin(a) * DY_LID.H, ym = (yF + y1) / 2 + 2, k = clamp((y1 - yF) / 16, 0, 1); inkEyes(b, [[hx - 24, ym, 4.4 * k], [hx + 27, ym - 1, 3.4 * k], [hx - 44, ym + 2, 2.6 * k]], 1); }
       b.restore();
       ink(b, [[hx - hw, y0], [hx + hw, y0]], { w: 1, col: lc, taper: 0, seed: 883120 }); ink(b, [[hx - hw, y1], [hx + hw, y1]], { w: 1.1, col: lc, taper: 0, seed: 883121 });
       ink(b, seg(hx - hw, y0, hx - hw, y1), { w: 0.8, col: lc, taper: 0, seed: 883122 }); ink(b, seg(hx + hw, y0, hx + hw, y1), { w: 0.8, col: lc, taper: 0, seed: 883123 });
@@ -10067,11 +10083,15 @@ function dyDrawC(b, P, lit, vis) {
   }
   // 梯口这一组（它在梯口里的时候、盖板、搭在洞沿上的手、墨）：盖板合着、刚掀起来一点，或者孩子正在梯口里，就画在孩子后面；盖板立起来了，画在孩子前面（dyDrawFrontC）
   if (a <= DY_LID.high || dyKidInHole()) dyHatchGroup(b, P, lit, vis, a, inHole);
-  if (!lit && !inHole && c.grow > 0.01 && c.st !== 'hung' && c.st !== 'wake') dyDrawMonC(b, P, false);   // 它在地上走着（地窖里、库房里）：在孩子后面
+  if (!lit && !inHole && !dyMonFront() && c.grow > 0.01 && c.st !== 'hung' && c.st !== 'wake') dyDrawMonC(b, P, false);   // 它在地上走着（地窖里、库房里）：在孩子后面
 }
+// 它刚从梯口里出来、正要回梯口去，人还在立着的盖板跟前：接着画在盖板前面（它是从盖板前面的洞里出来的；一出来就画到盖板后面去，下半身会“啪”地一下被盖板挡住）。
+// 走出盖板那么宽以后（和盖板不挨着了）才换到后面那一层
+function dyMonFront() { const c = V.dy.c, m = V.mon.dyc; return (c.st === 'out' || c.st === 'back') && Math.abs(m.x - DYC.hx) < DYC.hw + 42 && dyLidAng() > DY_LID.high; }
 function dyDrawFrontC(b, P, lit, vis) {   // 画在孩子前面的：立起来的盖板（孩子从它后面走过去）、从梯口里爬出来的它、木箱
   const c = V.dy.c, a = dyLidAng(), inHole = dyInHole();
   if (a > DY_LID.high && !dyKidInHole()) dyHatchGroup(b, P, lit, vis, a, inHole);
+  if (!lit && !inHole && dyMonFront() && c.grow > 0.01) dyDrawMonC(b, P, false);
   if (vis.dyC) dyCrate(b, P, lit, dyCrateX(), c.crJ);
 }
 const dyInHole = () => { const st = V.dy.c.st; return st === 'climb' || st === 'under' || st === 'rim' || st === 'heave' || st === 'knock' || st === 'sink' || st === 'descend'; };
@@ -10084,8 +10104,9 @@ function dyHatchGroup(b, P, lit, vis, a, inHole) {
   if (c.lid > 0.9) fig();
   if (!vis.dyC) return;
   // 手先搭上洞沿（它要出来了）：两只胶皮手套的手指扣在洞口的前沿上
-  if (!lit && (c.st === 'rim' || (c.st === 'heave' && c.t < 0.3))) {
-    const k = c.st === 'rim' ? smooth(c.t / 0.25) : 1; b.save(); b.globalAlpha *= k; b.seedN = 883200;
+  const grip = lit ? 0 : c.st === 'rim' ? smooth(c.t / 0.25) : c.st === 'heave' || c.st === 'descend' ? smooth(dyRimReach(V.mon.dyc.fy) * 2 - 0.6) : 0;
+  if (grip > 0.02) {
+    const k = grip; b.save(); b.globalAlpha *= k; b.seedN = 883200;
     for (const s of [-1, 1]) { const px = hx + s * 30 - 4;
       part(b, tube([[px, y1 - 22], [px + s * 2, y1 - 8], [px + s * 3, y1 + 1]], [13, 14, 15]), P.dyGlove, { w: 0.8, tex: 0.2, lc, seed: 883201 + s });
       for (let i = -1; i <= 1; i++) ink(b, [[px + s * 3 + i * 5, y1 - 2], [px + s * 3 + i * 5.5, y1 + 8 + Math.sin(T * 9 + i + s) * 1.2]], { col: INK, w: 3.4 / b.pen.w, a: 1 / b.pen.a, taper: 0, seed: 883210 + s * 3 + i }); }
@@ -10117,6 +10138,7 @@ function dyLid(b, P, lit, a) {
       hatch(b, k => k.rect(x0, yF, hw * 2, y0 - yF), [hx + 6, yF, hw - 6, y0 - yF], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 18, seed: 883436 }); }
   }
   if (a > 0.03 && a < 1.25) part(b, rectPts(x0, yF, hw * 2, th * Math.abs(Math.cos(a))), P.dyLidLo, { w: 0.8, tex: 0, lc, seed: 883440 });   // 前沿的厚度
+  for (const px of [x0 + 18, x1 - 18]) part(b, rectPts(px - 7, y0 - 4, 14, 8), P.dyBand, { w: 0.7, tex: 0, lc, seed: 883445 + (px > hx ? 1 : 0) });   // 后沿的两只合页（盖板是绕着洞的后沿掀起来的）
 }
 // 木箱：装布匹的大木箱，铁皮包角，一根绳把手，箱口露着两卷布。x 是箱子的中心；jump 是被底下顶得跳起来多高
 function dyCrate(b, P, lit, x, jump) {
@@ -10159,9 +10181,10 @@ function dyHungApron(b, P, lit, x, gy, wake) {
   b.restore();
 }
 // 它立起来的样子（只画在暗的一层）：围裙底下灌满了墨。头上包着一块头巾，领口里是墨和三只眼睛；两条胳膊套着长胶皮手套。
-// o.walk 走着（0…1）；o.climb 在梯子上（两只手一上一下换着抓）；o.push 两只手往上顶（0…1）；o.grow 从一摊长起来几成
+// o.walk 走着（0…1）；o.climb 在梯子上（两只手一上一下换着抓）；o.push 两只手往上顶（0…1）；o.grow 从一摊长起来几成；
+// o.rimK 两只手撑在洞沿上几成（o.rim 是洞沿在它身上多高：手留在洞沿上不动，身子往上升、往下沉）；o.leanK 身子往后仰几成（钻在洞里的时候是直的）
 function dyApronFig(b, P, x, fy, f, t, m, seed, o) {
-  const lc = DARK.ink, ph = m.ph * 2.2, w = o.walk || 0, sw = Math.sin(ph) * 16 * w, bob = Math.abs(Math.sin(ph)) * 3 * w, lean = o.climb ? 0 : -0.05 * w - 0.08 * m.hunt, gr = o.grow ?? 1;
+  const lc = DARK.ink, ph = m.ph * 2.2, w = o.walk || 0, sw = Math.sin(ph) * 16 * w, bob = Math.abs(Math.sin(ph)) * 3 * w, lean = o.climb ? 0 : (-0.05 * w - 0.08 * m.hunt) * (o.leanK ?? 1), gr = o.grow ?? 1;
   b.save(); b.translate(x, fy); b.scale(1, 0.3 + 0.7 * gr); b.translate(0, -6 - bob); b.scale(f, 1); b.rotate(lean); b.seedN = seed;
   if (o.shadow) { b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(2, 12 + bob, 40, 5, 0, 0, 7); b.fill(); }
   // 围裙后面的墨（身子）、脚
@@ -10173,10 +10196,11 @@ function dyApronFig(b, P, x, fy, f, t, m, seed, o) {
     if (o.push > 0.01) { ex = lerp(s * 14, s * 20 + 6, o.push); ey = lerp(-128, -176, o.push); hx = lerp(s * 10 + 14, s * 22 + 8, o.push); hy = lerp(-100, -212 - Math.sin(t * 30) * 2 * o.push, o.push); }
     else if (o.climb) { const u = (Math.sin(o.climbPh * TAU + (s > 0 ? 0 : Math.PI)) + 1) / 2; ex = s * 18 + 4; ey = -168 - u * 14; hx = s * 26 + 2; hy = -206 - u * 30; }
     else { const rk = s > 0 ? m.reach : m.reach * 0.5; ex = lerp(-s * sw * 0.5 + 12, 40, rk); ey = lerp(-112 + Math.abs(sw) * 0.2, -134, rk); hx = lerp(-s * sw * 0.8 + 16, 78, rk); hy = lerp(-78, -128, rk); }
+    if (o.rimK > 0.01) { const k = o.rimK, ry = clamp(o.rim, -216, -30); ex = lerp(ex, s * 27 + 1, k); ey = lerp(ey, Math.min(-92, (sy + ry) / 2 + 12), k); hx = lerp(hx, s * 31, k); hy = lerp(hy, ry, k); }   // 手撑在洞沿上
     part(b, tube([[sx, sy], [(sx + ex) / 2 + 2, (sy + ey) / 2], [ex, ey]], [13, 12, 12]), s > 0 ? P.dyRubHi : P.dyRub, { w: 0.9, tex: 0.3, lc });   // 上臂（围裙的肩带底下露出来的墨色袖子）
     part(b, tube([[ex, ey], [(ex + hx) / 2, (ey + hy) / 2], [hx, hy]], [13, 12, 11]), P.dyGlove, { w: 0.9, tex: 0.3, lc });   // 长手套
     part(b, arcPts(hx + (hx - ex) * 0.12, hy + (hy - ey) * 0.12, 7, 8, 0, TAU, 10), INK, { w: 0.5, tex: 0, lc });
-    if (!o.climb && !(o.push > 0.01)) inkDrips(b, [[hx, hy + 6, 10 + 5 * Math.sin(t * 2 + s)]], seed + 70 + s);
+    if (!o.climb && !(o.push > 0.01) && !(o.rimK > 0.3)) inkDrips(b, [[hx, hy + 6, 10 + 5 * Math.sin(t * 2 + s)]], seed + 70 + s);
   };
   arm(-1);
   // 围裙：从脖子一直盖到脚面，下摆宽
@@ -10202,10 +10226,13 @@ function dyApronFig(b, P, x, fy, f, t, m, seed, o) {
 function dyDrawMonC(b, P, inHole) {   // 它现在在哪儿、什么姿势
   const c = V.dy.c, m = V.mon.dyc, T = V.T, hx = DYC.hx, st = c.st, seed = 887500;
   b.save();
-  if (inHole) dyHoleClip(b, hx);
+  if (inHole) dyHoleClip(b, hx, c.lid > 0.9 ? undefined : dyLidGap());
   const onFloor = st === 'chase' || st === 'out' || st === 'back' || st === 'wait' || st === 'drop';
-  const push = st === 'under' ? clamp(0.55 + c.lidJ * 3, 0, 1) : st === 'rim' ? 0.75 : st === 'heave' ? 0.75 * (1 - clamp(c.t / 0.3, 0, 1)) : 0;
-  dyApronFig(b, P, m.x, m.fy, m.face, T, m, seed, { walk: m.run || 0, climb: st === 'climb' || st === 'descend' || st === 'sink' || (st === 'heave' && c.t > 0.3), climbPh: m.fy / 60, push, grow: c.grow, shadow: onFloor });
+  const push = st === 'under' ? clamp(0.55 + c.lidJ * 3, 0, 1) : 0, rim = dyRimOf(m.fy), reach = dyRimReach(m.fy);
+  // 在梯口里：身子还在底下，两只手一上一下抓着梯子；够得着洞沿了（盖板开着），两只手撑在洞沿上，身子往上升；出来大半了手放下来。往下爬是倒过来的
+  const rimK = st === 'rim' ? Math.max(reach, smooth(c.t / 0.15)) : st === 'heave' || st === 'descend' || (st === 'climb' && S.eHatch) ? reach : 0;
+  const climb = st === 'knock' || ((st === 'climb' || st === 'descend' || st === 'sink' || st === 'heave') && rim < -150);
+  dyApronFig(b, P, m.x, m.fy, m.face, T, m, seed, { walk: m.run || 0, climb, climbPh: m.fy / 60, push, rim, rimK, leanK: inHole ? smooth((rim + 46) / 60) : 1, grow: c.grow, shadow: onFloor });
   b.restore();
 }
 // ---------- 页面里的状态和时间 ----------
@@ -10237,8 +10264,26 @@ function dyRespawn() {   // 被抓住、回到灯底下以后（respawn 的最�
   // --- 22C ---
   dyRestC();
 }
+// 手正伸着（合盖板的那一下、掀不动的那一下）的时候点了木箱：全游戏的规矩是手没收回来点别的不算，可是这儿“合上盖板马上推木箱”是抢时间的，
+// 点了没反应太冤——记着这一下（只记木箱，只记 0.7 秒），手一收回来就照点了一下那样去推
+function dyTapLater(wx, wy) {
+  if (!DY_ON || !V.dy || kid.mode !== 'reach') return;
+  const sp = spotAt(wx, wy); if (sp && sp.id === 'eCrateH') V.dy.tapQ = { x: wx, y: wy, t: V.T };
+}
+// 同一件事的前半截：点了盖板、人还在往盖板跟前走（从梯子口走到洞的右边要零点八秒），这时候点了木箱。照全游戏的规矩是改道去木箱那儿——
+// 盖板就没合上，木箱也推不过去（气泡里画盖板），白白丢两三秒，正够它爬出来把孩子堵在右边。这儿不改道：记着这一下（lid），盖板合上、手收回来就去推（tapWorld 里问）
+const DY_LID_STAND = DYC.hx + DYC.hw + 44;   // 掀、合盖板的时候站在哪儿（洞的右边）
+function dyTapHold(sp, wx, wy) {
+  if (!DY_ON || !V.dy || sp.id !== 'eCrateH' || S.eHatch !== 1 || S.eKey !== 'inv' || kid.mode !== 'walk' || !kid.onArrive || !kid.path.length) return false;
+  const q = kid.path[kid.path.length - 1]; if (Math.abs(q.x - DY_LID_STAND) > 1 || Math.abs(q.y - FL.down.gy) > 1) return false;   // 不是正往盖板跟前走
+  V.dy.tapQ = { x: wx, y: wy, t: V.T, lid: 1 }; return true;
+}
 function dyUpdate(dt) {   // 每一帧（tick 里，在 garbUpdate 前面）
   if (!DY_ON || !V.dy) return;
+  if (V.dy.tapQ) {   // 记着的那一下：手一收回来就照点了一下那样去推。lid 的那一种要等人站定（走到了、手伸过了、收回来了），盖板真的合上了才算（没合上：半路被吓退、被抓、它已经出来了，就不算了）
+    const q = V.dy.tapQ;
+    if (q.lid ? kid.mode === 'idle' : !busy()) { V.dy.tapQ = null; if (!won && (q.lid ? S.eHatch === 0 && V.T - q.t < 4 : V.T - q.t < 0.7)) tapWorld(q.x, q.y); }
+  }
   // --- 22A ---
   // （称布间：还没做）
   // --- 22B ---
@@ -10247,6 +10292,19 @@ function dyUpdate(dt) {   // 每一帧（tick 里，在 garbUpdate 前面）
   dyUpdateC(dt);
   // 走出后门（只有 ?lv=22 进得来，这就是通关）
   if (S.eOut && !won && kid.x > DYC.door + 44 && kid.mode !== 'caught') { won = 1; wonT = V.T; snd.win(); }
+}
+// 镜头（camTarget 里）：平常跟着孩子走。cy 是平常的镜头顶；这一关有的时候要往下多看一截，返回要的镜头顶
+function dyCamY(cy) {
+  // --- 22A ---
+  // （称布间：还没做）
+  // --- 22B ---
+  // （染缸间：还没做）
+  // --- 22C ---
+  // 库房：底下那件醒着、还没被关住的时候，孩子站在上面也把地窖看在眼里——它走到梯子脚、往上爬、在盖板底下顶、顶不动了爬下去，都看得见
+  // （不然只听见梯子响、盖板跳，看不见是什么在底下）。镜头底刚好到地窖地面的前沿底下一点（再往下，孩子头顶的气泡就顶到物品栏了）；
+  // 窗口矮的时候至少留着上面的壁灯和孩子头顶的气泡；窗口高（手机竖着）本来就都看得见，不动
+  if (dyWatchC()) cy = Math.max(cy, Math.min(FL.dyc.gy + 70 - VHH, FL.down.gy - 360));
+  return cy;
 }
 // 孩子现在站在哪一块（规则里的分块；提示、点东西的时候把他站的这一块算进去）：e0 进门 |A 的闸门| e1 |B 的烂地板| e2 库房 |盖板右边那条线| e3 后门；ek 是地窖（梯子上也算）
 function dyZoneAt(x = kid.x, y = kid.y) {
@@ -10311,12 +10369,13 @@ function drawDyGlow() {   // 盖在两层上面的（drawOverlays 里）
 }
 // ----- C 段：库房的盖板、木箱，地窖里的胶皮围裙 -----
 // 它的数：speed 在地上追多快（孩子小跑 360，比它快）；climb、down 爬梯子上去、下来多快；tell 醒过来的预兆几秒；rim 手搭上洞沿到爬出来几秒；heave 爬出洞口几秒；
-// first、thump 爬到盖板底下以后过多久顶第一下、一下隔多久；near 孩子离开着的洞口多近它就往上爬；linger 在上面够不着孩子了多久回去；stun 被盖板磕下去愣多久；topDy 头顶到盖板的时候脚比地面低多少
-const DYM = { speed: 150, climb: 95, down: 170, tell: 1.4, rim: 0.8, heave: 0.7, first: 0.8, thump: 1.4, near: 200, linger: 3.2, stun: 0.7, topDy: 214 };
-const dyInitC = () => ({ st: 'hung', t: 0, grow: 0, lid: 0, fast: 0, lidJ: 0, jT: -10, jA: 0, crT: 0, crJ: 0, cT: -10, cA: 0, door: 0, thumps: 0, muf: 0, next: 0, quiet: 0, seep: 0, idle: 0, quick: 0, rungT: 0, ink: [] });
+// first、thump 爬到盖板底下以后过多久顶第一下、一下隔多久；near 孩子离开着的洞口多近它就往上爬；linger 在上面够不着孩子了多久回去；stun 被盖板磕下去愣多久；topDy 头顶到盖板的时候脚比地面低多少；
+// pinned、muf、settle 木箱压上以后过多久闷闷地顶第一下、一下隔多久（比没压住的时候急、也弱）、顶完第三下过多久算安静了（从压上到孩子敢往后门走一共 pinned + muf × 2 + settle ≈ 2.9 秒；原来照 thump 的间隔要等 4 秒多）
+const DYM = { speed: 150, climb: 95, down: 170, tell: 1.4, rim: 0.8, heave: 0.7, first: 0.8, thump: 1.4, near: 200, linger: 3.2, stun: 0.7, topDy: 214, pinned: 0.45, muf: 0.9, settle: 0.6 };
+const dyInitC = () => ({ st: 'hung', t: 0, grow: 0, lid: 0, fast: 0, lidJ: 0, jT: -10, jA: 0, crT: 0, crJ: 0, cT: -10, cA: 0, door: 0, thumps: 0, muf: 0, pin: 0, next: 0, quiet: 0, seep: 0, idle: 0, quick: 0, rungT: 0, ink: [] });
 function dyPutC(st) {   // 把它摆到某个样子的起点（梯子脚、钩子上）
   const c = V.dy.c, m = V.mon.dyc;
-  Object.assign(c, { st, t: 0, thumps: 0, muf: 0, idle: 0, quick: 0, next: V.T + DYM.first, grow: st === 'hung' ? 0 : 1 });
+  Object.assign(c, { st, t: 0, thumps: 0, muf: 0, pin: 0, idle: 0, quick: 0, next: V.T + DYM.first, grow: st === 'hung' ? 0 : 1 });
   Object.assign(m, { x: st === 'hung' ? DYC.hook : DYC.hx, fy: FL.dyc.gy, face: st === 'hung' ? -1 : 1, hunt: 0, reach: 0, rise: 0, want: 0, run: 0, mv: 0, dr: 0 });
 }
 function dySnapC() {   // 照规则里的局面摆：钥匙没拿，它挂着；拿了：盖板开着它守在梯子脚，合着、压住了它安静着，合着、没压住它正往上爬（要顶了）
@@ -10330,11 +10389,17 @@ function dyRestC() {   // 被抓住以后：醒着的回到梯子脚（做过的
 }
 // 它是不是在上面（库房的地上，或者已经探出大半个身子）：这时候盖板、木箱碰不得
 function dyMonUp() { const c = V.dy.c, m = V.mon.dyc; return c.st === 'out' || c.st === 'back' || (c.st === 'heave' && c.t / (c.quick ? 0.5 : DYM.heave) > 0.55) || (c.st === 'descend' && m.fy < FL.down.gy + 150); }
+// 底下那件醒着、还没被关住（压住了也要等它爬下去站定），孩子人在库房这一头：镜头把地窖也看在眼里（dyCamY）
+const dyWatchC = () => S.eKey === 'inv' && V.dy.c.st !== 'quiet' && kid.x > DYC.x0 - 60;
 function dyWakeC() { const c = V.dy.c; if (c.st !== 'hung') return; c.st = 'wake'; c.t = 0; snd.creak(); }   // 钥匙一拿：钩子吱呀一声，它醒了
 function dyOnHatch(ev) {   // 盖板合上的那一下：它正探出头来，就被磕下去
   const c = V.dy.c;
   if (ev === 'hatchDown22') { snd.dySlam(); if (inView(DYC.hx, FL.down.gy, 200)) puff(DYC.hx, FL.down.gy + 20, [130, 138, 158], 10); if (c.st === 'rim' || c.st === 'heave') { c.st = 'knock'; c.t = 0; } }
   else snd.hatch();
+}
+function dyHatchHit(r) {   // 手碰到盖板的那一下再问一遍规则（伸手要零点几秒：这当口它可能已经爬出来了，盖板也可能刚被顶开）。现在还做得成同一件事才算，不然手缩回来
+  const r2 = ACT(S, 'eHatchH', null);
+  if (r2.s && r2.s.eHatch === r.s.eHatch) commit(r2); else snd.no();
 }
 function dyPushCrate(r) {   // 推木箱：推开（往右）/ 推回盖板上（往左）。推到头才算（半路上盖板被顶开了就不算了：照现在的局面再问一遍规则）
   const c = V.dy.c, to = r.s.eCrate, t0 = c.crT;
@@ -10346,8 +10411,8 @@ function dySpotsC(add, out) {
   // 木箱排在盖板前面：箱子压着盖板的时候，点在箱子上算点箱子，点在露出来的盖板边上才算点盖板。near：算“在不在跟前”量到箱子上，不量到站的地方
   add('eCrateH', [cx - 56, dn - 82, cx + 56, dn + 34], cx + (on ? -76 : 76), 'down', on ? 1 : -1, [cx + (on ? -44 : 44), dn - 56]); out.at(-1).near = [clamp(kid.x, cx - 76, cx + 76), dn];
   // 盖板：站在洞的右边掀、合。掀开以后：钥匙还没拿，只点立着的那块板才是合（点洞里是下去，见 dyHoleTap）；拿了钥匙，点在板上、洞里都是合（要抢时间）
-  add('eHatchH', !S.eHatch ? [hx - hw - 4, dn - 2, hx + hw + 4, dn + 46] : S.eKey === 'nail' ? [hx - hw - 4, dn - 108, hx + hw + 4, dn + 2] : [hx - hw - 4, dn - 108, hx + hw + 4, dn + 46], hx + hw + 38, 'down', -1, S.eHatch ? [hx + hw - 6, dn - 90] : [hx + hw - 20, dn + 22]);
-  out.at(-1).near = [clamp(kid.x, hx - hw, hx + hw + 38), dn];
+  add('eHatchH', !S.eHatch ? [hx - hw - 4, dn - 2, hx + hw + 4, dn + 46] : S.eKey === 'nail' ? [hx - hw - 4, dn - 108, hx + hw + 4, dn + 2] : [hx - hw - 4, dn - 108, hx + hw + 4, dn + 46], DY_LID_STAND, 'down', -1, S.eHatch ? [hx + hw - 6, dn - 90] : [hx + hw - 20, dn + 22]);
+  out.at(-1).near = [clamp(kid.x, hx - hw, DY_LID_STAND), dn];
   if (S.eKey === 'nail') add('eKeyH', [DYC.key - 28, gyC - 200, DYC.key + 26, gyC - 110], DYC.key - 36, 'dyc', 1, [DYC.key - 4, gyC - 150]);
   if (!S.eOut) add('eDoorH', [DYC.door - 30, dn - DOOR_H - 8, DYC.door + 30, FL.down.ff], DYC.stop - 2, 'down', 1, [DYC.door - 10, dn - 104]);
 }
@@ -10377,20 +10442,27 @@ function dyMonC(k, G, m, dt, T, calm, kidLit) {
   const c = V.dy.c, M = DYM, gyU = FL.down.gy, gyC = FL.dyc.gy, hx = DYC.hx, topY = gyU + M.topDy, x0 = m.x, hy = m.fy - G.h * 0.8;
   const onC = kid.kind === 'floor' && Math.abs(kid.y - gyC) < 2 && kid.x > DYC.cx0 - 40 && kid.x < DYC.cx1 + 40;   // 孩子在地窖里
   const onU = Math.abs(kid.y - gyU) < 2 && kid.x > DYC.x0 - 40;   // 孩子在库房的地上（站在梯子口也算）
-  const onL = kid.kind === 'ladder' && Math.abs(kid.x - hx) < 6 && kid.y > gyU + 2;   // 孩子在梯子上（已经下到地板底下了）
+  const onL = kid.kind === 'ladder' && Math.abs(kid.x - hx) < 8 && kid.y > gyU + 2;   // 孩子在梯子上（已经下到地板底下了；拖着走上梯子的时候人可以偏开梯子正中几个像素）
   const go = st => { c.st = st; c.t = 0; };
   const walk = (tx, sp) => { const d = tx - m.x, s = Math.min(Math.abs(d), sp * dt); if (s > 0) { m.x += Math.sign(d) * s; m.ph += s / 60; m.face = Math.sign(d); } return Math.abs(tx - m.x) < 0.5; };
-  // 碰到了没有：同一层的地上离得不到 40（在上面还要孩子不在光里）；梯子上，它的头够得着孩子的脚
-  const hit = () => !calm && ((onC && m.fy > gyC - 2 && Math.abs(kid.x - m.x) < 40) || (onU && m.fy < gyU + 2 && !kidLit && Math.abs(kid.x - m.x) < 40) || (onL && Math.abs(m.x - hx) < 50 && kid.y > m.fy - 215 && kid.y < m.fy + 120));
+  // 碰到了没有：同一层的地上离得不到 40（在上面还要孩子不在光里）；梯子上，它的头够得着孩子的脚——要它自己也在梯子上（走到梯子脚、两只手抓上梯子了才算；
+  // 原来离梯子 50 以内就算：它还站在梯子旁边的地上，手朝前伸着够不着，孩子在它头顶上就被抓了，看着冤）
+  const hit = () => !calm && ((onC && m.fy > gyC - 2 && Math.abs(kid.x - m.x) < 40) || (onU && m.fy < gyU + 2 && !glow && Math.abs(kid.x - m.x) < 40) || (onL && Math.abs(m.x - hx) < 2 && kid.y > m.fy - 215 && kid.y < m.fy + 120));
+  // 在上面，光圈就是界线（看得见的那一圈，照到半成就算）：孩子站在光圈里它就不追（glow：全游戏的 kidLit 要照到四成五，光圈的外沿不算——
+  // 在这儿那样的话，孩子逃到光圈边上、看着是亮的，照样被它够着）；它自己走到光圈外面为止（dark：前面 50 远、头那么高的地方照不到半成才往前挪），
+  // 整个身子在暗处。两个数是量着配的：它停住的地方离光圈里最靠外的孩子 37，够不着（40 才够得着）；孩子一出光圈它就够得着，不会僵在那儿
+  const glow = kidLit || coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.05;
+  const dark = (x, dir) => coverage(x + dir * 50, gyU - G.h * 0.8, LT) < 0.05;
   const rung = () => { if (T - c.rungT > 0.36) { c.rungT = T; if (inView(hx, m.fy - 100, 300)) snd.rung(); } };
   let near = 0, hunting = false;
-  c.t += dt; m.mv = 0; m.dr = 0; m.want = c.st === 'hung' ? 0 : 1;
-  switch (c.st) {
+  const got = kid.mode === 'caught';   // 抓住他了：孩子倒下、墨涌上来的那一秒多它停在原处不动（不然在梯子上它接着往上爬，从孩子身上穿过去）；回到灯下以后它回梯子脚（dyRestC）
+  if (!got) c.t += dt; m.mv = 0; m.dr = 0; m.want = c.st === 'hung' ? 0 : 1;
+  if (!got) switch (c.st) {
     case 'hung': m.x = DYC.hook; m.fy = gyC; c.grow = 0; break;
     case 'wake': if (c.t >= M.tell) { go('drop'); if (inView(m.x, hy, 200)) snd.rise(); } break;   // 预兆：钩子吱呀、领口里睁开眼、身子抖（dyHungApron 里画）
     case 'drop': c.grow = smooth(c.t / 0.45); m.x = DYC.hook - 26 * ease(c.t / 0.45); m.face = -1; if (c.t >= 0.45) go('chase'); break;
     case 'chase':   // 在地窖里：孩子在地窖里就追他；他上了梯子、上去了，就走到梯子脚、跟着爬
-      hunting = onC && !calm;
+      hunting = (onC || onL) && !calm;   // 孩子上了梯子它也还在追（眼睛接着红着）
       if (!calm) { const at = walk(clamp(onC ? kid.x : hx, DYC.cx0 + 30, DYC.cx1 - 30), M.speed); if (!onC && at) go('climb'); }
       if (hunting) near = 1 - Math.abs(kid.x - m.x) / 400;
       if (hit()) caught(k);
@@ -10400,45 +10472,49 @@ function dyMonC(k, G, m, dt, T, calm, kidLit) {
       if (onC) { go('descend'); break; }
       m.fy = Math.max(topY, m.fy - M.climb * dt); rung(); hunting = onL;
       if (hit()) { caught(k); break; }
-      if (m.fy <= topY) { if (S.eHatch) { go('rim'); if (inView(hx, gyU, 300)) snd.creak(); } else { go('under'); c.next = T + M.first; c.thumps = 0; c.muf = 0; } }
+      if (m.fy <= topY) { if (S.eHatch) { go('rim'); if (inView(hx, gyU, 300)) snd.creak(); } else { go('under'); c.next = T + M.first; c.thumps = 0; c.muf = 0; c.pin = 0; } }
       break;
     case 'rim':   // 手搭上洞沿（预兆），再爬出来。这时候合上盖板：被磕下去（dyOnHatch）
       if (!S.eHatch) { go('knock'); break; }
+      if (hit()) { caught(k); break; }   // 它正堵在梯口：这时候往梯子下面钻，一头撞在它身上
       if (c.t >= (c.quick ? 0.15 : M.rim)) go('heave');
       break;
     case 'heave': { const u = c.t / (c.quick ? 0.5 : M.heave);
       if (!S.eHatch && u < 0.55) { go('knock'); break; }
       m.fy = lerp(topY, gyU, smooth(u)); m.face = Math.sign(kid.x - hx) || 1;
+      if (hit()) { caught(k); break; }
       if (u >= 1) { m.fy = gyU; c.quick = 0; c.idle = 0; go('out'); if (inView(hx, gyU - 100, 200)) snd.rise(); }
       break; }
-    case 'knock':   // 被盖板磕下去：掉回梯子上，愣一下，再爬回盖板底下
-      m.fy = Math.min(topY + 70, m.fy + (300 + 1400 * c.t) * dt);
+    case 'knock':   // 被盖板磕下去：掉回梯子上，愣一下，再爬回盖板底下。盖板压着它的头往下合（头顶不高过盖板的前沿）
+      m.fy = Math.min(topY + 70, Math.max(m.fy + (300 + 1400 * c.t) * dt, dyLidFrontY() + 214));
+      c.quick = 0;   // 顶开盖板那一回的“马上钻出来”到此为止：下一回再探头，手照样先在洞沿上搭够 rim 秒
       if (c.t > 0.25 + M.stun) go('climb');
       break;
     case 'under':   // 在盖板底下，一下一下往上顶
       if (S.eHatch) { go('rim'); break; }   // 盖板又被掀开了
+      if (S.eCrate === 0 && !c.pin) { c.pin = 1; c.next = Math.min(c.next, T + M.pinned); } else if (S.eCrate === 1) c.pin = 0;   // 木箱刚压上：它马上就试着顶一下（闷的）
       if (T >= c.next) {
-        const pushing = kid.mode === 'push' && kid.push && kid.push.what === 'eCrate' && kid.push.to === 0, prog = pushing ? clamp((kid.push.t - 0.22) / kid.push.dur, 0, 1) : 0, see = inView(hx, gyU, 400);
+        const pushing = kid.mode === 'push' && kid.push && kid.push.what === 'eCrate' && kid.push.to === 0, see = inView(hx, gyU, 400);
         c.next = T + M.thump;
         if (S.eCrate === 0) {   // 压住了：闷闷地顶，箱子跟着跳一跳；三下以后就安静了
-          c.muf++; dyKick(0.035, 7); if (see) snd.dyThud(1);
+          c.muf++; c.next = T + M.muf; dyKick(0.045, 11 - c.muf * 2); if (see) snd.dyThud(1);   // 一下比一下弱：箱子跳 9、7、5
           if (c.muf >= 3) go('sink');
-        } else if (pushing && prog >= 0.3) { dyKick(0.07, 5); if (see) snd.dyThud(0); }   // 箱子正推上来、已经压住一小半了：顶不开，等它推到头
-        else if (++c.thumps >= 3) {   // 第三下：盖板被顶飞，它爬出来（规则里的 lidBursts22，不是点出来的）
-          const r = lidBursts22(S); if (r) S = r.s;
+        } else if (pushing && c.crT < 0.5) { dyKick(0.07, 5); if (see) snd.dyThud(0); }   // 箱子正推上来、箱角已经搭在盖板上了（推过一半）：顶不开，等它推到头
+        else if (c.thumps >= 2 && lidBursts22(S)) {   // 第三下：盖板被顶飞，它爬出来（规则里的 lidBursts22，不是点出来的）
+          c.thumps++; S = lidBursts22(S).s;
           c.fast = 1; c.jA = 0; c.lidJ = 0; c.quick = 1; if (see) { snd.dyBurst(); puff(hx, gyU + 10, [130, 138, 158], 16); }
           for (let i = 0; i < 9; i++) c.ink.push({ x: hx + (Math.random() - 0.5) * 100, y: gyU + 20, vx: (Math.random() - 0.5) * 260, vy: -(160 + Math.random() * 260), life: 0.7, r: 2 + Math.random() * 3 });
           if (pushing) { kid.mode = 'idle'; kid.push = null; kid.pushK = 0; kid.pull = false; }   // 正推着箱子：手被震开，箱子滑回去
           go('rim');
         } else {   // 顶一下：盖板的前沿跳起来一条缝（缝里是眼睛），溅出几点墨
-          dyKick(0.21); if (see) snd.dyThud(0);
-          for (let i = 0; i < 5; i++) c.ink.push({ x: hx + (Math.random() - 0.5) * 96, y: gyU + 34, vx: (Math.random() - 0.5) * 150, vy: -(70 + Math.random() * 130), life: 0.5, r: 1.6 + Math.random() * 2.2 });
+          c.thumps = Math.min(2, c.thumps + 1); dyKick(c.thumps === 1 ? 0.22 : 0.29); if (see) { snd.dyThud(0); puff(hx, gyU + 26, [130, 138, 158], 4 + c.thumps * 2); }   // 第二下比头一下重（第三下就顶开了）
+          for (let i = 0; i < 5 + c.thumps * 3; i++) c.ink.push({ x: hx + (Math.random() - 0.5) * 100, y: gyU + 34, vx: (Math.random() - 0.5) * (150 + c.thumps * 50), vy: -(90 + Math.random() * (120 + c.thumps * 60)), life: 0.55, r: 2 + Math.random() * 2.6 });
         }
       }
       break;
     case 'sink':   // 顶不动了：停一停，下去
       if (S.eCrate === 1 || S.eHatch) { c.quiet = 0; go('climb'); break; }   // 箱子又被推开了
-      if (c.t > 0.9) { c.quiet = 1; m.fy = Math.min(gyC, m.fy + M.down * dt); rung(); if (m.fy >= gyC) go('quiet'); }
+      if (c.t > M.settle) { c.quiet = 1; m.fy = Math.min(gyC, m.fy + M.down * dt); rung(); if (m.fy >= gyC) go('quiet'); }
       break;
     case 'quiet':   // 被关在底下，安静了。箱子要是又被推开，它听得见
       m.x = hx; m.fy = gyC;
@@ -10446,20 +10522,20 @@ function dyMonC(k, G, m, dt, T, calm, kidLit) {
       break;
     case 'out':   // 在库房里：孩子在暗处就追；不进光里（停在光的边上）；够不着了过一阵回洞口去
       if (onC || onL) { go('back'); break; }
-      hunting = onU && !kidLit && !calm;
+      hunting = onU && !glow && !calm;
       if (hunting) {
         c.idle = 0; const dir = Math.sign(kid.x - m.x) || m.face, nx = m.x + dir * Math.min(Math.abs(kid.x - m.x), M.speed * dt);
-        if (coverage(nx + dir * 34, gyU - G.h * 0.8, LT) < 0.5) { m.ph += Math.abs(nx - m.x) / 60; m.x = clamp(nx, DYC.x0 + 60, DYC.door - 46); }
+        if (dark(nx, dir)) { m.ph += Math.abs(nx - m.x) / 60; m.x = clamp(nx, DYC.x0 + 60, DYC.door - 46); }
         m.face = dir; near = 1 - Math.abs(kid.x - m.x) / 400;
         if (hit()) caught(k);
       } else {   // 孩子在光里（或者走远了）：跟到光的边上站住，盯着他；过一阵回洞口去
         c.idle += dt;
-        if (onU && !calm) { const dir = Math.sign(kid.x - m.x) || m.face, nx = m.x + dir * Math.min(Math.abs(kid.x - m.x), M.speed * 0.6 * dt); m.face = dir; if (Math.abs(kid.x - m.x) > 60 && coverage(nx + dir * 34, gyU - G.h * 0.8, LT) < 0.5) { m.ph += Math.abs(nx - m.x) / 60; m.x = clamp(nx, DYC.x0 + 60, DYC.door - 46); } }
+        if (onU && !calm) { const dir = Math.sign(kid.x - m.x) || m.face, nx = m.x + dir * Math.min(Math.abs(kid.x - m.x), M.speed * 0.6 * dt); m.face = dir; if (Math.abs(kid.x - m.x) > 60 && dark(nx, dir)) { m.ph += Math.abs(nx - m.x) / 60; m.x = clamp(nx, DYC.x0 + 60, DYC.door - 46); } }
         if (c.idle > M.linger) go('back');
       }
       break;
     case 'back':   // 走回洞口。孩子又走进暗处、离得不远：掉头接着追
-      if (onU && !kidLit && !calm && Math.abs(kid.x - m.x) < 300) { c.idle = 0; go('out'); break; }
+      if (onU && !glow && !calm && Math.abs(kid.x - m.x) < 300) { c.idle = 0; go('out'); break; }
       if (walk(hx, M.speed * 0.75)) go('descend');
       if (hit()) caught(k);
       break;
@@ -10475,6 +10551,9 @@ function dyMonC(k, G, m, dt, T, calm, kidLit) {
       break;
   }
   m.mv = Math.abs(m.x - x0); m.run = approach(m.run || 0, m.mv > 0.2 ? 1 : 0, dt * 6);
+  // 全游戏通用的“孩子不敢走到醒着的怪物跟前”（fearAhead 看 GARB 里的 fear）：它站在光的边上盯着、正走回洞口的时候算，孩子朝它走到 110 以内就退两步；
+  // 它正追着孩子的时候不算（braced 的那一种 fearAhead 不看）：那是跑不过它，朝它撞过去就是被抓——也免得孩子被堵在盖板右边的时候，往后一退退过了那条线
+  m.braced = hunting ? 1 : 0;
   m.hunt = approach(m.hunt, hunting || c.st === 'rim' || c.st === 'heave' || c.st === 'under' ? 1 : 0, dt * 2.5);
   m.reach = approach(m.reach, hunting && Math.abs(kid.x - m.x) < 170 ? 1 : 0, dt * 3);
   // 眼睛的那一点冷光（统一画的）：它整个在地窖里、或者整个在上面才有；钻在楼板里、压在盖板底下的时候没有
@@ -11180,7 +11259,10 @@ const GARB = {
   // --- 22C ---
   // 地窖墙角钩子上的一件长胶皮围裙：挂着的时候只是一件衣服；钥匙一拿它就醒，在地窖里追、跟着爬梯子、在盖板底下往上顶、顶开了爬出来在库房里追（不进壁灯的光里），走法在 dyMonC（G.dyc）。
   // fyOf：它脚下的 y 自己带着（在梯子上、在上面）；terr 只是个大概（它自己管自己走到哪儿）
-  dyc: { kind: 'robe', fl: 'dyc', dyc: 1, home: DYC.hook, terr: [DYC.cx0 + 30, DYC.cx1 - 30], speed: 150, h: 214, cols: ['dyRubHi', 'dyRub'], belt: 1, face0: -1, fyOf: m => m.fy ?? FL.dyc.gy, eyeAt: (m, fy) => [m.x + m.face * 4, fy - 184] },
+  // 和全游戏通用的那三样（2026-11-26，docs/night-monster-roster.md）怎么合：fear——它立在跟前（追到地窖里、爬出来站在光的边上、正走回洞口）的时候孩子不敢朝它走过去，退两步；
+  // touch: 'catch'——它是追着跑的（和狗、跑圈的运动服一样），碰到就是抓住，不是拽住；灯下看它塌用不上：它从来不进光里（走到光的边上就站住）
+  dyc: { kind: 'robe', fl: 'dyc', dyc: 1, home: DYC.hook, terr: [DYC.cx0 + 30, DYC.cx1 - 30], speed: 150, h: 214, fear: 110, touch: 'catch', cols: ['dyRubHi', 'dyRub'], belt: 1, face0: -1, fyOf: m => m.fy ?? FL.dyc.gy,
+    eyeAt: (m, fy) => [m.x + m.face * (4 - 177 * (0.05 * (m.run || 0) + 0.08 * m.hunt) * (m.fy > FL.down.gy + 2 && m.fy < FL.dyc.gy - 2 ? 0 : 1)), fy - 184] },
 };
 const GARB_KEYS = Object.keys(GARB);
 const EXTRA_KEYS = GARB_KEYS.filter(k => GARB[k].partner || GARB[k].extra);   // 新的怪物：统一在 drawDynamic 里画
@@ -14538,6 +14620,7 @@ function camTarget() {
   const right = y > FL.down.fr + 30 && kid.x < ROOMS.cellar.x1 + 400 ? ROOMS.cellar.x1 + 40 : (S.hOut && V.jIn ? J.x1 + 10 : ROOMS.twA.x1 + 10);   // 房子的地下室：镜头不越过它的右墙（商店街五金店的地下室不算，2026-11-24）   // 屋顶的尽头：地面画到 x1 + 10，镜头不越过去（以前多 40 会露出图外）
   cx = Math.max(-40, Math.min(cx, right - VWW));
   if (DY_ON) cx = clamp(kid.x + kid.face * Math.min(140, VWW * 0.09) - VWW / 2, DY.x0 - 10, Math.max(DY.x0 - 10, DY.x1 + 10 - VWW));   // 染坊（第 22 关）：镜头不看到染坊外面
+  if (DY_ON && V && V.dy) cy = dyCamY(cy);   // 染坊（第 22 关）：有的时候镜头要往下多看一截（见 dyCamY）
   if (S.tOut && kid.x > ROOMS.thtD.x0) cx = Math.max(cx, ROOMS.thtD.x0 - 10);   // 掉到台底下以后：镜头不再往回看舞台
   if (V.xFin) { cx = 3960 - VWW / 2; cy = Math.max(cy, 0); }   // 合影的最后一帧：门厅整个在画面里，左边座钟、中间一家人、右边前门
   cy = clamp(cy, kid.x > TW.x1 ? -620 : kid.x > TW.x0 ? -450 : -520, Math.max(-520, 1720 - VHH));   // 钟楼里面：往上最多看到钟房的房顶（-450），再往上就是天了
@@ -14874,7 +14957,7 @@ function gateHint(k) {
     // --- 22B ---
     // （烂地板：还没做）
     // --- 22C ---
-    case 'ec3': return s.eHatch ? ['hatch'] : ['eCrate'];   // 它在底下顶着：盖板还开着，先合盖板；合着，推木箱压住
+    case 'ec3': return s.eHatch ? ['hatch'] : s.eCrate ? ['eCrate'] : null;   // 它在底下顶着：盖板还开着，先合盖板；合着，推木箱压住；压住了它还在闷闷地顶：不用再做什么，等它安静
     case 'towel': return ['hamper'];
     case 'laundry': return s.slipper === 'bed' || s.slipper === 'inv' ? ['slipper'] : null;
     case 'stand': return s.bulb !== 'lamp' ? ['bulb'] : !hallLit(s) ? ['bolt'] : ['crank'];
@@ -15334,7 +15417,7 @@ function drawWallDev(b, P, lit) {   // 墙上的小东西：亮的、暗的两�
   b.restore();
 }
 function tapWorld(wx, wy) {
-  if (won || busy()) return;
+  if (won || busy()) { if (!won) dyTapLater(wx, wy); return; }
   const dyGo = dyHoleTap(wx, wy), sp = dyGo ? null : spotAt(wx, wy), h = held, hatchTap = S.hatch && wx > HATCH.x0 - 6 && wx < HATCH.x1 + 6 && wy > FL.down.wb && wy < ROOMS.cellar.top + 20;
   const q4Tap = !sp && S.qHatch && S.lOut && !S.qOut && Math.abs(wx - Q4.hx) < 44 && wy > FL.down.wb && wy < ROOMS.qbA.top + 30 && kid.y < FL.down.gy + 20;   // 点开着的地窖口（第 4 关，2026-11-24）：下去
   if (DRAG && !sp && !hatchTap && !q4Tap && !dyGo) { held = null; return; }   // 拖着走的时候，点空地不走（只是把拿在手里的东西放回去）
@@ -15343,6 +15426,7 @@ function tapWorld(wx, wy) {
     if (!withinReach(tx, ty)) return;   // 远了：什么都不做，也不说（一说就露出来那是能用的东西了）。手里拿着的东西还拿着
   }
   if (DRAG && kid.onBox && !(sp && (sp.id === 'cord' || sp.id === 'hamper')) && !withinReach(...(sp ? sp.near || [sp.stand.x, sp.stand.y] : [HATCH.x1 + 18, FL.down.gy]))) return;
+  if (sp && dyTapHold(sp, wx, wy)) return;   // 染坊（第 22 关）：正走过去合盖板的时候点了木箱——不改道，记着，盖板合上了再去推
   if (tStart < 0) tStart = V.T;
   taps++;
   held = null;
@@ -15730,7 +15814,7 @@ function perform(sp, h, r) {
     // （染缸间：还没做）
     // --- 22C ---
     case 'eCrateH': return dyPushCrate(r);   // 推木箱：推开 / 推回盖板上
-    case 'eHatchH': o.pre = 0.25; o.hold = ev === 'hatchDown22' ? 0.08 : 0.25; break;   // 掀开 / 合上盖板（合上以后手收得快：马上要去推木箱，手没收回来的时候点别的是不算的）
+    case 'eHatchH': o.pre = ev === 'hatchDown22' ? 0.12 : 0.25; o.hold = ev === 'hatchDown22' ? 0.08 : 0.25; o.onHit = () => dyHatchHit(r); break;   // 掀开 / 合上盖板。合上是一巴掌拍下去：手伸得快（从点到合上 0.32 秒，看见它的手搭上洞沿的那 0.8 秒里点都来得及把它磕下去），收得也快（马上要去推木箱，手没收回来的时候点别的是不算的）
     case 'eKeyH': o.pre = 0.3; o.hold = 0.25; break;
     case 'eDoorH': o.pre = 0.45; o.wiggle = true; o.hold = 0.4; snd.screw(); o.after = exitSeq22; break;   // 举着钥匙朝锁上插
     case 'bSwH': o.pre = 0.3; o.hold = 0.5; break;
