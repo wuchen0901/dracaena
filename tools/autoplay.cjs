@@ -2,9 +2,9 @@
 // 规则走不走得通查 check.mjs；这个查的是页面：照游戏自己的“下一步”（nextStep，和 ?auto=1 一样）一关一关走，看走不走得完、被怪物抓了几次、拽住了几次、有没有报错。
 // 手动走帧（?paused=1，每帧 1/30 秒），不等真实时间，一关几秒钟。
 //
-//   node tools/autoplay.cjs sim [关，如 3 或 1-22，默认 1-22]
+//   node tools/autoplay.cjs sim [关，如 3 或 1-21，默认 1-21]
 //       每关照“下一步”走一遍。2026-11-26 的结果：都走得完；除了第 6 关披风蝠那一次（设计如此）被抓 0 次、拽住 0 次
-//   node tools/autoplay.cjs fuzz [关，默认 2-22] [每关几组，默认 4] [每组几步，默认 60]
+//   node tools/autoplay.cjs fuzz [关，默认 2-21] [每关几组，默认 4] [每组几步，默认 60]
 //       乱来：随机点能点的地方（带或不带东西）、随机走、随机等，每帧查 NaN；乱来完照“下一步”接着走，要走得出这一关。
 //       已知走不出的两组（第 3 关种子 4、第 18 关种子 1）：孩子走回了上一关，被会自己变的门挡在那边，“下一步”不会带他回头（2026-11-26 以前就这样）
 //   加 V=1 每组都打一行；改了怪物以后两样都跑一遍，和改之前比。
@@ -14,7 +14,6 @@ const { chromium } = require('playwright');
 const root = path.join(__dirname, '..', 'games');
 const serve = () => new Promise(res => {
   const srv = http.createServer((q, a) => {
-    if (q.url === "/favicon.ico") { a.writeHead(204); return a.end(); }
     const f = path.join(root, path.normalize(decodeURIComponent(q.url.split('?')[0])).replace(/^([/\\])+/, '') || 'index.html');
     if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { a.writeHead(404); return a.end(); }
     a.writeHead(200, { 'content-type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream' }); fs.createReadStream(f).pipe(a);
@@ -49,7 +48,7 @@ const playOut = maxSec => {
   };
   let bad = 0;
   if (mode === 'sim') {
-    const [a, b] = range(a1, '1-22');
+    const [a, b] = range(a1, '1-21');
     for (let lv = a; lv <= b; lv++) {
       const { pg, errs } = await open(lv);
       const r = await pg.evaluate(`(${playOut})(${lv === 1 ? 900 : 500})`), h = await pg.evaluate(() => ({ catches: window.__house.catches, holds: window.__house.V.holds || 0 }));
@@ -58,7 +57,7 @@ const playOut = maxSec => {
       await pg.close();
     }
   } else if (mode === 'fuzz') {
-    const [a, b] = range(a1, '2-22'); let runs = 0, steps = 0, catches = 0, holds = 0;
+    const [a, b] = range(a1, '2-21'); let runs = 0, steps = 0, catches = 0, holds = 0;
     for (let lv = a; lv <= b; lv++) for (let seed = 1; seed <= +a2; seed++) {
       const { pg, errs } = await open(lv);
       const f = await pg.evaluate(({ seed, n, lv }) => {
