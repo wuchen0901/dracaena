@@ -1386,7 +1386,8 @@ const ITEMS22 = [
 ];
 const START22 = {
   // --- 22A ---
-  // （称布间：还没做）
+  eRing: 0,                   // 称布间的铃：0 没拉 / 1 拉过了（阁楼上那件去踩台秤、闸门提起来）；门这一回落到地上才变回 0（gateDrops22）
+  ePast: 0,                   // 孩子已经从闸门底下钻过去了（passed22）：称布间的事做完了，门再落下来他也不用回头
   // --- 22B ---
   ePlank: 'floor',            // 染缸间的厚跳板：铺在烂地板上（floor）/ 身上（inv）/ 搭在地板塌出来的洞上（put）
   // --- 22C ---
@@ -1406,7 +1407,8 @@ const VALUES22 = {
 };
 const GATES22 = {
   // --- 22A ---
-  // （闸门：还没做）
+  eg1: s => s.eRing === 1 || s.ePast === 1,   // 称布间的铁栅闸门：铃拉过了，阁楼上那件去踩台秤，门才被链子提起来（页面里还要门真的升够了、它还站在秤上，见 GATE_ALL.eg1）。
+                              // 钻过去以后（ePast）规则里当作通着：后面的事都在门那头，不用再回来（页面里门落了，从那头也回不来）
   // --- 22B ---
   ec2: s => s.ePlank === 'put',   // 烂地板：木板搭在洞上了才过得去。木板还铺着的时候是那件沉的拦着（不敢过）；抽了没搭，是地板塌出来的洞拦着（页面里分清这两种，各有各的气泡）
   // --- 22C ---
@@ -1415,7 +1417,7 @@ const GATES22 = {
 };
 const LINKS22 = [
   // --- 22A ---
-  ['e0', 'e1'],               // 闸门还没做，先通着（做的时候第三项写门的名字）
+  ['e0', 'e1', 'eg1'],        // 称布间的闸门
   // --- 22B ---
   ['e1', 'e2', 'ec2'],        // 烂地板（木板搭上了才过得去）
   // --- 22C ---
@@ -1423,7 +1425,7 @@ const LINKS22 = [
 ];
 const SPOT_ZONE22 = {
   // --- 22A ---
-  // （称布间：还没做）
+  eBellH: 'e0', eGateH: 'e0',
   // --- 22B ---
   ePlankH: 'e1', eHoleH: 'e1',
   // --- 22C ---
@@ -1436,7 +1438,10 @@ function act22(s, spot, held, R = reachL(L22, s)) {
   const n = { ...s }, ok = (...ev) => ({ s: n, ev });
   switch (spot) {
     // --- 22A ---
-    // （称布间：还没做）
+    // 铃绳：拉一下，铜铃响起来（阁楼上那件听见了，去踩台秤）。铃还在响、闸门还没落下来的时候再拉：再响一阵（规则里还是 1）
+    case 'eBellH': if (held) return no('no'); if (s.ePast) return no('look'); n.eRing = 1; return ok('ring22');
+    // 闸门：自己掀不动（提起来一条缝又掉回去，气泡里画铃）；铃拉过了：站在门前等它升起来
+    case 'eGateH': if (held) return no('no'); return no(s.eRing ? 'wait22' : 'heavy22');
     // --- 22B ---
     // 跳板：铺在烂地板上，伸出来的那一头一抽就到手（那件沉的正站在上面：它掉下去；不在上面：下一回它踩上烂板子，弯下去、断了，掉下去——都在页面里）
     case 'ePlankH': if (held || s.ePlank !== 'floor') return no(held ? 'no' : 'look'); n.ePlank = 'inv'; return ok('take:ePlank', 'pull22');
@@ -1474,7 +1479,10 @@ function act22(s, spot, held, R = reachL(L22, s)) {
 }
 // 不是点出来、到时候自己变的（TIMED，求解器不搜，check.mjs 查变过去以后也走得出去）
 // --- 22A ---
-// （闸门落下来：还没做）
+// 铃响完了，阁楼上那件愣一阵走回去，台面弹回来，闸门落到地上：铃这一回算完了（页面里门落地的那一下才变；它又被铃叫回去的时候不变）
+const gateDrops22 = s => s.eRing === 1 ? { s: { ...s, eRing: 0 }, ev: ['gateDown22'] } : null;
+// 孩子到了闸门那头：正常是铃拉过、门开着的时候钻过去的（页面里他走过门、离门够远的那一下才变）；直接摆到门那头的（测试、截图）也算
+const passed22 = s => !s.ePast ? { s: { ...s, ePast: 1 }, ev: ['passed22'] } : null;
 // --- 22B ---
 // （没有）
 // --- 22C ---
@@ -1482,7 +1490,7 @@ function act22(s, spot, held, R = reachL(L22, s)) {
 const lidBursts22 = s => s.eKey === 'inv' && s.eHatch === 0 && s.eCrate === 1 ? { s: { ...s, eHatch: 1 }, ev: ['burst22'] } : null;
 const TIMED22 = [
   // --- 22A ---
-  // （闸门落下来：还没做）
+  gateDrops22, passed22,
   // --- 22B ---
   // （没有）
   // --- 22C ---
@@ -1796,8 +1804,11 @@ const STREET = { x0: 12000, x1: 15200 }, QU = { x0: 13500, sp: 60, n: 5, pole: 1
 const DY_ON = qs.get('lv') === '22';
 const DY = { x0: 72000, x1: 75300, in: 72130, end: 75290 };
 // --- 22A ---
-// 称布间：门口的灯（lamp）、铁栅闸门的位置（gate，A 段做的时候门就卡在这儿；它左边是 e0、右边是 e1）
-const DYA = { x0: 72000, x1: 73100, lamp: 72100, lampY: 770, gate: 72760 };
+// 称布间：门口的灯（lamp）、铁栅闸门的中心（gate：它左边是 e0、右边是 e1）；头顶晾布的阁楼（lx0–lx1，脚下是 FL.dya）；
+// 阁楼右头嵌在地板里的台秤（scale：台面中心，sw：台面半宽）、秤左边立柱上的针盘（dial）、台秤正上方吊着的铜铃（bellX，摆的轴在 bellY）；
+// 铃绳从阁楼地板的小洞垂到楼下（rope，拉手底下在 ropeY）；房梁上两只滑轮（pA 在台秤的链子这头、pB 在闸门正上方，轮心在 pY）；
+// 阁楼上那件围裙来回走的一段（p0–p1）；孩子拉铃站的地方（pull）
+const DYA = { x0: 72000, x1: 73100, lamp: 72100, lampY: 770, gate: 72800, lx0: 72020, lx1: 72752, scale: 72660, sw: 60, dial: 72588, bellX: 72660, bellY: 330, rope: 72550, ropeY: 856, pA: 72738, pB: 72790, pY: 292, p0: 72250, p1: 72500, pull: 72514 };
 // --- 22B ---
 // 染缸间：烂地板从 rot0 到 rot1（门 ec2 钉在 gate：它左边是 e1，过了烂地板的中间是 e2）；底下的坑从 pit0 到 pit1（墙里）。
 // 厚跳板从 pl0 铺到 pl1（左头伸出来一截）；抽跳板站在 pull，搭木板站在 lay；那件沉的平时站在 home，孩子来了走到 stop（正好踩在跳板上、烂地板上头，离门 fear 远），它那一片 z0–z1；
@@ -2017,7 +2028,7 @@ const GATEPOS = {
   rain: { e: 5, x: 6722 }, scare: { e: 5, x: 7852 },   // 院子（第 2 关）：车库里的雨衣、院门前的稻草人。狗的毛衣没有：它不是“不敢过去”，是跑不过它
   // 染坊（第 22 关）
   // --- 22A ---
-  // （闸门：还没做。做的时候卡在 31 号路上的 DYA.gate）
+  eg1: { e: 31, x: DYA.gate },   // 称布间：铁栅闸门（铃没拉、门没升够：孩子停在门前；过去以后门落了，从那头也回不来）
   // --- 22B ---
   ec2: { e: 31, x: DYB.gate },   // 染缸间：烂地板跟前（木板还铺着：那件沉的拦着，孩子不敢过；抽了没搭：地板塌出来的洞拦着，停在洞边）
   // --- 22C ---
@@ -2042,7 +2053,7 @@ GATE_ALL.ng1 = s => GATES9.ng1(s) && (!V || V.nSeen === 1);
 GATE_ALL.ta1 = s => GATES10.ta1(s) && (!V || V.tSeen1 === 1); GATE_ALL.ta2 = s => GATES10.ta2(s) && (!V || V.tSeen2 === 1); GATE_ALL.ta3 = s => GATES10.ta3(s) && (!V || V.tSeen3 === 1);   // 剧院：衣服塌下去了，孩子才敢走过去（规则里只记灯扳过了没有）   // 面摊的摊主：炭炉扇红了、它塌下去了，孩子才敢走过去（规则里只记炉子扇红了没有）   // 球场上跑圈的运动服：大灯要热够了、它塌下去了，孩子才敢走进球场（规则里只记配电箱扳了没有）
 // 染坊（第 22 关）：页面里才知道的条件
 // --- 22A ---
-// （闸门：还没做）
+GATE_ALL.eg1 = s => GATES22.eg1(s) && (!V || !V.dy || (!s.ePast && dyaOpen()));   // 称布间：闸门真的升过九成、阁楼上那件还站在秤上（它一走下来门就往下落），孩子才往门底下走（规则里铃一拉就算）；钻过去以后不再往回钻
 // --- 22B ---
 GATE_ALL.ec2 = s => GATES22.ec2(s) && (!V || !V.dy || V.dy.b.lay >= 1);   // 染缸间：木板真的放平在洞上了（搭的那一下要 0.4 秒）
 // --- 22C ---
@@ -9437,7 +9448,14 @@ function sceneItem(b, name, x, y, s, P, lit, seed) {
   else if (name === 'honey') { b.restore(); drawHoney(b, P, lit, x, y + s * 0.4, true, seed + 7, s / 34); return; }
   // 染坊（第 22 关）
   // --- 22A ---
-  // （称布间：还没做）
+  else if (name === 'eBell') {   // 铜铃（气泡里）：铃身、铃口一道厚边、铃舌、顶上的轴
+    const sc = s / 70; b.scale(sc, sc);
+    part(b, rectPts(-14, -30, 28, 6), P.iron, { w: 0.8, tex: 0, lc });
+    const bell = curvePts([[-7, -24], [7, -24], [11, -12], [13, 4], [21, 16, 1], [-21, 16, 1], [-13, 4], [-11, -12]], true, 4);
+    ink(b, [[0, -20], [3, 18]], { w: 1.6, col: P.iron, taper: 0, a: 1 / b.pen.a }); b.fillStyle = P.iron; b.beginPath(); b.arc(3, 22, 4.5, 0, 7); b.fill();
+    part(b, bell, P.dyaBell, { w: 1.1, tex: 0, lc }); part(b, rectPts(-21, 12, 42, 5), P.dyaBellLo, { w: 0.8, tex: 0, lc });
+    for (const sg of [-1, 1]) ink(b, arcPts(sg * 2, -2, 30, 26, sg > 0 ? -0.6 : Math.PI - 0.1, sg > 0 ? 0.1 : Math.PI + 0.6, 6), { w: 1.1, col: lc, taper: 5, a: 0.7 });   // 当
+  }
   // --- 22B ---
   else if (name === 'ePlank') { b.restore(); dyPlankIcon(b, P, lit, x, y, s, seed); return; }   // 染缸间的厚跳板：斜着放的一块厚木板
   // --- 22C ---
@@ -10008,7 +10026,7 @@ function drawBoiler(b, P, lit) {   // 锅炉：一个铁肚子，炉门上两条
 Object.assign(LIT, {
   dyWall: '#a39a86', dyMass: '#4a443c', dyPane: '#35435e', dyNight: '#1b2338',   // 刷过白灰的砖墙、墙体的剖面、高处小窗的玻璃（窗外是夜）、门外的夜
   // --- 22A ---
-  // （称布间：还没做）
+  dyaCanvas: '#b9a57c', dyaCanvasLo: '#8f7d5a', dyaRope: '#a08a5c', dyaDial: '#e2d8c0', dyaBell: '#c29a4a', dyaBellLo: '#8c6a2e',   // 阁楼上那件染布工的帆布围裙、铃绳、针盘的盘面、铜铃
   // --- 22B ---
   dyRot: '#4e4030', dyRotLo: '#3b3025', dyPlank: '#9c7b52', dyPlankLo: '#6e5538', dyPlankHi: '#c0a27a', dyLeather: '#7a5232', dyLeatherLo: '#563821', dyBoot: '#2c3530', dyBootHi: '#4a574d',
   dyShirt: '#7c8590', dyShirtLo: '#5f6772', dyShirtHi: '#a3aab3', dyCap: '#4a463e', dyVatB: '#6a5038', dyVatIn: '#3a2c20', dyInk: '#1d2a4a', dyInkHi: '#8a7048',
@@ -10019,7 +10037,7 @@ Object.assign(LIT, {
 Object.assign(DARK, {
   dyWall: '#151b2a', dyMass: '#0a0c13', dyPane: '#232d48', dyNight: '#0c1120',
   // --- 22A ---
-  // （称布间：还没做）
+  dyaCanvas: '#3e4867', dyaCanvasLo: '#2c3552', dyaRope: '#414a66', dyaDial: '#4a5474', dyaBell: '#66708e', dyaBellLo: '#434c6a',   // 暗处：铜铃、盘面比别的亮一点（这一段的因果全靠它们看得见）
   // --- 22B ---
   dyRot: '#171b24', dyRotLo: '#11141c', dyPlank: '#3e4a66', dyPlankLo: '#28314a', dyPlankHi: '#5a6890', dyLeather: '#41374a', dyLeatherLo: '#2c2534', dyBoot: '#161d26', dyBootHi: '#2a3448',
   dyShirt: '#2e384e', dyShirtLo: '#222a3c', dyShirtHi: '#3e4a64', dyCap: '#222a3c', dyVatB: '#1e2536', dyVatIn: '#0e121c', dyInk: '#0a0f22', dyInkHi: '#3a4a74',
@@ -10030,7 +10048,7 @@ Object.assign(DARK, {
 // 这一关自己的几种声音
 for (const [k, fn] of Object.entries({
   // --- 22A ---
-  // （称布间：还没做）
+  dyBell: (t, k = 1) => { const g = 0.03 + 0.06 * k; tone(1046, t, 1.3, g, 'sine'); tone(1568, t, 0.8, g * 0.45, 'sine'); tone(2637, t + 0.005, 0.3, g * 0.25, 'triangle'); noise(t, 0.02, g * 0.5, 4200, 3); },   // 铜铃：当（越摆越小，越来越轻）
   // --- 22B ---
   dyStomp: t => { tone(56, t, 0.22, 0.14, 'sine', 36); noise(t, 0.1, 0.05, 220, 1); },   // 它走一步：咚（很沉）
   dyGroan: t => { tone(150 + Math.random() * 30, t, 0.8, 0.045, 'sawtooth', 84); noise(t, 0.7, 0.03, 520, 4); },   // 烂板子在它脚下往下弯：嘎——吱（比平常的吱呀低、长）
@@ -10118,12 +10136,372 @@ function paintDy(b, r, P, lit) {
   b.restore();
 }
 // --- 22A ---
-function dyPaintA(b, r, P, lit) {   // 称布间不动的东西（A 段还没做：先只有进门的那扇门、门口的壁灯）
-  const F = FL.down, lc = lcOf(P, lit), x = DYA.x0 + 10, y0 = F.gy - DOOR_H, h = F.ff - y0; b.seedN = 881000;
+function dyPaintA(b, r, P, lit) {   // 称布间不动的东西：进门的门和壁灯、头顶的阁楼（木地板、底下的柱子）、台秤的凹槽和底下的箱子、针盘、房梁上的滑轮、吊铃的铁杆、闸门的两根导轨
+  const F = FL.down, L = FL.dya, lc = lcOf(P, lit), x = DYA.x0 + 10, y0 = F.gy - DOOR_H, h = F.ff - y0, { lx0, lx1, scale: sx, sw, gate: gx } = DYA; b.seedN = 881000;
   part(b, rectPts(x - 7, y0, 14, h), P.door, { w: 1.1, tex: 0.4, lc, seed: 881001 });   // 进来的那扇门：关着（侧面看过去很薄）
   fillPts(b, rectPts(x - 5, y0 + 16, 10, h * 0.38), P.doorIn); fillPts(b, rectPts(x - 5, y0 + h * 0.38 + 30, 10, h * 0.5), P.doorIn);
   if (!lit) creepDoorSlab(b, x, y0, y0 + h, 881050);
+  // 阁楼底下的墙暗一截；两根靠墙的柱子、斜撑
+  const g0 = b.createLinearGradient(0, L.fr, 0, F.wb); g0.addColorStop(0, rgba(DARK.mass, lit ? 0.38 : 0.55)); g0.addColorStop(1, rgba(DARK.mass, lit ? 0.08 : 0.15)); b.fillStyle = g0; b.fillRect(lx0, L.fr, lx1 - lx0, F.wb - L.fr);
+  for (const px of [72300, 72470]) {
+    part(b, rectPts(px - 7, L.fr, 14, F.wb - L.fr + 2), P.wood, { w: 0.9, tex: 0.3, lc, seed: 881110 + px });
+    for (const s of [-1, 1]) ink(b, [[px + s * 6, L.fr + 58], [px + s * 46, L.fr + 6]], { w: 2.6, col: P.woodLo, taper: 0, a: 1 / b.pen.a, seed: 881120 + px + s });
+  }
   dyWallLamp(b, P, lit, DYA.x0 + 20, DYA.lamp, DYA.lampY, 881100);
+  // 阁楼的地板（木板），前沿底下一道横梁；右头是断面
+  paintFloor(b, { ix0: lx0, ix1: lx1, wb: L.wb, ff: L.ff, fr: L.fr }, P, lit, 'planks', 881200);
+  part(b, rectPts(lx0, L.fr - 2, lx1 - lx0, 12), P.woodLo, { w: 1, tex: 0.2, lc, seed: 881210 });
+  part(b, rectPts(lx1 - 6, L.wb, 8, L.fr + 10 - L.wb), P.woodLo, { w: 0.9, tex: 0, lc, seed: 881211 });
+  // 台秤的凹槽（台面沉下去的时候露出来的黑缝）、铃绳穿过的小洞、链子穿过的缝
+  fillPts(b, rectPts(sx - sw - 3, L.wb + 10, sw * 2 + 6, L.ff - L.wb - 16), DARK.ink);
+  ink(b, [[sx - sw - 3, L.wb + 10], [sx + sw + 3, L.wb + 10], [sx + sw + 3, L.ff - 6], [sx - sw - 3, L.ff - 6], [sx - sw - 3, L.wb + 10]], { w: 0.9, col: lc, taper: 0, seed: 881220 });
+  b.fillStyle = INK; b.beginPath(); b.ellipse(DYA.rope, 630, 6, 3, 0, 0, 7); b.fill();
+  b.fillRect(DYA.pA - 13, 622, 6, 20);
+  // 台秤底下的木箱（前面敞着，看得见里面的杠杆、弹簧：那些在会动的那一层）
+  const hx0 = sx - sw - 8, hx1 = DYA.pA + 2, hy0 = L.fr + 8, hy1 = L.fr + 80;
+  part(b, rectPts(hx0, hy0, hx1 - hx0, hy1 - hy0), P.woodLo, { w: 1, tex: 0.4, lc, seed: 881230 });
+  hatch(b, k => k.rect(hx0, hy0, hx1 - hx0, hy1 - hy0), [hx0, hy0, hx1 - hx0, hy1 - hy0], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.35 : 0.55, w: 0.7, len: 16, seed: 881231 });
+  for (const xx of [hx0, hx1 - 8]) part(b, rectPts(xx, hy0 - 2, 8, hy1 - hy0 + 6), P.wood, { w: 0.9, tex: 0.2, lc, seed: 881232 + xx });
+  part(b, rectPts(hx0, hy1 - 4, hx1 - hx0, 9), P.wood, { w: 0.9, tex: 0.2, lc, seed: 881234 });
+  part(b, [[hx0 + 14, hy1 - 4], [hx0 + 22, hy1 - 22], [hx0 + 30, hy1 - 4]], P.iron, { w: 0.8, tex: 0, lc, seed: 881235 });   // 杠杆的支点
+  // 针盘：秤左边一根立柱，顶上一只圆盘（针在会动的那一层）
+  const dx = DYA.dial, dy = 494;
+  part(b, rectPts(dx - 4, dy + 18, 8, L.wb - dy - 16), P.wood, { w: 0.9, tex: 0.2, lc, seed: 881240 });
+  part(b, arcPts(dx, dy, 25, 25, 0, TAU, 22), P.brass, { w: 1, tex: 0.2, lc, seed: 881241 });
+  part(b, arcPts(dx, dy, 20, 20, 0, TAU, 22), P.dyaDial, { w: 0.7, tex: 0.2, lc, seed: 881242 });
+  for (let i = 0; i <= 8; i++) { const a = lerp(-2.4, 0.5, i / 8), r0 = i % 4 ? 16 : 13; ink(b, seg(dx + Math.cos(a) * r0, dy + Math.sin(a) * r0, dx + Math.cos(a) * 19, dy + Math.sin(a) * 19), { w: 0.7, col: i > 6 ? P.dyMadder : lc, taper: 0, a: 0.9, seed: 881250 + i, single: 1 }); }
+  // 房梁上的两只滑轮（链子）、一只小滑轮（铃绳）；吊铃的铁杆
+  for (const [px, py, rr] of [[DYA.pA, DYA.pY, 10], [DYA.pB, DYA.pY, 10], [DYA.rope + 6, 326, 6]]) {
+    ink(b, seg(px, r.top + 18, px, py - rr + 2), { w: 2, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 881260 + px });
+    part(b, arcPts(px, py, rr + 3, rr + 3, Math.PI, TAU, 10), null, { w: 1.2, lc: P.iron, seed: 881261 + px });   // 叉子
+    part(b, arcPts(px, py, rr, rr, 0, TAU, 16), P.iron, { w: 0.9, tex: 0, lc, seed: 881262 + px });
+    b.fillStyle = lit ? P.brass : DARK.hi; b.beginPath(); b.arc(px, py, 1.8, 0, 7); b.fill();
+  }
+  ink(b, seg(DYA.bellX, r.top + 18, DYA.bellX, DYA.bellY - 3), { w: 2.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 881270 });
+  part(b, rectPts(DYA.bellX - 10, r.top + 16, 20, 6), P.iron, { w: 0.7, tex: 0, lc, seed: 881271 });
+  // 闸门的两根导轨（铁槽，从房梁一直到地上），地上一道槽
+  for (const s of [-1, 1]) { const rx = gx + s * 29;
+    part(b, rectPts(rx - 4, r.top + 20, 8, F.gy + 6 - r.top - 20), P.iron, { w: 0.9, tex: 0.2, lc, seed: 881280 + s });
+    ink(b, seg(rx - s * 1.5, r.top + 24, rx - s * 1.5, F.gy + 2), { w: 0.6, col: lit ? P.hi : DARK.hi, taper: 0, a: 0.3, seed: 881282 + s, single: 1 });
+    for (let yy = r.top + 60; yy < F.gy - 20; yy += 120) part(b, rectPts(rx - 7, yy, 14, 6), P.iron, { w: 0.6, tex: 0, lc, seed: 881283 + s * 7 + yy });   // 钉在墙上的卡子
+  }
+  b.fillStyle = rgba(DARK.ink, lit ? 0.45 : 0.7); b.fillRect(gx - 27, F.gy - 1, 54, 6);
+  // 闸门那头：一只盛着布的筐、一只麻袋
+  { const bx = 72975, by = F.wb + 10;
+    const bk = [[bx - 50, by - 44], [bx + 50, by - 44], [bx + 42, by + 2], [bx - 42, by + 2]];   // 柳条筐：口大底小
+    part(b, bk, P.sack, { w: 1.1, tex: 0.45, lc, seed: 881310 });
+    for (let i = 1; i < 5; i++) ink(b, seg(bx - 50 + i * 1.6, by - 44 + i * 9, bx + 50 - i * 1.6, by - 44 + i * 9), { w: 0.6, col: lc, taper: 0, a: 0.5, seed: 881311 + i, single: 1 });
+    for (let i = -3; i <= 3; i++) ink(b, seg(bx + i * 14, by - 43, bx + i * 12, by + 1), { w: 0.6, col: lc, taper: 0, a: 0.4, seed: 881316 + i, single: 1 });
+    hatch(b, k => pathOf(k, bk), [bx, by - 44, 50, 46], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 16, seed: 881315 });
+    part(b, rectPts(bx - 52, by - 48, 104, 7), P.sack, { w: 0.9, tex: 0.2, lc, seed: 881317 });   // 筐沿
+    for (const [rx, ry, rw, rh, c] of [[bx - 44, by - 46, 44, 20, 'dyIndigo'], [bx - 4, by - 46, 42, 19, 'dyMadder'], [bx - 26, by - 62, 40, 17, 'dyOchre']]) dyRoll(b, P, lit, rx, ry, rw, rh, c, 881300 + rx + ry);   // 筐里冒出来的几卷布
+    const px = 73050, sack = curvePts([[px - 26, F.wb + 4], [px - 30, F.wb - 36], [px - 10, F.wb - 58], [px + 12, F.wb - 56], [px + 30, F.wb - 34], [px + 26, F.wb + 4]], true, 4);
+    part(b, sack, P.sack, { w: 1, tex: 0.45, lc, seed: 881320 }); ink(b, seg(px - 7, F.wb - 54, px + 9, F.wb - 52), { w: 1.4, col: P.wire, taper: 0, seed: 881321 }); }
+  // 暗处：阁楼前沿往下淌的墨、闸门两边墙上的墨手印和抓痕（有人从这儿想钻过去）
+  if (!lit) {
+    inkDrips(b, [[72168, L.fr + 10, 34], [72412, L.fr + 10, 62], [72530, L.fr + 10, 22], [72712, hy1 + 4, 40]], 881400);
+    creepHand(b, gx - 60, F.wb - 92, 0.6, -0.3, 881410, true);
+    creepHand(b, gx - 50, F.wb - 170, 0.5, 0.2, 881411, false);
+    creepScratch(b, gx + 62, F.wb - 210, 90, Math.PI / 2 + 0.06, 4, 881412);
+  }
+}
+// ----- A 段：称布间（拉铃、台秤、闸门）-----
+// 拉一下铃绳，铜铃晃着响；阁楼上那件染布工的围裙（它是听声音的：领口朝上张着，像一只耳朵）扭头、睁眼，走过去踩上台秤，
+// 台面沉下去，杠杆把链子往下拽，链子过房梁上两只滑轮，把楼下的铁栅闸门提起来；铃停了它再仰着头愣一阵，走回去，台面弹回来，闸门“哐”地落下。
+// 它在阁楼上，孩子够不着它、它也下不来；这一段不会被抓。
+// 页面里的数（都是量着、拍着定的，见 docs/night-level-22.md“A 段”）：
+//   ring 拉一下铃响几秒；amp 刚拉的时候铃摆多大（弧度）；per 铃摆一个来回几秒；tell 铃一响它愣多久（预兆：领口转向铃、睁眼）；go 朝铃走多快；
+//   patrol 平时来回走多快、back 走回去多快；linger 铃停了它还站在秤上仰着头看多久；rise 闸门升到顶几秒；fall 落下来几秒；lift 闸门升多高；
+//   open 升到几成孩子才敢往门下走；sink 台面沉下去多少；on 它离台面中心多近算站在秤上；under 孩子离闸门中心多近算在门底下；near 孩子离闸门多近（还在走）它就再等等
+const DYAM = { ring: 6.5, amp: 0.42, per: 1.05, tell: 0.7, go: 160, patrol: 38, back: 70, linger: 1.5, rise: 1.2, fall: 0.7, lift: 220, open: 0.9, sink: 14, on: 44, under: 34, near: 96 };
+const dyInitA = () => ({ st: 'patrol', t: 0, pause: 0, dir: 1, ring: 0, amp: 0, ph: 0, ba: 0, hits: [], pull: 0, sway: 0, plat: 0, gate: 0, gv: 0, crack: 0, slack: 1, needle: 0, nv: 0, look: 0, eyes: 0, up: 0, linger: 0, wait: 0, kick: 0, landT: -10, clickAt: 0, kpx: null });
+const dyaGateY = () => FL.down.gy + 4 - V.dy.a.gate * DYAM.lift - V.dy.a.crack * 12;   // 闸门底下（栅条尖头）在哪儿
+const dyaOpen = () => { const a = V.dy.a; return a.st === 'stand' && a.gate >= DYAM.open; };   // 闸门真的开着：它站在秤上，门升过九成（它一走就不算了，门在往下落）
+const dyaUnder = () => kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 2 && Math.abs(kid.x - DYA.gate) < DYAM.under;   // 孩子正在门底下
+const dyaKidAtGate = () => dyaUnder() || (Math.abs(kid.y - FL.down.gy) < 2 && Math.abs(kid.x - DYA.gate) < DYAM.near && (kid.mode === 'walk' || kid.drive));   // 在门底下，或者正走到门跟前：它再等等（门不落在孩子身上）
+// 铃响了：铃摆起来（看得见）、当当地响；阁楼上那件听见了
+function dyRingA() {
+  const a = V.dy.a; a.ring = DYAM.ring; a.amp = Math.max(a.amp, DYAM.amp); if (Math.abs(a.ba) < 0.05) a.ph = 0;
+  if (a.st === 'patrol' || a.st === 'leave') { a.st = 'hear'; a.t = 0; }
+}
+// 每一帧：铃、铃绳、台面、针盘、链子、闸门（它自己的走法在 dyMonA）
+function dyUpdateA(dt) {
+  const a = V.dy.a, m = V.mon.dya, T = V.T, see = inView(DYA.scale, FL.dya.gy, 500);
+  // 铃：响着的时候摆幅跟着剩下的时间慢慢小下去；每摆到头，铃舌碰一下铃壁：当（声音、几道看得见的“当”的线）
+  const was = Math.sin(a.ph * TAU);
+  a.ring = Math.max(0, a.ring - dt);
+  a.amp = a.ring > 0 ? Math.min(a.amp, DYAM.amp * Math.pow(a.ring / DYAM.ring, 0.55) + 0.02) : approach(a.amp, 0, dt * 0.25);
+  a.ph += dt / DYAM.per; const now = Math.sin(a.ph * TAU); a.ba = a.amp * now;
+  if (a.amp > 0.035 && Math.abs(now) > 0.96 && Math.abs(was) <= 0.96) { const k = clamp(a.amp / DYAM.amp, 0, 1); a.hits.push({ t: T, s: Math.sign(now), k }); if (see) snd.dyBell(k); }
+  a.hits = a.hits.filter(h => T - h.t < 0.7);
+  a.sway = approach(a.sway, 0, dt * 0.8);
+  // 台面：它站上去就沉下去，下来就弹回来；针盘的针跟着摆（带一点弹）
+  const on = Math.abs(m.x - DYA.scale) < DYAM.on;
+  a.plat = approach(a.plat, on ? 1 : 0, dt / (on ? 0.25 : 0.12));
+  a.nv += ((a.plat * 0.86 - a.needle) * 60 - a.nv * 7) * dt; a.needle += a.nv * dt;
+  // 闸门：台面压到底，链子把门一格一格提上去（棘轮声）；台面弹回来，门砸下来
+  if (a.plat > 0.95 && a.gate < 1) {
+    a.gate = Math.min(1, a.gate + dt / DYAM.rise); a.gv = 0;
+    if (a.gate >= a.clickAt) { a.clickAt = a.gate + 0.09; if (inView(DYA.gate, FL.down.gy - 200, 300)) snd.ratchet(); }
+  } else if (a.plat < 0.5 && a.gate > 0) {
+    a.gv += 2 * DYAM.lift / (DYAM.fall * DYAM.fall) * dt; a.gate = Math.max(0, a.gate - a.gv * dt / DYAM.lift); a.clickAt = 0;
+    if (a.gate <= 0) dyLandA();
+  }
+  a.slack = approach(a.slack, a.gate < 0.005 && a.plat < 0.5 && a.crack < 0.01 ? 1 : 0, dt * 5);
+  a.kick = Math.max(0, 1 - (T - a.landT) / 0.5);
+  if (!(kid.mode === 'reach' && kid.r && kid.r.dyaCrack)) a.crack = approach(a.crack, 0, dt * 6);
+  if (!(kid.mode === 'reach' && kid.r && kid.r.dyaPull)) a.pull = approach(a.pull, 0, dt * 6);
+  // 门不让过的时候（没开够、它下秤了、钻过去以后往回走）：孩子点着走到离门中心 40 以内就停、碰一下门。门是实的一块，不只是路上的一个点：
+  // 点在门跟前、门底下（还没到门的中心）的时候，找路碰不到那个点（firstClosedGate），这儿补上。拖着走的那一种 driveBlock 已经停在 40 以外了
+  { const px = a.kpx ?? kid.x; a.kpx = kid.x;
+    if (kid.mode === 'walk' && !kid.drive && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 2 && Math.abs(kid.x - DYA.gate) < 40 && Math.abs(kid.x - DYA.gate) < Math.abs(px - DYA.gate) - 1e-6 && !gateOk('eg1', S)) {   // 往门那儿走、进了 40 以内（原来就站在 40 以内的：停在原地，不再往门那儿凑）
+      kid.x = DYA.gate + (Math.sign(px - DYA.gate) || 1) * Math.min(40, Math.abs(px - DYA.gate)); a.kpx = kid.x; kid.path = []; kid.onArrive = null; kid.mode = 'idle'; kid.v = 0; kid.auto = false; meetGate('eg1');
+    } }
+  // 孩子从门底下钻过去了、离门够远（门落下来也碰不到他）：规则里记上（passed22），以后不再往回钻
+  if (!S.ePast && kid.x > DYA.gate + DYAM.under && kid.mode !== 'caught') { const r = passed22(S); if (r) S = r.s; }
+  // 孩子站在门跟前等着（铃拉过了、门还没升起来）：门一开够，他自己从门底下走过去
+  if (a.wait) {
+    if (!S.eRing || kid.mode !== 'idle' || Math.abs(kid.x - a.wait.x) > 6) a.wait = 0;
+    else if (dyaOpen()) { const d = a.wait.d; a.wait = 0; walkTo(DYA.gate + d * 92, FL.down.gy); }
+  }
+}
+// 闸门落到地上：哐、扬灰；它已经走开了（不是又折回来踩秤），规则里的铃就算响完了（gateDrops22）
+function dyLandA() {
+  const a = V.dy.a; a.gate = 0; a.gv = 0; a.landT = V.T;
+  if (inView(DYA.gate, FL.down.gy, 400)) { snd.clank(); snd.thump(); puff(DYA.gate - 22, FL.down.gy - 6, [130, 138, 158], 7); puff(DYA.gate + 22, FL.down.gy - 6, [130, 138, 158], 7); }
+  if (S.eRing && a.st !== 'hear' && a.st !== 'go' && a.st !== 'stand') { const r = gateDrops22(S); if (r) S = r.s; }
+}
+// 它一走下台秤，门就不算开着了：孩子正点着往门那头走，就照现在的门重新找路（停在门前）
+function dyCloseA() {
+  if (kid.mode !== 'walk' || kid.drive || !kid.path.length || Math.abs(kid.y - FL.down.gy) > 2) return;
+  const q = kid.path[kid.path.length - 1];
+  if (Math.abs(q.y - FL.down.gy) < 2 && Math.sign(q.x - DYA.gate) !== Math.sign(kid.x - DYA.gate)) walkTo(q.x, q.y, kid.onArrive);
+}
+// 阁楼上那件（garbUpdate 里，G.dya）：平时在 p0–p1 之间慢慢来回走，领口朝前张着听；铃一响愣一下（扭头、睁眼），朝铃走过去，踩上台秤仰头看铃；
+// 铃停了再愣 linger 秒，走回去（眼睛慢慢闭上）。孩子在门底下、正往门那儿走的时候它不下秤（门不落在孩子身上）。返回 0：它不追人，没有心跳
+function dyMonA(k, G, m, dt, T) {
+  const a = V.dy.a, M = DYAM, x0 = m.x;
+  const walk = (tx, sp) => { const d = tx - m.x, s = Math.min(Math.abs(d), sp * dt); if (s > 0) { m.x += Math.sign(d) * s; m.ph += s / 60; m.face = Math.sign(d); } return Math.abs(tx - m.x) < 0.5; };
+  a.t += dt;
+  switch (a.st) {
+    case 'patrol':   // 来回走；走到头停一停，领口转一转（听）
+      if (a.pause > 0) { a.pause -= dt; break; }
+      if (walk(a.dir > 0 ? DYA.p1 : DYA.p0, M.patrol)) { a.dir = -a.dir; a.pause = 1.3 + hash(Math.floor(T), 7) * 1.2; }
+      break;
+    case 'hear':   // 预兆：站住，领口一下子转向铃，睁开眼
+      m.face = Math.sign(DYA.scale - m.x) || 1;
+      if (a.t >= M.tell) { a.st = 'go'; a.t = 0; }
+      break;
+    case 'go':   // 朝铃走过去，踩上台秤
+      if (walk(DYA.scale, M.go)) { a.st = 'stand'; a.t = 0; a.linger = 0; m.face = 1; if (inView(m.x, FL.dya.gy, 300)) snd.creak(); }
+      break;
+    case 'stand':   // 站在秤上，仰着头看铃；铃停了再愣一阵，走回去
+      m.x = DYA.scale;
+      if (a.ring > 0) a.linger = 0; else a.linger += dt;
+      if (a.linger >= M.linger && !dyaKidAtGate()) { a.st = 'leave'; a.t = 0; a.dir = -1; dyCloseA(); }
+      break;
+    case 'leave':   // 走回去（门在它一走下台面的时候就落了）
+      if (walk(DYA.p1, M.back)) { a.st = 'patrol'; a.t = 0; a.pause = 0.8; a.dir = -1; }
+      break;
+  }
+  m.run = approach(m.run || 0, Math.abs(m.x - x0) > 0.05 ? 1 : 0, dt * 6);
+  const alert = a.st === 'hear' || a.st === 'go' || a.st === 'stand';
+  a.eyes = approach(a.eyes, alert ? 1 : 0, dt / (alert ? 0.3 : 1.6));
+  a.look = approach(a.look, alert ? 1 : 0, dt / (alert ? 0.18 : 0.9));
+  a.up = approach(a.up, a.st === 'stand' ? 1 : 0, dt / 0.5);
+  m.sink = Math.abs(m.x - DYA.scale) < M.on ? a.plat * M.sink : 0;
+  m.want = 1; m.hunt = 0; m.reach = 0; m.braced = 0; m.mv = Math.abs(m.x - x0); m.dr = 0;
+  m.rise = a.eyes; V.fig[k] = 1 - a.eyes;   // 眼睛那一点冷光（统一画的）：睁着眼才有
+  return 0;
+}
+// 它的领口朝哪儿张着（弧度，0 是正朝上，正的往右）：平时朝前斜着；听见铃声转向铃；站在秤上仰头朝着铃
+function dyaCollarAng(m) {
+  const a = V.dy.a, cx = m.x, cy = FL.dya.gy + (m.sink || 0) - 172;
+  const idle = m.face * (0.32 + 0.1 * Math.sin(V.T * 0.7 + m.x * 0.01)) + (a.st === 'patrol' && a.pause > 0 ? 0.22 * Math.sin(V.T * 1.9) : 0);
+  const bell = Math.atan2(DYA.bellX - cx, cy - (DYA.bellY + 50));
+  return lerp(idle, bell, a.look) + a.up * 0.08 * Math.sin(V.T * 1.3);
+}
+// 领口的开口（世界坐标）：中心、方向
+function dyaMouth(m) { const fy = FL.dya.gy + (m.sink || 0), ang = dyaCollarAng(m), nx = m.x, ny = fy - 150; return { x: nx + Math.sin(ang) * 40, y: ny - Math.cos(ang) * 40, ang }; }
+// 它的样子（只画在暗的一层）：染布工的帆布围裙，底下灌满了墨；没有头——领口是一只又宽又硬的翻领，朝上张着，像一只耳朵；里面是墨，睁眼的时候墨里三只眼睛。
+// 袖子卷着，两条墨胳膊，手被染料染成了靛蓝
+function dyaFig(b, P, m, T) {
+  const a = V.dy.a, fy = FL.dya.gy + (m.sink || 0), x = m.x, f = m.face || 1, w = m.run || 0, ph = m.ph * 2.2, sw = Math.sin(ph) * 13 * w, bob = Math.abs(Math.sin(ph)) * 2.5 * w, lc = DARK.ink;
+  b.save(); b.translate(x, fy - bob); b.seedN = 888000;
+  b.fillStyle = 'rgba(1,2,5,0.35)'; b.beginPath(); b.ellipse(2, 4 + bob, 34, 4, 0, 0, 7); b.fill();
+  b.save(); b.scale(f, 1);
+  // 墨的身子、两只脚
+  fillPts(b, curvePts([[-18, -148], [0, -154], [16, -146], [19, -80], [22, -6], [-22, -4], [-22, -80]], true, 4), INK);
+  for (const s of [-1, 1]) part(b, arcPts(s * 10 + s * sw * 0.5 + 5, -1, 12, 5, 0, TAU, 10), INK, { w: 0.5, tex: 0, lc });
+  const arm = s => {   // 胳膊：袖子卷到胳膊肘，墨的小臂，靛蓝的手
+    const sx = s * 13 - 2, sy = -138, ex = s * 16 - s * sw * 0.4 + 2, ey = -96 + a.up * -6, hx = s * 15 - s * sw * 0.7 + 4 + a.look * 3, hy = -58 - a.up * 10;
+    part(b, tube([[sx, sy], [(sx + ex) / 2, (sy + ey) / 2], [ex, ey]], [12, 11, 11]), s > 0 ? P.dyaCanvas : P.dyaCanvasLo, { w: 0.8, tex: 0.3, lc });   // 卷起来的袖子
+    ink(b, [[ex, ey], [(ex + hx) / 2 + s, (ey + hy) / 2], [hx, hy]], { col: INK, w: 8 / b.pen.w, a: 1 / b.pen.a, taper: 0 });
+    part(b, arcPts(hx, hy + 3, 6.5, 7.5, 0, TAU, 10), P.dyIndigo, { w: 0.6, tex: 0, lc });
+    inkDrips(b, [[hx, hy + 9, 6 + 3 * Math.sin(T * 1.7 + s)]], 888060 + s);
+  };
+  arm(-1);
+  // 围裙：护胸一直盖到小腿，下摆宽；溅着几块染料；一只大口袋，腰上系着带子
+  const hem = Math.sin(T * 1.6) * 2.5 * (0.3 + w);
+  const apron = curvePts([[-12, -146], [12, -146], [15, -110], [24, -98], [28, -44], [30 + hem, -10], [8, -6], [-10, -8], [-27, -6], [-27, -44], [-22, -98], [-15, -110]], true, 4);
+  part(b, apron, P.dyaCanvas, { w: 1.1, tex: 0.45, lc });
+  b.save(); b.beginPath(); pathOf(b, apron); b.clip();
+  for (const [ux, uy, rx, ry, c] of [[10, -40, 11, 8, 'dyIndigo'], [-14, -70, 7, 10, 'dyIndigo'], [14, -122, 6, 5, 'dyMadder'], [-6, -22, 9, 5, 'dyMadder']]) fillPts(b, curvePts([[ux - rx, uy], [ux - rx * 0.3, uy - ry], [ux + rx * 0.8, uy - ry * 0.7], [ux + rx, uy + ry * 0.2], [ux + rx * 0.2, uy + ry], [ux - rx * 0.6, uy + ry * 0.8]], true, 3), P[c], 0.85);
+  b.restore();
+  part(b, rectPts(-24, -100, 48, 8), P.dyaCanvasLo, { w: 0.8, tex: 0, lc });   // 腰带
+  ink(b, [[-24, -96], [-34, -74], [-30, -52]], { w: 1.2, col: P.dyaCanvasLo, taper: 4, a: 1 / b.pen.a });   // 系带
+  part(b, rectPts(-12, -82, 28, 24), P.dyaCanvasLo, { w: 0.7, tex: 0.2, lc });   // 口袋
+  hatch(b, k => pathOf(k, apron), [-30, -146, 32, 142], { ang: -1.15, gap: 4.6 / HD, a: 0.55, w: 0.7, len: 18 });
+  for (const s of [-1, 1]) ink(b, [[s * 11, -146], [s * 8, -154]], { w: 1.3, col: P.dyaCanvasLo, taper: 0, a: 1 / b.pen.a });   // 挂脖子的带子
+  arm(1);
+  inkDrips(b, [[-20, -4, 10], [8, -2, 14], [26, -6, 8]], 888070);
+  b.restore();
+  // 领口：一只又宽又硬的翻领，从脖子张开，开口朝着 ang（不跟着 face 翻：转头就是转这个）
+  const ang = dyaCollarAng(m), ca = Math.cos(ang), sa = Math.sin(ang), at = (u, v) => [u * ca - v * sa, -150 + u * sa + v * ca];   // u：横着，v：顺着领口往外（朝上是负的）
+  const cone = [at(-10, 2), at(-11, -10), at(-14, -22), at(-20, -33), at(-30, -42), at(-29, -46), at(29, -46), at(30, -42), at(20, -33), at(14, -22), at(11, -10), at(10, 2)];   // 喇叭口：脖子细，越往外张得越开
+  fillPts(b, curvePts([at(-10, 4), at(-12, -12), at(12, -12), at(10, 4)], true, 3), INK);
+  part(b, cone, P.dyaCanvasLo, { w: 1, tex: 0.35, lc });
+  hatch(b, k => pathOf(k, cone), [-52, -206, 104, 72], { ang: -1.1, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 14 });
+  const [mx, my] = at(0, -45), rim = arcPts(0, 0, 29, 9, 0, TAU, 20).map(([u, v]) => [mx + u * ca - v * sa, my + u * sa + v * ca]);
+  fillPts(b, rim, INK);   // 开口里：墨
+  ink(b, [...rim, rim[0]], { w: 1, col: '#6f7ca4', a: 0.45, taper: 0 });
+  if (a.eyes > 0.02) {   // 睁眼：墨里三只眼睛，朝着它在听的那一边
+    const k = smooth(a.eyes), e = (u, v, r) => [mx + u * ca - v * sa, my + u * sa + v * ca, r * k];
+    inkEyes(b, [e(-8, 0, 3.2), e(4, -1, 3.6), e(13, 2, 2.2)], 0);
+  }
+  inkDrips(b, [at(-26, -43).concat([9]), at(21, -44).concat([6])].map(([px, py, l]) => [px, py + 2, l]), 888080);
+  // 听着的时候：铃那一边几道短弧往领口里钻（铃每当一下就深一下）
+  if (a.look > 0.05 && (a.st === 'hear' || a.st === 'go' || a.st === 'stand') && a.ring > 0) {
+    const last = a.hits.length ? a.hits[a.hits.length - 1] : null, pulse = last ? 1 - clamp((T - last.t) / 0.7, 0, 1) : 0, ox = DYA.bellX - x, oy = DYA.bellY + 30 - (fy - 196), d = Math.hypot(ox, oy) || 1, ux = ox / d, uy = oy / d;
+    for (let i = 0; i < 3; i++) { const r0 = 40 + i * 10 - pulse * 6, c0 = Math.atan2(uy, ux);
+      ink(b, arcPts(mx, my, r0, r0, c0 - 0.35, c0 + 0.35, 6), { w: 1, col: DARK.hi, taper: 5, a: a.look * (0.25 + 0.5 * pulse) * (1 - i * 0.25), seed: 888090 + i, single: 1 }); }
+  }
+  b.restore();
+}
+// 铜铃：吊在房梁上一根铁杆底下，摆的轴在 (bellX, bellY)；轴上一根短曲柄朝左，铃绳拴在曲柄头上
+function dyaBellTip(ba) { const c = Math.cos(ba), s = Math.sin(ba); return [DYA.bellX + (-26 * c - -7 * s), DYA.bellY + (-26 * s + -7 * c)]; }
+function dyDrawA(b, P, lit, vis) {   // 称布间会动的东西（在孩子后面画的）：铃、铃绳、台面、杠杆和弹簧、针、链子、闸门、阁楼上那件
+  const a = V.dy.a, F = FL.down, L = FL.dya, lc = lcOf(P, lit), T = V.T, { scale: sx, sw, gate: gx } = DYA; b.seedN = 889000;
+  // 铜铃
+  b.save(); b.translate(DYA.bellX, DYA.bellY); b.rotate(a.ba); b.scale(1.35, 1.35);
+  ink(b, [[0, 0], [-19.3, -5.2]], { w: 2.6, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889001 });   // 曲柄（头上拴铃绳：dyaBellTip）
+  part(b, rectPts(-12, -3, 24, 6), P.iron, { w: 0.8, tex: 0, lc, seed: 889002 });   // 轴
+  const bell = curvePts([[-6, 3], [6, 3], [10, 14], [12, 30], [19, 42, 1], [-19, 42, 1], [-12, 30], [-10, 14]], true, 4);
+  b.save(); b.rotate(-a.ba * 0.55); ink(b, [[0, 6], [0, 40]], { w: 1.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889003 }); b.fillStyle = P.iron; b.beginPath(); b.arc(0, 43, 4.2, 0, 7); b.fill(); b.restore();   // 铃舌（比铃慢半拍）
+  part(b, bell, P.dyaBell, { w: 1.1, tex: 0.3, lc, seed: 889004 });
+  part(b, rectPts(-19, 38, 38, 5), P.dyaBellLo, { w: 0.8, tex: 0, lc, seed: 889005 });   // 铃口的一道厚边
+  hatch(b, k => pathOf(k, bell), [3, 3, 17, 40], { ang: -1.1, gap: 4.6 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 12, seed: 889006 });
+  ink(b, [[-7, 10], [-11, 34]], { w: 0.8, col: lit ? P.hi : DARK.hi, taper: 6, a: lit ? 0.5 : 0.35, seed: 889007, single: 1 });   // 铜上的一道反光
+  b.restore();
+  // 当：铃舌碰一下，铃边上几道短弧（越摆越小，越来越淡）
+  for (const h of a.hits) { const u = (T - h.t) / 0.7, k = h.k * (1 - u);
+    for (let i = 0; i < 3; i++) { const r0 = 40 + u * 26 + i * 9, cx = DYA.bellX + h.s * 5, cy = DYA.bellY + 38;
+      ink(b, arcPts(cx, cy, r0, r0 * 0.9, h.s > 0 ? -0.75 : Math.PI - 0.15, h.s > 0 ? 0.15 : Math.PI + 0.75, 8), { w: 1.2, col: lit ? P.ink : DARK.hi, taper: 6, a: 0.75 * k * (1 - i * 0.25), seed: 889010 + i, single: 1 }); } }
+  // 铃绳：曲柄头 → 小滑轮 → 穿过阁楼地板的小洞 → 垂到楼下，底下一只木头拉手
+  const [tx, ty] = dyaBellTip(a.ba), rx = DYA.rope, sy0 = 326, py = a.pull * 18, swx = a.sway * 5 * Math.sin(T * 6);
+  ink(b, [[tx, ty], [rx + 6, sy0 - 6]], { w: 1.8, col: P.dyaRope, taper: 0, a: 1 / b.pen.a, seed: 889020 });
+  ink(b, [[rx, sy0], [rx, 628]], { w: 1.8, col: P.dyaRope, taper: 0, a: 1 / b.pen.a, seed: 889021 });
+  ink(b, [[rx, L.fr + 10], [rx + swx * 0.5, (L.fr + DYA.ropeY) / 2 + py * 0.5], [rx + swx, DYA.ropeY - 26 + py]], { w: 2, col: P.dyaRope, taper: 0, a: 1 / b.pen.a, seed: 889022 });
+  part(b, roundPts(rx + swx - 6, DYA.ropeY - 30 + py, 12, 30, 5), P.woodHi, { w: 0.9, tex: 0, lc, seed: 889023 });   // 木头拉手
+  for (const yy of [DYA.ropeY - 24, DYA.ropeY - 8]) ink(b, seg(rx + swx - 6, yy + py, rx + swx + 6, yy + py), { w: 0.6, col: lc, taper: 0, a: 0.6, seed: 889024 + yy, single: 1 });
+  // 台面：嵌在阁楼地板里的一块木板，两道铁箍；被踩下去 sink（沉进凹槽里，后沿露出一道黑缝）
+  const sk = a.plat * DYAM.sink;
+  b.save(); b.beginPath(); b.rect(sx - sw - 3, L.wb + 10, sw * 2 + 6, L.ff - 6 - (L.wb + 10)); b.clip();
+  part(b, rectPts(sx - sw, L.wb + 12 + sk, sw * 2, L.ff - L.wb - 20), P.woodHi, { w: 1, tex: 0.35, lc, seed: 889030 });
+  for (const u of [0.22, 0.78]) ink(b, seg(sx - sw + 2, lerp(L.wb + 12, L.ff - 8, u) + sk, sx + sw - 2, lerp(L.wb + 12, L.ff - 8, u) + sk), { w: 2.4, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889031 + u * 10 });
+  part(b, rectPts(sx - sw, L.ff - 8 + sk, sw * 2, 6), P.wood, { w: 0.7, tex: 0, lc, seed: 889033 });
+  b.restore();
+  // 台秤底下：一根顶杆把杠杆往下压；杠杆另一头拴着链子；底下一根弹簧
+  const fx = sx - sw - 8 + 22, fyy = L.fr + 80 - 24, th = lerp(-0.24, 0.06, a.plat), ex = fx + Math.cos(th) * 114, ey = fyy + Math.sin(th) * 114, ly = xx => fyy + Math.tan(th) * (xx - fx);
+  part(b, rectPts(sx - 4, L.fr + 6, 8, ly(sx) - L.fr - 6), P.iron, { w: 0.7, tex: 0, lc, seed: 889040 });   // 顶杆
+  { const s0 = ly(sx + 40), s1 = L.fr + 76, pts = []; for (let i = 0; i <= 24; i++) pts.push([sx + 40 + (i % 2 ? 6 : -6), lerp(s0 + 2, s1, i / 24)]); ink(b, pts, { w: 1.1, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889041 }); }   // 弹簧
+  ink(b, [[fx - 6, fyy - Math.tan(th) * 6], [ex, ey]], { w: 5, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889042 });   // 杠杆
+  b.fillStyle = lit ? P.brass : DARK.hi; b.beginPath(); b.arc(fx, fyy, 2.2, 0, 7); b.fill();
+  // 针盘的针
+  { const na = lerp(-2.4, 0.5, clamp(a.needle, -0.05, 1.08)), dx = DYA.dial, dy = 494;
+    ink(b, [[dx - Math.cos(na) * 4, dy - Math.sin(na) * 4], [dx + Math.cos(na) * 16, dy + Math.sin(na) * 16]], { w: 1.6, col: P.dyMadder, taper: 0, a: 1 / b.pen.a, seed: 889050 });
+    b.fillStyle = P.iron; b.beginPath(); b.arc(dx, dy, 2.4, 0, 7); b.fill(); }
+  // 链子：杠杆头 → 往上穿过阁楼地板 → 滑轮 A → 滑轮 B → 垂下来吊着闸门。门落在地上的时候链子是松的（弯着），一压秤就绷直
+  const gyB = dyaGateY(), gTop = gyB - 276, cx = DYA.pA - 10, top = DYA.pY - 10, sl = a.slack;
+  const off = a.gate * DYAM.lift + a.crack * 12;   // 链子走了多远（链环跟着动）
+  const lower = [[ex, ey], [cx, L.fr + 12]], upper = [];
+  for (let i = 0; i <= 10; i++) { const u = i / 10; upper.push([cx + Math.sin(Math.PI * u) * 9 * sl, lerp(624, DYA.pY, u)]); }
+  upper.push(...arcPts(DYA.pA, DYA.pY, 10, 10, Math.PI, Math.PI * 1.5, 4).slice(1), [DYA.pB, top], ...arcPts(DYA.pB, DYA.pY, 10, 10, -Math.PI / 2, 0, 4).slice(1));
+  for (let i = 1; i <= 10; i++) { const u = i / 10; upper.push([gx + Math.sin(Math.PI * u) * 12 * sl, lerp(DYA.pY, gTop - 8, u)]); }
+  dyaChain(b, P, lit, lower, off, 889060); dyaChain(b, P, lit, upper, off + 40, 889070);
+  // 闸门：铁栅条，横着三道，底下一排尖头，顶上一只吊环
+  const kk = a.kick * Math.sin(T * 60) * 1.6;
+  b.save(); b.translate(kk, 0); b.seedN = 889100;
+  ink(b, arcPts(gx, gTop - 5, 6, 6, 0, TAU, 10), { w: 1.6, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889101 });
+  for (let i = 0; i < 6; i++) { const bx = gx - 21 + i * 42 / 5;
+    ink(b, seg(bx, gTop, bx, gyB - 4), { w: 2.8, col: P.iron, taper: 0, a: 1 / b.pen.a, seed: 889110 + i, single: 1 });
+    part(b, [[bx - 3.5, gyB - 6], [bx + 3.5, gyB - 6], [bx, gyB + 6]], P.iron, { w: 0.5, tex: 0, lc, seed: 889120 + i }); }
+  for (const yy of [gTop + 2, gTop + 128, gyB - 16]) part(b, rectPts(gx - 26, yy - 4, 52, 8), P.iron, { w: 0.9, tex: 0.2, lc, seed: 889130 + Math.round(yy - gTop) });
+  if (!lit) { inkDrips(b, [[gx - 13, gyB - 12, 10 + a.gate * 14], [gx + 8, gyB - 12, 18]], 889140); }   // 暗处：栅条上挂着墨
+  ink(b, seg(gx - 23, gTop + 30, gx - 23, gyB - 20), { w: 0.6, col: lit ? P.hi : DARK.hi, taper: 0, a: 0.25, seed: 889141, single: 1 });
+  b.restore();
+  // 阁楼上那件（暗的一层）
+  if (!lit) dyaFig(b, P, V.mon.dya, T);
+}
+// 一条铁链：沿着折线一个个链环（一个正面、一个侧面），off 是链子走了多远（链环跟着挪）
+function dyaChain(b, P, lit, pts, off, seed) {
+  const R = resample(pts, 3), n = R.length; if (n < 2) return; const L = R[n - 1][2], step = 7;
+  b.seedN = seed; const col = P.iron;
+  for (let i = Math.ceil(off / step); ; i++) {   // 第 i 个链环在 i × step − off：链子往回走（off 变大），链环都往起点那头挪
+    const s = i * step - off; if (s > L) break;
+    let j = 0; while (j < n - 2 && R[j + 1][2] < s) j++;
+    const p = R[j], q = R[Math.min(n - 1, j + 1)], u = (s - p[2]) / Math.max(0.001, q[2] - p[2]), x = lerp(p[0], q[0], u), y = lerp(p[1], q[1], u), an = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    b.save(); b.translate(x, y); b.rotate(an);
+    if (((i % 2) + 2) % 2) { b.strokeStyle = col; b.lineWidth = 1.6; b.beginPath(); b.ellipse(0, 0, 4.6, 2.6, 0, 0, 7); b.stroke(); }
+    else { b.fillStyle = col; b.fillRect(-4.6, -0.9, 9.2, 1.8); }
+    b.restore();
+  }
+}
+// 画在孩子前面的：阁楼前沿的栏杆、搭在栏杆上晾着的几条染布（阁楼上那件从它们后面走过）
+function dyDrawFrontA(b, P, lit, vis) {
+  const L = FL.dya, lc = lcOf(P, lit), { lx0, lx1 } = DYA, ry = L.wb - 26; b.seedN = 889500;
+  for (let px = lx0 + 46, i = 0; px < lx1 - 20; px += 84, i++) part(b, rectPts(px - 3, ry + 4, 6, L.ff - ry - 4), P.wood, { w: 0.8, tex: 0, lc, seed: 889501 + i });
+  part(b, rectPts(lx1 - 9, ry, 7, L.ff - ry), P.wood, { w: 0.8, tex: 0, lc, seed: 889530 });
+  part(b, rectPts(lx0, ry, lx1 - lx0 - 2, 8), P.woodHi, { w: 0.9, tex: 0.2, lc, seed: 889531 });
+  ink(b, seg(lx0, ry + 48, lx1 - 6, ry + 48), { w: 2, col: P.wood, taper: 0, a: 1 / b.pen.a, seed: 889532 });
+  // 搭在栏杆上的布：前面垂下来一截（盖过阁楼的前沿），栏杆上头折过去一点
+  for (const [cx, cw, len, col, i] of [[72118, 46, 150, 'dyIndigo', 0], [72182, 38, 118, 'dyaCanvas', 1], [72306, 52, 176, 'dyMadder', 2], [72378, 36, 104, 'dyOchre', 3], [72446, 44, 142, 'dyIndigo', 4]]) {
+    const sk = Math.sin(V.T * 0.9 + i) * 1.5, y0 = ry - 3, pts = [[cx, y0 - 4], [cx + cw, y0 - 4], [cx + cw + 2, y0 + 8], [cx + cw + sk * 0.5, y0 + len * 0.5], [cx + cw + sk, y0 + len], [cx + cw * 0.55 + sk, y0 + len + 6], [cx + sk, y0 + len - 3], [cx - 1 + sk * 0.4, y0 + len * 0.5], [cx - 2, y0 + 8]];
+    part(b, pts, P[col], { w: 1, tex: 0.45, lc, seed: 889540 + i * 7 });
+    ink(b, seg(cx + 1, y0 + 6, cx + cw - 1, y0 + 6), { w: 0.7, col: lc, taper: 0, a: 0.5, seed: 889541 + i * 7, single: 1 });   // 折过栏杆的那道棱
+    for (const k of [0.32, 0.7]) ink(b, seg(cx + cw * k, y0 + 12, cx + cw * k + sk * 0.8, y0 + len - 10), { w: 0.6, col: lc, taper: 6, a: 0.45, seed: 889542 + i * 7 + k * 10, single: 1 });
+    hatch(b, kk => pathOf(kk, pts), [cx + cw * 0.5, y0, cw * 0.55, len], { ang: -1.2, gap: 4.8 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 18, seed: 889543 + i * 7 });
+    if (!lit && i % 2 === 0) inkDrips(b, [[cx + cw * 0.6 + sk, y0 + len + 2, 8 + i * 3]], 889550 + i);   // 暗处：布角上滴着墨
+  }
+}
+// 照规则里的局面摆：铃没拉，它在阁楼上来回走、门落着；拉了（eRing 1），就当作它已经站在秤上、门开着（铃响完了，再愣一阵就走）
+function dySnapA() {
+  const a = V.dy.a, m = V.mon.dya;
+  Object.assign(m, { x: S.eRing ? DYA.scale : 72400, fy: FL.dya.gy, face: S.eRing ? 1 : -1, ph: 0, run: 0, rise: 0, want: 1, hunt: 0, reach: 0, sink: 0 });
+  if (S.eRing) Object.assign(a, { st: 'stand', t: 0, plat: 1, gate: 1, needle: 0.86, slack: 0, eyes: 1, look: 1, up: 1, linger: 0 });
+  else Object.assign(a, { st: 'patrol', dir: -1 });
+}
+// 被抓住、回到灯底下以后（只有库房里抓得到人）：铃早响完了，门早落了，它在阁楼上接着来回走
+function dyRestA() {
+  if (S.eRing) { const r = gateDrops22(S); if (r) S = r.s; }
+  const T = V.T; V.dy.a = dyInitA(); dySnapA(); V.dy.a.landT = T - 10;
+}
+// 点得到的地方：铃绳（站在绳子左边，伸手拉拉手）；闸门（孩子在门左边、门没开的时候：自己去掀）
+function dySpotsA(add, out) {
+  const dn = FL.down.gy, rx = DYA.rope, gx = DYA.gate;
+  add('eBellH', [rx - 24, DYA.ropeY - 150, rx + 26, DYA.ropeY + 14], DYA.pull, 'down', 1, [rx, DYA.ropeY - 12]);
+  if (kid.x < gx && !dyaOpen()) add('eGateH', [gx - 40, dyaGateY() - 276, gx + 40, dn + 12], gx - 40, 'down', 1, [gx - 20, dn - 26]);
+}
+// 自己去掀闸门：手伸到门底下那道横铁上往上抬，提起来一条缝（drive），一松手“哐”地掉回去
+function dyaCrackDrive(rr) { const a = V.dy.a; if (rr.t >= 0.2) a.crack = rr.hit ? Math.max(0, 1 - smooth((rr.t - (rr.pre + 0.2)) / 0.12)) : smooth((rr.t - 0.2) / Math.max(0.05, rr.pre)); rr.ty = rr.hy - a.crack * 12; }
+function dyaCrackHit() { const a = V.dy.a; a.landT = V.T; snd.clank(); if (inView(DYA.gate, FL.down.gy, 300)) puff(DYA.gate, FL.down.gy + 14, [130, 138, 158], 5); }
+// 被闸门拦住（meetGate 'eg1'，点了门、或者往门那头走）。这头（左边）：铃拉过了、门正在升（或者它正走过去）：站在门前等，门一开够自己钻过去；
+// 铃没拉（或者门在往下落）：伸手掀，掀起一条缝又掉回去，摇头，气泡里画铃。门那头（右边，已经钻过去了）：回不去了，摸一下栅条、摇头（没有气泡：这边没什么要做的）
+function dyMeetGateA() {
+  const a = V.dy.a, gx = DYA.gate, d = kid.x < gx ? 1 : -1; kid.face = d;
+  if (d > 0 && S.eRing && (a.st === 'hear' || a.st === 'go' || a.st === 'stand')) { kid.mode = 'idle'; a.wait = { x: kid.x, d }; return; }
+  if (d < 0) return startReach({ hx: gx + 22, hy: FL.down.gy - 96, pre: 0.25, hold: 0.25, wiggle: true, onHit: () => snd.clank(), after: () => shakeHead() });
+  startReach({ hx: gx - 20, hy: FL.down.gy - 22, pre: 0.4, hold: 0.25, dyaCrack: 1, drive: dyaCrackDrive, onHit: dyaCrackHit, after: () => { shakeHead(['eBell']); } });
 }
 // --- 22B ---
 // ----- B 段：染缸间（烂地板、厚跳板、那件很沉的皮围裙；地板底下染缸的坑）-----
@@ -10634,7 +11012,7 @@ function dyPaintCellarC(b, r, P, lit) {   // 库房的地窖不动的东西：�
 function drawDyDyn(b, P, lit, vis) {   // 在孩子后面画的
   if (!DY_ON || !V.dy) return;
   // --- 22A ---
-  // （称布间：还没做）
+  if (vis.dyA) dyDrawA(b, P, lit, vis);
   // --- 22B ---
   if (vis.dyB || vis.dyBp) dyDrawB(b, P, lit, vis);
   // --- 22C ---
@@ -10643,7 +11021,7 @@ function drawDyDyn(b, P, lit, vis) {   // 在孩子后面画的
 function drawDyFront(b, P, lit, vis) {   // 盖在孩子前面画的（孩子从它后面走过去）
   if (!DY_ON || !V.dy) return;
   // --- 22A ---
-  // （称布间：还没做）
+  if (vis.dyA) dyDrawFrontA(b, P, lit, vis);
   // --- 22B ---
   // （染缸间：还没做）
   // --- 22C ---
@@ -10863,7 +11241,7 @@ function dyDrawMonC(b, P, inHole) {   // 它现在在哪儿、什么姿势
 function dyInit() {   // V.dy：这一关画面上的状态（restart 的时候建，snapTo 的时候照规则里的局面重摆）
   return {
     // --- 22A ---
-    a: {},   // （称布间：还没做）
+    a: dyInitA(),
     // --- 22B ---
     b: dyInitB(),
     // --- 22C ---
@@ -10873,7 +11251,7 @@ function dyInit() {   // V.dy：这一关画面上的状态（restart 的时候�
 function dySnap() {   // 直接摆到规则里的局面（snapTo、从头再来）：画面上的东西一步到位
   V.dy = dyInit();
   // --- 22A ---
-  // （称布间：还没做）
+  dySnapA();
   // --- 22B ---
   dySnapB();
   // --- 22C ---
@@ -10882,7 +11260,7 @@ function dySnap() {   // 直接摆到规则里的局面（snapTo、从头再来�
 function dyRespawn() {   // 被抓住、回到灯底下以后（respawn 的最后）：这一关的怪物各回各的地方
   if (!DY_ON || !V.dy) return;
   // --- 22A ---
-  // （称布间：还没做）
+  dyRestA();
   // --- 22B ---
   dyRestB();
   // --- 22C ---
@@ -10909,7 +11287,7 @@ function dyUpdate(dt) {   // 每一帧（tick 里，在 garbUpdate 前面）
     if (q.lid ? kid.mode === 'idle' : !busy()) { V.dy.tapQ = null; if (!won && (q.lid ? S.eHatch === 0 && V.T - q.t < 4 : V.T - q.t < 0.7)) tapWorld(q.x, q.y); }
   }
   // --- 22A ---
-  // （称布间：还没做）
+  dyUpdateA(dt);
   // --- 22B ---
   dyUpdateB(dt);
   // --- 22C ---
@@ -10953,7 +11331,7 @@ function dyGuard(s, id, h) {   // 规则说行、页面里现在不行的（返�
 }
 function dyAutoOk(m) {   // 自动试玩（?auto=1）：这一步现在点得成吗（有的要等时候）
   // --- 22A ---
-  // （称布间：还没做）
+  if (SPOT_ZONE22[m.spot] && SPOT_ZONE22[m.spot] !== 'e0' && dyZoneAt() === 'e0' && !dyaOpen()) return false;   // 铃拉过了：站在铃绳跟前等闸门升起来，再往里走
   // --- 22B ---
   if (m.spot === 'ePlankH') {   // 先走到跳板跟前站着；等它踩着跳板走过来、站在烂地板上头了再抽（这样它直接掉下去）。等 6 秒还没来就先抽（它下一回走过来踩断烂板子）
     const c = V.dy.b;
@@ -10968,7 +11346,7 @@ function dyAutoOk(m) {   // 自动试玩（?auto=1）：这一步现在点得成
 }
 function dySpots(add, out) {   // 能点的地方（spots() 里，只有 ?lv=22 的时候才有）
   // --- 22A ---
-  // （称布间：还没做）
+  dySpotsA(add, out);
   // --- 22B ---
   dySpotsB(add, out);
   // --- 22C ---
@@ -10978,7 +11356,7 @@ function dyGlints() {   // 卡住以后闪的小星星：[x, y, 相位, 现在�
   const dn = FL.down.gy, gyC = FL.dyc.gy, c = V.dy.c;
   return [
     // --- 22A ---
-    // （称布间：还没做）
+    [DYA.rope, DYA.ropeY - 14, 0.9, S.eRing === 0 && !S.ePast],   // 铃绳：还没从闸门底下钻过去的时候
     // --- 22B ---
     [DYB.pl0 + 16, dn - 4, 0.9, S.ePlank === 'floor'], [(DYB.rot0 + DYB.rot1) / 2, dn + 12, 2.2, S.ePlank === 'inv' && dyDownB()],   // 跳板伸出来的那一头；塌出来的洞（拿着木板去搭）
     // --- 22C ---
@@ -11314,7 +11692,7 @@ const LIGHTS = [
   { id: 'bike', off: 0.8, up: 1, wd: 0.42, nosafe: 1, at: () => V.li.bike < 0.01 ? null : ({ x: BIKE.lamp[0], y: BIKE.lamp[1], R: 520, I: V.li.bike, rot: Math.PI / 2 - 0.03, clip: [BIKE.lamp[0] - 4, 600, 8640, 1060] }) },
   // 染坊（第 22 关，只有 ?lv=22 的时候亮着）
   // --- 22A ---
-  { id: 'dya', off: 0.6, up: 0.85, at: () => DY_ON ? { x: DYA.lamp, y: DYA.lampY, R: 300, I: 0.97 + 0.03 * Math.sin(V.T * 7.3) * Math.sin(V.T * 2.9), clip: [DYA.x0 + 20, 250, DYA.x0 + 560, 1060] } : null },   // 称布间门口的壁灯：一直亮着（进门、被抓回来的地方）
+  { id: 'dya', off: 0.6, up: 0.85, at: () => DY_ON ? { x: DYA.lamp, y: DYA.lampY, R: 300, I: 0.97 + 0.03 * Math.sin(V.T * 7.3) * Math.sin(V.T * 2.9), clip: [DYA.x0 + 20, FL.dya.fr, DYA.x0 + 560, 1060] } : null },   // 称布间门口的壁灯：一直亮着（进门、被抓回来的地方）。灯在阁楼底下：光到阁楼的底面为止，照不到阁楼上
   // --- 22B ---
   // （染缸间：还没做）
   // --- 22C ---
@@ -11923,7 +12301,10 @@ const GARB = {
   cab: { kind: 'cab', fl: 'down', partner: 'mcb', back: 1, keepDown: () => V.mSeenC === 1, home: 41245, terr: [41040, 41330], speed: 0, h: 112, sleeper: 480, ai: 'bump', bump: { tell: 1.25, tell0: 2.2, dist: 84, dur: 0.26, stun: 1.7, reach: 74, back: 64 } },
   // ===== 染坊（第 22 关，2026-11-26）：各段的怪物各有各的走法（garbUpdate 里各自一行），不挂在门上、自己画（drawDyDyn）=====
   // --- 22A ---
-  // （称布间：还没做）
+  // 称布间头顶阁楼上的一件染布工的帆布围裙：听声音的（领口朝上张着，像一只耳朵；平时闭着眼），铃一响就走去踩台秤，走法在 dyMonA（G.dya）。
+  // 它在阁楼上，孩子够不着它、它也下不来：不追人、不抓人、不挡路（没有 fear、没有 touch），阁楼上也照不到光
+  dya: { kind: 'robe', fl: 'dya', dya: 1, home: 72400, terr: [DYA.p0, DYA.p1], speed: 38, h: 196, cols: ['dyaCanvas', 'dyaCanvasLo'], face0: -1, fyOf: m => FL.dya.gy + (m.sink || 0),
+    eyeAt: m => V && V.dy && V.dy.a ? (p => [p.x, p.y])(dyaMouth(m)) : [m.x, FL.dya.gy - 190] },
   // --- 22B ---
   // 染缸间那件很沉的：一条灌满了墨、撑得鼓鼓的皮围裙，底下一双高筒胶靴。平时站在右头；孩子走进这一间，它踩着跳板走到烂地板上头拦着（跳板撑得住它）；跳板一抽它就掉进底下的染缸，站在缸里仰着头够（上不来）。
   // 它不抓人（孩子始终在它那一片外面），走法、样子都在 dyMonB / dyDrawMonB。fear：它站在跳板上的时候，孩子朝它走到 110 就不敢再走——正好是门 ec2 拦住孩子的地方
@@ -12428,7 +12809,7 @@ function garbUpdate(dt) {
     if (G.flow) { cfMonUpdate(k, G, m, dt, lit, hy); continue; }   // 石渠尽头拦路的雨披（第 18 关）：光水冲过来它往后退，被逼在光里就塌，见 cfMonUpdate
     // 染坊（第 22 关）的怪物：各有各的走法
     // --- 22A ---
-    // （称布间：还没做）
+    if (G.dya) { if (DY_ON && V.dy) dyMonA(k, G, m, dt, T); continue; }   // 称布间阁楼上的帆布围裙（不追人）
     // --- 22B ---
     if (G.dyb) { if (DY_ON && V.dy) near = Math.max(near, dyMonB(k, G, m, dt, T)); continue; }   // 染缸间那件很沉的皮围裙
     // --- 22C ---
@@ -14074,7 +14455,7 @@ GARB_HOME.cloak = (b, P, lit) => mzCloakRoost(b, P, lit, GARB.cloak.home, FL.dow
 GARB_HOME.q4dust = drawHungDust;   // 地下室的灰大褂：没醒的时候挂在柜台后面的钩子上
 // 染坊（第 22 关）：没醒的时候什么样（各段自己在 drawDyDyn 里画，这儿只是照规矩留一项）
 // --- 22A ---
-// （称布间：还没做）
+HEAP_COLS.dya = ['dyaCanvas', 'dyaCanvasLo']; GARB_HOME.dya = () => {};
 // --- 22B ---
 HEAP_COLS.dyb = ['dyLeather', 'dyLeatherLo']; GARB_HOME.dyb = (b, P, lit) => { if (!lit) dyHeavyFig(b, P, DYB.home, FL.down.gy, -1, V.T, V.mon.dyb, 888500, { shadow: 1 }); };   // 它没有睡着的样子：一直站在右头
 // --- 22C ---
@@ -14906,7 +15287,7 @@ const drop = it => { const i = bag.indexOf(it); if (i >= 0) bag.splice(i, 1); };
 const ICON_SIZE = { cWheel: 72, bLift: 76, jKey: 52, jWt: 70, hMatch: 40, hCrank: 56, hCandle: 56, hLamp: 56, kWrench: 60, kPail: 56, kPailF: 56, cBulb: 40, cBal: 70, bLamp: 54, bTag: 44, bMirror: 84, fBeacon: 44, fHelmet: 56, vFuse: 44, vPole: 130, vKeys: 40, dPlank: 96, dWheel: 56, wPail: 64, wTorch: 66, wChain: 60, mHandle: 56, mBq: 64, uHat: 56, tMir: 56, tBill: 50, nFan: 44, nScale: 80, gWhis: 30, sKey: 30, bulb: 26, crank: 30, key: 30, fuse: 30, log: 70, slipper: 40, honey: 34, yRake: 120, yKey: 52, lPole: 110, lStool: 54, qKey: 52, qKnob: 40, qLad: 80, qBkey: 40, qWkey: 40, zCoin: 30, zFkey: 40, qTicket: 46, zSlip: 44, zBag: 50, rBulb: 26, rBulb2: 26, rPlank: 90, rReel: 52 }, ICON_R = 4, ICON_PAD = 70;
 // 染坊（第 22 关）的东西在物品栏、气泡里画多大
 // --- 22A ---
-// （称布间：还没做）
+ICON_SIZE.eBell = 70;   // 铜铃（只在气泡里画）
 // --- 22B ---
 ICON_SIZE.ePlank = 104;   // 厚跳板
 // --- 22C ---
@@ -15488,7 +15869,7 @@ function meetGate(k) {
   if (k === 'bs3' && S.bUp) { kid.face = 1; return shakeHead(['bLift']); }   // 货梯间：平台升走了，地上是个坑：摇头，气泡里画货梯（再按一下按钮放下来）
   // 染坊（第 22 关）
   // --- 22A ---
-  // （闸门：还没做）
+  if (k === 'eg1') return dyMeetGateA();   // 称布间的闸门：门前等着 / 自己掀一下掀不动 / 从那头回不来（见 dyMeetGateA）
   // --- 22B ---
   if (k === 'ec2' && S.ePlank !== 'floor' && V.dy && V.dy.b.broke) { kid.face = 1; return S.ePlank === 'put' ? (kid.mode = 'idle') : shakeHead(['ePlank']); }   // 染缸间：地板塌出来一个大洞，孩子停在洞边摇头，气泡里画木板（木板刚搭上去还在往下倒：站着等）。木板还铺着（它拦着）照平常的“不敢过去”，气泡里画什么见 gateHint
   // --- 22C ---
@@ -15509,7 +15890,7 @@ function gateHint(k) {
     case 'gown': return ['plug'];
     // 染坊（第 22 关）
     // --- 22A ---
-    // （闸门：还没做）
+    case 'eg1': return s.eRing ? null : ['eBell'];   // 称布间的闸门：要拉铃
     // --- 22B ---
     case 'ec2': return s.ePlank === 'floor' ? ['ePlank'] : null;   // 染缸间：那件沉的站在跳板上拦着——气泡里画跳板（抽掉它）；抽了、它还没掉下去：不用再做什么，等它走过来
     // --- 22C ---
@@ -16208,7 +16589,8 @@ function perform(sp, h, r) {
     else if (f === 'dk12') { o.hx = MLEV.x - 4; o.hy = MLEV.y - 20; o.pre = 0.3; o.hold = 0.3; o.onHit = bub(['bolt'], () => snd.tap()); return hopTo(CAB.x, CAB.h, () => startReach({ ...o, after: () => hopTo(CAB.x - CAB.w / 2 - 34, 0) })); }   // 旧地铁：信号线没通电，扳不动：照样先站上柜子，伸手一扳没反应，气泡里画闪电，再跳下来（往左，不挡着往右的路）
     // 染坊（第 22 关）
     // --- 22A ---
-    // （称布间：还没做）
+    else if (f === 'heavy22') { o.pre = 0.4; o.hold = 0.25; o.dyaCrack = 1; o.drive = dyaCrackDrive; o.onHit = dyaCrackHit; o.after = () => shakeHead(['eBell']); }   // 闸门：自己往上抬，提起来一条缝又掉回去，摇头，气泡里画铃
+    else if (f === 'wait22') { kid.face = 1; V.dy.a.wait = { x: kid.x, d: 1 }; return; }   // 铃拉过了、门还没升够：站在门前等，门一开够自己钻过去（dyUpdateA）
     // --- 22B ---
     else if (f === 'hole22') { o.pre = 0.3; o.hold = 0.3; o.onHit = bub(['ePlank'], () => snd.no()); }   // 染缸间：空着手点洞，气泡里画木板
     else if (f === 'up22') { o.pre = 0.35; o.hold = 0.25; o.wiggle = true; o.onHit = () => { V.dy.b.wob = V.T; snd.creak(); }; o.after = () => shakeHead(); }   // 它还没掉下去：木板往烂地板上一放，烂板子一晃——搭不上，摇头
@@ -16353,7 +16735,7 @@ function perform(sp, h, r) {
     // 百货大楼（第 17 关）
     // 染坊（第 22 关）
     // --- 22A ---
-    // （称布间：还没做）
+    case 'eBellH': return startReach({ hx: DYA.rope, hy: DYA.ropeY - 12, pre: 0.12, hold: 0.25, dyaPull: 1, drive: rr => { V.dy.a.pull = rr.hit ? rr.k : 0; rr.ty = rr.hy + V.dy.a.pull * 18; }, onHit: () => commit(r), after: () => { V.dy.a.sway = 1; } });   // 踮脚抓住铃绳的拉手，往下一拽
     // --- 22B ---
     case 'ePlankH': o.pre = 0.32; o.hold = 0.3; break;   // 蹲下去抓住跳板伸出来的那一头，往回一抽
     case 'eHoleH': o.pre = 0.4; o.hold = 0.5; break;   // 把木板竖起来，往洞那边一放
@@ -16450,7 +16832,7 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
     switch (ev) {
       // 染坊（第 22 关）
       // --- 22A ---
-      // （称布间：还没做）
+      case 'ring22': dyRingA(); break;   // 铜铃响起来，阁楼上那件听见了
       // --- 22B ---
       case 'pull22': dyOnPullB(); break;   // 跳板抽出来了：它正站在烂地板上头的话，脚下一空
       case 'put22': drop('ePlank'); V.dy.b.lay = 0; V.dy.b.laid = 0; break;   // 木板从孩子这头立起来往下倒，搭在洞上（倒下去那一下 dyUpdateB 里咚一声）
@@ -16810,7 +17192,8 @@ function hint() {
   else if (m.spot === 'yLure') say(['sweater', '>'], 2.8);   // 把狗的毛衣引到圈着的那盏灯底下
   // 染坊（第 22 关）
   // --- 22A ---
-  // （称布间：还没做）
+  else if (m.spot === 'eBellH') say(['eBell', '>'], 2.8);
+  else if (DY_ON && S.eRing && dyZoneAt() === 'e0' && SPOT_ZONE22[m.spot] && SPOT_ZONE22[m.spot] !== 'e0' && !dyaOpen()) { ring = { id: 'eGateH', t0: V.T }; say(['>'], 2.8); }   // 铃拉过了、门还没升够：圈闸门（站到门前等）
   // --- 22B ---
   else if (m.spot === 'ePlankH') say(['ePlank', '>'], 2.8);
   // --- 22C ---
