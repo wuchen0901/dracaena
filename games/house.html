@@ -10210,10 +10210,10 @@ function dyBootPrint(b, x, y, f) {
   b.beginPath(); b.ellipse(x - f * 11, y + 0.4, 5.5, 2.6, 0, 0, 7); b.fill();
 }
 // 烂了的那一段地板（rot0–rot1）：五排板子发黑、往下塌（sag：中间塌下去多少，后排靠墙塌得少），板缝里透着黑，两头各缺一块（露出底下的黑），前脸一道裂缝。
-// back：会动的那一层再画一遍的时候先用黑把原来的盖住（板子往下弯，原来的位置空出来是黑的缝）
-function dyRotFloor(b, P, lit, sag, seed, back) {
+// back：会动的那一层再画一遍的时候先用黑把原来的盖住（板子往下弯，原来的位置空出来是黑的缝）；at：它踩在哪儿（弯得最深的地方跟着它的脚，不写就在正中）
+function dyRotFloor(b, P, lit, sag, seed, back, at) {
   const F = FL.down, wb = F.wb, ff = F.ff, fr = F.fr, x0 = DYB.rot0, x1 = DYB.rot1, lc = lcOf(P, lit), rows = [wb, wb + 12, wb + 26, wb + 43, wb + 62, ff], gap = lit ? '#120d08' : DARK.ink;
-  const sg = (x, k) => sag * k * Math.pow(Math.sin(Math.PI * clamp((x - x0) / (x1 - x0), 0, 1)), 0.7);
+  const q = at == null ? 0.5 : clamp((at - x0) / (x1 - x0), 0.25, 0.75), sg = (x, k) => { const u = clamp((x - x0) / (x1 - x0), 0, 1); return sag * k * Math.pow(u < q ? Math.sin(Math.PI / 2 * u / q) : Math.sin(Math.PI / 2 * (1 - u) / (1 - q)), 0.7); };
   const line = (y, k, a = x0, c = x1) => { const p = []; for (let x = a; x < c; x += 11) p.push([x, y + sg(x, k)]); p.push([c, y + sg(c, k)]); return p; };
   const kOf = y => 0.4 + 0.6 * (y - wb) / (fr - wb);
   b.save(); b.seedN = seed;
@@ -10415,7 +10415,7 @@ function dyEyeB(m, fy) {
 function dyDrawMonB(b, P) {   // 它现在在哪儿、什么姿势（掉进缸里以后，墨面以下的不画：在缸里）
   const c = V.dy.b, m = V.mon.dyb, st = c.st, T = V.T, inVat = m.fy > DYB.inkY;
   const onFloor = st === 'home' || st === 'come' || st === 'stand' || st === 'back' || st === 'bend' || st === 'drop';
-  const sink = st === 'bend' ? c.bend * 16 : onFloor && S.ePlank === 'floor' && dyOnRotB(m.x) ? dyPlankSag(m.x) : 0;
+  const sink = st === 'bend' ? c.bend * 16 * 0.9 : onFloor && S.ePlank === 'floor' && dyOnRotB(m.x) ? dyPlankSag(m.x) : 0;
   b.save();
   if (inVat) { b.beginPath(); b.rect(m.x - 400, m.fy - 900, 800, DYB.inkY + 1 - (m.fy - 900)); b.clip(); }
   const landK = st === 'land' ? 1 - smooth(c.t / DYMB.land) : 0;
@@ -10440,7 +10440,7 @@ function dyDrawB(b, P, lit, vis) {   // 会动的：烂板子往下弯 / 洞、�
   const c = V.dy.b, T = V.T, gy = FL.down.gy;
   if (vis.dyB) {
     if (c.broke) dyHoleB(b, P, lit);
-    else if (c.bend > 0.002 || T - c.wob < 0.5) dyRotFloor(b, P, lit, 6 + c.bend * 16 + Math.max(0, 0.5 - (T - c.wob)) * 4 * Math.sin((T - c.wob) * 30), 884700, true);
+    else if (c.bend > 0.002 || T - c.wob < 0.5) dyRotFloor(b, P, lit, 6 + c.bend * 16 + Math.max(0, 0.5 - (T - c.wob)) * 4 * Math.sin((T - c.wob) * 30), 884700, true, c.bend > 0.002 ? V.mon.dyb.x : null);
     // 暗处：它走过的地方留下一个个深深的墨脚印，慢慢淡下去
     if (!lit) for (const s of c.steps) { const a = clamp(1 - (T - s.t) / 9, 0, 1); if (a <= 0) continue; b.save(); b.globalAlpha *= a * 0.85; dyBootPrint(b, s.x, gy + 1 + s.d, s.f || -1); b.restore(); }
     // 跳板：铺在烂地板上 / 刚被抽出去（往孩子这边滑出去，一下就到手里了）/ 搭在洞上（从孩子这头立起来往下倒）
@@ -10535,7 +10535,7 @@ function dyMonB(k, G, m, dt, T) {
     case 'come':   // 朝孩子挪：跳板还铺着，踩着跳板走到 stop（跳板撑得住，吱呀响）；跳板没了，一脚踩上烂板子就往下弯
       c.idle = seen ? 0 : c.idle + dt;
       if (c.idle > 1.2) { go('back'); break; }
-      if (S.ePlank !== 'floor' && !c.broke && m.x <= DYB.rot1 - 8) { go('bend'); if (inView(m.x, gy, 300)) snd.dyGroan(); break; }
+      if (S.ePlank !== 'floor' && !c.broke && m.x <= DYB.rot1 - 36) { go('bend'); if (inView(m.x, gy, 300)) snd.dyGroan(); break; }
       if (walk(DYB.stop, M.speed)) go('stand');
       near = 1 - Math.abs(kid.x - m.x) / 500;
       break;
