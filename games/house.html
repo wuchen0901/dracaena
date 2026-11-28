@@ -9342,18 +9342,19 @@ function drawFolkGlow() {   // 他们身边的灯、窗里的烛光、小炉子�
   { const x = FOLK_AT.fam.x, y = FOLK_AT.fam.y - 33; if (inView(x, y, 300)) { glowAt(x, y, 150, [255, 170, 90], 0.34 * fl(5)); glowAt(x, y, 24, C.hot, 0.7); } }
   if (S.cOut) { const f = FK.nm, gv = smooth(f.give), x = lerp(FOLK_AT.nm.x + 23, FOLK_AT.nm.x - 59, gv), y = lerp(FOLK_AT.nm.y - 57, FOLK_AT.nm.y - 93, gv); if (inView(x, y, 260)) { glowAt(x, y, 150, [255, 214, 150], 0.3 * fl(4)); glowAt(x, y, 18, C.hot, 0.6); } }
 }
-function drawBootPlate(b) {
-  const x = BOOT_PLATE, y = FL.down.gy, m = V.mon.boots;
-  b.save(); b.strokeStyle = S.yWired ? '#b38b52' : '#575759'; b.lineWidth = 3;
-  b.beginPath(); b.moveTo(CAR.lamp[0], CAR.lamp[1]+12);
-  b.quadraticCurveTo(CAR.lamp[0]+25,y+14,x-34,y); b.stroke();
-  b.fillStyle = '#393538'; b.fillRect(x-36,y-3,72,9);
-  b.fillStyle = S.yBeam ? '#cca65f' : '#9a7659'; b.fillRect(x-32,y-(S.yBeam?3:9),64,6);
-  if (S.yWired && !S.yBeam) {
-    b.strokeStyle = '#ffc789'; b.globalAlpha = 0.55+0.35*Math.cos(V.T*(m.hs==='air'?18:5));
-    b.beginPath(); b.ellipse(x,y+2,40,7,0,0,TAU); b.stroke();
+// 第 2 关：车灯拖下来的一根电线，接在地上的一块压力板上（靴嘴落在板上，板子压下去，车灯才亮）。2026-11-28 改成铅笔线的画法，暗亮两层各用各的颜色
+function drawBootPlate(b, P, lit) {
+  const x = BOOT_PLATE, y = FL.down.gy, m = V.mon.boots, lc = lcOf(P, lit), down = S.yBeam ? 6 : 0; b.seedN = 463000;
+  const wire = quadPts([CAR.lamp[0], CAR.lamp[1] + 12], [CAR.lamp[0] + 25, y + 10], [x - 34, y - 2], 16);
+  ink(b, wire, { w: 2.2, col: S.yWired ? P.brass : P.iron, taper: 0, a: 1, amp: 0.6, seed: 463010 });   // 电线：接上了是一根黄铜色的新线
+  part(b, rectPts(x - 38, y - 4, 76, 9), P.iron, { w: 0.9, tex: 0.3, lc, seed: 463020 });   // 底座
+  part(b, roundPts(x - 33, y - 11 + down, 66, 7, 2), S.yWired ? P.brass : P.rdoorLo, { w: 0.9, tex: 0.25, lc, seed: 463030 });   // 板子（接上线就是黄铜色）：压下去了就平了
+  hatch(b, k => k.rect(x - 38, y - 4, 76, 9), [x - 38, y - 4, 76, 9], { ang: -1.1, gap: 5, a: 0.35, w: 0.6, len: 10 });
+  for (const u of [-24, 0, 24]) ink(b, seg(x + u, y - 10 + down, x + u + 3, y - 5 + down), { w: 0.7, col: lc, taper: 0, a: 0.6, seed: 463040 + u, single: 1 });   // 板面上的几道纹
+  if (S.yWired && !S.yBeam && !lit) {   // 接上了还没压下去：板子两头几道小线一闪一闪（靴嘴蹦起来的时候闪得快）
+    const a = 0.45 + 0.35 * Math.cos(V.T * (m.hs === 'air' ? 18 : 5));
+    for (const s of [-1, 1]) for (const [d, i] of [[0, 0], [9, 1]]) ink(b, seg(x + s * (42 + d), y - 12 - d, x + s * (52 + d), y - 22 - d * 1.4), { w: 1.4, col: P.brass, taper: 0, a, seed: 463060 + i + (s > 0 ? 5 : 0), single: 1 });
   }
-  b.restore();
 }
 function drawDynamic(b, lit, vis) {
   const P = lit ? LIT : DARK;
@@ -9368,7 +9369,7 @@ function drawDynamic(b, lit, vis) {
   if (vis.cellar) { drawCellarBulb(b, P, lit); drawFuseBox(b, P, lit); drawCritters(b, P, lit, 'cellar'); drawFear(b, P, lit, 'boiler'); if (S.honey === 'box' || (S.honey === 'inv' && V.candleDown)) drawHoney(b, P, lit, CSHELF.cx, CSHELF.y, true, 250500); }
   // 院子（第 2 关）
   if (vis.porch) { drawSensorLamp(b, P, lit); drawKenKey(b, P, lit); if (!S.xRode) { drawFear(b, P, lit, 'dog'); drawBall(b, P, lit); } }   // 后半：狗从毛衣里出来了，自己跑
-  if (vis.garage) { drawBootPlate(b); drawCarDyn(b, P, lit); drawRake(b, P, lit); drawFear(b, P, lit, 'rain'); drawRoll(b, P, lit); }
+  if (vis.garage) { drawBootPlate(b, P, lit); drawCarDyn(b, P, lit); drawRake(b, P, lit); drawFear(b, P, lit, 'rain'); drawRoll(b, P, lit); }
   if (vis.drive) { drawFear(b, P, lit, 'scare'); drawBike(b, P, lit); drawGate(b, P, lit); }
   drawLaneDyn(b, P, lit, vis);   // 巷子（第 3 关）
   drawCKDyn(b, P, lit, vis);   // 商店街：钟表店的二楼（第 4 关，2026-11-25），最后盖上前墙；在街上会动的东西底下
@@ -14541,6 +14542,11 @@ function drawIcon(b, name, x, y, s) {
   } else if (name === 'proj') {    // 幻灯机：一只方盒子、一个镜头，镜头前一长条光
     rr(-s * 0.4, -s * 0.2, s * 0.44, s * 0.34, s * 0.04, b); b.fill(); b.fillRect(s * 0.04, -s * 0.1, s * 0.1, s * 0.16);
     b.beginPath(); b.moveTo(s * 0.2, -s * 0.12); b.lineTo(s * 0.46, -s * 0.24); b.moveTo(s * 0.2, -s * 0.02); b.lineTo(s * 0.48, -s * 0.02); b.moveTo(s * 0.2, s * 0.08); b.lineTo(s * 0.46, s * 0.2); b.stroke();
+  } else if (name === 'plate') {    // 压力板：一只靴子往下落在一块板子上（第 2 关）
+    b.fillRect(-s * 0.36, s * 0.3, s * 0.72, s * 0.1); b.fillRect(-s * 0.3, s * 0.22, s * 0.6, s * 0.06);
+    rr(-s * 0.1, -s * 0.46, s * 0.18, s * 0.36, s * 0.04, b); b.fill();
+    b.beginPath(); b.moveTo(-s * 0.1, -s * 0.12); b.lineTo(s * 0.24, -s * 0.12); b.lineTo(s * 0.26, s * 0.0); b.lineTo(-s * 0.12, s * 0.0); b.closePath(); b.fill();
+    b.lineWidth = s * 0.06; b.beginPath(); b.moveTo(s * 0.34, -s * 0.3); b.lineTo(s * 0.34, s * 0.08); b.moveTo(s * 0.26, -s * 0.02); b.lineTo(s * 0.34, s * 0.1); b.lineTo(s * 0.42, -s * 0.02); b.stroke();
   } else if (name === 'stomp') {    // 跺脚：一只脚、落地的几道震动
     rr(-s * 0.12, -s * 0.44, s * 0.2, s * 0.44, s * 0.05, b); b.fill();
     b.beginPath(); b.moveTo(-s * 0.12, -s * 0.02); b.lineTo(s * 0.34, -s * 0.02); b.lineTo(s * 0.36, s * 0.14); b.lineTo(-s * 0.14, s * 0.14); b.closePath(); b.fill();
@@ -16321,7 +16327,7 @@ function hint() {
   else if (m.spot === 'jSpringH') say(['jKey', '>'], 2.8);
   else if (m.spot === 'jChainH') say(['jWt', '>'], 2.8);
   else if (m.spot === 'jMirrorH') say(['bMirror','>'],2.8);
-  else if (m.spot === 'yPlate') say(['slipper','>'],2.8);
+  else if (m.spot === 'yPlate') say(['plate', '>', 'beam'], 2.8);   // 靴子落在压力板上 → 车灯亮
   else if (m.spot === 'jLeverH') say(['>'], 2.8);
   else if (m.spot === 'xDoorH' || m.spot === 'xBusH' || m.spot === 'xFrontH') say(['>'], 2.8);
   else if (m.spot === 'bSwH') say(['lever', '>'], 2.8);
