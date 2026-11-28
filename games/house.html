@@ -9623,15 +9623,29 @@ function dayGirl(dt) {
   const go = (tx, v) => { const s = tx - G.x; if (Math.abs(s) > 2) { dx = Math.sign(s) * Math.min(Math.abs(s), v * dt); sp = v; return false; } return true; };
   const lead = goal => {
     const behind = G.x - kid.x, same = Math.abs(bodyY() - G.y) < 80 && kid.kind !== 'ladder';
-    const v = !same ? 0 : kid.x > G.x - 10 || behind < 170 ? 420 : behind < 320 ? 160 : 0;
+    const v = kid.x > G.x - 10 ? 420 : !same ? 0 : behind < 170 ? 420 : behind < 320 ? 160 : 0;   // 他跑到她前头去了（点着走的时候会）：不管在哪一层都赶上去，不然他在树屋上等她、她在下面等他
     if (v > 0) return go(goal, v);
     G.face = -1; waitK = 1; return false;   // 落下了：站住，回头等他
   };
   const climb = (x, to, s) => { G.x = x; G.kind = 'ladder'; G.ladTo = to; G.climbPh = 0; G.face = 1; G.r = null; st(s); };
-  if (G.jump) {   // 跳过缝：0.6 秒，起跳先蹲一下
-    const h = G.jump; h.t += dt; const e = clamp(h.t / 0.6, 0, 1);
-    G.x = lerp(h.x0, h.x1, smooth(e)); G.standY = Math.sin(Math.PI * e) * 70; G.crouch = h.t < 0.1 ? 0.5 * Math.sin(Math.PI * h.t / 0.1) : 0; G.face = Math.sign(h.x1 - h.x0);
-    if (e >= 1) { G.standY = 0; G.jump = null; G.crouch = 0.45; if (inView(G.x, G.y, 80)) snd.thump(); st('gap2'); }
+  let jp = null;   // 跳缝时这一帧的姿势：最后盖在走路、原地蹦的那一套上面
+  if (G.jump) {   // 跳过缝（2026-11-28 主人说跳得不自然，重做）：先蹲下去、两只袖子往后摆蓄力 → 一蹬出去，横着匀速、竖着一道抛物线，腿一前一后跨开、身子往前倾、袖子往前伸，脚底下是空的、影子淡掉 → 落地蹲一下缓冲、往前滑一小步、蹭起一点灰，再站起来
+    const h = G.jump, A = 0.24, F = 0.56, Ld = 0.3, H = 62, t = h.t += dt, dir = Math.sign(h.x1 - h.x0); G.face = dir;
+    if (t < A) {   // 蹲下去蓄力
+      const k = smooth(t / A); G.x = h.x0;
+      jp = { crouch: 0.62 * k, standY: 0, walk: 0, gait: 0, shK: 1, idl: { lean: 0.1 * k, arms: [[-7, 12, k], [-9, 12, k]] } };
+    } else if (t < A + F) {   // 在空中
+      const u = (t - A) / F;
+      if (!h.off) { h.off = 1; if (inView(G.x, G.y, 80)) snd.hop(); D.dust = { x: h.x0, y: G.y, t0: T, dir: -dir }; }
+      G.x = lerp(h.x0, h.x1, u);
+      const sy = 4 * u * (1 - u) * H, cr = u < 0.14 ? lerp(0.62, 0.05, u / 0.14) : u < 0.75 ? 0.12 : lerp(0.12, 0.32, (u - 0.75) / 0.25), reach = 0.8 * smooth(u / 0.3) * (1 - smooth((u - 0.8) / 0.2) * 0.4), wk = smooth(u / 0.25);
+      jp = { crouch: cr, standY: sy, walk: wk, gait: 1, ph: lerp(0.6, 0.92, u), shK: 1 - smooth(sy / 22), idl: { lean: lerp(0.04, -0.08, u) * wk, lift: [3 + 6 * Math.sin(Math.PI * u), 2], arms: [[13, 22, reach], [10, 24, reach]] } };   // 身子只往前倾一点（走路那一套自己会倾，这里往回收一点），两只袖子在胸前朝前伸（再高就挡住脸了）
+    } else if (t < A + F + Ld) {   // 落地：蹲一下缓冲，往前滑一小步
+      const v = (t - A - F) / Ld, k = 1 - smooth(v);
+      if (!h.land) { h.land = 1; if (inView(G.x, G.y, 80)) snd.thump(); D.dust = { x: h.x1, y: G.y, t0: T, dir }; }
+      G.x = h.x1 + dir * 12 * ease(v);
+      jp = { crouch: 0.5 * k, standY: 0, walk: 1 - smooth(v / 0.35), gait: 1, ph: 0.92, shK: 1, idl: { lean: 0.12 * k, arms: [[10, 17, k], [8, 15, k]] } };
+    } else { G.jump = null; G.x = h.x1 + dir * 12; jp = { crouch: 0, standY: 0, walk: 0, shK: 1, idl: null }; st('gap2'); }
   } else if (G.kind === 'ladder') {   // 爬梯子：背对着我们，上去、下来
     const y0 = G.y, p0 = G.climbPh, to = G.ladTo; G.y = to < G.y ? Math.max(to, G.y - 150 * dt) : Math.min(to, G.y + 150 * dt); G.climbPh = (G.climbPh + Math.abs(G.y - y0) / 92) % 1;
     if (Math.floor(p0 * 2) !== Math.floor(G.climbPh * 2) && inView(G.x, G.y, 60)) snd.rung();
@@ -9649,7 +9663,7 @@ function dayGirl(dt) {
     case 'top1': if (go(DAY.lad1 + 120, 130)) st('lead2'); break;
     case 'lead2': if (lead(DAY.gap0 - DAY.edge)) { G.face = 1; st('gapEdge'); } break;
     case 'gapEdge':   // 站在缝边：等他上了石头、走近一点，跳给他看
-      if (Math.abs(kid.y - top) < 2 && kid.kind === 'floor' && kid.x > DAY.gap0 - 620 && since > 0.4) { G.face = 1; G.r = null; G.jump = { t: 0, x0: G.x, x1: DAY.gap1 + DAY.edge }; if (inView(G.x, G.y, 80)) snd.hop(); }
+      if (Math.abs(kid.y - top) < 2 && kid.kind === 'floor' && kid.x > DAY.gap0 - 620 && since > 0.4) { G.face = 1; G.r = null; G.jump = { t: 0, x0: G.x, x1: DAY.gap1 + DAY.edge }; }
       else { G.face = since < 0.4 ? 1 : -1; waitK = since > 0.4 ? 1 : 0; }
       break;
     case 'gap2': if (go(DAY.gap1 + 160, 130)) { G.face = -1; waitK = 1; if (kid.x > DAY.gap1 - 1 && Math.abs(kid.y - top) < 2 && kid.mode !== 'hop') st('lead3'); } break;   // 跳过去了：在那边等他跳过来
@@ -9672,6 +9686,7 @@ function dayGirl(dt) {
       G.r = wv > 0.001 ? { k: wv, tx: G.x + G.face * (62 + Math.sin(T * 13) * 8), ty: G.y - G.standY - 112 + Math.sin(T * 13 + 1.2) * 12 } : null;   // 朝前伸着手招（举高了袖子会挡住脸）
     }
   }
+  if (jp) Object.assign(G, jp);
 }
 function dayLampPos() {   // 灯光跟着她手里的灯走（只在天黑那一下才有）
   const D = V.day, G = V.girl; if (!G || G.lampK < 0.02) return;
@@ -9717,6 +9732,8 @@ function dayGapInput(u, dt) {
   D.push = 0; return false;
 }
 function dayJump(dir, after) {   // 跳过缝：比跳上矮石墙远、高
+  const G = V.girl;
+  if (dir > 0 && G && (G.jump || (G.st === 'gap2' && G.x < DAY.gap1 + 110))) { kid.face = dir; Object.assign(kid, { mode: 'wait', t: 0, waitFor: 0.15, after: () => dayJump(dir, after) }); return; }   // 她还在跳、刚落地还站在那边的缝边：等她让开再跳（不然一跳过去就跑到她前头了）
   kid.face = dir; snd.hop(); hopTo(dir > 0 ? DAY.gap1 + DAY.edge : DAY.gap0 - DAY.edge, 0, after); kid.hop.dur = 0.6; kid.hop.arc = 70;
 }
 // 点着走（?ctl=tap）、自动试玩：一段路要是跨过缝，走到缝边为止，跳过去再接着走。返回 [从第几个点断开, 停在哪儿, 往哪边跳]
@@ -9791,6 +9808,13 @@ function drawDay(b, Pp, lit, vis) {
   if (D.sky > 0.3) for (let i = 0; i < 3; i++) {   // 鸟：三只一小群，从左往右慢慢飞过去，翅膀一扇一扇
     const span = VWW + 500, bx = camX - 250 + ((T * 34 + i * 46 + 300) % span), by = camY + 120 + i * 18 + Math.sin(T * 0.9 + i * 2) * 10 + (i === 1 ? -14 : 0), f = Math.sin(T * 9 + i * 1.7);
     ink(b, [[bx - 9, by - 2 - f * 4], [bx - 3, by - 1], [bx, by + 1], [bx + 3, by - 1], [bx + 9, by - 2 - f * 4]], { w: 0.9, col: lc, a: 0.75 * smooth((D.sky - 0.3) / 0.3), taper: 0, seed: 477900 + i, single: 1 });
+  }
+  const ds = D.dust;   // 她起跳、落地的时候脚底下蹭起一点灰：几小团往两边散开、淡掉
+  if (ds && T - ds.t0 < 0.5 && inView(ds.x, ds.y, 80)) {
+    const u = (T - ds.t0) / 0.5;
+    b.save(); b.fillStyle = lit ? '#cdbf9e' : '#5c6682';
+    for (let i = 0; i < 5; i++) { const s = i - 2, px = ds.x + ds.dir * 8 + s * (8 + u * 24), py = ds.y + 2 - Math.sin(Math.PI * Math.min(1, u * 1.3)) * (3 + Math.abs(s) * 2.5), r = 3 + u * 6 - Math.abs(s) * 0.6; b.globalAlpha = (1 - u) * (lit ? 0.4 : 0.3); b.beginPath(); b.ellipse(px, py, r * 1.4, r, 0, 0, 7); b.fill(); }
+    b.restore();
   }
   if (G && G.alpha > 0.003 && inView(G.x, G.y - 80, 220)) asGirl(() => drawKid(b, Pp, lit));
 }
@@ -12897,9 +12921,12 @@ function drawKid(b, P0, lit) {
   if (kid.scale !== 1 || kid.lift || kid.rot) { b.translate(kid.x, kid.y - kid.lift); if (kid.rot) b.rotate(kid.rot); b.scale(kid.scale, kid.scale); b.translate(-kid.x, -kid.y); }   // rot：被抓住的时候往后摔倒（绕着脚）
   const pen0 = b.pen; b.pen = { ...PEN, col: lc, a: Math.min(1, PEN.a + 0.08) }; b.seedN = 37000;
   // 脚下的影子：灯下是一摊排线，往背灯的那一边拖；暗处是一团淡淡的黑
-  const gy = footY(kid.x), Lk = lit ? kidLight() : null, dir = Lk ? clamp((kid.x - Lk.x) / 200, -1, 1) : 0;
-  if (lit) hatch(b, k => k.ellipse(kid.x + dir * 14, gy + 2, 34 + Math.abs(dir) * 8, 5, 0, 0, 7), [kid.x - 64, gy - 8, 128, 18], { ang: -0.25, gap: 3, a: 0.7, w: 0.8, len: 20, seed: 37001 });
+  const gy = footY(kid.x), Lk = lit ? kidLight() : null, dir = Lk ? clamp((kid.x - Lk.x) / 200, -1, 1) : 0, shK = kid.shK ?? 1, sa = b.globalAlpha;   // shK：影子留几成（那天下午她跳过缝、脚底下是空的，影子淡掉）
+  if (shK < 1) b.globalAlpha = sa * shK;
+  if (shK <= 0.01) {}
+  else if (lit) hatch(b, k => k.ellipse(kid.x + dir * 14, gy + 2, 34 + Math.abs(dir) * 8, 5, 0, 0, 7), [kid.x - 64, gy - 8, 128, 18], { ang: -0.25, gap: 3, a: 0.7, w: 0.8, len: 20, seed: 37001 });
   else { b.fillStyle = 'rgba(3,4,10,0.4)'; b.beginPath(); b.ellipse(kid.x, gy + 2, 30, 4.6, 0, 0, 7); b.fill(); }
+  b.globalAlpha = sa;
   const B = p.B, TB = pts => pts.map(([u, v]) => B(u, v)), I = p.I;
   const hd = I.hd || 0, hc = Math.cos(hd), hs = Math.sin(hd), HB = hd ? (u, v) => B(0.8 + (u - 0.8) * hc - (v - 27) * hs, 27 + (u - 0.8) * hs + (v - 27) * hc) : B;   // 抬头、低头：绕着脖子转
   const HX = kid.shake, TH = pts => pts.map(([u, v]) => { const q = HB(u, v); return [q[0] + HX, q[1]]; });
