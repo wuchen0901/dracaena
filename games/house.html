@@ -10217,7 +10217,7 @@ function dyPaintA(b, r, P, lit) {   // 称布间不动的东西：进门的门�
 //   patrol 平时来回走多快、back 走回去多快；linger 铃停了它还站在秤上仰着头看多久；rise 闸门升到顶几秒；fall 落下来几秒；lift 闸门升多高；
 //   open 升到几成孩子才敢往门下走；sink 台面沉下去多少；on 它离台面中心多近算站在秤上；under 孩子离闸门中心多近算在门底下；near 孩子离闸门多近（还在走）它就再等等
 const DYAM = { ring: 6.5, amp: 0.42, per: 1.05, tell: 0.7, go: 160, patrol: 38, back: 70, linger: 1.5, rise: 1.2, fall: 0.7, lift: 220, open: 0.9, sink: 14, on: 44, under: 34, near: 96 };
-const dyInitA = () => ({ st: 'patrol', t: 0, pause: 0, dir: 1, ring: 0, amp: 0, ph: 0, ba: 0, hits: [], pull: 0, sway: 0, plat: 0, gate: 0, gv: 0, crack: 0, slack: 1, needle: 0, nv: 0, look: 0, eyes: 0, up: 0, linger: 0, wait: 0, kick: 0, landT: -10, clickAt: 0 });
+const dyInitA = () => ({ st: 'patrol', t: 0, pause: 0, dir: 1, ring: 0, amp: 0, ph: 0, ba: 0, hits: [], pull: 0, sway: 0, plat: 0, gate: 0, gv: 0, crack: 0, slack: 1, needle: 0, nv: 0, look: 0, eyes: 0, up: 0, linger: 0, wait: 0, kick: 0, landT: -10, clickAt: 0, kpx: null });
 const dyaGateY = () => FL.down.gy + 4 - V.dy.a.gate * DYAM.lift - V.dy.a.crack * 12;   // 闸门底下（栅条尖头）在哪儿
 const dyaOpen = () => { const a = V.dy.a; return a.st === 'stand' && a.gate >= DYAM.open; };   // 闸门真的开着：它站在秤上，门升过九成（它一走就不算了，门在往下落）
 const dyaUnder = () => kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 2 && Math.abs(kid.x - DYA.gate) < DYAM.under;   // 孩子正在门底下
@@ -10254,6 +10254,12 @@ function dyUpdateA(dt) {
   a.kick = Math.max(0, 1 - (T - a.landT) / 0.5);
   if (!(kid.mode === 'reach' && kid.r && kid.r.dyaCrack)) a.crack = approach(a.crack, 0, dt * 6);
   if (!(kid.mode === 'reach' && kid.r && kid.r.dyaPull)) a.pull = approach(a.pull, 0, dt * 6);
+  // 门不让过的时候（没开够、它下秤了、钻过去以后往回走）：孩子点着走到离门中心 40 以内就停、碰一下门。门是实的一块，不只是路上的一个点：
+  // 点在门跟前、门底下（还没到门的中心）的时候，找路碰不到那个点（firstClosedGate），这儿补上。拖着走的那一种 driveBlock 已经停在 40 以外了
+  { const px = a.kpx ?? kid.x; a.kpx = kid.x;
+    if (kid.mode === 'walk' && !kid.drive && kid.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 2 && Math.abs(kid.x - DYA.gate) < 40 && Math.abs(px - DYA.gate) >= 39.99 && !gateOk('eg1', S)) {
+      kid.x = DYA.gate + Math.sign(px - DYA.gate) * 40; a.kpx = kid.x; kid.path = []; kid.onArrive = null; kid.mode = 'idle'; kid.v = 0; kid.auto = false; meetGate('eg1');
+    } }
   // 孩子从门底下钻过去了、离门够远（门落下来也碰不到他）：规则里记上（passed22），以后不再往回钻
   if (!S.ePast && kid.x > DYA.gate + DYAM.under && kid.mode !== 'caught') { const r = passed22(S); if (r) S = r.s; }
   // 孩子站在门跟前等着（铃拉过了、门还没升起来）：门一开够，他自己从门底下走过去
