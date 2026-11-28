@@ -2437,58 +2437,105 @@ function tuft(b, x, y, n, hh, col, a, s, w = 1.3) {   // 一丛草：n 根散开
     blade(b, bx, y, bx + u * hh * 0.9 + (r2 - 0.5) * hh * 0.3, y - L, w, col, a * (0.75 + r2 * 0.25));
   }
 }
-// 木板：rows 是一排排板子的上下沿（从墙脚到前沿），seams[i] 是第 i 排板子接头的 x（接头的线从上往下斜 1.5）
-function woodDetail(b, P, lit, x0, x1, rows, seams, salt) {
+// ---------- 屋里的地也有起伏（2026-11-28，主人说 “Make the indoor floors a bit bumpier too”） ----------
+// 木地板、方砖、水泥地底下这里微微拱起、那里塌下去一点。floorH(x, t)：世界 x、进深 t（0 墙脚、1 前沿）处鼓起来多高（往上为正），
+// 墙脚、前沿两头都是 0——墙脚线、前沿、门洞、楼梯口照旧对得上；按世界 x 算，相邻两块接得上。
+// fwarp：地面上一点鼓起来以后画在哪儿（越往前挪得越多，近大远小）；木板、方砖的缝、木纹、钉眼、补丁、裂缝都跟着弯。
+// 木板一块块、方砖一块块跟着歪：往前翘的地方朝里、受光，亮一点；往前塌的地方暗一点（和 floorBumps 一样，光从里面来）。
+// 水泥地没有缝可弯，只是裂缝、补丁的边跟着弯，鼓包、小坑多一点、重一点（concreteDetail）。
+// 只是画：孩子、东西还是站在原来那条线上（wb、gy、ff 都没动）；新的笔画都带自己的种子（7380000 起），屋子里别的东西一笔不变
+const FH = [nz(7381), nz(7382), nz(7383)];
+function floorH(x, t) {   // 靠墙、靠前沿的地方是平的（不光高度是 0，坡也是 0），起伏都在中间
+  const s1 = Math.sin(Math.PI * t);
+  return s1 * s1 * ((FH[0](x / 150) - 0.5) * 11 + (FH[2](x / 50 + 20) - 0.5) * 3) + s1 * Math.sin(2 * Math.PI * t) * (FH[1](x / 105 + 9) - 0.5) * 8;
+}
+const noWarp = (x, y) => y;
+// pins：[[x0, x1], …] 这几段地板是平的（第 22 关烂了的那段、梯口：那里的板子照原来的直线画），出了这几段 60 以内慢慢起伏起来
+const fwarp = (wb, ff, k = 1, pins = null) => (x, y) => {
+  const t = clamp((y - wb) / (ff - wb), 0, 1); let e = 1;
+  if (pins) for (const [a, c] of pins) e = Math.min(e, smooth(clamp((Math.max(a - x, x - c, 0)) / 60, 0, 1)));
+  return y - k * e * floorH(x, t) * (0.7 + 0.6 * t);
+};
+const wpts = (W, pts) => pts.map(([x, y]) => [x, W(x, y)]);
+const wline = (W, xa, xb, y, st = 10) => { const p = []; for (let x = xa; x < xb; x += st) p.push([x, W(x, y)]); p.push([xb, W(xb, y)]); return p; };
+// 木板：rows 是一排排板子的上下沿（从墙脚到前沿），seams[i] 是第 i 排板子接头的 x（接头的线从上往下斜 1.5）；W 是地面的起伏（fwarp）
+function woodDetail(b, P, lit, x0, x1, rows, seams, salt, W = noWarp) {
   const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha;
   for (let i = 0; i < rows.length - 1; i++) {
-    const y0 = rows[i], y1 = rows[i + 1], hh = y1 - y0, ss = seams[i], xs = [x0, ...ss.filter(x => x > x0 && x < x1), x1];
+    const y0 = rows[i], y1 = rows[i + 1], hh = y1 - y0, ss = seams[i], xs = [x0, ...ss.filter(x => x > x0 && x < x1), x1], quads = [];
     for (let k = 0; k < xs.length - 1; k++) {
       const a = xs[k], c = xs[k + 1], L = c - a, key = ss.reduce((m, s) => s <= a + 0.01 ? s : m, a);   // 按左边那道接头认板子（第一块板子从屋子外面接进来的，和左边一块一样深浅）
-      const h = q => hash(Math.round(key) + salt + i * 0.53, q + 0.17), quad = [[a, y0], [c, y0], [c - 1.5, y1], [a - 1.5, y1]];
+      const h = q => hash(Math.round(key) + salt + i * 0.53, q + 0.17), quad = [...wline(W, a, c, y0, 12), ...wline(W, a - 1.5, c - 1.5, y1, 12).reverse()];
+      quads.push([quad, W((a + c) / 2, y0), W((a + c) / 2 - 1.5, y1)]);
       if (h(1) < 0.5) fillPts(b, quad, dk, (lit ? 0.05 : 0.08) + h(2) * (lit ? 0.11 : 0.22));   // 每块板子深浅不一样
       else fillPts(b, quad, hi, (lit ? 0.03 : 0.02) + h(2) * (lit ? 0.08 : 0.05));
+      if (W !== noWarp) {   // 跟着地面的起伏：这块板子往前翘的那一段亮一点（朝里、受光），往前塌的那一段暗一点（挨着墙脚的那一排在墙的影子里，淡一点）
+        const gH = b.createLinearGradient(a, 0, c, 0), gD = b.createLinearGradient(a, 0, c, 0), ns = Math.max(2, Math.ceil(L / 16)), nw = Math.min(1, ((y0 + y1) / 2 - rows[0]) / ((rows[rows.length - 1] - rows[0]) * 0.3));
+        for (let n = 0; n <= ns; n++) {
+          const x = a + L * n / ns, s = ((W(x, y0) - y0) - (W(x - 1.5, y1) - y1)) / hh;
+          gH.addColorStop(n / ns, rgba(hi, s > 0 ? nw * Math.min(lit ? 0.26 : 0.28, s * (lit ? 1.7 : 2.3)) : 0)); gD.addColorStop(n / ns, rgba(dk, s < 0 ? nw * Math.min(lit ? 0.32 : 0.4, -s * (lit ? 1.9 : 3)) : 0));
+        }
+        fillPts(b, quad, gH); fillPts(b, quad, gD);
+      }
       if (L < 30) continue;
       for (let m = 0; m < 1 + Math.floor(h(3) * 2.2); m++) {   // 木纹：一两道细细的、弯弯的
         const gx0 = a + L * (0.05 + h(4 + m) * 0.3), gx1 = a + L * (0.6 + h(5 + m) * 0.38), gy0 = y0 + hh * (0.25 + h(6 + m) * 0.5);
-        ink(b, [[gx0, gy0], [(gx0 + gx1) / 2, gy0 + (h(7 + m) - 0.5) * hh * 0.4], [gx1, gy0 + (h(8 + m) - 0.5) * hh * 0.3]], { w: 0.4, a: lit ? 0.22 : 0.1, taper: 14, amp: 0.5, col: lit ? lc : hi, seed: 7340000 + pick(a * 0.37 + i * 13 + m * 5, 53), single: 1 });
+        ink(b, wpts(W, [[gx0, gy0], [(gx0 + gx1) / 2, gy0 + (h(7 + m) - 0.5) * hh * 0.4], [gx1, gy0 + (h(8 + m) - 0.5) * hh * 0.3]]), { w: 0.4, a: lit ? 0.22 : 0.1, taper: 14, amp: 0.5, col: lit ? lc : hi, seed: 7340000 + pick(a * 0.37 + i * 13 + m * 5, 53), single: 1 });
       }
       if (h(9) < 0.16) {   // 节疤
-        const kx = a + L * (0.2 + h(10) * 0.6), ky = y0 + hh * (0.35 + h(11) * 0.3), kr = 1.6 + hh * 0.12;
+        const kx = a + L * (0.2 + h(10) * 0.6), ky = W(kx, y0 + hh * (0.35 + h(11) * 0.3)), kr = 1.6 + hh * 0.12;
         b.globalAlpha = ga * (lit ? 0.45 : 0.55); b.fillStyle = lc; b.beginPath(); b.ellipse(kx, ky, kr * 1.5, kr * 0.6, 0, 0, 7); b.fill();
         b.globalAlpha = ga * 0.3; b.strokeStyle = lc; b.lineWidth = 0.5; b.beginPath(); b.ellipse(kx, ky, kr * 3, kr * 1.1, 0, 0, 7); b.stroke(); b.globalAlpha = ga;
       }
     }
-    // 板子中间微微拱起：上沿底下一线亮（再描一道受光的细边），下沿上面一条暗
-    const gr = b.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, rgba(dk, lit ? 0.12 : 0.22)); gr.addColorStop(0.12, rgba(hi, lit ? 0.1 : 0.08)); gr.addColorStop(0.45, rgba(hi, 0)); gr.addColorStop(0.75, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.18 : 0.36));
-    b.fillStyle = gr; b.fillRect(x0, y0, x1 - x0, hh);
-    if (i > 0) ink(b, seg(x0, y0 + 1.4, x1, y0 + 1.4), { w: 0.45, a: lit ? 0.22 : 0.16, taper: 0, amp: 0.3, col: hi, seed: 7360000 + i, single: 1 });
+    // 板子中间微微拱起：上沿底下一线亮（再描一道受光的细边），下沿上面一条暗（一块块板子各自跟着地面弯）
+    for (const [quad, ya, yb] of quads) {
+      const gr = b.createLinearGradient(0, ya, 0, yb); gr.addColorStop(0, rgba(dk, lit ? 0.12 : 0.22)); gr.addColorStop(0.12, rgba(hi, lit ? 0.1 : 0.08)); gr.addColorStop(0.45, rgba(hi, 0)); gr.addColorStop(0.75, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.18 : 0.36));
+      fillPts(b, quad, gr);
+    }
+    if (i > 0) ink(b, wline(W, x0, x1, y0 + 1.4), { w: 0.45, a: lit ? 0.22 : 0.16, taper: 0, amp: 0.3, col: hi, seed: 7360000 + i, single: 1 });
     b.globalAlpha = ga * (lit ? 0.5 : 0.55); b.fillStyle = lc;   // 钉眼：每个接头两边各两颗
-    for (const sx of seams[i]) { if (sx < x0 + 6 || sx > x1 - 6) continue; for (const dx of [-4.5, 3]) for (const fy of [0.3, 0.72]) { b.beginPath(); b.arc(sx + dx - fy * 1.5, y0 + hh * fy, 0.55 + hh * 0.025, 0, 7); b.fill(); } }
+    for (const sx of seams[i]) { if (sx < x0 + 6 || sx > x1 - 6) continue; for (const dx of [-4.5, 3]) for (const fy of [0.3, 0.72]) { const nx = sx + dx - fy * 1.5; b.beginPath(); b.arc(nx, W(nx, y0 + hh * fy), 0.55 + hh * 0.025, 0, 7); b.fill(); } }
     b.globalAlpha = ga;
   }
 }
-function checkerDetail(b, P, lit, x0, x1, rows, wb, salt) {   // 方砖：一块块深浅不一，偶尔缺个角、一道裂纹；每排砖下沿暗一点
-  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit);
+// 方砖：一块块深浅不一，偶尔缺个角、一道裂纹；每排砖下沿暗一点。地面起伏（W）的时候每块砖跟着歪：往前翘的亮一点、往前塌的暗一点，
+// 有几块比旁边高出一点（后沿一道亮边、前沿一道暗缝）
+const tileQ = (W, x, y0, y1, sk) => [...wline(W, x, x + 44, y0, 11), ...wline(W, x + sk, x + 44 + sk, y1, 11).reverse()];   // 一块砖（上沿 0–4，下沿 5–9；跟着地面弯，上下两排的缝对得上）
+function checkerDetail(b, P, lit, x0, x1, rows, wb, salt, W = noWarp) {
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), bent = W !== noWarp, D = rows[rows.length - 1] - wb;
   for (let i = 0; i < rows.length - 1; i++) {
-    const sk = (rows[i + 1] - wb) * 0.12, y0 = rows[i], y1 = rows[i + 1];
+    const sk = (rows[i + 1] - wb) * 0.12, y0 = rows[i], y1 = rows[i + 1], nearWall = Math.min(1, ((y0 + y1) / 2 - wb) / (D * 0.3));   // 挨着墙脚那一排在墙的影子里，歪了也看不大出来
     for (let x = x0; x < x1; x += 44) {
-      const h = q => hash(x + salt + i * 0.71, q + 0.23), quad = [[x, y0], [x + 44, y0], [x + 44 + sk, y1], [x + sk, y1]];
+      const h = q => hash(x + salt + i * 0.71, q + 0.23), quad = tileQ(W, x, y0, y1, sk);
       if (h(1) < 0.5) fillPts(b, quad, dk, (lit ? 0.04 : 0.08) + h(2) * (lit ? 0.08 : 0.12)); else fillPts(b, quad, hi, (lit ? 0.02 : 0.01) + h(2) * (lit ? 0.06 : 0.03));
-      if (h(3) < 0.08) { const s2 = h(4) < 0.5 ? -1 : 1, cx = s2 < 0 ? x + 44 + sk : x + sk; fillPts(b, [[cx, y1], [cx + s2 * 7, y1], [cx + s2 * 1.5, y1 - 4]], dk, lit ? 0.35 : 0.5); }
-      if (h(5) < 0.06) ink(b, [[x + 8 + h(6) * 24, y0 + 1], [x + 14 + h(7) * 18, (y0 + y1) / 2], [x + 10 + h(8) * 26 + sk, y1 - 1]], { w: 0.45, a: 0.45, taper: 5, amp: 0.3, col: lc, seed: 7350000 + pick(x / 44 + i * 7, 31), single: 1 });
+      if (bent) {   // 这块砖往前翘（亮）还是往前塌（暗）
+        const s = ((quad[0][1] - y0) + (quad[4][1] - y0) - (quad[5][1] - y1) - (quad[9][1] - y1)) / 2 / (y1 - y0);
+        if (Math.abs(s) > 0.004) fillPts(b, quad, s > 0 ? hi : dk, nearWall * Math.min(s > 0 ? 0.26 : 0.32, Math.abs(s) * (s > 0 ? (lit ? 1.9 : 2.4) : (lit ? 2.1 : 3.3))));
+      }
+      if (h(3) < 0.08) { const s2 = h(4) < 0.5 ? -1 : 1, cx = s2 < 0 ? x + 44 + sk : x + sk; fillPts(b, wpts(W, [[cx, y1], [cx + s2 * 7, y1], [cx + s2 * 1.5, y1 - 4]]), dk, lit ? 0.35 : 0.5); }
+      if (h(5) < 0.06) ink(b, wpts(W, [[x + 8 + h(6) * 24, y0 + 1], [x + 14 + h(7) * 18, (y0 + y1) / 2], [x + 10 + h(8) * 26 + sk, y1 - 1]]), { w: 0.45, a: 0.45, taper: 5, amp: 0.3, col: lc, seed: 7350000 + pick(x / 44 + i * 7, 31), single: 1 });
+      if (bent && h(11) < 0.16) {   // 高出旁边一点的砖
+        const sd = 7380000 + pick(x / 44 + i * 5, 37), top = quad.slice(0, 5), bot = quad.slice(5).reverse();
+        ink(b, top.map(([px, py], n) => [px + (n === 0 ? 3 : n === 4 ? -3 : 0), py + 0.8]), { w: 0.5, a: lit ? 0.4 : 0.26, taper: 4, amp: 0.2, col: hi, seed: sd, single: 1 });
+        ink(b, bot.map(([px, py], n) => [px + (n === 0 ? 2 : n === 4 ? -2 : 0), py + 0.4]), { w: 0.6, a: lit ? 0.45 : 0.55, taper: 4, amp: 0.2, col: lc, seed: sd + 50, single: 1 });
+      }
     }
-    const gr = b.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, rgba(hi, lit ? 0.08 : 0.04)); gr.addColorStop(0.3, rgba(hi, 0)); gr.addColorStop(0.7, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.14 : 0.26));
-    b.fillStyle = gr; b.fillRect(x0, y0, x1 - x0, y1 - y0);
+    for (let x = x0; x < x1; x += 44) {
+      const quad = tileQ(W, x, y0, y1, sk), ya = (quad[0][1] + quad[4][1]) / 2, yb = (quad[5][1] + quad[9][1]) / 2;
+      const gr = b.createLinearGradient(0, ya, 0, yb); gr.addColorStop(0, rgba(hi, lit ? 0.08 : 0.04)); gr.addColorStop(0.3, rgba(hi, 0)); gr.addColorStop(0.7, rgba(dk, 0)); gr.addColorStop(1, rgba(dk, lit ? 0.14 : 0.26));
+      fillPts(b, quad, gr);
+    }
   }
 }
-function concreteDetail(b, P, lit, x0, x1, wb, ff, salt = 0, o = {}) {   // 水泥地：微微起伏、补过的一块（o.patch === false 不要）、污渍、小坑
-  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha;
-  floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 95, rows: 2, p: 0.45, rx: [22, 52], dip: 0.5, arc: 0.12, rim: 0.35, a: 0.8, salt: salt + 0.13 });
+function concreteDetail(b, P, lit, x0, x1, wb, ff, salt = 0, o = {}) {   // 水泥地：微微起伏、补过的一块（o.patch === false 不要）、污渍、小坑；o.W 是地面的起伏（补丁的边跟着弯）
+  const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha, W = o.W || noWarp, more = W !== noWarp;   // more：屋里的水泥地（2026-11-28 起鼓包多一点、重一点）
+  floorBumps(b, P, lit, x0, x1, wb, ff, { cell: 95, rows: 2, p: more ? 0.62 : 0.45, rx: [22, 52], dip: 0.5, arc: more ? 0.22 : 0.12, rim: more ? 0.5 : 0.35, a: more ? 0.95 : 0.8, salt: salt + 0.13 });
   if (o.patch !== false) for (let x = Math.floor(x0 / 420) * 420; x < x1; x += 420) {   // 补过的一块：颜色差一点，四边一道淡淡的缝
     const h = k => hash(x + salt, k + 0.91); if (h(1) > 0.5) continue;
     const px = x + 30 + h(2) * 300, top = wb + 6 + h(3) * 20, bot = Math.min(ff - 4, top + 16 + h(4) * 30), w = 40 + h(5) * 70, sk = (bot - top) * 0.12;
     if (px + w + sk > x1 - 4 || px < x0 + 4) continue;
-    const pts = [[px, top], [px + w, top + 1], [px + w + sk, bot], [px + sk - 1, bot - 1]];
+    const p4 = [[px, top], [px + w, top + 1], [px + w + sk, bot], [px + sk - 1, bot - 1]], pts = W === noWarp ? p4 : wpts(W, [...p4.flatMap((p, n) => { const q = p4[(n + 1) % 4]; return [0, 0.25, 0.5, 0.75].map(u => [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u]); })]);
     fillPts(b, pts, h(6) < 0.5 ? hi : dk, lit ? 0.07 : h(6) < 0.5 ? 0.05 : 0.22);
     ink(b, [...pts, pts[0]], { w: 0.5, a: lit ? 0.28 : 0.12, taper: 0, amp: 0.3, col: lit ? lc : hi, seed: 7320000 + pick(x / 420, 37), single: 1 });
   }
@@ -2516,12 +2563,20 @@ function edgeChips(b, P, lit, x0, x1, ff, salt = 0) {   // 水泥前沿缺的几
 }
 // 从后往前一条条铺的地（第 20 关钟楼里的木楼板、第 21 关顶上平台的石板）：接缝每 step 一道、往前斜 sl。
 // 每一条深浅不一样；木板再加木纹、节疤和一点点起伏，石板再加起伏、污渍、小坑
-function stripDetail(b, P, lit, x0, x1, wb, ff, step, sl, kind) {
+function stripDetail(b, P, lit, x0, x1, wb, ff, step, sl, kind, W = noWarp) {   // W：地面的起伏（2026-11-28，钟楼的木楼板）——板子是从后往前铺的，缝弯了也看不出，起伏全靠每条板子从后往前一段亮一段暗
   const lc = lcOf(P, lit), dk = gDk(P, lit), hi = gHi(P, lit), ga = b.globalAlpha, D = ff - wb;
   floorTone(b, P, lit, x0, x1, wb, ff, { cell: 120, a: 0.8, wear: kind === 'wood' ? 0.8 : 0, salt: 0.77 });
   for (let xx = Math.floor(x0 / step) * step - step; xx < x1 + step; xx += step) {
     const h = k => hash(xx, k + 0.39), q = [[xx, wb], [xx + step, wb], [xx + step + sl, ff], [xx + sl, ff]];
     if (h(1) < 0.5) fillPts(b, q, dk, (lit ? 0.05 : 0.1) + h(2) * (lit ? 0.1 : 0.16)); else fillPts(b, q, hi, (lit ? 0.03 : 0.015) + h(2) * (lit ? 0.07 : 0.035));
+    if (W !== noWarp) {
+      const gH = b.createLinearGradient(0, wb, 0, ff), gD = b.createLinearGradient(0, wb, 0, ff);
+      for (let n = 0; n <= 10; n++) {
+        const u = n / 10, x = xx + step / 2 + sl * u, y = wb + D * u, e = D * 0.04, s = ((W(x, y - e) - (y - e)) - (W(x, y + e) - (y + e))) / (2 * e), nw = Math.min(1, u / 0.3);
+        gH.addColorStop(u, rgba(hi, s > 0 ? nw * Math.min(lit ? 0.26 : 0.28, s * (lit ? 1.7 : 2.3)) : 0)); gD.addColorStop(u, rgba(dk, s < 0 ? nw * Math.min(lit ? 0.32 : 0.4, -s * (lit ? 1.9 : 3)) : 0));
+      }
+      fillPts(b, q, gH); fillPts(b, q, gD);
+    }
     if (kind !== 'wood') continue;
     for (let m = 0; m < 1 + Math.floor(h(3) * 2); m++) {   // 木纹：顺着板子从后往前
       const u = 0.2 + h(4 + m) * 0.6, t0 = h(6 + m) * 0.3, t1 = 0.6 + h(8 + m) * 0.4, X = t => xx + step * u + sl * t;
@@ -2538,28 +2593,28 @@ function paintFloor(b, r, P, lit, kind, seed) {
   const rows = kind === 'planks' ? [wb, wb + 12, wb + 26, wb + 43, wb + 62, ff] : [wb, wb + 16, wb + 34, wb + 56, ff];
   let seams = null;
   if (kind === 'planks') { const rr0 = rnd(seed + 1); seams = rows.slice(0, -1).map(() => { const s = []; for (let x = x0 + rr0() * 120; x < x1; x += 150 + rr0() * 140) s.push(x); return s; }); }   // 每排板子的接头（和以前同一串随机数）
+  const W = fwarp(wb, ff, kind === 'concrete' ? 0.7 : 1, r.pins);   // 地板底下的起伏（见上面“屋里的地也有起伏”）：缝、木纹、方砖都跟着弯（r.pins 那几段是平的）
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, fr - wb); b.clip();
   b.fillStyle = kind === 'concrete' ? P.concrete : kind === 'checker' ? P.checker1 : P.floor; b.fillRect(x0, wb, x1 - x0, ff - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
   if (kind === 'checker') {   // 黑白相间的方砖，越往前越大
-    b.fillStyle = P.checker2;
-    for (let i = 0; i < rows.length - 1; i++) for (let j = 0, x = x0; x < x1; j++, x += 44) if ((i + j) % 2) { const sk = (rows[i + 1] - wb) * 0.12; b.beginPath(); b.moveTo(x, rows[i]); b.lineTo(x + 44, rows[i]); b.lineTo(x + 44 + sk, rows[i + 1]); b.lineTo(x + sk, rows[i + 1]); b.fill(); }
+    for (let i = 0; i < rows.length - 1; i++) for (let j = 0, x = x0; x < x1; j++, x += 44) if ((i + j) % 2) fillPts(b, tileQ(W, x, rows[i], rows[i + 1], (rows[i + 1] - wb) * 0.12), P.checker2);
   }
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, ff - wb); b.clip();   // 地板面上的深浅、起伏（见上面“地面的起伏”）
   floorTone(b, P, lit, x0, x1, wb, ff, { cell: kind === 'concrete' ? 110 : 130, a: kind === 'concrete' ? 1 : 0.7, wear: kind === 'concrete' ? 0 : 1, salt: 0.41 });
-  if (kind === 'planks') woodDetail(b, P, lit, x0, x1, rows, seams, seed % 997);
-  else if (kind === 'checker') checkerDetail(b, P, lit, x0, x1, rows, wb, seed % 997);
-  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.27);
+  if (kind === 'planks') woodDetail(b, P, lit, x0, x1, rows, seams, seed % 997, W);
+  else if (kind === 'checker') checkerDetail(b, P, lit, x0, x1, rows, wb, seed % 997, W);
+  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.27, { W });
   b.restore();
   const gr = b.createLinearGradient(0, wb, 0, wb + 40); gr.addColorStop(0, rgba(DARK.mass, lit ? 0.32 : 0.46)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x0, wb, x1 - x0, 40);
   b.fillStyle = kind === 'concrete' ? shadeHex(P.concrete) : P.front; b.fillRect(x0, ff, x1 - x0, fr - ff);
   b.restore();
   b.seedN = seed;
-  if (kind === 'planks') {
-    for (let i = 1; i < rows.length - 1; i++) ink(b, seg(x0, rows[i], x1, rows[i]), { w: 0.7, a: lit ? 0.55 : 0.65, taper: 0, col: lc });
-    for (let i = 0; i < rows.length - 1; i++) for (const x of seams[i]) ink(b, seg(x, rows[i] + 1, x - 1.5, rows[i + 1] - 1), { w: 0.7, a: lit ? 0.6 : 0.7, taper: 0, col: lc });
+  if (kind === 'planks') {   // 板子的缝跟着地面弯（一笔还是一笔，种子不变）
+    for (let i = 1; i < rows.length - 1; i++) ink(b, wline(W, x0, x1, rows[i]), { w: 0.7, a: lit ? 0.55 : 0.65, taper: 0, col: lc });
+    for (let i = 0; i < rows.length - 1; i++) for (const x of seams[i]) ink(b, seg(x, W(x, rows[i] + 1), x - 1.5, W(x - 1.5, rows[i + 1] - 1)), { w: 0.7, a: lit ? 0.6 : 0.7, taper: 0, col: lc });
   } else if (kind === 'concrete') {
     const rr0 = rnd(seed + 2);   // 几道裂缝、几块污渍
-    for (let i = 0; i < 6; i++) { const x = x0 + rr0() * (x1 - x0), pts = [[x, wb + 4 + rr0() * 20]]; for (let k = 0; k < 4; k++) { const l = pts[pts.length - 1]; pts.push([l[0] + (rr0() - 0.5) * 40, l[1] + 6 + rr0() * 10]); } ink(b, pts, { w: 0.6, a: 0.6, amp: 0.4, single: 1 }); }
+    for (let i = 0; i < 6; i++) { const x = x0 + rr0() * (x1 - x0), pts = [[x, wb + 4 + rr0() * 20]]; for (let k = 0; k < 4; k++) { const l = pts[pts.length - 1]; pts.push([l[0] + (rr0() - 0.5) * 40, l[1] + 6 + rr0() * 10]); } ink(b, wpts(W, pts), { w: 0.6, a: 0.6, amp: 0.4, single: 1 }); }
   }
   hatch(b, k => k.rect(x0, wb, x1 - x0, 24), [x0, wb, x1 - x0, 24], { ang: -0.25, gap: 5 / HD, a: lit ? 0.25 : 0.45, w: 0.7, len: 30 });   // 墙脚的阴影
   ink(b, seg(x0, wb, x1, wb), { w: 1.4, taper: 0, col: lc });
@@ -3252,15 +3307,15 @@ function paintGround(b, P, lit, x0, x1, kind, seed) {
   const F = FL.down, wb = F.wb, ff = F.ff, fr = F.fr, lc = lcOf(P, lit), rough = kind === 'grass' || kind === 'gravel';
   const N = nz(kind === 'grass' ? 7301 : 7302), eY = x => rough ? ff + clamp(Math.min(x - x0, x1 - x) / 40, 0, 1) * ((N(x / 41) - 0.5) * 5 + (N(x / 9 + 50) - 0.5) * 1.4) : ff;
   const edge = []; for (let x = x0; ; x += 6) { const xx = Math.min(x, x1); edge.push([xx, eY(xx)]); if (xx >= x1) break; }
-  const deckRows = [wb, wb + 14, wb + 31, wb + 51, ff];
+  const deckRows = [wb, wb + 14, wb + 31, wb + 51, ff], W = rough ? noWarp : fwarp(wb, ff, kind === 'deck' ? 1 : 0.7);   // 木板、水泥地底下的起伏（2026-11-28，见“屋里的地也有起伏”）
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, fr - wb); b.clip();   // 只在地面这一条里上色、盖纸纹（纸纹盖到透明的地方会画出一条灰带）
   b.fillStyle = P[kind]; b.fillRect(x0, wb, x1 - x0, ff + 4 - wb); texture(b, TEX.blot2, 0.5); texture(b, TEX.blot, 0.3);
   b.save(); b.beginPath(); b.rect(x0, wb, x1 - x0, ff + 4 - wb); b.clip();   // 地面上的深浅、起伏、草、石子
   floorTone(b, P, lit, x0, x1, wb, ff, { cell: kind === 'grass' ? 120 : 110, a: kind === 'deck' ? 0.7 : 1, wear: kind === 'deck' ? 1 : 0, salt: 0.53 });
   if (kind === 'grass') grassDetail(b, P, lit, x0, x1, wb, ff);
   else if (kind === 'gravel') gravelDetail(b, P, lit, x0, x1, wb, ff);
-  else if (kind === 'deck') woodDetail(b, P, lit, x0, x1, deckRows, deckRows.slice(0, -1).map((_, i) => deckSeams(x0, x1, i)), 0.61);
-  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.19);
+  else if (kind === 'deck') woodDetail(b, P, lit, x0, x1, deckRows, deckRows.slice(0, -1).map((_, i) => deckSeams(x0, x1, i)), 0.61, W);
+  else concreteDetail(b, P, lit, x0, x1, wb, ff, 0.19, { W });
   b.restore();
   const gr = b.createLinearGradient(0, wb, 0, wb + 46); gr.addColorStop(0, rgba(DARK.mass, lit ? 0.26 : 0.4)); gr.addColorStop(1, rgba(DARK.mass, 0)); b.fillStyle = gr; b.fillRect(x0, wb, x1 - x0, 46);
   b.fillStyle = kind === 'deck' ? P.front : kind === 'concrete' ? shadeHex(P.concrete) : P.soil;   // 前沿下面的断面
@@ -3268,12 +3323,12 @@ function paintGround(b, P, lit, x0, x1, kind, seed) {
   else b.fillRect(x0, ff, x1 - x0, fr - ff);
   if (kind === 'deck') {
     b.seedN = seed + 20;
-    for (const y of [wb + 14, wb + 31, wb + 51]) ink(b, seg(x0, y, x1, y), { w: 0.7, a: lit ? 0.5 : 0.6, taper: 0, col: lc });
-    for (let x = Math.ceil(x0 / 170) * 170; x < x1; x += 170) for (let i = 0; i < 4; i++) { const y0 = [wb, wb + 14, wb + 31, wb + 51][i], y1 = [wb + 14, wb + 31, wb + 51, ff][i], sx = x + hash(x, i + 0.7) * 150; if (sx < x1 - 4) ink(b, seg(sx, y0 + 1, sx - 1.5, y1 - 1), { w: 0.7, a: 0.6, taper: 0, col: lc, seed: seed + 60 + (x % 997) * 5 + i }); }
+    for (const y of [wb + 14, wb + 31, wb + 51]) ink(b, wline(W, x0, x1, y), { w: 0.7, a: lit ? 0.5 : 0.6, taper: 0, col: lc });
+    for (let x = Math.ceil(x0 / 170) * 170; x < x1; x += 170) for (let i = 0; i < 4; i++) { const y0 = [wb, wb + 14, wb + 31, wb + 51][i], y1 = [wb + 14, wb + 31, wb + 51, ff][i], sx = x + hash(x, i + 0.7) * 150; if (sx < x1 - 4) ink(b, seg(sx, W(sx, y0 + 1), sx - 1.5, W(sx - 1.5, y1 - 1)), { w: 0.7, a: 0.6, taper: 0, col: lc, seed: seed + 60 + (x % 997) * 5 + i }); }
   } else if (kind === 'concrete') {
     for (let x = Math.ceil(x0 / 190) * 190; x < x1; x += 190) {   // 水泥地上的几道裂缝
       const pts = [[x + hash(x, 2.2) * 150, wb + 6 + hash(x, 3.3) * 18]]; for (let k = 0; k < 4; k++) { const l = pts[pts.length - 1]; pts.push([l[0] + (hash(x, k + 5.5) - 0.5) * 44, l[1] + 7 + hash(x, k + 6.6) * 10]); }
-      ink(b, pts, { w: 0.6, a: 0.6, amp: 0.4, single: 1, col: lc, seed: seed + 90 + x % 997 });
+      ink(b, wpts(W, pts), { w: 0.6, a: 0.6, amp: 0.4, single: 1, col: lc, seed: seed + 90 + x % 997 });
     }
   }
   b.seedN = seed + 200;
@@ -8166,7 +8221,7 @@ function twShell(b, P, lit, r, S0, gaps) {   // 一层的壳：后墙（石头�
   part(b, rectPts(x0 - 4, wb - 20, w + 8, 24), P.twBackLo, { w: 0.9, tex: 0.4, lc, seed: S0 + 3 });   // 踢脚线
   twPieces(x0 - 4, x1 + 4, gaps).forEach(([a, c], j) => {
     part(b, rectPts(a, wb, c - a, ff - wb), P.twPlank, { w: 1, tex: 0.5, lc, seed: S0 + 20 + j * 7 });
-    b.save(); b.beginPath(); b.rect(a, wb, c - a, ff - wb); b.clip(); stripDetail(b, P, lit, a, c, wb, ff, 76, -8, 'wood'); b.restore();   // 楼板一条条深浅不一、有木纹（见“地面的起伏”）
+    b.save(); b.beginPath(); b.rect(a, wb, c - a, ff - wb); b.clip(); stripDetail(b, P, lit, a, c, wb, ff, 76, -8, 'wood', fwarp(wb, ff)); b.restore();   // 楼板一条条深浅不一、有木纹、有起伏（见“地面的起伏”“屋里的地也有起伏”）
     hatch(b, k => k.rect(a, wb, c - a, ff - wb), [a, wb, c - a, ff - wb], { ang: 0.04, gap: 9 / HD, a: lit ? 0.16 : 0.32, w: 0.7, len: 90, col: lc, seed: S0 + 21 + j * 7 });
     for (let xx = Math.ceil(a / 76) * 76; xx < c; xx += 76) ink(b, seg(xx, wb + 2, xx - 8, ff), { w: 0.6, col: lc, taper: 0, a: 0.3, seed: S0 + 30 + (xx % 89) + j * 3, single: 1 });
     part(b, rectPts(a, ff, c - a, fr - ff), P.twBackLo, { w: 1, tex: 0.5, lc, seed: S0 + 22 + j * 7 });
@@ -10442,7 +10497,7 @@ function dyShell(b, P, lit, r, xa, xb, seed, o) {
   const mass = (x, y, w, h, s2) => { b.fillStyle = P.dyMass; b.fillRect(x, y, w, h); hatch(b, k => k.rect(x, y, w, h), [x, y, w, h], { ang: -0.8, gap: 7 / HD, a: lit ? 0.3 : 0.5, w: 0.7, len: 22, col: lc, seed: s2 }); };
   mass(r.x0 - 60, top - 60, r.x1 - r.x0 + 120, 60, seed + 1);   // 屋顶
   paintShell(b, { ...r, ix0: xa, ix1: xb }, P, lit, { seed: seed + 10, brick: true, creep: 1, paper: [P.dyWall] });
-  paintFloor(b, { ...r, ix0: o.solidL ? xa : r.x0, ix1: o.floorX1 ?? r.x1 + 10 }, P, lit, 'planks', seed + 300);
+  paintFloor(b, { ...r, ix0: o.solidL ? xa : r.x0, ix1: o.floorX1 ?? r.x1 + 10, pins: o.pins }, P, lit, 'planks', seed + 300);
   if (o.solidL) mass(r.x0 - 60, top, 60, F.fr + 70 - top, seed + 2);   // 外墙外面
   for (const [wx, door, s2] of [[xa - 20, o.doorL, seed + 3], [xb, o.doorR, seed + 4]]) {   // 两头的墙（各画靠自己这边的一半，20 厚）
     mass(wx, top, 20, (door ? y0 : wb) - top, s2);
@@ -10500,7 +10555,8 @@ function paintDy(b, r, P, lit) {
   // 地面上的三间
   const first = id === 'dyA', last = id === 'dyC', xa = r.x0 + 20, xb = last ? DYC.door - 20 : r.x1 - 20, cx0 = first ? r.x0 - 60 : r.x0, cx1 = last ? r.x1 + 60 : r.x1 + 10;
   b.save(); b.beginPath(); b.rect(cx0, r.top - 110, cx1 - cx0, F.fr + 70 - (r.top - 110)); b.clip();
-  dyShell(b, P, lit, r, xa, xb, sd, { doorL: true, doorR: true, solidL: first, floorX1: last ? DYC.door + 20 : undefined });
+  dyShell(b, P, lit, r, xa, xb, sd, { doorL: true, doorR: true, solidL: first, floorX1: last ? DYC.door + 20 : undefined,
+    pins: [[DYB.rot0, DYB.rot1], [DYC.hx - DYC.hw - 10, DYC.hx + DYC.hw + 10]] });   // 烂地板、梯口那两段地板不起伏（那里的板子、洞口照直线画）
   // --- 22A ---
   if (id === 'dyA') dyPaintA(b, r, P, lit);
   // --- 22B ---
