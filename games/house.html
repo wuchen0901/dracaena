@@ -9448,7 +9448,7 @@ function drawPreSky(b) {
   b.fillStyle = '#0a1022'; b.fillRect(camX - 2, camY - 2, VWW + 4, VHH + 4);
   const sx = Math.min(Math.max((camX - 4500) * SKY.k, vx1 + 4 - SKY.x1), camX - SKY.x0 - 4 - 240 * clamp(-camX / 1000, 0, 1)), fx = Math.min(Math.max((camX - 4500) * FAR.k, vx1 + 4 - FAR.x1), camX - FAR.x0 - 4);   // 后山：月亮往左挪一点（屏幕窄的时候不躲到房子后面去）
   skyLayer(b, sx, fx, camY, Math.min(0, camY - 150));
-  if (V.day) daySky(b, V.day.sky, sx, fx);   // 开场的前一段“那天下午”：白天的天盖在上面（落山的时候越盖越少）
+  if (V.day) daySky(b, V.day.sky, sx, fx, V.day);   // 开场的前一段“那天下午”：白天的天盖在上面（最后黑从钟楼那儿漫开来，漫到的地方露出夜里的天）
   b.restore();
   if (roofV) { if (!hroofC) buildHRoof(); const R = hroofC; b.save(); b.setTransform(K, 0, 0, K, -camX * K, -camY * K); b.imageSmoothingEnabled = true; b.drawImage(R.c, R.x0, R.y0, R.x1 - R.x0, R.y1 - R.y0); b.restore(); }
 }
@@ -9580,16 +9580,156 @@ function paintPreC(b, r, P, lit) {   // 房子后面：后院的木栅栏、一�
 }
 
 // ======================================================================
+// 开场的第一拍“有人敲门”（2026-11-28 再后来，主人：“I want the game to start with the girl knock the protagonist's door, invite him to have a picnic or hiking”）
+// 晴天的下午，孩子在自己家的门厅里。她在门外敲门（咚咚咚；门里面画几道短短的弧，没有声音也看得出）；他走到门口，伸手拉开门，门外的光铺进来。
+// 她提着野餐的篮子：举起来给他看、蹦两下，转身往外跑，跑几步回头等他（招手）。他跟出门，黑一下，接着就是“那天下午”的草地（dayStart）。
+// 白天是同一盏“太阳”（LIGHTS 里的 sun）照着门厅和门外；门外的天画白天那一张（drawSky 里接着画 daySky）。门厅里的衣服让太阳照着，是塌着的样子。
+// 不碰第 1 关的局面：门厅里的东西都点不了（spots 只给门、她）；往左走不过桌子（座钟顶上的灯崽离得远，不会被吓出来）；衣帽架那道影子不挡路；
+// 进来的时候让太阳照塌的几件衣服，走的时候原样立回去；门的开合用自己的 dO，规则里的 S.door 不动。没有怪物、不存档、站着的小动作不做。
+// ?intro=day 跳过这一拍，直接从草地开始（?intro=pre 照旧从树屋上天黑那一下开始）。
+// V.knock：t 演了多久；ph 到哪一步（wait 敲门、等他到门口 → reach 他伸手开门 → open 门开着 → fade 跟出门、黑下去）；dO 门开了几成；sun 太阳光；
+// kt 下一回敲门在几秒；knockT、kn 这一回敲门从什么时候起、敲了几下；ot 门开了以后几秒；ft 黑下去几秒；idleT、tipT、tipK 站着不动多久、气泡什么时候画的、画的是哪一步；
+// mons 让太阳照塌的那几件衣服。V.iFade：开场头上、接上草地的时候从黑里亮起来（盖在画面最上面）
+// 她（V.girl，和“那天下午”同一副身子）：st 她在做哪一步（knock 敲门 → see 门开了，举篮子、蹦两下 → go 往外跑 → wait 回头等他 → away 他跟出来了，接着跑）；bUp 篮子举起来几成
+const KNOCK = { x0: 3720, start: 3800, girl: FRONT.x + 74, run: FRONT.x + 430, out: FRONT.x + 170 };
+const KNOCK_ICON = { kDoor: '>', kOut: '>' };
+function knockStart() {
+  V.knock = { t: 0, ph: 'wait', dO: 0, sun: 1, kt: 1.2, knockT: -10, kn: 3, ot: 0, ft: 0, idleT: 0, tipT: -10, tipK: null, mons: [] };
+  V.girl = Object.assign(newKid(), { girl: 1, x: KNOCK.girl, y: FL.down.gy, face: -1, lampK: 0, lampA: 0.6, lampOn: null, st: 'knock', st0: V.T, bUp: 0 });
+  placeKid(clamp(FRONT.x + 420 - VWW * 0.8, KNOCK.start, 4250), FL.down.gy, -1);   // 屏幕窄的时候站得离门近一点（门、她都在画面里）。placeKid 顺手把镜头摆好
+  V.iFade = 1;
+  const L = activeLights();   // 太阳照得到的衣服：一开始就是塌着的样子（不然头一帧“噗”一下塌下去，还响一声）
+  for (const k of GARB_KEYS) {
+    const G = GARB[k], m = V.mon[k]; if (G.sleeper || m.want !== 1) continue;
+    const fy = garbFy(G, m), hy = G.headAt ? G.headAt(m, fy, G) : fy - G.h * 0.8, hx = m.x + m.face * (G.headDx || 0);
+    if (coverage(hx, hy, L) > 0.55) { m.want = 0; m.rise = 0; V.fig[k] = 1; V.knock.mons.push(k); }
+  }
+}
+function knockUpdate(dt) {
+  const K = V.knock;
+  if (!K) { if (V.iFade > 0) V.iFade = Math.max(0, V.iFade - dt / 0.8); return; }   // 黑着接上草地：慢慢亮起来
+  const T = V.T; K.t += dt;
+  if (K.ph !== 'fade') V.iFade = Math.max(0, (V.iFade || 0) - dt / 0.8);
+  if (K.ph === 'wait' && K.t >= K.kt) { K.kt = K.t + 3.6; K.knockT = T; K.kn = 0; }   // 敲门：门开以前隔一阵敲一回
+  if (K.kn < 3 && T - K.knockT >= 0.07 + K.kn * 0.17) {   // 一回三下，手碰到门的那一下响
+    K.kn++;
+    if (K.ph === 'wait') { if (inView(FRONT.x, FL.down.gy - 120, 200)) snd.thump(); if (K.kn === 1 && K.t < 2 && kid.mode === 'idle') kid.face = 1; }   // 头一回：他回过头来看门
+  }
+  if (K.ph === 'wait' && kid.mode === 'idle' && kid.kind === 'floor' && kid.x >= DOOR_STOP - 4) knockReach();   // 走到门口了（拖着走：门关着走到门前就停）：伸手拉开门
+  if (K.ph === 'open' || K.ph === 'fade') { K.ot += dt; K.dO = smooth(Math.min(1, K.ot / 0.55)); }
+  if (K.ph === 'open' && kid.x > KNOCK.out) { K.ph = 'fade'; K.ft = 0; }   // 跟出门了：黑下去
+  knockGirl(dt);
+  if (K.ph === 'fade') { K.ft += dt; V.iFade = smooth(Math.min(1, K.ft / 0.6)); if (K.ft >= 0.7) { knockEnd(); return; } }
+  knockTips(dt);
+}
+function knockReach() {   // 伸手拉开门（和够东西一样的一下，碰到门把手门就开）
+  const K = V.knock; if (!K || K.ph !== 'wait') return;
+  K.ph = 'reach';
+  Object.assign(kid, { path: [], onArrive: null, drive: false, v: 0, seek: null, auto: false, face: 1, mode: 'reach' });
+  kid.r = { t: 0, k: 0, hx: FRONT.x - 10, hy: FL.down.gy - 100, tx: FRONT.x - 10, ty: FL.down.gy - 100, hold: 0.12, onHit: knockOpen };
+}
+function knockOpen() { const K = V.knock; if (!K) return; K.ph = 'open'; K.ot = 0; snd.latch(); snd.creak(); const G = V.girl; if (G) { G.st = 'see'; G.st0 = V.T; } }
+function knockEnd() {   // 跟出门了（黑着）：衣服原样立回去，门关上，接着就是“那天下午”的草地（从黑里亮起来）
+  const K = V.knock;
+  for (const k of K.mons) { const m = V.mon[k]; m.want = 1; m.rise = 1; V.fig[k] = 0; }
+  V.knock = null; V.girl = null; V.door = S.door;
+  Object.assign(kid, { path: [], onArrive: null, drive: false, v: 0, seek: null, auto: false, r: null });
+  dayStart(); V.iFade = 1;
+}
+// 她：敲门 → 门开了举起篮子给他看、蹦两下 → 往外跑几步，回头等他、招手 → 他跟出来了，接着跑
+function knockGirl(dt) {
+  const K = V.knock, G = V.girl, T = V.T; if (!G) return;
+  G.blink -= dt; G.blinkT -= dt; if (G.blinkT < 0) { G.blink = 0.12; G.blinkT = 2.4 + hash(Math.floor(T * 10), 3.3) * 3.4; }
+  const st = s => { G.st = s; G.st0 = T; }, since = T - G.st0;
+  let dx = 0, sp = 0, hop = 0;
+  const go = (tx, v) => { const s = tx - G.x; if (Math.abs(s) > 2) { dx = Math.sign(s) * Math.min(Math.abs(s), v * dt); sp = v; return false; } return true; };
+  G.r = null;
+  if (K.ph === 'fade' && (G.st === 'go' || G.st === 'wait')) st('away');
+  switch (G.st) {
+    case 'knock': {   // 近的那只袖子伸到门上，一下一下敲
+      G.face = -1; const e = T - K.knockT;
+      if (e >= 0 && e < 0.75) {
+        const k = smooth(Math.min(1, e / 0.12)) * (1 - smooth((e - 0.58) / 0.17)), q = e % 0.17, push = e < 0.51 ? (q < 0.07 ? q / 0.07 : 1 - (q - 0.07) / 0.1) : 0;
+        G.r = { k, tx: FRONT.x + 12 + (1 - push) * 9, ty: G.y - 100 };   // 胸口那么高（再高袖子会挡住脸）
+      }
+      break;
+    }
+    case 'see':   // 门开了：篮子举起来给他看，原地蹦两下
+      G.face = -1; G.bUp = smooth(clamp((since - 0.2) / 0.3, 0, 1)) * (1 - smooth((since - 1.7) / 0.3));
+      hop = since > 0.45 && since < 1.45 ? Math.abs(Math.sin(Math.PI * (since - 0.45) / 0.5)) : 0;
+      if (since > 2.0) { G.bUp = 0; st('go'); }
+      break;
+    case 'go': if (go(KNOCK.run, 330)) { G.face = -1; st('wait'); } break;
+    case 'wait': {   // 回头等他：一阵一阵原地蹦两下，朝他招手
+      G.face = -1; const q = since % 2.4;
+      hop = since > 0.3 && q < 0.7 ? Math.abs(Math.sin(Math.PI * q / 0.35)) : 0;
+      const wv = clamp((q - 0.9) / 0.2, 0, 1) * clamp((2.2 - q) / 0.25, 0, 1);
+      if (wv > 0.001) G.r = { k: wv, tx: G.x - (62 + Math.sin(T * 13) * 8), ty: G.y - 112 + Math.sin(T * 13 + 1.2) * 12 };
+      break;
+    }
+    case 'away': go(KNOCK.run + 900, 360); break;
+  }
+  G.standY = hop * 9;
+  if (dx) { G.x += dx; G.face = dx > 0 ? 1 : -1; const Gt = gaitOf(G.gait); G.ph = (G.ph + Math.abs(dx) * Gt.st / (Gt.fa + Gt.fb)) % 1; }
+  G.walk += ((dx ? 1 : 0) - G.walk) * (1 - Math.exp(-dt * (dx ? 16 : 10)));
+  G.gait += ((dx ? clamp((sp - 128) / 352, 0, 1) : 0) - G.gait) * (1 - Math.exp(-dt * 7));
+  G.idl = G.bUp > 0.002 ? { arms: [null, [11, 27, G.bUp]] } : null;   // 远的那只袖子（提着篮子）举到胸前
+}
+// 孩子半天不动：头上的气泡里画往右的箭头（门没开：去开门；门开了、她在外面等：跟出去）
+function knockTips(dt) {
+  const K = V.knock, G = V.girl, T = V.T;
+  K.idleT = kid.mode === 'idle' && !keys.size && !stick.on && !bubble ? K.idleT + dt : 0;
+  const step = K.ph === 'wait' ? 'door' : K.ph === 'open' && G && G.st === 'wait' ? 'out' : null, wait = K.tipK !== step ? 5 : 8;
+  if (step && K.idleT > wait && T - K.tipT > 6) { say(['>'], 2.6); K.tipT = T; K.tipK = step; K.idleT = 0; }
+}
+// 能点的地方（点着走、点 ? 的提示圈、自动试玩用）：门（门没开的时候）、门外等着的她。门厅里别的东西这时候都点不了（spots 里先返回）
+function knockSpots(out) {
+  const K = V.knock, G = V.girl, gy = FL.down.gy, add = (id, r, sx) => out.push({ id, r, hit: r, stand: { x: sx, y: gy }, face: 1, hand: [sx, gy - 60] });
+  if (K.ph === 'wait') add('kDoor', [FRONT.x - 30, gy - DOOR_H - 10, FRONT.x + 20, gy + 10], DOOR_STOP);
+  if (K.ph === 'open' && G && G.st === 'wait') add('kOut', [G.x - 40, G.y - 170, G.x + 40, G.y + 6], KNOCK.out + 40);
+}
+function knockNext() { const K = V.knock, G = V.girl; return K.ph === 'wait' ? { spot: 'kDoor', held: null } : K.ph === 'open' && G && G.st === 'wait' ? { spot: 'kOut', held: null } : null; }
+function knockUse(id) {
+  if (id === 'kDoor') return walkTo(DOOR_STOP, FL.down.gy, knockReach);
+  if (id === 'kOut') return walkTo(KNOCK.out + 40, FL.down.gy);
+}
+// 会动的那一层：敲门的弧、她、她手里的篮子
+function drawKnock(b, Pp, lit) {
+  const K = V.knock; if (!K) return;
+  const G = V.girl, T = V.T, gy = FL.down.gy, e = T - K.knockT;
+  if (e >= 0 && e < 0.9) for (let i = 0; i < 3; i++) {   // 敲门：门里面几道短短的弧，一下一道（从门框往屋里散开，门框自己的线外面）
+    const q = (e - 0.07 - i * 0.17) / 0.5; if (q < 0 || q > 1) continue;
+    ink(b, arcPts(FRONT.x - 24, gy - 100, 24 + q * 40, 24 + q * 40, Math.PI - 0.6, Math.PI + 0.6, 8), { w: 2.6, col: lit ? '#3b2a1e' : '#c8d0e6', a: 0.95 * (1 - q * q), taper: 0, seed: 481000 + i, single: 1 });
+  }
+  if (G && G.alpha > 0.003 && inView(G.x, G.y - 80, 240)) { asGirl(() => drawKid(b, Pp, lit)); knockBasket(b, Pp, lit, G); }
+}
+function knockBasket(b, P, lit, G) {   // 野餐的篮子（和草地上那一只一样的画法，小一号）：提手挂在她远的那只袖口上，篮子口垂下来一角格子布
+  const h = asGirl(() => kidPose().arms[1]), lc = lcOf(P, lit), x = h.hx, top = h.hy + 15, w = 40, bh = 24;
+  b.save(); b.seedN = 481100;
+  ink(b, arcPts(x, top, 15, 16, Math.PI, TAU, 10), { w: 1.4, col: P.wicker, taper: 0 }); ink(b, arcPts(x, top, 15, 16, Math.PI, TAU, 10), { w: 0.6, col: lc, taper: 0 });
+  part(b, [[x - w / 2, top], [x + w / 2, top], [x + w / 2 - 4, top + bh], [x - w / 2 + 4, top + bh]], P.wicker, { w: 0.9, tex: 0.4, lc });
+  for (let i = 1; i < 3; i++) ink(b, seg(x - w / 2 + 3, top + i * 8, x + w / 2 - 3, top + i * 8), { w: 0.5, a: 0.6, col: lc, taper: 0, single: 1 });
+  part(b, [[x - 15, top - 3], [x + 11, top - 4], [x + 7, top + 10], [x - 3, top + 4]], lit ? '#b0605a' : '#232a40', { w: 0.7, tex: 0.2, lc });
+  b.fillStyle = lit ? 'rgba(240,226,200,0.6)' : 'rgba(80,92,124,0.35)'; b.fillRect(x - 9, top - 3, 3, 9); b.fillRect(x + 1, top - 4, 3, 10);
+  b.restore();
+}
+function drawKnockGlow() {   // 门开着：门外的光铺进门厅（几团软的光，和结局推开前门那一下一样的画法）
+  const K = V.knock; if (!K || K.dO < 0.01 || !inView(FRONT.x - 300, 850, 700)) return;
+  for (const [dx, y, r, k] of [[-30, 800, 420, 0.4], [-210, 900, 400, 0.3], [-420, 960, 380, 0.22]]) glowAt(FRONT.x + dx, y, r, [255, 238, 196], k * K.dO);
+}
+
+// ======================================================================
 // 开场的前一段“那天下午”（2026-11-28，主人：“在开头加一关，女主角和男主角过着快乐的日子……就是简单的走、爬梯子、跳过一道缝”）
 // 树屋再往左，晴天的下午，两个人在后山上玩。她拍他一下就跑（捉人），在前面等他，每一样她先做一遍：走路、爬梯子上树屋、跳过两个树屋当中的缝、爬梯子下来、爬上后山的树屋。
 // 两个人在树屋上看太阳落山，天黑了她拿出手灯打开——接着就是原来的开场（preStart：她闪两下灯，该回去了）。没有怪物，不存档。点 ?、点着走、自动试玩都走得过。
 // 白天是一盏“太阳”（LIGHTS 里的 sun）：整片照亮，亮的一层照常抠出来，所以白天的样子就是灯底下的样子；落山的时候它慢慢暗下去，露出暗的一层。天另画一张（daySky），盖在夜里的天上面。
-// V.day：t 演了多久；ph 孩子到哪一步了（m 草地上 → r1 左边树屋上 → r2 跳过了缝 → g2 下了树屋 → deck 上了树屋 → end 看太阳落山）；sun 太阳光；sky 白天的天盖几成（1 下午、0.35 晚霞、0 天黑）；
+// V.day：t 演了多久；ph 孩子到哪一步了（m 草地上 → r1 左边树屋上 → r2 跳过了缝 → g2 下了树屋 → deck 上了树屋 → end 天一下子黑了）；sun 太阳光；sky 白天的天盖几成（1 下午、0.35 晚霞、0 天黑）；
+// ink 黑从钟楼那儿漫开来几成；clock 钟面黑了几成；ring 钟楼的铃在响（2026-11-28 再后来：看太阳落山换成天一下子黑了，见 dayEndUpdate）；
 // lampI、lx、ly、rot 她的手灯（天黑才打开；和原来开场的 glamp 是同一盏灯）；et、ef 落山那一段演到几秒、哪几拍演过了；push 站在缝边朝缝那边拖了多久；
 // idleT、tipT、tipK 孩子站着不动多久了、气泡什么时候画的、画的是哪一步；bumpT 走到缝边停住的那一下；tagged 拍过他了
 // 她（V.girl，和原来开场同一副身子）：st 她在做哪一步（tag → lead1 → up1 → top1 → lead2 → gapEdge →（跳）→ gap2 → lead3 → down2 → bot2 → lead4 → upT → deck）；
 // ladTo 爬梯子爬到哪儿；jump 跳缝；waveT 招手；bounceT 站着等他多久了（原地小蹦）
-function introStart() { if (qs.get('intro') === 'pre') preStart(); else dayStart(); }   // 从头开始：先演“那天下午”，天黑了接着原来的开场。?intro=pre：直接从树屋上天黑那一下开始
+function introStart() { const q = qs.get('intro'); if (q === 'pre') preStart(); else if (q === 'day') dayStart(); else knockStart(); }   // 从头开始：先是她来敲门，接着“那天下午”，天黑了接着原来的开场。?intro=day：从草地开始；?intro=pre：直接从树屋上天黑那一下开始
 function dayStart() {
   V.day = { t: 0, ph: 'm', sun: 1, sky: 1, lampI: 0, lx: 0, ly: 0, rot: 0.6, et: 0, ef: {}, push: 0, idleT: 0, tipT: -10, tipK: null, bumpT: -10, tagged: 0 };
   V.girl = Object.assign(newKid(), { girl: 1, x: DAY.start + 104, y: FL.down.gy, face: -1, lampK: 0, lampA: 0.6, lampOn: null, st: 'tag', st0: V.T, hop: null, jump: null, ladTo: 0, waveT: -10, bounceT: 0 });
@@ -9764,9 +9904,11 @@ function dayUse(id) {
   if (id === 'dDown') return walkTo(DAY.lad2 + 80, gy);
   if (id === 'dUp2') return walkTo(PRE.lad - 70, PRE.deck);
 }
-// ---------- 两个人在树屋上看太阳落山（孩子站着不听点，kid.mode = 'wait'；点一下屏幕、按 Esc 或回车跳过）----------
-// 孩子从梯子口往里走一步、朝着镇子；她走到她平常坐的地方（点着走的时候孩子可能先上来：等她上来再演）。0.6 她指着太阳蹦一下；1.0 起太阳往下落、天变红；
-// 3.0 起太阳光暗下去；4.4 她拿出手灯，5.3 打开；6.6 天黑了，接着就是原来的开场
+// ---------- 两个人在树屋上看山下的镇子，天一下子黑了（孩子站着不听点，kid.mode = 'wait'；点一下屏幕、按 Esc 或回车跳过）----------
+// 2026-11-28 再后来，主人：“the sky become dark suddenly”。原来是看太阳落山（天慢慢变红、变黑，6.6 秒），换成天一下子黑下来，黑是从钟楼那儿来的：
+// 孩子从梯子口往里走一步、朝着镇子；她走到她平常坐的地方（点着走的时候孩子可能先上来：等她上来再演）。0.6 她指着山下的镇子、钟楼蹦一下；
+// 2.2 远处钟楼的铃一长、2.9 一短（钟楼上几道弧），2.45 钟面黑了；2.7 起黑从钟楼那儿漫开来，像一团墨盖过整片天（1.6 秒，越漫越快），太阳给吞掉，起一阵风；
+// 3.1 起地上跟着暗下去，两个人吓一跳（缩一下）；4.3 她拿出手灯，4.8 打开；5.8 接着就是原来的开场（她闪两下灯：快回去）
 function dayEndStart() {
   const D = V.day; D.ph = 'end'; D.et = 0; D.ef = {};
   Object.assign(kid, { path: [], onArrive: null, drive: false, v: 0, seek: null, auto: false, mode: 'wait', t: 0, waitFor: 1e9, after: null });
@@ -9779,16 +9921,21 @@ function dayEndUpdate(dt) {
   if (!(G.st === 'deck' && G.kind === 'floor' && Math.abs(G.x - (PRE.trunk + 50)) <= 2)) return;
   const t = D.et += dt, at = (n, fn) => { if (t >= n && !D.ef[n]) { D.ef[n] = 1; fn(); } };
   G.face = 1;
-  const pk = t < 0.6 ? 0 : t < 0.85 ? smooth((t - 0.6) / 0.25) : t < 2.4 ? 1 : 1 - smooth((t - 2.4) / 0.3);   // 指着落山的太阳：近的那只袖子朝前伸出去（举高了袖子会挡住脸）
-  G.r = pk > 0.001 ? { k: pk, tx: G.x + 70, ty: G.y - 112 } : null;
+  const pk = t < 0.6 ? 0 : t < 0.85 ? smooth((t - 0.6) / 0.25) : t < 2.2 ? 1 : 1 - smooth((t - 2.2) / 0.3);   // 指着山下的镇子、钟楼：近的那只袖子朝前伸出去（举高了袖子会挡住脸）
+  G.r = pk > 0.001 ? { k: pk, tx: G.x + 70, ty: G.y - 106 } : null;
   G.standY = t > 0.6 && t < 1.0 ? Math.sin(Math.PI * (t - 0.6) / 0.4) * 14 : 0;
-  D.sky = 1 - smooth((t - 1.0) / 4.0);
-  D.sun = 1 - smooth((t - 3.0) / 2.6);
-  G.lampK = smooth((t - 4.4) / 0.5); G.lampA = lerp(0.2, 0.62, G.lampK);
-  const on = t < 5.3 ? 0 : t < 5.6 ? (Math.sin(t * 60) > 0 ? 0.8 : 0.1) : 1;
+  at(2.2, () => snd.bell(0, 1)); at(2.9, () => snd.bell(1, 1)); at(2.7, () => snd.gust());   // 远处钟楼的铃：一长一短（和抓走她的时候同一个铃）；黑漫过来的时候起一阵风
+  D.ring = t > 2.2 && t < 3.6 ? 1 : 0;
+  D.clock = smooth((t - 2.45) / 0.25);
+  D.ink = clamp((t - 2.7) / 1.6, 0, 1);
+  D.sun = 1 - smooth((t - 3.1) / 1.0);
+  const fr = smooth((t - 3.0) / 0.15) * (1 - smooth((t - 3.9) / 0.5));   // 吓一跳：缩一下
+  kid.fearK = Math.max(kid.fearK, fr * 0.6); G.fearK = fr * 0.6;
+  G.lampK = smooth((t - 4.3) / 0.45); G.lampA = lerp(0.2, 0.62, G.lampK);
+  const on = t < 4.8 ? 0 : t < 5.1 ? (Math.sin(t * 60) > 0 ? 0.8 : 0.1) : 1;
   G.lampOn = G.lampK > 0.02 ? on : null; D.lampI = on;
-  at(5.3, () => snd.click());
-  if (t >= 6.6) dayEnd();
+  at(4.8, () => snd.click());
+  if (t >= 5.8) dayEnd();
 }
 function dayEnd() {   // 天黑了：接着就是原来的开场（她在树屋上闪两下灯：该回去了）。镜头不跳
   const fx = camFX, fy = camFY;
@@ -9805,9 +9952,10 @@ function daySkip() {   // 跳过看太阳落山
 function drawDay(b, Pp, lit, vis) {
   const D = V.day; if (!D) return;
   const G = V.girl, T = V.T, lc = lcOf(Pp, lit);
-  if (D.sky > 0.3) for (let i = 0; i < 3; i++) {   // 鸟：三只一小群，从左往右慢慢飞过去，翅膀一扇一扇
+  const birdA = smooth((D.sky - 0.3) / 0.3) * (1 - smooth((D.ink || 0) / 0.35));   // 黑漫过来：鸟淡掉
+  if (birdA > 0.003) for (let i = 0; i < 3; i++) {   // 鸟：三只一小群，从左往右慢慢飞过去，翅膀一扇一扇
     const span = VWW + 500, bx = camX - 250 + ((T * 34 + i * 46 + 300) % span), by = camY + 120 + i * 18 + Math.sin(T * 0.9 + i * 2) * 10 + (i === 1 ? -14 : 0), f = Math.sin(T * 9 + i * 1.7);
-    ink(b, [[bx - 9, by - 2 - f * 4], [bx - 3, by - 1], [bx, by + 1], [bx + 3, by - 1], [bx + 9, by - 2 - f * 4]], { w: 0.9, col: lc, a: 0.75 * smooth((D.sky - 0.3) / 0.3), taper: 0, seed: 477900 + i, single: 1 });
+    ink(b, [[bx - 9, by - 2 - f * 4], [bx - 3, by - 1], [bx, by + 1], [bx + 3, by - 1], [bx + 9, by - 2 - f * 4]], { w: 0.9, col: lc, a: 0.75 * birdA, taper: 0, seed: 477900 + i, single: 1 });
   }
   const ds = D.dust;   // 她起跳、落地的时候脚底下蹭起一点灰：几小团往两边散开、淡掉
   if (ds && T - ds.t0 < 0.5 && inView(ds.x, ds.y, 80)) {
@@ -9856,11 +10004,15 @@ function buildDaySky() {   // 白天的天上：浅浅的横排线、几朵云�
   ink(b, seg(tx, tb - 217, tx - 6, tb - 225), { w: 0.8, col: lc, a: 0.9, taper: 0 }); ink(b, seg(tx, tb - 217, tx + 9, tb - 219), { w: 0.8, col: lc, a: 0.9, taper: 0 });
   ridge(946, 14, '#7f8b6c', 331400, 60, 0.006);
 }
-function daySky(b, k, sx, fx) {   // k：1 下午，0.35 晚霞，0 天黑（不画）。太阳跟着画面不动，落山的时候落到远处的山后面
+// o：那天下午的状态（V.day；有人敲门的时候不给）。o.ink 黑从钟楼那儿漫开来几成：漫到的地方不画白天的天（露出底下夜里的天），边上一圈墨；o.clock 钟面黑了几成；o.ring 钟楼的铃在响
+function daySky(b, k, sx, fx, o) {   // k：1 下午，0.35 晚霞，0 天黑（不画）。太阳跟着画面不动，落山的时候落到远处的山后面
   if (k < 0.002) return;
   if (!dayHiC) buildDaySky();
-  const a = smooth(k / 0.35), d = smooth((k - 0.35) / 0.65);
-  b.save(); b.globalAlpha = a;
+  const a = smooth(k / 0.35), d = smooth((k - 0.35) / 0.65), tx = TOWER.x + fx, tb = TOWER.base, iv = o && o.ink > 0 ? dayInk(o.ink, tx, tb - 217) : null;
+  if (iv && iv.full) return;   // 整个画面都黑了：白天的天一点不剩
+  b.save();
+  if (iv) { b.beginPath(); b.rect(camX - 4, camY - 4, VWW + 8, VHH + 8); dayInkBlob(b, iv.x, iv.y, iv.r); b.clip('evenodd'); }
+  b.globalAlpha = a;
   const gr = b.createLinearGradient(0, camY - 40, 0, FL.down.wb);
   gr.addColorStop(0, hexMix('#56628a', '#93a9c4', d)); gr.addColorStop(0.6, hexMix('#c98d78', '#d1d6cd', d)); gr.addColorStop(1, hexMix('#efa66a', '#f1ddb6', d));
   b.fillStyle = gr; b.fillRect(camX - 2, camY - 2, VWW + 4, VHH + 4);
@@ -9870,6 +10022,34 @@ function daySky(b, k, sx, fx) {   // k：1 下午，0.35 晚霞，0 天黑（不
   b.globalAlpha = a; b.fillStyle = sg; b.fillRect(px - r * 7, py - r * 7, r * 14, r * 14);
   b.fillStyle = hexMix('#ffae6c', '#fff7e4', d); b.beginPath(); b.arc(px, py, r, 0, 7); b.fill();
   b.drawImage(dayFarC, FAR.x0 + fx, FAR.y0, FAR.x1 - FAR.x0, FAR.y1 - FAR.y0);
+  if (o && o.clock > 0.002) { b.fillStyle = hexMix('#efe7d4', '#161a28', o.clock); b.beginPath(); b.arc(tx, tb - 217, 12.6, 0, 7); b.fill(); }   // 钟面黑了
+  if (o && o.ring) { const q = (V.T * 2.4) % 1; for (const sd of [-1, 1]) ink(b, arcPts(tx, tb - 226, 26 + q * 24, 26 + q * 24, sd > 0 ? -0.5 : Math.PI - 0.5, sd > 0 ? 0.5 : Math.PI + 0.5, 8), { w: 1, col: '#4e4436', a: 0.75 * (1 - q), taper: 0, seed: 481200 + sd, single: 1 }); }   // 铃响：钟楼两边几道弧
+  b.restore();
+  if (iv) dayInkFront(b, iv);
+}
+// 天一下子黑了：黑从钟楼的钟面那儿漫开来（钟楼不在画面里就从画面右边进来），先慢后快，1.6 秒盖满整个画面。u：漫了几成
+function dayInk(u, tx, ty) {
+  const x = Math.min(tx, camX + VWW + 60), y = ty, far = Math.hypot(Math.max(x - camX, camX + VWW - x), Math.max(y - camY, camY + VHH - y)) + 320;
+  const r = 16 + far * Math.pow(u, 1.7);
+  return { x, y, r, full: r > far + 40 };
+}
+function dayInkBlob(b, cx, cy, R) {   // 一团墨的边：圆，边上一鼓一鼓的（慢慢动）
+  const T = V.T, n = 56;
+  for (let i = 0; i <= n; i++) { const a = i / n * TAU, r = R * (1 + 0.07 * Math.sin(a * 5 + T * 1.7) + 0.045 * Math.sin(a * 11 - T * 2.6) + 0.03 * Math.sin(a * 17 + 1.3)); const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; if (i) b.lineTo(x, y); else b.moveTo(x, y); }
+  b.closePath();
+}
+function dayInkFront(b, iv) {   // 墨的前沿：边上一圈最黑，往里淡下去（露出夜里的天）；前面伸出去几根墨的指头
+  const { x, y, r } = iv, T = V.T;
+  b.save();
+  const gr = b.createRadialGradient(x, y, Math.max(0, r - 280), x, y, r * 1.1);
+  gr.addColorStop(0, rgba(INK, 0)); gr.addColorStop(0.65, rgba(INK, 0.6)); gr.addColorStop(1, rgba(INK, 0.97));
+  b.beginPath(); dayInkBlob(b, x, y, r); b.fillStyle = gr; b.fill();
+  b.globalAlpha = 0.9;
+  for (let i = 0; i < 14; i++) {
+    const a = i * 0.449 + 0.2, L = (30 + hash(i, 4.1) * 70) * Math.min(1, r / 160) * (0.8 + 0.2 * Math.sin(T * 3 + i)), r0 = r * (1 + 0.07 * Math.sin(a * 5 + T * 1.7) + 0.045 * Math.sin(a * 11 - T * 2.6) + 0.03 * Math.sin(a * 17 + 1.3)) - 4, bend = Math.sin(T * 2 + i * 1.7) * 0.12;
+    const p = s => [x + Math.cos(a + bend * s) * (r0 + L * s), y + Math.sin(a + bend * s) * (r0 + L * s)];
+    fillPts(b, tube([p(0), p(0.5), p(1)], [7 + hash(i, 2.2) * 6, 4, 1.2]), INK);
+  }
   b.restore();
 }
 
@@ -10255,6 +10435,7 @@ function drawDynamic(b, lit, vis) {
   for (const k of EXTRA_KEYS) { if (GARB[k].back) continue; const m = V.mon[k]; if (inView(m.x, FL[GARB[k].fl].gy - 100, 360)) drawFear(b, P, lit, k); }   // 新的怪物（多出来的）：统一在这儿画，在孩子后面
   drawPre(b, P, lit, vis);   // 开场：她、黑长衣、爬过来的墨；侧窗窗台上那截红布（从被抓走起一直在）
   drawDay(b, P, lit, vis);   // 开场的前一段“那天下午”：她、天上的鸟
+  if (vis.hall || vis.porch) drawKnock(b, P, lit);   // 开场头上“有人敲门”：敲门的弧、门外的她和篮子
   drawKid(b, P, lit);
   drawCatchExtra(b, P, lit);   // 被靴嘴咬住、被外套的墨手抓住：盖在孩子上面
   drawDyFront(b, P, lit, vis);   // 染坊（第 22 关）：画在孩子前面的（木箱：孩子从它后面走过去）
@@ -12570,7 +12751,9 @@ const LIGHTS = [
   { id: 'dyc', off: 0.6, up: 0.85, at: () => DY_ON ? { x: DYC.lamp, y: DYC.lampY, R: 215, I: 0.97 + 0.03 * Math.sin(V.T * 6.1) * Math.sin(V.T * 2.3), clip: [DYC.x0 + 20, 250, DYC.x0 + 420, 1060] } : null },   // 库房左墙的壁灯：一直亮着，光只到梯口盖板的左边（照不到盖板）
 ];
 // 开场的前一段“那天下午”（2026-11-28）：太阳。整片后山照亮（大到画面里哪儿都是最亮的那一块），亮的一层照常抠出来；落山的时候 I 慢慢降到 0。不算“安全的灯”，不画灯芯和光晕（drawLightGlows）
-LIGHTS.push({ id: 'sun', off: 0, up: 0, nosafe: 1, at: () => V.day && V.day.sun > 0.004 ? { x: camX + VWW / 2, y: camY + VHH / 2, R: 6000, I: V.day.sun, clip: [DAY.x0 - 400, -2000, PRE.win - 20, 2400] } : null });
+// 开场头上“有人敲门”也是这一个太阳：照着门厅（上下两层那么高）和门外的门廊、前院
+LIGHTS.push({ id: 'sun', off: 0, up: 0, nosafe: 1, at: () => V.day && V.day.sun > 0.004 ? { x: camX + VWW / 2, y: camY + VHH / 2, R: 6000, I: V.day.sun, clip: [DAY.x0 - 400, -2000, PRE.win - 20, 2400] }
+  : V.knock && V.knock.sun > 0.004 ? { x: camX + VWW / 2, y: camY + VHH / 2, R: 6000, I: V.knock.sun, clip: [ROOMS.hall.x0, ROOMS.hall.top, ROOMS.porch.x1, FL.down.fr + 70] } : null });
 // 萤火虫的光在哪儿：跟着孩子手里的蜂蜜，或者放在保险丝盒旁边的蜂蜜（规则里还叫 candle）
 function candlePos() {
   if (!S.lit) return null;
@@ -12797,7 +12980,7 @@ const IDLE_FIDGET = ['blow', 'stamp', 'rock', 'scuff', 'hat'];
 // 什么时候算“站着不动”：自己站在平地上，没在干别的、没在怕、没被拽着；附近有东西在追（心跳）、开场、过场、通关的时候不算
 function idleOK() {
   return kid.mode === 'idle' && kid.kind === 'floor' && !kid.girl && !kid.r && kid.walk < 0.02 && kid.pushK < 0.01 && kid.fearK < 0.01 && kid.crouch < 0.01 && !kid.lift && !kid.rot
-    && kid.alpha > 0.99 && kidVisible && !V.pre && !V.day && !V.xs && !V.hold && !won && V.T - V.heartT > 2.5 && V.T > V.grace;
+    && kid.alpha > 0.99 && kidVisible && !V.pre && !V.day && !V.knock && !V.xs && !V.hold && !won && V.T - V.heartT > 2.5 && V.T > V.grace;
 }
 // 每一帧：站着不动 5–7 秒叹一口气；以后每隔 3–6 秒来一下，叹气和 B / D 的小动作轮着来（小动作不连着两回一样）。
 // 一点屏幕、一动、一害怕，正做着的那一下 0.15 秒收回去，从头再数
@@ -13738,7 +13921,7 @@ function fearAhead(dir) {   // 往 dir 这边走：前面最近的一只 → { k
 }
 // 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
 function garbUpdate(dt) {
-  const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || V.xCalm || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
+  const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || V.xCalm || V.knock || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
   if (kid.x > ROOF.x0 - 200 && kid.x < ROOF.x1 + 200 && roofGust(T - dt).k === 0 && roofGust(T).k > 0 && V.mon.rt1.rise + V.mon.rt3.rise + V.mon.rt2.rise > 0.5) snd.gust();   // 屋顶起风了（还有醒着的衬衫的时候才响：风声是它们要动的预兆）
   for (const k of GARB_KEYS) {
@@ -16599,6 +16782,7 @@ function drawSky(b) {
   b.beginPath(); b.rect(YARD.x0, camY - 2, vsx - YARD.x0 + 4, wb + 1 - camY + 2); b.rect(STEPS.x, wb - 2, vsx - STEPS.x + 4, (STEPS.n + 1) * STEPS.h + 4); if (vx1 > VS.x0) b.rect(VS.x0, camY - 2, vx1 - VS.x0 + 4, FL.sfc.wb + 1 - camY + 2); b.clip();   // 地面以上；石阶那儿地低下去，天也跟着露出来
   const sx = Math.max((camX - 4500) * SKY.k, vx1 + 4 - SKY.x1), fx = Math.max((camX - 4500) * FAR.k, vx1 + 4 - FAR.x1);   // 再宽也不露出图的右边（平常走不到这个兜底）
   skyLayer(b, sx, fx);
+  if (V.knock) daySky(b, 1, sx, fx);   // 开场头上“有人敲门”：门外是白天的天
   b.restore();
 }
 // 天、月亮、远处的山和镇子、镇上还亮着的窗（sx、fx：天、远景跟着镜头挪了多少）。top：画面顶上比天的图还高（开场它扛着她跑过屋顶）：图最上面一截（只有排线和星星）往上接着铺
@@ -16630,6 +16814,7 @@ function camTarget() {
   const right = y > FL.down.fr + 30 && kid.x < ROOMS.cellar.x1 + 400 ? ROOMS.cellar.x1 + 40 : (S.hOut && V.jIn ? J.x1 + 10 : ROOMS.twA.x1 + 10);   // 房子的地下室：镜头不越过它的右墙（商店街五金店的地下室不算，2026-11-24）   // 屋顶的尽头：地面画到 x1 + 10，镜头不越过去（以前多 40 会露出图外）
   cx = Math.max(V.pre ? PRE.x0 : V.day ? (V.day.ph === 'end' ? PRE.x0 : DAY.x0) : -40, Math.min(cx, right - VWW));   // 那天下午：往左看得到草地的头；看太阳落山的时候镜头已经挪到原来开场的样子（接上的时候不跳）
   if (V.pre || V.day) cx = Math.min(cx, PRE.peek - VWW);   // 开场：往左看得到后山的头，往右最多看进房子一截
+  if (V.knock) cx = Math.min(kid.x - 160, Math.max(cx, FRONT.x + 380 - VWW));   // 开场头上“有人敲门”：门和门外的她尽量都在画面里（孩子也在）
   if (DY_ON) cx = clamp(kid.x + kid.face * Math.min(140, VWW * 0.09) - VWW / 2, DY.x0 - 10, Math.max(DY.x0 - 10, DY.x1 + 10 - VWW));   // 染坊（第 22 关）：镜头不看到染坊外面
   if (DY_ON && V && V.dy) cy = dyCamY(cy);   // 染坊（第 22 关）：有的时候镜头要往下多看一截（见 dyCamY）
   if (S.tOut && kid.x > ROOMS.thtD.x0) cx = Math.max(cx, ROOMS.thtD.x0 - 10);   // 掉到台底下以后：镜头不再往回看舞台
@@ -16640,7 +16825,7 @@ function camTarget() {
 
 // ---------- 走路 ----------
 // 关着的门：走到门前就停。前门、车库的卷帘门（撑住了才出得去）、院门
-const STOPS = [{ x: DOOR_STOP, open: () => S.door }, { x: ROLL_STOP, open: () => S.yRoll }, { x: GATE_STOP, open: () => S.yGate }, { x: LGATE_STOP, open: () => S.lGate }, { x: TGATE_STOP, open: () => S.qGate }, { x: ZDOOR_STOP, open: () => S.zDoor }, { x: RGAP_STOP, open: () => S.rBr }, { x: SDOOR_STOP, open: () => S.sDoor }, { x: GDOOR_STOP, open: () => S.gDoor }, { x: NGATE_STOP, open: () => S.nGate }, { x: TDOOR_STOP, open: () => S.tDoor }, { x: UST_STOP, open: () => S.uValve }, { x: MDOOR_STOP, open: () => S.mDoor }, { x: WSTOP, open: () => S.wDrain }];
+const STOPS = [{ x: DOOR_STOP, open: () => S.door || !!(V.knock && V.knock.dO > 0.6) },{ x: ROLL_STOP, open: () => S.yRoll }, { x: GATE_STOP, open: () => S.yGate }, { x: LGATE_STOP, open: () => S.lGate }, { x: TGATE_STOP, open: () => S.qGate }, { x: ZDOOR_STOP, open: () => S.zDoor }, { x: RGAP_STOP, open: () => S.rBr }, { x: SDOOR_STOP, open: () => S.sDoor }, { x: GDOOR_STOP, open: () => S.gDoor }, { x: NGATE_STOP, open: () => S.nGate }, { x: TDOOR_STOP, open: () => S.tDoor }, { x: UST_STOP, open: () => S.uValve }, { x: MDOOR_STOP, open: () => S.mDoor }, { x: WSTOP, open: () => S.wDrain }];
 // 染坊（第 22 关）关着的门
 // --- 22A ---
 // （闸门：还没做）
@@ -16666,10 +16851,14 @@ function walkTo(tx, ty, cb, force) {
   if (preTreeShut() && (B.e === PE_TREE || B.e === PE_TREE + 1)) B = nearestOnPaths(PRE.tree, FL.down.gy);   // 开场：她被抓走以前，那棵树还爬不上去
   if (V.pre && DAY_E.has(B.e)) B = nearestOnPaths(PRE.gL, FL.down.gy);   // 开场：天黑了，那天下午的草地、两个树屋不去了（走到树屋左边的路头为止）
   if (V.day) { const [bx, by] = edgePt(B.e, B.t); if (bx > PRE.lad + 40 && Math.abs(by - FL.down.gy) < 2) B = nearestOnPaths(PRE.lad + 40, FL.down.gy); }   // 那天下午：地上走到树屋的梯子为止
+  if (V.knock) {   // 有人敲门：只在门厅右半截和门外走（往左走不过桌子；门没开走到门前；门开了走不到她前头去）
+    const [bx, by] = edgePt(B.e, B.t), G = V.girl, hi = V.knock.ph === 'wait' ? DOOR_STOP : G && G.x > kid.x + 10 ? G.x - 64 : FRONT.x + 600, cx = clamp(bx, KNOCK.x0, Math.max(KNOCK.x0, hi));
+    if (cx !== bx || Math.abs(by - FL.down.gy) > 2) B = nearestOnPaths(cx, FL.down.gy);
+  }
   let path = findPath(A.e, A.t, B.e, B.t);
   if (!kid.onBox && kid.x < PRE.win) { const cut = preWallCut(path); if (cut) { const [i, fx, dir] = cut, a = [tx, ty, cb, force]; path = [...path.slice(0, i), { x: fx, y: FL.down.gy, kind: 'floor' }]; cb = () => climbPWall(() => { kid.mode = 'wait'; kid.t = 0; kid.waitFor = 0.25; kid.after = () => hopOffBox(dir, () => walkTo(...a)); }); } }   // 开场：点着走穿过矮石墙，走到墙边跳上去、跳过去再接着走
   if (V.day && !kid.onBox) { const cut = dayGapCut(path); if (cut) { const [i, fx, dir] = cut, a = [tx, ty, cb, force]; path = [...path.slice(0, i), { x: fx, y: DAY.top, kind: 'floor' }]; cb = () => dayJump(dir, () => walkTo(...a)); } }   // 那天下午：点着走跨过两个树屋当中的缝，走到缝边跳过去再接着走
-  const gate = force ? null : firstClosedGate(kid.x, kid.y, path, S);
+  const gate = force || V.knock ? null : firstClosedGate(kid.x, kid.y, path, S);   // 有人敲门（白天）：衣帽架那道影子不挡路
   if (gate) {
     if (gate.gate === 'cellar') { const i = path.findIndex(q => q.node === 5); path = [...path.slice(0, Math.max(0, i)), { x: LADDER_X, y: FL.down.gy, kind: 'floor' }]; }
     else path = [...path.slice(0, gate.upto), gate.stop];
@@ -16790,7 +16979,7 @@ function driveBlock(E, d, u) {
   let best = null;
   const w = travelDir(E, kid.dd);
   for (const k in GATEPOS) {
-    const g = GATEPOS[k]; if (g.e !== E.i || gateOk(k, S)) continue;
+    const g = GATEPOS[k]; if (g.e !== E.i || gateOk(k, S) || V.knock) continue;   // 有人敲门（白天）：影子不挡路
     const [gx, gy] = edgePt(g.e, g.t), s = (gx - kid.x) * w[0] + (gy - kid.y) * w[1];
     if (s < -0.5 || s > d + 0.5) continue;
     const at = Math.max(0, s - 40); if (!best || at < best.dist) best = { dist: at, gate: k };
@@ -16817,6 +17006,10 @@ function driveBlock(E, d, u) {
   if (V.pre && V.girl && (V.pre.kph === 'g1' || V.pre.kph === 'g2') && kid.dd > 0 && E.kind === 'floor' && Math.abs(kid.y - FL.down.gy) < 2) {   // 开场：她在前面带路，走不到她前头去；没到房子后面那一段也走不过去
     const G = V.girl, lim = G.x > kid.x + 10 && Math.abs(G.y - FL.down.gy) < 2 ? Math.min(PRE.stop - 120, G.x - 64) : PRE.stop - 120, s = lim - kid.x;
     if (s >= -0.5 && s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null };
+  }
+  if (V.knock && E.kind === 'floor') {   // 有人敲门：往左走不过桌子；门开了以后走不到她前头去（门没开的时候前门自己会挡：STOPS）
+    const G = V.girl, lim = kid.dd < 0 ? KNOCK.x0 : V.knock.ph !== 'wait' && G && G.x > kid.x + 10 ? G.x - 64 : null;
+    if (lim != null) { const s = (lim - kid.x) * kid.dd; if (s >= -0.5 && s <= d + 0.5 && (!best || s < best.dist)) best = { dist: Math.max(0, s), gate: null }; }
   }
   if (E.kind === 'floor' && Math.abs(w[0]) > 0.5) {   // 2026-11-26：前面有一只醒着的怪物（不在它的门那儿了）：走到离它 fear 远就不敢再走。正拽着孩子的那只：朝它走不动（不再吓退）
     const fa = fearAhead(Math.sign(w[0]));
@@ -17124,6 +17317,7 @@ function kidUpdate(dt) {
 // （2026-11-18 主人说常常想拿里面的东西，结果点到抽屉上把它又关上了）；开着、空了就不算能点的东西
 function spots() {
   const out = [], up = FL.up.gy, dn = FL.down.gy, add = (id, r, sx, fl, face, hand, hit) => out.push({ id, r, hit: hit ? [Math.min(r[0], hit[0]), Math.min(r[1], hit[1]), Math.max(r[2], hit[2]), Math.max(r[3], hit[3])] : r, stand: { x: sx, y: FL[fl].gy }, face, hand });
+  if (V.knock) { knockSpots(out); return out; }   // 开场头上“有人敲门”：只有门、门外的她（门厅里别的东西点不了，不碰第 1 关的局面）
   if (V.pre) preSpots(out);   // 开场：树屋的梯子、矮石墙、她、那棵树
   if (V.day) daySpots(out);   // 那天下午：两架梯子、两个树屋当中的缝、后山树屋的梯子
   const DRAWER_R = [3660, 880, 3760, 932], CLOCK_R = [3444, 736, 3516, 970], SIDE_R = [1464, 872, 1646, 946], FRIDGE_R = [FRIDGE.x0, FRIDGE.top, FRIDGE.x1, dn + 6];
@@ -17486,6 +17680,7 @@ function tapWorld(wx, wy) {
 function use(sp, h) {
   if (PRE_ICON[sp.id]) return preUse(sp.id);   // 开场
   if (DAY_ICON[sp.id]) return dayUse(sp.id);   // 那天下午
+  if (KNOCK_ICON[sp.id]) return knockUse(sp.id);   // 开场头上“有人敲门”
   if (kid.onBox) {   // 站在脏衣篓上：灯绳就在头顶上就直接拉；点脏衣篓是跳下来；别的先跳下来再去
     if (sp.id === 'cord' && S.hamper === 1) { kid.face = 1; return perform(sp, h, ACT(S, sp.id, h)); }
     if (sp.id === 'hamper') return hopOffBox();
@@ -18226,6 +18421,7 @@ function solveLZ(L, from, zone) {
   return { path: goal != null ? path : null };
 }
 function nextStep() {
+  if (V.knock) return knockNext();   // 开场头上“有人敲门”：去开门、跟她出门
   if (V.day) return dayNext();   // 那天下午：爬上石头、跳过缝、爬下石头、爬上树屋
   if (V.pre) return preNext();   // 开场：下梯子、跳过石墙、走到她身边、爬树
   { const h = S.yGate ? null : 'yKey';   // 院门挂着锁：手里得有钥匙（开了以后再点就是走出去）
@@ -18250,6 +18446,7 @@ function hint() {
   ring = { id: m.spot, t0: V.T };
   if (PRE_ICON[m.spot]) return say([PRE_ICON[m.spot]], 2.8);   // 开场：圈出梯子、石墙、她、那棵树，气泡里画怎么动
   if (DAY_ICON[m.spot]) return say([DAY_ICON[m.spot]], 2.8);   // 那天下午：圈出梯子、缝，气泡里画怎么动
+  if (KNOCK_ICON[m.spot]) return say([KNOCK_ICON[m.spot]], 2.8);   // 有人敲门：圈出门、门外的她，气泡里画往右的箭头
   if (m.spot === 'lKnock') say(['knock', '>'], 2.8);
   else if (m.spot === 'qTimer') say(m.held ? [m.held, '>'] : ['timer', '>'], 2.8);   // 拿着旋钮：画旋钮（装上）
   else if (m.spot === 'qHatch') say(['hatch', '>'], 2.8);
@@ -18419,7 +18616,7 @@ function tick(dt) {
   if (S.xDown && kid.mode !== 'caught' && kid.mode !== 'gone') kid.alpha = Math.min(kid.alpha, V.xA);   // 下钟楼、上车：孩子淡出淡进
   if (S.dOut && !V.dsDone && kid.x > DS.end - 20) { V.dsDone = 1; snd.win(); V.progT = T; writeSave(); }   // 走到坝后面漏光的缝里：第 14 关过了，接着就是第 15 关（不停、不切屏，接着往前走）。爬上铁塔、看见钟面：第 15 关过了，后面的关还没做，到这儿为止（vsUpdate 里）
   // 东西慢慢动到规则说的样子
-  V.drawer = approach(V.drawer, S.drawer, dt / 0.28); V.clock = approach(V.clock, S.clock, dt / 0.36); V.door = approach(V.door, (S.xRode && !V.xDoorOpen) ? 0 : S.door, dt);   // 回家：前门关着，推开了才开
+  V.drawer = approach(V.drawer, S.drawer, dt / 0.28); V.clock = approach(V.clock, S.clock, dt / 0.36); V.door = V.knock ? V.knock.dO : approach(V.door, (S.xRode && !V.xDoorOpen) ? 0 : S.door, dt);   // 回家：前门关着，推开了才开。开场头上她来敲门：门照着那一段自己开（规则里的 S.door 不动）
  
   V.side = approach(V.side, S.side, dt / 0.28); V.damperT = approach(V.damperT, S.damper, dt / 0.3); V.hatch = approach(V.hatch, S.hatch, dt / 0.55);
   if (!DRAG && !(kid.push && kid.push.what === 'hamper')) V.hamperT = approach(V.hamperT, S.hamper, dt / 1.5);
@@ -18443,7 +18640,7 @@ function tick(dt) {
   for (const k in on) V.li[k] = on[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
   const onY = { dome: S.yCar === 1, beam: S.yBeam === 1 };   // 院子：车顶的小灯、车灯
   for (const k in onY) V.li[k] = onY[k] ? flick(T - V.lt0[k]) : Math.max(0, V.li[k] - dt * 6);
-  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt); mktUpdate(dt); thUpdate(dt); ucUpdate(dt); folkUpdate(dt); mtUpdate(dt); wsUpdate(dt); dsUpdate(dt); vsUpdate(dt); fsUpdate(dt); bpUpdate(dt); cpUpdate(dt); cfUpdate(dt); klUpdate(dt); twUpdate(dt); jUpdate(dt); xUpdate(dt); preUpdate(dt); dayUpdate(dt);
+  yardUpdate(dt); laneUpdate(dt); streetUpdate(dt); aptUpdate(dt); roofUpdate(dt); schoolUpdate(dt); gymUpdate(dt); mktUpdate(dt); thUpdate(dt); ucUpdate(dt); folkUpdate(dt); mtUpdate(dt); wsUpdate(dt); dsUpdate(dt); vsUpdate(dt); fsUpdate(dt); bpUpdate(dt); cpUpdate(dt); cfUpdate(dt); klUpdate(dt); twUpdate(dt); jUpdate(dt); xUpdate(dt); preUpdate(dt); knockUpdate(dt); dayUpdate(dt);
   dyUpdate(dt);   // 染坊（第 22 关，只有 ?lv=22 的时候）
   const HA = honeyAt(), jarK = S.lit === 1 && HA ? V.swarm.pts.filter(p => p.mode === 'honey' && Math.hypot(p.x - HA[0], p.y - HA[1]) < 140).length / 5 : 0;   // 围在蜂蜜边上的有几只亮几成
   V.candleI = approach(V.candleI, jarK, dt * (V.candleI < jarK ? 2.5 : 5));
@@ -18516,7 +18713,7 @@ function render() {
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.78);
   vg.addColorStop(0, css(C.ink, 0)); vg.addColorStop(1, css(C.ink, 0.5));
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
-  if (V.pre && V.pre.fade > 0.002) { g.fillStyle = 'rgba(2,3,8,' + V.pre.fade.toFixed(3) + ')'; g.fillRect(0, 0, W, H); }   // 开场：它跳下房子以后黑一下，回到孩子这儿
+  { const fd = Math.max(V.pre ? V.pre.fade : 0, V.iFade || 0); if (fd > 0.002) { g.fillStyle = 'rgba(2,3,8,' + fd.toFixed(3) + ')'; g.fillRect(0, 0, W, H); } }   // 开场：它跳下房子以后黑一下，回到孩子这儿；开场头上从黑里亮起来、跟出门黑一下接上草地（V.iFade）
   if (V.tFall > -5) { const u = V.T - V.tFall, a = u < 0.45 ? 0 : u < 1 ? smooth((u - 0.45) / 0.5) : smooth(1 - (u - 1) / 0.7); if (a > 0.002) { g.fillStyle = 'rgba(2,3,8,' + a.toFixed(3) + ')'; g.fillRect(0, 0, W, H); } }   // 掉下去：黑一下再亮起来
   if (V.caughtT > -5) {   // 被抓住：墨从四周涌上来，黑一下，再退下去
     const e = V.T - V.caughtT, a = e < 0.9 ? smooth(e / 0.9) : e < 1.15 ? 1 : 1 - smooth((e - 1.15) / 0.8);
@@ -18580,6 +18777,7 @@ function drawOverlays(lights) {
   drawKlGlow();   // 钟楼脚下的老街：远处一路上分出去的光
   drawTwGlow();   // 钟楼里面：钟面背后漏进来的月光、钟房的百叶窗
   drawXGlow();   // 后半：车头灯、油灯、相机的小红灯、前门照进来的光
+  drawKnockGlow();   // 开场头上“有人敲门”：门开了，门外的光铺进门厅
   drawJGlow();   // 钟楼顶：挤在灯罩外面的小光、一路飞来的一串光、大灯、扫出去的光
   drawVsGlow();   // 变电站：路灯、远处镇上的灯、塔顶的红灯
   drawDyGlow();   // 染坊（第 22 关）
@@ -18700,7 +18898,7 @@ function drawOverlays(lights) {
     [BOXC.x + BOXC.w / 2 - 8, BOXC.y0 + 66, 1.7, (S.qLad === 'inv' || (S.qBkey === 'inv' && S.qLad === 'pole')) && !S.qBox], [DIAL.x, DIAL.y, 5.2, S.qWkey === 'inv'],
   ];
   const stuck = clamp((T - V.progT - STUCK_T) / 4, 0, 1);
-  if (stuck > 0 && !V.pre && !V.day) {
+  if (stuck > 0 && !V.pre && !V.day && !V.knock) {
     for (const [x, y, ph, want, inLight] of (DY_ON ? dyGlints() : S.hOut ? jglints : S.kOut ? twglints : S.cOut ? klglints : S.bOut ? cglints : S.fOut ? bglints : S.vOut ? fglints : S.dOut ? vglints : S.wOut ? dglints : S.mOut ? wglints : S.uOut ? mglints : S.tOut ? uglints : S.nOut ? tglints : S.gOut ? nglints : S.sOut ? gglints : S.rOut ? kglints : S.zOut ? rglints : S.qOut ? zglints : S.lOut ? sglints : S.yOut ? lglints : S.out ? yglints : glints)) if (want && inView(x, y, 20)) star(x, y, 6, C.moon, stuck * Math.pow(Math.max(0, Math.sin(T * 1.3 + ph)), 8) * 0.75 * (inLight ? 1 : 1 - coverage(x, y, lights)));   // inLight：东西本来就躺在光里（车票），不按光压暗
     if (S.key === 'stand' && V.fig.stand > 0.8) star(HSTAND.x - 26, HSTAND.base - 117, 8, C.hot, stuck * Math.pow(Math.max(0, Math.sin(T * 3)), 4) * 0.9);   // 灯下：钥匙在闪
   }
@@ -19003,7 +19201,7 @@ let saveLast = null, saveT = -10;
 const SAVE_VALS = { ...VALUES, ...VALUES2, ...VALUES3, ...VALUES4, ...VALUES5, ...VALUES6, ...VALUES7, ...VALUES8, ...VALUES9, ...VALUES10, ...VALUES11, ...VALUES12, ...VALUES13, ...VALUES14, ...VALUES15, ...VALUES16, ...VALUES17, ...VALUES18, ...VALUES19, ...VALUES20, ...VALUES21 }, SAVE_KEYS = [...KEYS, ...L2.KEYS, ...L3.KEYS, ...L4.KEYS, ...L5.KEYS, ...L6.KEYS, ...L7.KEYS, ...L8.KEYS, ...L9.KEYS, ...L10.KEYS, ...L11.KEYS, ...L12.KEYS, ...L13.KEYS, ...L14.KEYS, ...L15.KEYS, ...L16.KEYS, ...L17.KEYS, ...L18.KEYS, ...L19.KEYS, ...L20.KEYS, ...L21.KEYS];
 function saveData() { return { S, bag, safe: { x: Math.round(V.safe.x), y: V.safe.y }, taps, hints, catches: V.catches, dogX: Math.round(V.dogX), ballDir: V.ballDir }; }   // dogX、ballDir：困住的狗毛衣塌在哪儿、球滚到哪边（读回来还在原处）
 function writeSave() {
-  if (!SAVE_ON || won || V.pre || V.day || S.jLit || (S.hOut && !V.jIn) || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记。走出街尾（后面还没做）：不记
+  if (!SAVE_ON || won || V.pre || V.day || V.knock || S.jLit || (S.hOut && !V.jIn) || (!taps && skey(S) === skey(START))) return;   // 还什么都没做：不记。走出街尾（后面还没做）：不记
   const j = JSON.stringify(saveData()); if (j === saveLast) return;
   saveLast = j; try { localStorage.setItem(SAVE_KEY, j); } catch (e) {}
 }
