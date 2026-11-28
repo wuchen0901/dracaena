@@ -719,7 +719,7 @@ const GATES10 = {
   ta3: s => s.tW === 1,          // 台边的戏服（追光照着）
 };
 const LINKS10 = [['t0', 't1', 'ta1'], ['t1', 't2', 'ta2'], ['t2', 't3', 'tdr'], ['t3', 't4', 'ta3']];
-const SPOT_ZONE10 = { tKnob: 't0', tMirH: 't0', tMirP: 't0', tSw: 't1', tBillH: 't1', tDoorP: 't2', tEcho: 't3', tTrap: 't4' };
+const SPOT_ZONE10 = { tKnob: 't0', tMirH: 't0', tMirP: 't0', tSw: 't1', tBillH: 't1', tDoorP: 't2', tTrap: 't4' };
 function act10(s, spot, held, R = reachL(L10, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
@@ -733,13 +733,12 @@ function act10(s, spot, held, R = reachL(L10, s)) {
     // 后排前面的小桌：举着化妆镜放上去，镜子的灯泡亮了（总闸通着）；空着手点：桌脚有个空插座，气泡里画化妆镜
     case 'tMirP': if (s.tMir === 'used') return no(held ? 'no' : 'look'); if (held === 'tMir') { n.tMir = 'used'; return ok('mir10'); } if (held) return no('no'); return no('bare10');
     // 调光台的转换开关：总闸通了才有电。第一下扳到脚灯，再扳一下是追光，接着来回
-    case 'tSw': if (held) return no('no'); if (!s.tKnob) return no('dead10'); if (s.tF && !s.tW) return no('look'); n.tCue = s.tCue === 1 ? 2 : 1; if (n.tCue === 1) n.tF = 1; else n.tW = 1; return ok(n.tCue === 1 ? 'foot10' : 'spot10');
+    case 'tSw': if (held) return no('no'); if (!s.tKnob) return no('dead10'); n.tCue = s.tCue === 1 ? 2 : 1; if (n.tCue === 1) n.tF = 1; else n.tW = 1; return ok(n.tCue === 1 ? 'foot10' : 'spot10');
     // 后排那件塌下去，座位底下露出来的节目单
     case 'tBillH': if (held || s.tBill !== 'floor') return no(held ? 'no' : 'look'); if (s.tMir !== 'used') return no('look'); n.tBill = 'inv'; return ok('take:tBill');
     // 台口的小门：弹簧门，推开会弹回来；举着节目单塞进门缝
     case 'tDoorP': if (s.tDoor) return no(held ? 'no' : 'look'); if (held === 'tBill') { n.tBill = 'used'; n.tDoor = 1; return ok('wedge10'); } if (held) return no('no'); return no('shut10');
     // 台中间的活门：踩上去，门板往下翻，掉下去
-    case 'tEcho': if (held || !s.tDoor || !s.tF || s.tW) return no('look'); n.tCue = 2; n.tW = 1; return ok('spot10');
     case 'tTrap': if (held) return no('no'); if (s.tOut) return ok('trap10'); n.tOut = 1; return ok('trap10');
   }
   return no('no');
@@ -886,7 +885,6 @@ const L13 = mkLevel({ n: 13, name: '下水道', START: START13, ITEMS: ITEMS13, 
 // 拧开闸轮，水涌进来，慢慢涨；把门板放到水面上，人站上去，水把他托起来、漂过人群、托到矮坝顶上；翻过坝，就回不去了（水在坝这边）。坝后面的缝漏着光，走过去。
 const ITEMS14 = ['dPlank'];
 const START14 = {
-  dDecoy: 0,                  // 岸上敲响空管，把墨脸从门板边引开
   dRob: 0,                    // 走进池子的时候人群冲上来过了没有（自己发生，不是点出来的，规则里没有一步在改它）
   dPlank: 'floor',            // 旧门板：地上 / 身上 / 放在水面上（put，浮着）
   dWheel: 0,                  // 闸轮拧开了没有（水从大管子里涌进来）
@@ -896,7 +894,7 @@ const START14 = {
 const VALUES14 = { dPlank: ['floor', 'inv', 'put'] };
 const GATES14 = { dc1: s => s.dRide === 1 };   // 挤满池子的人群：站在水面上漂过去才过得去（它们没有光可以照，也不追人）
 const LINKS14 = [['d0', 'd1', 'dc1']];
-const SPOT_ZONE14 = { dPlankH: 'd0', dWheel: 'd0', dWater: 'd0', dPipeH: 'd0', dRaftH: 'd0', dExit: 'd1' };
+const SPOT_ZONE14 = { dPlankH: 'd0', dWheel: 'd0', dWater: 'd0', dRaftH: 'd0', dExit: 'd1' };
 function act14(s, spot, held, R = reachL(L14, s)) {
   const no = fail => ({ fail });
   if (held && !has(s, held)) return no('no');
@@ -910,8 +908,7 @@ function act14(s, spot, held, R = reachL(L14, s)) {
     // 池子里的地方：拿着门板放上去，要先有水（没水，气泡里画闸轮）
     case 'dWater': if (held === 'dPlank') { if (!s.dWheel) return no('dry14'); n.dPlank = 'put'; return ok('put14'); } if (held) return no('no'); return no(s.dWheel ? 'look' : 'dry14');
     // 浮在水上的门板：站上去，水把他托过人群、托到坝顶，翻过去
-    case 'dPipeH': if (held || s.dPlank !== 'put' || s.dRide) return no('look'); n.dDecoy=1; return ok('decoy14');
-    case 'dRaftH': if (held) return no('no'); if (s.dPlank !== 'put') return no('look'); if (!s.dDecoy) return no('mask14'); n.dRide = 1; return ok('ride14');
+    case 'dRaftH': if (held) return no('no'); if (s.dPlank !== 'put') return no('look'); n.dRide = 1; return ok('ride14');
     // 坝后面、缝漏下光的地方：走过去
     case 'dExit': if (held) return no('no'); if (!s.dRide) return no('look'); n.dOut = 1; return ok('exit14');
   }
@@ -3045,7 +3042,7 @@ const YARD = { x0: 4520, x1: 8760 }, STEPS = { x: 8530, w: 62, h: 0, n: 0 };   /
 const PORCH = { x1: 5016, post: 4996, roof: [[4520, 652], [5044, 690]] }, SENSOR = { x: 4800, y: 716, zone: [4545, 5075], hold: 3.2 };
 const KENNEL = { x: 5700, base: 980 }, TREE1 = { x: 5330 };
 const GAR = { x0: 5800, x1: 6900, in0: 5840, in1: 6860, ceil: 566, rollTop: 664, rollX: 6880 }, RAKE = { x: 5916 }, RAINHOOK = { x: 6756, y: 772 };
-const BOOT_PLATE = 6590, MIME_MARK = 33800;
+const BOOT_PLATE = 6590;
 const CAR = { x0: 5990, x1: 6506, base: 986, door0: 6192, door1: 6318, lamp: [6494, 916], dome: [6252, 838], dash: [6338, 880] };
 const BIKE = { x: 7600, base: 990, lamp: [7672, 890], crank: [7596, 946] }, SCARE = { x: 8040, base: 984 }, GATE = { x: 8250 }, PATCH = { x0: 7880, x1: 8200 };
 const ROLL_STOP = 6846, GATE_STOP = 8224;
@@ -5654,7 +5651,7 @@ function drawThDyn(b, P, lit, vis) {   // 剧院（第 10 关）
   if (vis.thtA || vis.thtB) drawThMirror(b, P, lit);
   if (vis.thtB) { drawThBooth(b, P, lit); drawThDesk(b, P, lit); drawThAudience(b, P, lit); drawFear(b, P, lit, 'ta1'); drawFear(b, P, lit, 'ta2'); drawThBill(b, P, lit); }
   if (vis.thtB || vis.thtC) drawThFoot(b, P, lit);
-  if (vis.thtC) { drawMimeLevers(b); drawThDoor(b, P, lit); drawFear(b, P, lit, 'ta3'); drawThTrap(b, P, lit); }
+  if (vis.thtC) { drawThDoor(b, P, lit); drawFear(b, P, lit, 'ta3'); drawThTrap(b, P, lit); }
 }
 function thBeam() {   // 追光：从放映窗一直照到台边那件戏服（一串小光点，越往远越淡）
   const out = [], n = 34; for (let i = 1; i <= n; i++) { const u = i / n; out.push([lerp(TSPOT.x + 44, TSPOT_AIM.x, u), lerp(TSPOT.y, TSPOT_AIM.y, u), u]); } return out;
@@ -6260,16 +6257,13 @@ function drawDsWater(b, P, lit) {   // 进水管里涌出来的水柱，和池�
   ink(b, pts.filter(p => p[0] >= x0 + 120), { w: 1.6, col: P.dsWaterHi, taper: 0, a: lit ? 0.8 : 0.6, seed: 618202, single: 1 });
   for (let i = 0; i < 12; i++) { const yy = sy + 14 + hash(i, 4.4) * (gy + 40 - sy - 14), xx = x0 + 140 + hash(i, 5.5) * (x1 - x0 - 200); ink(b, seg(xx, yy, xx + 36, yy), { w: 0.9, col: P.dsWaterHi, taper: 2, a: 0.3, seed: 618230 + i, single: 1 }); }
 }
+// 第 14 关：墨脸只是布景（2026-11-28 方案甲：敲空管引开它那一步退回去了），站在门板边的水里，不抓人、不挡路
 function drawPoolMask(b,P,lit) {
   if (S.dPlank!=='put' || S.dRide) return;
-  const fy=FL.down.gy, x=V.maskX ?? DSRAFT.x, y=fy-DSH*V.dwl;
+  const fy=FL.down.gy, x=DSRAFT.x, y=fy-DSH*V.dwl;
   if (inView(x,y,260)) {
     b.save(); b.globalAlpha*=0.83; mzMask(b,P,lit,x,y,Math.sign(kid.x-x)||1,V.T,{look:Math.sign(kid.x-x),hunt:0.4,ph:V.T},755201); b.restore();
   }
-  if (!inView(DSPIPE.x,fy,200)) return;
-  b.fillStyle='#71797b'; b.fillRect(DSPIPE.x-12,fy-126,24,112);
-  b.strokeStyle='#c2ac88'; b.lineWidth=4; b.strokeRect(DSPIPE.x-14,fy-126,28,8);
-  b.beginPath(); b.moveTo(DSPIPE.x+14,fy-102); b.lineTo(DSPIPE.x+34,fy-63); b.stroke();
 }
 function drawDsDyn(b, P, lit, vis) {   // 地下最深处（第 14 关）
   if (vis.dsA || vis.dsB || vis.dsC) {
@@ -6285,11 +6279,6 @@ function drawDsGlow() {   // 天花板缝里漏下来的光
   }
 }
 function dsUpdate(dt) {   // 水、闸轮、人群冲上来、水托着孩子漂过人群
-  if (S.dPlank==='put' && !S.dRide) {
-    if (S.dDecoy && V.maskReturn == null) V.maskReturn=V.T+8;
-    if (S.dDecoy && V.T>=V.maskReturn) { S={...S,dDecoy:0}; V.maskReturn=null; }
-    V.maskX=approach(V.maskX ?? DSRAFT.x,S.dDecoy?DSPIPE.x:DSRAFT.x,205*dt);
-  }
   const T = V.T, gy = FL.down.gy, open = S.dWheel === 1;
   V.dwl = approach(V.dwl, open ? 1 : 0, dt * (V.dRideT > -5 ? 1 / 5 : 1 / 16)); V.dsq = approach(V.dsq, open ? 1 : 0, dt * 1.2);
   if (T - V.dwT < 1.4) V.dvr += dt * 4;
@@ -9366,16 +9355,6 @@ function drawBootPlate(b) {
   }
   b.restore();
 }
-function drawMimeLevers(b) {
-  const y=FL.down.gy;
-  for (const [x,pulled] of [[MIME_MARK+55,kid.r && Math.abs(kid.x-MIME_MARK)<15?kid.r.k:0],[GARB.ta3.home+68,S.tW?1:V.mon.ta3.reach]]) {
-    b.save(); b.fillStyle='#48434a'; b.fillRect(x-16,y-136,32,46);
-    b.strokeStyle='#cbb08f'; b.lineWidth=4; b.beginPath(); b.moveTo(x,y-103);
-    b.lineTo(x+6,y-135+26*(pulled||0)); b.stroke();
-    b.fillStyle=S.tW?'#edcb79':'#b7856f'; b.beginPath(); b.arc(x+6,y-135+26*(pulled||0),6,0,TAU); b.fill();
-    b.strokeStyle='#a99a80'; b.lineWidth=2; b.beginPath(); b.moveTo(x-66,y+2); b.lineTo(x-42,y+2); b.stroke(); b.restore();
-  }
-}
 function drawDynamic(b, lit, vis) {
   const P = lit ? LIT : DARK;
   if (!lit) drawWatchers(b, vis);   // 暗处：画里的人的眼睛跟着孩子转
@@ -11956,9 +11935,6 @@ AI.mime = (k, G, m, dt, c) => {
   m.x = approach(m.x, target, (pose ? M.sp : 70) * dt);
   m.mv = Math.abs(m.x - previous);
   m.face = pose?.face ?? (Math.sign(target - previous) || -1);
-  if (m.cueUntil > T && pose && m.reach > 0.55 && m.face === 1 && Math.abs(m.x-G.home)<16 && !S.tW) {
-    m.cueUntil = 0; commit(act10(S,'tEcho',null),true);
-  }
 };
 // 2026-11-28：下面这一套现在只有第 22 关地窖里的胶皮围裙（dyc，GARB 里唯一写着 fear 的）用；别的怪物都照第 1 关原来那样，只有门拦人。
 // 孩子不敢走到醒着的怪物跟前（2026-11-26）：门（GATEPOS）是钉在路上的一点，怪物会踱步、会扑过来、会挪到背后，所以另外量它现在站在哪儿——朝它走，走到离它 fear 这么远就不敢再走了
@@ -12136,7 +12112,7 @@ function caught(k) {
   if (kid.cdir) kid.face = -kid.cdir;   // 脸朝着怪物
   V.caughtT = V.T; V.caughtBy = k; V.catches++; snd.caught(); if (k === 'boots') snd.chomp();
 }
-const monCalm = m => Object.assign(m, { ext: 0, flat: 0, lean: 0, stun: 0, braced: 0, ringing: false, cueUntil: 0, mimePoses: null, mimeLift: 0, flyWarn: false, rs: null, rt: 0, os: null, ot: 0, qt: 0, qgo: false, es: null, et: 0, nt: 0, gt: 0, us: null, ut: 0 });   // 2026-11-26 新脾气用到的那些状态：归零（回到原处站着）
+const monCalm = m => Object.assign(m, { ext: 0, flat: 0, lean: 0, stun: 0, braced: 0, ringing: false, mimePoses: null, mimeLift: 0, flyWarn: false, rs: null, rt: 0, os: null, ot: 0, qt: 0, qgo: false, es: null, et: 0, nt: 0, gt: 0, us: null, ut: 0 });   // 2026-11-26 新脾气用到的那些状态：归零（回到原处站着）
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
   kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1; kid.rot = 0; kid.lift = 0; kid.alpha = 1; kid.cdir = 0; kid.thumped = false;
   for (const k of GARB_KEYS) { const m = V.mon[k]; if (k === 'dog' && S.yDog) continue; monCalm(m); m.x = GARB[k].home; m.v = 0; m.alert = false; m.dir = 1; m.pause = 0; m.ls = m.ds = 'idle'; m.lt = m.dt0 = 0; m.zip = 0.2; m.cyc = 0; if (GARB[k].sleeper) { m.woke = 0; m.hs = 'idle'; m.ht = 0; m.air = 0; m.tell = 0; m.rise = 0; m.want = 0; if (GARB[k].ai === 'fly') { m.pt = -1.4; m.alt = 182; } } if (GARB[k].holds && GARB[k].holds()) m.x = GARB[k].stand; }   // 困在感应灯底下的狗毛衣留在原处；睡着的靴子回原处睡着
@@ -15387,7 +15363,6 @@ function spots() {
     if (S.dPlank === 'floor') add('dPlankH', [DSPLANK.x - 80, dn - 60, DSPLANK.x + 80, FL.down.ff - 4], DSPLANK.x - 100, 'down', 1, [DSPLANK.x, dn - 24]);
     if (!S.dWheel) add('dWheel', [DSWHEEL.x - 48, DSWHEEL.y - 50, DSWHEEL.x + 48, DSWHEEL.y + 50], DSWHEEL.x - 70, 'down', 1, [DSWHEEL.x - 20, DSWHEEL.y]);
     if (S.dPlank !== 'put' && !S.dRide) add('dWater', [DSRAFT.x - 80, dn - 120, DSRAFT.x + 100, FL.down.ff - 4], DSRAFT.x - 70, 'down', 1, [DSRAFT.x, dn - 40]);
-    if (S.dPlank === 'put' && !S.dRide) add('dPipeH',[DSPIPE.x-30,dn-130,DSPIPE.x+30,dn-32],DSPIPE.x+45,'down',-1,[DSPIPE.x,dn-90]);
     if (S.dPlank === 'put' && !S.dRide) add('dRaftH', [DSRAFT.x - 80, dn - 60 - DSH * V.dwl, DSRAFT.x + 80, dn - DSH * V.dwl + 10], DSRAFT.x - 70, 'down', 1, [DSRAFT.x, dn - DSH * V.dwl]);
     if (S.dRide && !S.dOut && V.dRideT < -5) add('dExit', [DSEXIT.x - 60, dn - 420, DSEXIT.x + 60, FL.down.ff], DSEXIT.x - 90, 'down', 1, [DSEXIT.x, dn - 200]);
   }
@@ -15426,7 +15401,6 @@ function spots() {
     add('tSw', [TDESK.x - 50, dn - 190, TDESK.x + 50, FL.down.ff], TDESK.x - 70, 'down', 1, [TDESK.x - 6, dn - 150]);
     if (S.tBill === 'floor' && V.tSeen1 && V.T - V.tT1 > 0.6) add('tBillH', [TBILL.x - 36, dn - 40, TBILL.x + 36, FL.down.ff - 4], TBILL.x - 40, 'down', 1, [TBILL.x, dn - 14]);
     add('tDoorP', [TDOOR.x - 50, dn - 230, TDOOR.x + 50, FL.down.ff], TDOOR_STOP - 4, 'down', 1, [TDOOR.x - 30, dn - 60]);
-    if (S.tDoor && !S.tW) add('tEcho', [MIME_MARK+14,dn-160,MIME_MARK+90,dn-55], MIME_MARK, 'down', 1, [MIME_MARK+55,dn-115]);
     add('tTrap', [TTRAP.x - 62, dn - 40, TTRAP.x + 62, FL.down.ff], TTRAP.x, 'down', 1, [TTRAP.x + 10, dn - 8]);
   }
   // 夜市（第 9 关）：走出体育馆的后门才有
@@ -15681,8 +15655,7 @@ function perform(sp, h, r) {
   if (f === 'far') return shakeHead();
   if (f) {
     const bub = (icons, fx) => () => { if (fx) fx(); say(icons); };
-    if (f === 'mask14') o.onHit = bub(['lever', '>'], () => { V.peek = { x: DSPIPE.x, t0: V.T, dur: 1.8 }; snd.no(); });
-    else if (f === 'unplugged') o.onHit = bub(['plug'], () => snd.tap());
+    if (f === 'unplugged') o.onHit = bub(['plug'], () => snd.tap());
     else if (f === 'tooHigh') { o.hx = CORD.x; o.hy = CORD.end + 6; o.pre = 0.45; o.jump = true; o.onHit = bub(['hamper'], () => snd.no()); }
     else if (f === 'swingsShut') { o.hy = FL.up.gy - 110; o.onHit = bub(['slipper'], () => { V.bdoorPulse = V.T; snd.creak(); }); }
     else if (f === 'high') { o.hx = kid.x + 30; o.hy = FL.down.gy - 160; o.pre = 0.4; o.onHit = bub(['lampDown'], () => snd.no()); }
@@ -15803,10 +15776,6 @@ function perform(sp, h, r) {
       o.jump = true; o.pre = 0.2; o.hold = 0.1;
       o.onHit = () => { V.mon.boots.ringing = true; snd.clack(); puff(BOOT_PLATE,dn-5,C.lamp,5); };
       break;
-    case 'tEcho':
-      o.pre = 0.3; o.hold = 0.9;
-      o.onHit = () => { V.mon.ta3.cueUntil = V.T + 1.5; snd.click(); };
-      break;
     case 'yDash': o.pre = 0.35; o.hold = 0.2; break;
     case 'yRoll':
       if (ev === 'rollDrop') { o.pre = 0.3; o.hold = 0.25; break; }   // 抓住耙杆往外一抽，门哗啦落下来
@@ -15867,11 +15836,7 @@ function perform(sp, h, r) {
     case 'dPlankH': o.pre = 0.3; o.hold = 0.3; break;
     case 'dWheel': o.pre = 0.4; o.hold = 1.2; o.wiggle = true; break;
     case 'dWater': o.pre = 0.35; o.hold = 0.4; break;
-    case 'dPipeH': o.pre=0.2; o.hold=0.16; break;
-    case 'dRaftH': o.pre=0.3; o.hold=0.3;
-      o.onHit=()=>{ if (S.dDecoy && Math.abs(V.maskX-DSRAFT.x)>145) { commit(ACT(S,sp.id,h)); } else snd.no(); };
-      o.after=()=>{ if (S.dRide) rideSeq14(); };
-      break;
+    case 'dRaftH': o.pre = 0.3; o.hold = 0.3; o.after = rideSeq14; break;
     case 'dExit': o.pre = 0.3; o.hold = 0.3; o.after = exitSeq14; break;
     // 变电站（第 15 关）
     case 'vFuseH': case 'vPoleH': case 'vKeysH': o.pre = 0.3; o.hold = 0.3; break;
@@ -16150,7 +16115,6 @@ function commit(r, quiet) {   // quiet：不是伸手做成的（狗的毛衣塌
       // 剧院（第 10 关）
       case 'knob10': snd.clank(); snd.lightOn(); break;
       case 'mir10': drop('tMir'); V.tClapT = V.T; V.tLook = -1; snd.lightOn(); thClaps(); break;
-      case 'decoy14': V.maskReturn=V.T+8; snd.clank(); puff(DSPIPE.x,FL.down.gy-90,C.moon,6); break;
       case 'beam21': snd.clank(); V.peek={x:JP.lampX+80,t0:V.T,dur:1.8}; break;
       case 'wirePlate': snd.click(); V.peek = {x: BOOT_PLATE, t0: V.T, dur: 1.8}; break;
       case 'foot10': V.tClapT = V.T; V.tLook = 1; V.peek = { x: 33100, t0: V.T, dur: 3.4 }; snd.clank(); snd.lightOn(); thClaps(); break;   // 脚灯亮了：观众一起朝台口扭头、鼓掌
@@ -16358,8 +16322,6 @@ function hint() {
   else if (m.spot === 'jChainH') say(['jWt', '>'], 2.8);
   else if (m.spot === 'jMirrorH') say(['bMirror','>'],2.8);
   else if (m.spot === 'yPlate') say(['slipper','>'],2.8);
-  else if (m.spot === 'dPipeH') say(['lever','>'],2.8);
-  else if (m.spot === 'tEcho') say(['lever','>'],2.8);
   else if (m.spot === 'jLeverH') say(['>'], 2.8);
   else if (m.spot === 'xDoorH' || m.spot === 'xBusH' || m.spot === 'xFrontH') say(['>'], 2.8);
   else if (m.spot === 'bSwH') say(['lever', '>'], 2.8);
@@ -16985,7 +16947,6 @@ window.__house = {
 };
 // 直接摆到局面 s：规则里的状态换掉，画面上的东西一步到位（门开了几成、灯亮没亮、衣服塌没塌）
 function snapTo(s, b) {
-  V.maskX=undefined; V.maskReturn=null;
   S = { ...START, ...START2, ...START3, ...START4, ...START5, ...START6, ...START7, ...START8, ...START9, ...START10, ...START11, ...START12, ...START13, ...START14, ...START15, ...START16, ...START17, ...START18, ...START19, ...START20, ...START21, ...START22, ...s }; bag = b || ALL_ITEMS.filter(it => S[it] === 'inv');
   Object.assign(V.flies, { pull: 0, leaving: null, px: null }); V.swarm.pts.forEach(p => { p.mode = S.lit ? 'honey' : 'home'; }); V.swarm.snap = true;
   Object.assign(V, { drawer: S.drawer, clock: S.clock, door: S.door, lampH: S.lamp, side: S.side, damperT: S.damper, hatch: S.hatch, hamperT: S.hamper, chairT: S.chair, fridge: S.fridge, bdoor: S.slipper === 'door' ? 1 : 0, fireLv: fireLevel(), smoke: S.log === 'fire' && !S.damper ? 1 : 0 });
@@ -17087,7 +17048,6 @@ function readSave() {
       else { Object.assign(d.S, START6); if (Array.isArray(d.bag)) d.bag = d.bag.filter(it => !ITEMS6.includes(it)); if (d.safe && d.safe.x > ROOF.x0) d.safe = { x: RLAN.x + 30, y: FL.down.gy }; }
     }
     if (d && d.S && typeof d.S === 'object') {
-      if (!('dDecoy' in d.S)) d.S.dDecoy = d.S.dRide || 0;
       if (!('jBeam' in d.S)) d.S.jBeam = d.S.jLit || 0;
       if ('xHug' in d.S) { if (!('xHome' in d.S)) d.S.xHome = d.S.xHug || 0; delete d.S.xHug; delete d.S.xPhoto; }   // 2026-11-27 以前的存档：合影那一步没有了，推开过前门就算到家
       if (!('yWired' in d.S)) d.S.yWired = d.S.yBeam || 0;
