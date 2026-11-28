@@ -11996,82 +11996,6 @@ function fearAhead(dir) {   // 往 dir 这边走：前面最近的一只 → { k
   return best;
 }
 // 每一帧：光照到就塌下去；暗处醒着，孩子走进它那一片、又不在光里，就追过去；不走进光里；碰到孩子就抓住
-// The warning, moving object and collision all use the monster's world position.
-const ROOM_ATTACKS = {
-  gown:    { kind: 'belt', span: 165, tell: 1.65, travel: 0.85 },
-  towel:   { kind: 'water', span: 232, tell: 1.75, travel: 0.95 },
-  laundry: { kind: 'roll', span: 138, tell: 1.2, travel: 1.45 },
-  chair:   { kind: 'cloth', span: 178, tell: 2.0, travel: 1.2 },
-  sack:    { kind: 'potato', span: 220, tell: 1.55, travel: 1.75 },
-  boiler:  { kind: 'steam', span: 155, tell: 1.8, travel: 1.0 },
-  stand:   { kind: 'belt', span: 216, tell: 1.85, travel: 1.15 },
-  q4dust:  { kind: 'box', span: 205, tell: 1.6, travel: 1.25 },
-  qu1: { kind: 'roll', span: 95, tell: 1.8, travel: 1.2 },
-  qu2: { kind: 'hat', span: 95, tell: 1.7, travel: 1.15 },
-  qu3: { kind: 'cloth', span: 80, tell: 2, travel: 0.9 },
-  qu4: { kind: 'ticket', span: 120, tell: 1.8, travel: 1 },
-  qu5: { kind: 'belt', span: 110, tell: 2.4, travel: 0.8 },
-  nr1: { kind: 'steam', span: 178, tell: 1.9, travel: 1.1 },
-  mp1: { kind: 'box', span: 210, tell: 1.75, travel: 1.1 },
-  mp2: { kind: 'belt', span: 270, tell: 2.1, travel: 1.0 },
-  mp3: { kind: 'cloth', span: 145, tell: 1.75, travel: 1.4 },
-  wp1: { kind: 'water', span: 250, tell: 2.3, travel: 1.05 },
-  wp2: { kind: 'drip', span: 150, tell: 1.75, travel: 0.7 },
-  fw2: { kind: 'smoke', span: 290, tell: 2.15, travel: 1.5 }
-};
-function attackTip(a, t) {
-  const u = clamp((t-a.tell)/a.travel,0,1);
-  if (a.kind === 'hat' || a.kind === 'drip') return { x:a.end, h:(1-u)*150 };
-  const extension = ['belt','cloth','ticket'].includes(a.kind) ? Math.sin(Math.PI*u) : u;
-  const h = a.kind === 'potato' ? 28*Math.abs(Math.sin(3*Math.PI*u)) : 0;
-  return { x:lerp(a.from,a.end,extension), h };
-}
-function updateRoomAttack(k,G,m,dt,fy,calm,kidLit) {
-  const spec=ROOM_ATTACKS[k];
-  if (!spec) return;
-  const gap=Math.abs(kid.x-m.x);
-  if (calm || m.want===0 || m.rise<0.92 || ruleOpen(k) || kid.kind!=='floor' || Math.abs(kid.y-fy)>2 || gap>spec.span+165) {
-    m.attack=null; return;
-  }
-  if (!m.attack) {
-    if (kidLit || (m.restUntil||0)>V.T) return;
-    const dir=Math.sign(kid.x-m.x)||m.face;
-    const end=m.x+dir*(spec.kind==='drip'||spec.kind==='hat'?Math.min(spec.span,gap):spec.span);
-    m.attack={...spec,from:m.x,end,t:0}; m.face=dir;
-  }
-  const a=m.attack;
-  a.t+=dt;
-  if (a.t>=a.tell+a.travel) { m.attack=null; m.restUntil=V.T+1.5; return; }
-  if (a.t<a.tell || a.hit || kidLit || kid.onBox || !['walk','idle'].includes(kid.mode)) return;
-  const tip=attackTip(a,a.t);
-  if (tip.h<45 && Math.abs(kid.x-tip.x)<30) {
-    a.hit=true; recoil(k,a.from);
-  }
-}
-function drawRoomAttack(b,m,fy) {
-  const a=m.attack;
-  if (!a) return;
-  const tip=attackTip(a,a.t), warn=a.t<a.tell, y=fy-9-tip.h;
-  b.save();
-  if (warn) {
-    b.globalAlpha*=0.4+0.28*(1+Math.sin(a.t*7));
-    b.strokeStyle='#ccad86'; b.lineWidth=2; b.setLineDash([5,7]); b.beginPath();
-    b.moveTo(a.from,fy+3); b.lineTo(a.end,fy+3); b.stroke(); b.setLineDash([]);
-    b.beginPath(); b.ellipse(a.end,fy+1,21,4,0,0,TAU); b.stroke();
-  } else if (['belt','cloth','water','steam','smoke','ticket'].includes(a.kind)) {
-    const flow=['water','steam','smoke'].includes(a.kind);
-    b.strokeStyle=({belt:'#817484',cloth:'#5f667c',ticket:'#aaa092',water:'#8197a5',steam:'#b2b2a4',smoke:'#505368'})[a.kind];
-    b.lineWidth=a.kind==='cloth'?21:flow?11:6;
-    b.beginPath(); b.moveTo(flow?lerp(a.from,tip.x,.64):a.from,fy-(flow?15:85));
-    b.quadraticCurveTo((a.from+tip.x)/2,fy-(flow?35:4),tip.x,y); b.stroke();
-  } else {
-    b.fillStyle=({roll:'#777486',potato:'#978763',box:'#82848d',hat:'#5e5867',drip:'#83a1b4'})[a.kind];
-    if (a.kind==='box') b.fillRect(tip.x-19,y-17,38,22);
-    else { b.beginPath(); b.ellipse(tip.x,y,a.kind==='drip'?6:17,a.kind==='hat'?5:10,0,0,TAU); b.fill(); }
-  }
-  b.restore();
-}
-
 function garbUpdate(dt) {
   const T = V.T, kidLit = coverage(kid.x, kid.y - kid.standY - 80, LT) > 0.45, calm0 = won || V.xCalm || kid.mode === 'caught' || kid.mode === 'exit' || kid.mode === 'gone', calm = T < V.grace || calm0;
   let near = 0;
@@ -12114,7 +12038,6 @@ function garbUpdate(dt) {
     V.fig[k] = 1 - m.rise;
     if (m.stun > 0) m.stun -= dt;   // 刚被孩子挣开：愣一阵
     const calmM = calm || m.stun > 0;
-    updateRoomAttack(k,G,m,dt,fy,calmM,kidLit);
     if (m.braced) {   // 在光里硬撑着
       m.mv = 0; m.hunt = approach(m.hunt, 0.6, dt * 4); m.reach = approach(m.reach, 0.8, dt * 6); m.lean = approach(m.lean || 0, -0.16, dt * 2); if (m.ext) m.ext = approach(m.ext, 0, dt * 3);
       m.steamT = (m.steamT || 0) - dt; if (m.steamT <= 0 && inView(m.x, hy, 200)) { m.steamT = 0.05; parts.push({ x: hx + (Math.random() - 0.5) * 44, y: hy - 14 + Math.random() * 70, vx: (Math.random() - 0.5) * 30, vy: -(50 + Math.random() * 70), life: 0.45 + Math.random() * 0.3, col: C.lamp, s: 1.2 + Math.random() * 1.8 }); }   // 光把墨烧出火星（黑烟画在它身上，见 drawGarb）
@@ -12145,7 +12068,6 @@ function garbUpdate(dt) {
     const onFloor = kid.kind === 'floor' && Math.abs(kid.y - fy) < 2, inTerr = onFloor && kid.x > G.terr[0] - 10 && kid.x < G.terr[1] + 10;
     // 狗的毛衣不等“被抓住以后那两秒半”（calm0）：它本来就要孩子过了 wake 那条线才扑出来；等的话，孩子一回到灯底下马上往右跑，它还没动人就过去了
     let hunting = !(G.fast ? calm0 : calmM) && m.rise > 0.9 && inTerr && !kidLit && (!G.listen || (T >= V.soundT && T - V.soundT < ZHEAR && V.soundKind === G.listen));   // listen：睡着的住户，声音过后一阵子才醒
-    if (ROOM_ATTACKS[k] && (m.attack || m.restUntil > T)) hunting = false;
     if (G.fast) {   // 狗的毛衣：跑得快，有惯性
       // 头一回要孩子走出门廊的光、过了 wake 那条线，它才从窝里扑出来（先愣一下）。扑出来以后，孩子只要在暗处它就追；孩子被抓回灯底下，它又缩回窝里
       if (!m.alert && !trapped && hunting && kid.x > G.wake) { m.alert = true; m.alertT = T; if (inView(m.x, hy, 80)) snd.growl(); }
@@ -12248,7 +12170,7 @@ function caught(k) {
   if (kid.cdir) kid.face = -kid.cdir;   // 脸朝着怪物
   V.caughtT = V.T; V.caughtBy = k; V.catches++; V.hold = null; snd.caught(); if (k === 'boots') snd.chomp();
 }
-const monCalm = m => Object.assign(m, { ext: 0, flat: 0, lean: 0, stun: 0, braced: 0, attack: null, restUntil: 0, ringing: false, cueUntil: 0, mimePoses: null, mimeLift: 0, flyWarn: false, rs: null, rt: 0, os: null, ot: 0, qt: 0, qgo: false, es: null, et: 0, nt: 0, gt: 0, us: null, ut: 0 });   // 2026-11-26 新脾气用到的那些状态：归零（回到原处站着）
+const monCalm = m => Object.assign(m, { ext: 0, flat: 0, lean: 0, stun: 0, braced: 0, ringing: false, cueUntil: 0, mimePoses: null, mimeLift: 0, flyWarn: false, rs: null, rt: 0, os: null, ot: 0, qt: 0, qgo: false, es: null, et: 0, nt: 0, gt: 0, us: null, ut: 0 });   // 2026-11-26 新脾气用到的那些状态：归零（回到原处站着）
 function respawn() {   // 回到最近一盏亮着的灯底下；衣服都回到原处，过两秒半才动
   kid.x = V.safe.x; kid.y = V.safe.y; kid.kind = 'floor'; kid.seg = null; kid.standY = 0; kid.mode = 'idle'; kid.fearK = 0; kid.crouch = 0; kid.face = 1; kid.rot = 0; kid.lift = 0; kid.alpha = 1; kid.cdir = 0; kid.thumped = false;
   V.hold = null;
@@ -13802,7 +13724,6 @@ function drawGarb(b, P, lit, k) {
   if (S.xRode && (k === 'dog' || GARB[k].queue)) return;   // 后半：狗、排队的人回来了，不再是衣服
   if (k === 'cr1') return;   // 木马上的大人跟着木马一起画（drawCpCar）
   const G = GARB[k], m = V.mon[k], fy = garbFy(G, m), atHome = Math.abs(m.x - G.home) < 26, t = V.T;
-  if (!lit && m.want && m.attack) drawRoomAttack(b,m,fy);
   if (k === 'chair') drawArmchairBare(b, P, lit);
   if (k === 'boiler') drawBoiler(b, P, lit);
   if (k === 'stand') drawBareStand(b, P, lit);
