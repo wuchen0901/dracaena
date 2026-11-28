@@ -14409,7 +14409,7 @@ const MZ_LIST = [
 ];
 const MZ_STATE = { page: qs.get('monsters') && qs.get('monsters') !== '1' ? qs.get('monsters') : 'all' };
 function mzPage() { return MZ_STATE.page === 'all' ? -1 : Math.max(0, MZ_LIST.findIndex(o => o.id === MZ_STATE.page)); }
-function mzGo(i) { MZ_STATE.page = i < 0 || i >= MZ_LIST.length ? 'all' : MZ_LIST[i].id; }
+function mzGo(i) { if (MZ_STATE.page === 'kinds') return; MZ_STATE.page = i < 0 || i >= MZ_LIST.length ? 'all' : MZ_LIST[i].id; }
 // 画一格：(px,py,pw,ph) 是这一格在屏幕上的位置（CSS 像素），gy 是地平线在格子里多高（0–1），s 是一个世界单位几个 CSS 像素，cx 是怪物放在格子里的横向位置（0–1）
 function mzCell(px, py, pw, ph, o) {
   const lit = o.lit, P = lit ? LIT : DARK, gy = py + ph * (o.gy ?? 0.84), cx = px + pw * (o.cx ?? 0.5), s = o.s;
@@ -14438,6 +14438,7 @@ const mzSt = (k, t) => ({ asleep: { hunt: 0, reach: 0, ph: 0 }, awake: { hunt: 0
 function mzFrame() {
   const t = performance.now() / 1000; V.T = t;
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#06080e'; g.fillRect(0, 0, cv.width, cv.height);
+  if (MZ_STATE.page === 'kinds') return mzKinds(t);   // 五种怪物（方案甲）：?monsters=kinds
   const pg = mzPage(), M = Math.max(10, W * 0.02), narrow = W < H * 0.9;
   if (pg < 0) {   // 总览：上排醒着，下排睡着；同一个比例尺，一根 150 高的尺子是孩子
     const n = MZ_LIST.length, LP = 22, cw = (W - 2 * M - LP) / n, rowH = (H - 130) / 2, S = Math.min(cw / 215, rowH * 0.88 / 275);
@@ -14478,6 +14479,150 @@ function mzStart() {
     else if (x < 0.3) mzGo(p - 1 < 0 ? MZ_LIST.length : p - 1); else if (x > 0.7) mzGo(p + 1); else mzGo(-1);
   }, true);
   buildTex(); const loop = () => { mzFrame(); requestAnimationFrame(loop); }; loop();
+}
+// ----- 五种怪物（方案甲，2026-11-28）：?monsters=kinds，五格并排，站着不动的样子；底下一小格是它出手 / 被收拾的那一下。不出字，左边一个孩子做比例 -----
+// 只是这一页的画法：关卡里的怪物照旧用 inkRobe / inkCoat 画，行为不动
+const MZK_SHEEN = '#6f7ca4';
+function mzkPrints(b, x0, x1, step, seed, o = {}) {   // 一串墨脚印：靴底一前一后，边上一圈微微的反光；deep 是踩进去的深坑，fade 是旧的淡了
+  const n = Math.max(1, Math.round((x1 - x0) / step));
+  for (let i = 0; i <= n; i++) {
+    const x = lerp(x0, x1, i / n), y = (i % 2 ? 6 : 2.5) + (o.dy || 0), a = (o.fade ? lerp(0.35, 1, o.fade(i / n)) : 1), d = o.deep || 0, f = o.f || 1;
+    b.save(); b.globalAlpha *= a; b.seedN = seed + i;
+    b.fillStyle = INK; b.beginPath(); b.ellipse(x, y, 8 + d * 2, 2.3 + d * 1.6, 0, 0, TAU); b.fill();
+    b.beginPath(); b.ellipse(x - f * (8 + d), y, 3.6 + d, 1.6 + d * 1.2, 0, 0, TAU); b.fill();
+    b.strokeStyle = MZK_SHEEN; b.globalAlpha *= 0.8; b.lineWidth = 1; b.beginPath(); b.ellipse(x, y, 7.6 + d * 2, 2.4 + d * 1.6, 0, Math.PI * 1.05, Math.PI * 1.95); b.stroke();
+    if (d) { b.globalAlpha = a * 0.5; b.strokeStyle = DARK.hi; b.beginPath(); b.ellipse(x, y - 0.6, 9 + d * 2, 2.6 + d * 1.6, 0, Math.PI * 1.1, Math.PI * 1.9); b.stroke(); }
+    b.restore();
+  }
+}
+// 1 巡逻的：门厅那件长大衣，换上制服帽（帽檐、帽徽）、一条斜挎的皮带；脚下一串来回走出来的墨脚印
+function mzkPatrol(b, P, x, f, t, m, seed, prints = true) {
+  const PP = { ...P, coat: '#26314a', coatLo: '#1a2236', scarf: '#2e3a58', hat: '#121a2c', brass: '#7d86a6' };
+  if (prints) { mzkPrints(b, -150, -40, 22, seed + 900, { f: -1 }); mzkPrints(b, 40, 150, 22, seed + 950, { f: -1 }); }
+  inkCoat(b, PP, x, 0, f, t, m, seed);
+  b.save(); b.translate(x, -8); b.scale(f, 1); b.seedN = seed + 300; const lc = DARK.ink;
+  part(b, [[-16, -146], [-6, -146], [30, -78], [22, -74]], '#1a2236', { w: 0.8, tex: 0, lc });   // 斜挎的皮带
+  part(b, rectPts(-33, -88, 68, 8), '#1a2236', { w: 0.8, tex: 0, lc }); part(b, rectPts(-1, -89, 9, 10), PP.brass, { w: 0.5, tex: 0, lc });
+  ink(b, quadPts([16, -140], [26, -122], [20, -110], 8), { col: PP.brass, w: 0.8, a: 0.8, taper: 0 });   // 哨子的链子
+  part(b, roundPts(16, -112, 9, 5, 2), PP.brass, { w: 0.5, tex: 0, lc });
+  b.translate(3, -204 + Math.sin(t * 1.3) * 2);   // 制服帽：盖住原来那顶圆帽子
+  part(b, curvePts([[-27, 4], [-31, -16], [-36, -30], [-14, -36], [22, -36], [40, -30], [33, -16], [29, 4]], true, 4), PP.hat, { w: 1, tex: 0.2, lc });
+  part(b, rectPts(-28, -10, 58, 13), '#0b1020', { w: 0.8, tex: 0, lc });
+  part(b, curvePts([[22, 1], [52, 4], [50, 9], [20, 7]], true, 3), '#070a14', { w: 0.8, tex: 0, lc });   // 帽檐
+  part(b, arcPts(8, -22, 5, 5.5, 0, TAU, 10), PP.brass, { w: 0.5, tex: 0, lc });   // 帽徽
+  b.restore();
+}
+// 2 沉的：染缸间那件皮围裙，灌得鼓鼓的，往下滴墨；它脚下的地板往下弯，身边是踩进去的深脚印
+function mzkFloorSag(b, x0, x1, dep, seed, pit = false) {   // 地板往下弯：先把原来那根直的地线盖掉，画一块往下弯的木板（pit：底下是空的坑）；弯得厉害就从中间裂开
+  const sag = x => dep * Math.exp(-(((x - (x0 + x1) / 2) / ((x1 - x0) * (pit ? 0.34 : 0.3))) ** 2)), pts = [], TH = 9;
+  for (let i = 0; i <= 24; i++) { const x = lerp(x0, x1, i / 24); pts.push([x, sag(x)]); }
+  b.fillStyle = '#121828'; b.fillRect(x0, -3, x1 - x0, 4);
+  b.fillStyle = pit ? '#020308' : '#0a0d16'; b.fillRect(x0, 0, x1 - x0, 80);
+  if (pit) for (const xx of [x0, x1]) ink(b, [[xx, 0], [xx, 80]], { w: 1, col: DARK.hi, a: 0.3, taper: 0, seed: seed + xx });
+  const board = [...pts, ...pts.slice().reverse().map(([x, y]) => [x, y + TH])];
+  part(b, board, '#2e2a38', { w: 1, tex: 0.3, lc: DARK.ink, seed });
+  hatch(b, k => pathOf(k, board), [x0, -2, x1 - x0, dep + TH + 4], { ang: -0.2, gap: 3.2 / HD, a: 0.45, w: 0.6, len: 26 });
+  ink(b, pts, { w: 1.2, col: DARK.hi, a: 0.5, taper: 0, seed: seed + 1 });
+  if (dep > 20) { const xm = (x0 + x1) / 2, ym = sag(xm); ink(b, [[xm - 6, ym], [xm + 2, ym + 4], [xm - 3, ym + 7], [xm + 4, ym + TH + 4]], { w: 1.2, col: DARK.hi, a: 0.55, taper: 1, seed: seed + 2 }); for (const sx of [-1, 1]) ink(b, [[xm + sx * 3, ym + TH], [xm + sx * 14, ym + TH + 9]], { w: 1, col: '#2e2a38', a: 1, taper: 2, seed: seed + 3 + sx }); }
+  return sag;
+}
+function mzkHeavy(b, P, x, f, t, m, seed, dep = 12) {
+  const G = { cols: ['dyLeather', 'dyLeatherLo'], h: 200 }, sag = mzkFloorSag(b, x - (dep > 20 ? 175 : 120), x + (dep > 20 ? 175 : 120), dep, seed + 800, dep > 20), d0 = sag(x);
+  if (dep <= 20) { mzkPrints(b, x - 170, x - 124, 23, seed + 900, { deep: 1.2, f: -1 }); mzkPrints(b, x + 124, x + 170, 23, seed + 950, { deep: 1.2, f: -1 }); }
+  b.save(); b.translate(x, d0); b.scale(1.55, 0.94); inkRobe(b, P, 0, 0, f, t, { ...m, reach: 0.08 }, G, seed); b.restore();
+  b.save(); b.translate(x, d0); b.scale(f, 1); b.seedN = seed + 400;
+  part(b, curvePts([[-40, -70], [-46, -118], [-20, -150], [30, -150], [52, -112], [46, -66], [6, -54]], true, 4), P.dyLeather, { w: 1, tex: 0.42, lc: DARK.ink });   // 鼓起来的肚子
+  hatch(b, k => pathOf(k, curvePts([[-40, -70], [-46, -118], [-20, -150], [30, -150], [52, -112], [46, -66], [6, -54]], true, 4)), [-48, -152, 102, 100], { ang: -1.15, gap: 4.6 / HD, a: 0.5, w: 0.7, len: 20 });
+  ink(b, quadPts([-30, -112], [6, -96], [44, -110], 10), { w: 0.8, col: DARK.hi, a: 0.22, taper: 3 });   // 绷紧的一道
+  inkDrips(b, [[-52, -60, 34 + 6 * Math.sin(t * 2)], [-36, -6, 14], [-14, -3, 22], [10, -4, 26], [34, -6, 18], [60, -8, 30], [52, -56, 42], [-20, -64, 30], [24, -66, 38]], seed + 60);
+  b.fillStyle = INK; b.beginPath(); b.ellipse(4, 2, 74, 4.5, 0, 0, TAU); b.fill();   // 脚下一大滩
+  b.restore();
+}
+// 3 追上来的：库房地窖的胶皮围裙，醒着就往前探：身子前倾，眼睛红的，两只手往前够，身后拖着几道墨
+function mzkChase(b, P, x, f, t, m, seed) {
+  const G = { cols: ['dyRubHi', 'dyRub'], h: 214, belt: 1 }, lean = 0.26;
+  b.save(); b.translate(x, 0); b.transform(1, 0, -f * lean, 1, 0, 0);
+  for (const [y, len, i] of [[-200, 70, 0], [-150, 90, 1], [-96, 60, 2], [-40, 80, 3]]) inkTendril(b, -f * 30, y, -f * (30 + len), y + 6 * Math.sin(t * 3 + i), t, seed + 30 + i, 5);
+  inkRobe(b, P, 0, 0, f, t, { hunt: 1, reach: 0.95 }, G, seed);
+  b.save(); b.scale(f, 1); b.seedN = seed + 500;   // 另一只手也往前够
+  part(b, tube([[-4, -150], [30, -128], [70, -126]], [16, 15, 13]), P.dyRub, { w: 0.9, tex: 0.3, lc: DARK.ink });
+  part(b, arcPts(73, -126, 5, 7, 0, TAU, 12), INK, { w: 0.6, tex: 0, lc: DARK.ink });
+  inkTendril(b, 76, -126, 112, -118, t, seed + 520, 6);
+  b.restore();
+  b.restore();
+  b.save(); b.globalAlpha *= 0.5; for (const [u, i] of [[-0.6, 0], [-0.2, 1], [0.4, 2]]) { b.fillStyle = MZK_SHEEN; b.beginPath(); b.ellipse(x - f * (50 + i * 22) , -3 - i * 3, 4 - i, 2.4, 0, 0, TAU); b.fill(); } b.restore();   // 脚后跟踢起来的墨点
+}
+function mzkLadderPeek(b, P, x, t, seed) {   // 梯口：地板上一个口子，梯子的两根扶手探出来，它的帽兜和两只手扒着最上面一级
+  b.fillStyle = '#020308'; b.fillRect(x - 46, -1, 92, 60);
+  ink(b, [[x - 46, 0], [x - 46, 60]], { w: 0.8, col: DARK.hi, a: 0.25, taper: 0 }); ink(b, [[x + 46, 0], [x + 46, 60]], { w: 0.8, col: DARK.hi, a: 0.25, taper: 0 });
+  b.save(); b.beginPath(); b.rect(x - 200, -400, 400, 400); b.rect(x - 46, -1, 92, 80); b.clip();
+  const up = 6 * Math.sin(t * 2.4);
+  inkRobe(b, P, x, 128 + up, -1, t, { hunt: 1, reach: 0.15 }, { cols: ['dyRubHi', 'dyRub'], h: 214, belt: 1 }, seed);
+  b.restore();
+  for (const sx of [-30, 30]) { part(b, rectPts(x + sx - 3, -84, 6, 146), '#2c2a30', { w: 0.8, tex: 0, lc: DARK.ink, seed: seed + sx }); }
+  for (const yy of [-74, -46, -18, 12, 42]) part(b, rectPts(x - 30, yy, 60, 4), '#2c2a30', { w: 0.6, tex: 0, lc: DARK.ink, seed: seed + yy });
+  for (const sx of [-1, 1]) { const hx = x + sx * 30, hy = -76 + up * 0.3; b.fillStyle = INK; b.beginPath(); b.ellipse(hx, hy, 9, 6, 0, 0, TAU); b.fill(); for (let j = 0; j < 4; j++) ink(b, quadPts([hx - 6 + j * 4, hy], [hx - 7 + j * 4.5, hy + 8], [hx - 5 + j * 4, hy + 13], 6), { col: INK, w: 2.4 / b.pen.w, a: 1 / b.pen.a, taper: 3, seed: seed + 60 + j + sx * 10 }); }
+}
+// 4 学你的：教室的学人精（那件长外衣），站在一面落地镜的框里：它就是镜子里的那个，头上是孩子那样的毛线帽（帽顶一颗绒球）
+function mzkMirrorFrame(b, x, seed) {
+  const lc = DARK.ink;
+  part(b, roundPts(x - 64, -272, 128, 266, 56), '#3a3448', { w: 1, tex: 0.3, lc, seed });
+  part(b, roundPts(x - 54, -262, 108, 246, 48), '#0e1424', { w: 0.8, tex: 0, lc, seed: seed + 1 });
+  for (const [a, c, w] of [[-34, -238, 0.25], [-10, -250, 0.14]]) ink(b, [[x + a, c], [x + a + 70, c + 120]], { w: 3, col: DARK.hi, a: w, taper: 4, seed: seed + 3 });
+  part(b, rectPts(x - 50, -8, 10, 8), '#3a3448', { w: 0.6, tex: 0, lc, seed: seed + 5 }); part(b, rectPts(x + 40, -8, 10, 8), '#3a3448', { w: 0.6, tex: 0, lc, seed: seed + 6 });
+}
+function mzkMimic(b, P, x, f, t, m, seed, frame = true) {
+  const PP = { ...P, coat: P.s2c, coatLo: P.s2l, scarf: P.s2s, hat: P.rh };
+  if (frame) mzkMirrorFrame(b, x, seed + 700);
+  inkCoat(b, PP, x, 0, f, t, m, seed);
+  b.save(); b.translate(x, -8); b.scale(f, 1); b.translate(3, -204 + Math.sin(t * 1.3) * 2); b.seedN = seed + 300; const lc = DARK.ink;   // 毛线帽：盖住原来那顶圆帽子
+  part(b, curvePts([[-28, 6], [-27, -16], [-12, -32], [12, -32], [27, -16], [28, 6]], true, 4), '#4a3e58', { w: 1, tex: 0.3, lc });
+  part(b, roundPts(-30, -2, 60, 11, 4), '#5c4e6c', { w: 0.8, tex: 0, lc });
+  for (let i = 0; i < 6; i++) ink(b, [[-22 + i * 9, -1], [-22 + i * 9, 8]], { w: 0.6, col: lc, a: 0.6, taper: 0 });
+  part(b, arcPts(0, -38, 9, 9, 0, TAU, 12), '#6c5e7c', { w: 0.7, tex: 0.3, lc });   // 绒球
+  b.restore();
+}
+// 5 流的：第 3 关的睡裙，下摆化开，成了一大摊贴着地的墨，墨里浮着眼睛；上半截还立着
+function mzkFlow(b, P, x, f, t, m, seed) {
+  const G = { cols: ['lnSh1', 'lnSh2'], h: 214 };
+  b.save(); b.beginPath(); b.rect(x - 200, -400, 400, 332); b.clip(); b.translate(x, 0); b.scale(1, 0.92); inkRobe(b, P, 0, -6, f, t, m, G, seed); b.restore();
+  b.save(); b.translate(x, 0); b.scale(f, 1); b.seedN = seed + 400;
+  const w = Math.sin(t * 1.7) * 3, melt = curvePts([[-40, -84], [-36, -66], [-52, -36], [-92, -12], [-150 + w, -2], [-150 + w, 3], [-60, 5], [40, 5], [126 - w, 4], [128 - w, -2], [74, -10], [44, -34], [40, -66], [42, -84], [0, -76]], true, 4);
+  fillPts(b, melt, INK); ink(b, [...melt.slice(2, 6)], { col: MZK_SHEEN, w: 0.7, a: 0.4, taper: 0, amp: 0.8 }); ink(b, [...melt.slice(-28, -20)], { col: MZK_SHEEN, w: 0.7, a: 0.35, taper: 0, amp: 0.8 });
+  for (const [u, i] of [[-120, 0], [-84, 1], [92, 2], [112, 3]]) { b.fillStyle = INK; b.beginPath(); b.ellipse(u + 6 * Math.sin(t * 1.3 + i), 1, 8 + i, 2.2, 0, 0, TAU); b.fill(); }   // 往外淌的几滴
+  inkEyes(b, [[-66, -9, 4.6], [-42, -14, 3.6], [62, -10, 4.2], [88, -5, 3], [-104, -4, 2.6]], m.hunt);
+  b.restore();
+}
+function mzkPool(b, x, t, seed) {   // 小格：只剩一摊，贴着地鼓起来一点，眼睛浮在墨里；前面淌出去的几滴
+  const w = Math.sin(t * 1.7) * 4, pool = curvePts([[-170 + w, 3], [-120, -6], [-60, -16], [0, -20], [60, -15], [120, -6], [176 - w, 3], [60, 6], [-60, 6]], true, 4);
+  b.save(); b.translate(x, 0); fillPts(b, pool, INK); ink(b, pool.slice(2, 22), { col: MZK_SHEEN, w: 0.9, a: 0.45, taper: 0, amp: 0.8, seed });
+  b.fillStyle = INK; for (let i = 0; i < 4; i++) { b.beginPath(); b.ellipse(-196 - i * 22 + 4 * Math.sin(t * 2 + i), 2 + (i % 2), 9 - i * 1.6, 2.2, 0, 0, TAU); b.fill(); }
+  inkEyes(b, [[-92, -6, 4.4], [-40, -11, 5.6], [8, -12, 4.2], [58, -9, 5], [112, -3, 3.2]], 0);
+  b.restore();
+}
+// 孩子：在当前的画笔坐标里，脚站在 (X, 0)，朝 f
+function mzkKid(b, X, f) {
+  const sv = kid.face; kid.face = f; b.save(); b.translate(X - kid.x, -footY(kid.x)); drawKid(b, DARK, false); b.restore(); kid.face = sv;
+}
+function mzKinds(t) {
+  const mob = H < 520, M = mob ? 8 : 22, gap = mob ? 4 : 8, KW = mob ? 64 : 150;
+  const cw = (W - 2 * M - KW - 5 * gap) / 5, topH = mob ? (H - 2 * M - gap) * 0.6 : (H - 2 * M - gap) * 0.66, botH = H - 2 * M - gap - topH;
+  const S = mob ? 82 / 236 : Math.min(cw / 175, topH * 0.84 / 280), s2 = Math.min(mob ? S * 0.82 : S * 0.62, botH * 0.74 * 0.9 / 262), st = { hunt: 0, reach: 0.12 + 0.05 * Math.sin(t * 1.3), ph: 0 };
+  const y0 = M, y1 = M + topH + gap, gy0 = 0.86, gy1 = 0.74;
+  mzCell(M, y0, KW - gap, topH, { s: S, gy: gy0, draw: b => mzkKid(b, 6, 1) });
+  mzCell(M, y1, KW - gap, botH, { s: s2, gy: gy1, draw: b => mzkKid(b, 6, 1) });
+  const kinds = [
+    [b => mzkPatrol(b, DARK, 0, -1, t, st, 720100), b => { mzkPrints(b, -260, 260, 22, 720180, { f: -1, fade: u => u }); b.save(); b.globalAlpha *= 0.18; mzkPatrol(b, DARK, 90, -1, t, st, 720150, false); b.restore(); mzkPatrol(b, DARK, -10, -1, t + 0.4, { hunt: 0, reach: 0.05, ph: 0 }, 720160, false); }],
+    [b => mzkHeavy(b, DARK, 0, -1, t, st, 720200, 16), b => mzkHeavy(b, DARK, 0, -1, t, st, 720250, 34)],
+    [b => mzkChase(b, DARK, 0, -1, t, st, 720300), b => mzkLadderPeek(b, DARK, 0, t, 720350)],
+    [b => mzkMimic(b, DARK, 0, -1, t, { hunt: 0, reach: 0.45, ph: 0 }, 720400), b => { for (let yy = -300; yy < 6; yy += 14) ink(b, [[0, yy], [0, yy + 7]], { w: 1, col: DARK.hi, a: 0.3, taper: 0, seed: 720440 + yy }); mzkKid(b, -70, 1); mzkMimic(b, DARK, 70, -1, t, { hunt: 0, reach: 0.12, ph: 0 }, 720450, false); }],
+    [b => mzkFlow(b, DARK, 0, -1, t, st, 720500), b => mzkPool(b, 20, t, 720550)],
+  ];
+  kinds.forEach(([top, bot], i) => {
+    const x = M + KW + i * (cw + gap);
+    mzCell(x, y0, cw, topH, { s: S, gy: gy0, draw: top });
+    mzCell(x, y1, cw, botH, { s: s2, gy: gy1, draw: bot });
+  });
 }
 // ----- 有影子的大衣（第 3 关的外套，2026-11-25）-----
 // 醒着：和门厅那件长大衣是同一种身子，可是领口里升起来的是一个人形的墨：脖子、头、一顶高帽子（就是影子里的那个人），两只发白的眼睛，一只手高高举着
