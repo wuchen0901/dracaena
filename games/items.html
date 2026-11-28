@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>夜里的房子 · 道具</title>
+<!--
+  夜里的房子的全部道具，按关排（2026-11-27 主人说：“把所有道具整理出来，我看看 icon”）。
+  图不是另画的：页面在看不见的框里开一份 house.html（?paused&noui&nosave&nointro，不读也不写存档），
+  借它自己的 drawScene 画，所以和物品栏、气泡里的一模一样；游戏里改了样子，这里跟着变。
+  每张卡片：上面是放大的样子，右下两个小格是物品栏里的实际大小（电脑 60 像素一格，手机 40）。
+  名字、在哪儿、用在哪儿是照 house.html 每关 START 后面的注释抄的；新加的道具没写名字的，先只显示代号。
+  要从 http 打开（GitHub Pages 上就是 items.html；本地起个服务器）：直接双击文件，浏览器不让页面去碰框里的游戏。
+-->
+<style>
+:root{--bg:#07080e;--fg:#eef0fa;--dim:rgba(220,225,245,.58);--faint:rgba(220,225,245,.34);--card:rgba(255,255,255,.035);--line:rgba(220,225,245,.12)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 0,#141a30 0,#07080e 60%) fixed;color:var(--fg);
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;padding:28px 18px 60px}
+main{max-width:1180px;margin:0 auto}
+h1{font-weight:400;font-size:26px;margin:0 0 6px}
+p.lead{color:var(--dim);margin:0 0 6px;font-size:14px;line-height:1.7}
+p.lead a{color:inherit}
+#status{color:var(--faint);font-size:13px;margin:14px 0 0}
+h2{font-weight:400;font-size:18px;margin:34px 0 12px;display:flex;align-items:baseline;gap:10px}
+h2 .n{color:var(--faint);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px 12px;display:flex;flex-direction:column}
+.card canvas.big{width:100%;height:132px;display:block}
+.row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-top:6px}
+.name{font-size:15px;line-height:1.35}
+.id{font:11px/1.4 ui-monospace,Menlo,monospace;color:var(--faint);margin-top:2px}
+canvas.slots{flex:none;width:112px;height:62px}
+.where{color:var(--dim);font-size:12px;line-height:1.6;margin-top:6px}
+.where b{font-weight:400;color:var(--faint)}
+.card.unnamed .name{color:#ffb98a}
+iframe{position:fixed;left:-20000px;top:0;width:800px;height:600px;border:0;visibility:hidden}
+</style>
+</head>
+<body>
+<main>
+  <h1>夜里的房子 · 道具</h1>
+  <p class="lead">游戏里能捡起来放进物品栏的东西，按关排。图就是游戏自己画的那一张（地上、物品栏、气泡里都是它）。每张卡片右下的两个小格是物品栏里的实际大小：左边电脑上，右边手机上。<br>最后一组不是道具，是孩子头上的气泡里也这样画的几样机关。<a href="house.html">进入夜里的房子</a></p>
+  <p id="status">正在开一份游戏来画……</p>
+  <div id="out"></div>
+</main>
+<script>
+// 名字、在哪儿捡到、用在哪儿（照 house.html 各关 START 后面的注释）
+const INFO = {
+  slipper: ['拖鞋', '卧室床边', '卡在浴室门底下'],
+  log: ['柴', '客厅的柴筐里', '放进壁炉'],
+  fuse: ['保险丝', '客厅的抽屉里', '插进地下室的保险丝盒'],
+  honey: ['蜂蜜', '厨房的冰箱里', '拿着引萤火虫，放到保险丝盒旁边的小搁板上'],
+  bulb: ['灯泡', '门厅的抽屉里', '拧在门厅的吊灯上'],
+  crank: ['摇把', '门厅的座钟里', '摇吊灯的绞盘'],
+  key: ['前门钥匙', '门厅的衣帽架上', '开前门'],
+  yRake: ['耙子', '靠在车库墙上', '撑住卷帘门'],
+  yKey: ['院门挂锁的备用钥匙', '狗窝最里面', '开院门的挂锁'],
+  lPole: ['晾衣叉', '靠在篱笆上', '勾路灯的拉线'],
+  lStool: ['小板凳', '童车旁边', '垫在闸箱底下，站上去合闸'],
+  qKey: ['钟表店二楼的备用钥匙', '钟表店门口的花盆底下', '开二楼的门'],
+  qLad: ['人字梯', '二楼门边', '立在电线杆底下'],
+  qBkey: ['配电箱的钥匙', '五金店地下室梯子底下的钉子上', '开配电箱的锁'],
+  qKnob: ['定时器的旋钮', '地下室零件柜上', '装在定时器上'],
+  qWkey: ['定时器上弦的钥匙', '二楼工作台上', '插在定时器上拧一下'],
+  qTicket: ['车票', '排头那件大衣塌下去，掉在地上', '塞进检票机'],
+  zSlip: ['拖鞋', '第一位住户塌下去，掉在地上', '丢到楼梯间那头，或塞在地下室的门缝里'],
+  zBag: ['垃圾袋', '第二位住户的门口', '压在防火门缝里'],
+  zCoin: ['硬币', '第一位住户的睡袍口袋里滚出来', '投进烘干机'],
+  zFkey: ['防火门链子的钥匙', '地下室电表间的钥匙箱里', '开防火门链子的锁'],
+  rBulb: ['备用的灯泡', '第一件衬衫塌下去，掉在地上', '拧在灯座上'],
+  rPlank: ['木板', '压在天窗的油布上', '搭在缝上'],
+  rReel: ['卷线盘', '棚子屋檐底下', '放在第二串灯第一根杆子底下'],
+  rBulb2: ['第二只灯泡', '第三件衬衫的口袋里掉出来', '拧在灯座上'],
+  sKey: ['教室的钥匙', '外套塌下去，掉在地上', '开教室门'],
+  gWhis: ['挂着钥匙的哨子', '运动服塌下去，掉在地上', '钥匙开器材室的门'],
+  nFan: ['蒲扇', '挂在刨冰摊的柱子上', '扇炭炉'],
+  nScale: ['杆秤', '面摊摊主塌下去，从围裙口袋里掉出来', '钩子挑开门闩'],
+  tMir: ['化妆镜', '衣帽间的柜台上', '立在后排前面的小桌上，插上电'],
+  tBill: ['节目单', '后排那件塌下去，从座位底下露出来', '塞在台口的小门缝里'],
+  uHat: ['帽子', '外套面前的地上', '垫在热管子的阀门上'],
+  mHandle: ['摇柄', '站台墙上的钩子上', '装在手摇车上'],
+  mBq: ['花', '抱花的大衣塌了，在它脚边', '垫在车门的轨道里'],
+  wPail: ['蘑菇桶', '架子上', '放在墙上的托架上'],
+  wTorch: ['手电', '第三件水裤塌了，在它脚边', '插在阀门轮子里'],
+  dPlank: ['旧门板', '地上', '放在水面上，浮着'],
+  vFuse: ['备用的保险管', '隧道里的接线箱里', '插在配电盘上'],
+  vPole: ['绝缘杆', '配电盘边的架子上', '一直拿着，出这一关时放回去'],
+  vKeys: ['一串钥匙', '第二件工作服的腰上，它塌下去才掉出来', '开铁笼的锁'],
+  fBeacon: ['警示灯', '消防车侧面的工具箱里', '递给消防员的大衣'],
+  fHelmet: ['头盔', '长凳上，大衣走开了才露出来', '压在发电机的踏板上'],
+  bLamp: ['台灯', '服务台上', '递给夜班店员'],
+  bTag: ['价签', '夜班店员塌了以后掉在地上', '在收银通道的扫码器上扫一下'],
+  cBulb: ['灯泡', '票亭柜台的纸盒里', '拧在控制柱的灯泡座上'],
+  cBal: ['气球', '大人手里牵着', '拴在栏杆上'],
+  kWrench: ['水栓扳手', '补鞋摊的工具堆里', '套在水栓的方头上'],
+  kPail: ['水桶', '面包店门边的钩子上', '灌满水（就成了下一样）'],
+  kPailF: ['灌满水的水桶', '空水桶灌满了水', '挂在栅门链子的钩子上'],
+  hMatch: ['火柴盒', '底层的凳子上', '点灯，用掉最后一根'],
+  hCrank: ['绞盘的摇把', '一层的墙钉上', '套在绞盘上'],
+  jKey: ['发条钥匙', '钟楼顶小棚墙上的钩子上', '插在发条箱上'],
+  jWt: ['铁坨（备用的重锤）', '地上', '挂在链钩上'],
+};
+// 不是道具、只在气泡里这样画的（ICON_SIZE 里有、ALL_ITEMS 里没有的）
+const BUBBLE = {
+  cWheel: ['阀门', '广场上的旋转木马'],
+  bLift: ['货梯', '百货大楼'],
+  bMirror: ['试衣镜', '百货大楼'],
+  wChain: ['窨井盖的链条', '下水道'],
+  dWheel: ['进水管的闸轮', '地下最深处'],
+  hCandle: ['蜡烛头', '钟楼里面'],
+  hLamp: ['油灯', '钟楼里面'],
+};
+
+const DPR = Math.max(1, Math.min(3, +new URLSearchParams(location.search).get('dpr') || window.devicePixelRatio || 1));   // ?dpr=2：画布按两倍画（拼成一张大图存下来用）
+const out = document.getElementById('out'), status = document.getElementById('status');
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+function canvasFor(cls, w, h) {
+  const c = el('canvas', cls); c.width = Math.round(w * DPR); c.height = Math.round(h * DPR);
+  const b = c.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0); return [c, b];
+}
+
+const frame = document.createElement('iframe');
+frame.src = 'house.html?paused=1&noui=1&nosave=1&nointro=1';
+frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1;
+const ONLINE = 'https://wuchen0901.github.io/dracaena/games/items.html';   // games/ 底下这一份不管线上是哪种发法都在（2026-11-27 根目录的 items.html、house.html 是 404）
+function failed(why) {
+  status.textContent = why + '。这一页要和 house.html 放在一起、从 http 打开（直接双击文件不行），线上的在 ';
+  const a = el('a', null, ONLINE); a.href = ONLINE; a.style.color = 'inherit'; status.appendChild(a);
+}
+frame.onload = () => {
+  let w = null;
+  try { w = frame.contentWindow; if (!w.__house) w = null; } catch (e) { w = null; }
+  if (!w) return failed('游戏没打开');
+  try { build(w); } catch (e) { failed('没画出来（' + e.message + '）'); throw e; }
+};
+document.body.appendChild(frame);
+
+function build(w) {
+  const drawScene = w.drawScene;
+  const [ALL, LEVELS, SIZES, MOON, LAMP] = w.eval('[ALL_ITEMS, LEVELS.map(L => ({ n: L.n, name: L.name, items: L.ITEMS.slice() })), Object.keys(ICON_SIZE), C.moon, C.lamp]');
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  // 物品栏的一格：和 house.html 里画物品栏那段一样（圆角方格、很淡的底、细边，东西长的那边占 0.74）
+  function slot(b, it, x, y, s) {
+    b.beginPath(); if (b.roundRect) b.roundRect(x - s / 2, y - s / 2, s, s, s * 0.2); else b.rect(x - s / 2, y - s / 2, s, s);
+    b.fillStyle = rgba(MOON, 0.045); b.fill(); b.strokeStyle = rgba(MOON, 0.28); b.lineWidth = 1.4; b.stroke();
+    drawScene(b, it, x, y, s * 0.74);
+  }
+  function card(it, name, lines, inBag) {
+    const c = el('div', 'card' + (name ? '' : ' unnamed'));
+    const [big, bb] = canvasFor('big', 154, 132);
+    // 大图：长的那一边 112 像素，放在一团很淡的灯光里（道具在屋子里是灯下的颜色）
+    const gl = bb.createRadialGradient(77, 66, 4, 77, 66, 74); gl.addColorStop(0, rgba(LAMP, 0.10)); gl.addColorStop(1, rgba(LAMP, 0));
+    bb.fillStyle = gl; bb.fillRect(0, 0, 154, 132);
+    drawScene(bb, it, 77, 66, 112);
+    c.appendChild(big);
+    const row = el('div', 'row'), left = el('div');
+    left.appendChild(el('div', 'name', name || it));
+    left.appendChild(el('div', 'id', it));
+    row.appendChild(left);
+    if (inBag) { const [sc, sb] = canvasFor('slots', 112, 62); slot(sb, it, 32, 31, 60); slot(sb, it, 88, 41, 40); row.appendChild(sc); }
+    c.appendChild(row);
+    for (const [k, v] of lines) { const d = el('div', 'where'); d.appendChild(el('b', null, k + '　')); d.appendChild(document.createTextNode(v)); c.appendChild(d); }
+    return c;
+  }
+
+  let shown = 0, unnamed = [];
+  const seen = new Set();
+  for (const L of LEVELS) {
+    if (!L.items.length) continue;
+    const h = el('h2'); h.appendChild(document.createTextNode(`第 ${L.n} 关 · ${L.name}`)); h.appendChild(el('span', 'n', `${L.items.length} 样`));
+    const grid = el('div', 'grid');
+    for (const it of L.items) {
+      seen.add(it); const f = INFO[it]; if (!f) unnamed.push(it);
+      grid.appendChild(card(it, f && f[0], f ? [['在', f[1]], ['用', f[2]]] : [], true)); shown++;
+    }
+    out.appendChild(h); out.appendChild(grid);
+  }
+  // 万一有道具没归到哪一关里
+  const stray = ALL.filter(it => !seen.has(it));
+  if (stray.length) {
+    const h = el('h2', null, '没归到哪一关的'), grid = el('div', 'grid');
+    for (const it of stray) { const f = INFO[it]; if (!f) unnamed.push(it); grid.appendChild(card(it, f && f[0], f ? [['在', f[1]], ['用', f[2]]] : [], true)); shown++; }
+    out.appendChild(h); out.appendChild(grid);
+  }
+  const extra = SIZES.filter(k => !ALL.includes(k));
+  if (extra.length) {
+    const h = el('h2'); h.appendChild(document.createTextNode('气泡里画的（不是道具）')); h.appendChild(el('span', 'n', `${extra.length} 样`));
+    const grid = el('div', 'grid');
+    for (const k of extra) { const f = BUBBLE[k]; grid.appendChild(card(k, f && f[0], f ? [['关', f[1]]] : [], false)); }
+    out.appendChild(h); out.appendChild(grid);
+  }
+  status.textContent = `一共 ${shown} 样道具，${LEVELS.filter(L => L.items.length).length} 关` + (unnamed.length ? `；还没写名字的：${unnamed.join('、')}` : '') + '。';
+  document.body.dataset.done = '1';
+  frame.remove();   // 图都画在这一页的画布上了，游戏用不着了
+}
+</script>
+</body>
+</html>
